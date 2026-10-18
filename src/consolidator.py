@@ -7,7 +7,7 @@ los agrupa y suma sus cantidades totales para calcular el descuento neto.
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List
-from remito_parser import ItemRemito, normalizar_codigo
+from .remito_parser import ItemRemito, normalizar_codigo
 
 
 @dataclass

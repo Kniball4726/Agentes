@@ -15,8 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import openpyxl
-from consolidator import ItemConsolidado
-from remito_parser import ResultadoRemito, normalizar_codigo
+from .consolidator import ItemConsolidado
+from .remito_parser import ResultadoRemito, normalizar_codigo
 
 
 @dataclass
@@ -254,11 +254,35 @@ class StockManager:
             fila_actual += 1
 
             for doc in pedidos_procesados:
-                tipo_desc = "Remito Mayorista" if doc.archivo.lower().endswith(".pdf") else "Canje"
+                if doc.archivo.lower().endswith(".pdf"):
+                    tipo_desc = "Remito Mayorista"
+                elif doc.archivo.lower().endswith(".docx"):
+                    tipo_desc = "Mercado Libre"
+                else:
+                    tipo_desc = "Canje"
                 ws_salida.cell(row=fila_actual, column=1, value=tipo_desc).number_format = '@'
                 ws_salida.cell(row=fila_actual, column=2, value=doc.cliente).number_format = '@'
                 ws_salida.cell(row=fila_actual, column=3, value=str(doc.numero_remito)).number_format = '@'
                 fila_actual += 1
+
+            pendientes_ml = [
+                (doc.archivo, descripcion, motivo)
+                for doc in pedidos_procesados
+                for descripcion, motivo in doc.descripciones_sin_coincidencia
+            ]
+            if pendientes_ml:
+                fila_actual += 1
+                ws_salida.cell(row=fila_actual, column=1, value="MERCADO LIBRE").number_format = '@'
+                ws_salida.cell(row=fila_actual, column=2, value="DESCRIPCIONES NO DESCONTADAS").number_format = '@'
+                fila_actual += 1
+                for columna, titulo in enumerate(("ARCHIVO", "DESCRIPCIÓN", "MOTIVO"), start=1):
+                    ws_salida.cell(row=fila_actual, column=columna, value=titulo).number_format = '@'
+                fila_actual += 1
+                for archivo, descripcion, motivo in pendientes_ml:
+                    ws_salida.cell(row=fila_actual, column=1, value=archivo).number_format = '@'
+                    ws_salida.cell(row=fila_actual, column=2, value=descripcion).number_format = '@'
+                    ws_salida.cell(row=fila_actual, column=3, value=motivo).number_format = '@'
+                    fila_actual += 1
 
         # 5. Guardar archivo de salida si no es modo simulación
         if guardar_archivo:

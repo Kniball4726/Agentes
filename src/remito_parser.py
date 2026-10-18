@@ -7,7 +7,7 @@ y verifica la consistencia matemática contra el campo 'Cant. Articulos'.
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pypdf import PdfReader
 
 
@@ -29,6 +29,7 @@ class ResultadoRemito:
     articulos_extraidos: int
     verificacion_ok: bool
     items: List[ItemRemito] = field(default_factory=list)
+    descripciones_sin_coincidencia: List[Tuple[str, str]] = field(default_factory=list)
 
 
 def normalizar_codigo(codigo_raw: str) -> str:

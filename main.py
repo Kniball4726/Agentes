@@ -5,7 +5,7 @@ También soporta modo automático (--auto o --all) y modo simulación (--dry-run
 """
 
 import sys
-from menu import MenuAgente
+from src.menu import MenuAgente
 
 
 def main():

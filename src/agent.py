@@ -1,7 +1,7 @@
 """
 Módulo del Agente Verificador y Gestor de Stock.
-Orquesta el flujo completo para múltiples fuentes de descuento (Remitos PDF y Canjes Excel):
-1. Percepción: Extrae y verifica cada remito PDF y planilla Excel de canjes.
+Orquesta el flujo completo para remitos PDF, canjes Excel y pedidos de Mercado Libre:
+1. Percepción: Extrae remitos PDF, canjes Excel y pedidos DOCX de Mercado Libre.
 2. Razonamiento: Consolida y suma duplicados de productos entre todas las fuentes.
 3. Acción: Descuenta el stock en la planilla (exclusivamente en columna C),
    agrega los no catalogados al final y emite un informe de auditoría detallado.
@@ -10,10 +10,11 @@ Orquesta el flujo completo para múltiples fuentes de descuento (Remitos PDF y C
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
-from canjes_parser import parsear_canje_excel
-from consolidator import ItemConsolidado, consolidar_productos
-from remito_parser import ItemRemito, ResultadoRemito, parsear_remito
-from stock_manager import ReporteStock, StockManager
+from .canjes_parser import parsear_canje_excel
+from .consolidator import ItemConsolidado, consolidar_productos
+from .mercado_libre_parser import parsear_pedido_mercado_libre
+from .remito_parser import ItemRemito, ResultadoRemito, parsear_remito
+from .stock_manager import ReporteStock, StockManager
 
 
 @dataclass
@@ -27,8 +28,8 @@ class ReporteMisionAgente:
 
 class AgenteRemitosStock:
     """
-    Agente inteligente encargado de verificar remitos (PDF) y canjes (Excel),
-    consolidar productos y aplicar los descuentos en la lista de stock preestablecida.
+    Verifica las fuentes de pedidos, consolida productos y aplica descuentos
+    al catálogo de stock preestablecido.
     """
     def __init__(self, stock_manager: StockManager):
         self.stock_manager = stock_manager
@@ -38,17 +39,23 @@ class AgenteRemitosStock:
         rutas_pdf: Optional[List[str | Path]] = None,
         rutas_canjes: Optional[List[str | Path]] = None,
         carpeta_descuentos: Optional[str | Path] = None,
-        simulacion: bool = False
+        simulacion: bool = False,
+        rutas_mercado_libre: Optional[List[str | Path]] = None
     ) -> ReporteMisionAgente:
         rutas_pdf = rutas_pdf or []
         rutas_canjes = rutas_canjes or []
-        total_docs = len(rutas_pdf) + len(rutas_canjes)
+        rutas_mercado_libre = rutas_mercado_libre or []
+        total_docs = len(rutas_pdf) + len(rutas_canjes) + len(rutas_mercado_libre)
         carpeta_descuentos = carpeta_descuentos or Path(self.stock_manager.ruta_excel_base).parent / "descuentos"
 
         modo_txt = " [MODO SIMULACION - SOLO LECTURA]" if simulacion else ""
         print("\n" + "=" * 70)
         print(f"[AGENTE] Iniciando mision de verificacion y descuento de stock...{modo_txt}")
-        print(f"         Fuentes: {len(rutas_pdf)} Remitos (PDF) | {len(rutas_canjes)} Canjes (Excel)")
+        print(
+            f"         Fuentes: {len(rutas_pdf)} Remitos (PDF) | "
+            f"{len(rutas_canjes)} Canjes (Excel) | "
+            f"{len(rutas_mercado_libre)} Pedidos Mercado Libre (DOCX)"
+        )
         print("=" * 70)
 
         documentos_resultados: List[ResultadoRemito] = []
@@ -81,6 +88,27 @@ class AgenteRemitosStock:
                 print(f"   * [EXCEL] Canje {resultado.numero_remito} ({path.name})")
                 print(f"     Beneficiario: {resultado.cliente}")
                 print(f"     Articulos solicitados: {resultado.articulos_extraidos}")
+
+        # C) Procesar publicaciones/pedidos sin código de Mercado Libre
+        if rutas_mercado_libre:
+            print("\n--- [1.C Percepcion] Procesando pedidos de Mercado Libre (DOCX) ---")
+            productos_catalogo = [
+                (codigo, nombre)
+                for _, codigo, nombre, _ in self.stock_manager.productos_base
+            ]
+            for ruta in rutas_mercado_libre:
+                path = Path(ruta)
+                resultado = parsear_pedido_mercado_libre(path, productos_catalogo)
+                documentos_resultados.append(resultado)
+                todos_los_items.extend(resultado.items)
+
+                print(
+                    f"   * [MERCADO LIBRE] {path.name}: "
+                    f"{resultado.articulos_extraidos}/{resultado.articulos_declarados} "
+                    "unidades asociadas al catálogo"
+                )
+                for descripcion, motivo in resultado.descripciones_sin_coincidencia:
+                    print(f"     [NO DESCONTADO] {descripcion} — {motivo}")
 
         # 2. RAZONAMIENTO: Consolidación y suma de duplicados entre todas las fuentes
         print("\n[2. Razonamiento] Consolidando productos y sumando duplicados...")
@@ -131,4 +159,3 @@ class AgenteRemitosStock:
             duplicados_detectados=duplicados,
             reporte_stock=reporte_stock
         )
-

@@ -7,7 +7,7 @@ Lee planillas de canje de productos, extrae los ítems solicitados
 from pathlib import Path
 from typing import List, Optional
 import openpyxl
-from remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
+from .remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
 
 
 def parsear_canje_excel(ruta_excel: str | Path) -> ResultadoRemito:

@@ -6,9 +6,9 @@ utilizando la biblioteca gspread y una cuenta de servicio de Google Cloud.
 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from consolidator import ItemConsolidado
-from remito_parser import normalizar_codigo
-from stock_manager import AlertaStock, RegistroDescuento, ReporteStock
+from .consolidator import ItemConsolidado
+from .remito_parser import normalizar_codigo
+from .stock_manager import AlertaStock, RegistroDescuento, ReporteStock
 
 try:
     import gspread
