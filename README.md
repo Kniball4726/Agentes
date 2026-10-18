@@ -1,6 +1,6 @@
 # Agente de control de stock y remitos
 
-Aplicación de escritorio para procesar remitos mayoristas en PDF y solicitudes de canje en Excel, consolidar cantidades por código de producto y generar informes de descuentos. El flujo operativo utiliza un catálogo local de Excel como fuente de stock.
+Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solicitudes de canje en Excel y pedidos de Mercado Libre en Word. Consolida las cantidades por código, genera informes de descuentos y actualiza un catálogo local de Excel.
 
 > **Plataforma principal:** Windows · **Lenguaje:** Python 3.10+
 
@@ -25,8 +25,10 @@ Aplicación de escritorio para procesar remitos mayoristas en PDF y solicitudes 
 - Señala en el informe los productos que no están en el catálogo.
 - Compara cada descripción de Mercado Libre con el catálogo; aplica una unidad por registro solo si encuentra una coincidencia inequívoca.
 - En una ejecución real, actualiza el stock del catálogo y archiva los documentos procesados.
-- Ofrece una interfaz gráfica de escritorio con Tkinter, ejecución automática y simulación.
-- Protege con credenciales administrativas la opción para agregar productos al catálogo.
+- Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
+- Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
+- Incluye ejecución automática, simulación y un menú interactivo de consola para procesar fuentes por separado, consultar el historial y restaurar documentos.
+- Protege con credenciales administrativas el alta de productos en el catálogo.
 
 ## Requisitos e instaladores
 
@@ -89,7 +91,7 @@ _ADMIN_USUARIO=tu_usuario
 _ADMIN_CLAVE=tu_contraseña
 ```
 
-Estas credenciales se solicitan al elegir **Agregar producto** en la interfaz gráfica. Si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso.
+Estas credenciales se solicitan al elegir **Agregar producto** en la interfaz gráfica. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. Tras validar las credenciales, se puede insertar un producto debajo de otro código del catálogo, con stock inicial opcional. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
 
 El archivo `.env` está excluido de Git. No publiques credenciales reales ni las incluyas en capturas o archivos compartidos.
 
@@ -147,6 +149,16 @@ Se abrirá la interfaz de escritorio de Tkinter. Desde allí puedes:
 - Validar primero las credenciales administrativas de `.env` y, solo si son correctas, abrir el formulario para agregar un producto.
 
 El procesamiento se ejecuta en segundo plano para que la ventana siga respondiendo. También puedes iniciar la interfaz haciendo doble clic en `ejecutar.bat`.
+
+### Menú interactivo de consola
+
+Para abrir el menú de consola en lugar de la interfaz gráfica:
+
+```powershell
+python -m src.menu
+```
+
+El menú permite ejecutar todas las fuentes juntas o procesar solo remitos mayoristas, canjes o pedidos de Mercado Libre; también ofrece simulación, consulta del historial, restauración de documentos archivados y alta administrativa de productos. La restauración copia los archivos a las carpetas pendientes y conserva los originales archivados.
 
 ### Ejecución automática
 

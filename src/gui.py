@@ -578,7 +578,7 @@ class InterfazGrafica:
         campos: dict[str, ttk.Entry] = {}
         etiquetas = (
             ("codigo", "Código del nuevo producto"),
-            ("nombre", "Nombre del producto"),
+            ("nombre", "Nombre del producto"),0
             ("referencia", "Código del producto anterior"),
             ("stock", "Stock inicial (opcional)"),
         )
