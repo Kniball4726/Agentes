@@ -1,179 +1,130 @@
-# Agente de Control de Stock y Remitos
+# Agente de control de stock y remitos
 
-Sistema automatizado para gestionar descuentos de stock a partir de remitos mayoristas en PDF y canjes en Excel, consolidar ventas duplicadas, validar inconsistencias y actualizar la planilla base de inventario.
+Aplicación de escritorio en Python que procesa remitos mayoristas en PDF y solicitudes de canje en Excel, consolida las cantidades por código de producto y genera un informe de descuentos. En la operación normal utiliza un catálogo local (`Productos.xlsx`) como fuente de stock.
 
-## Descripción general
+## Funcionalidades
 
-Este proyecto está pensado para operar como un agente de negocio orientado a operaciones comerciales y de stock. Su objetivo es:
-
-- Leer remitos mayoristas en formato PDF.
-- Leer planillas de canjes en formato Excel (.xlsx).
-- Validar la consistencia de los datos extraídos.
-- Consolidar productos repetidos entre distintos documentos.
-- Descontar cantidades del stock disponible en la planilla base.
-- Generar una nueva planilla de descuentos con un resumen de movimientos.
-- Actualizar el catálogo base para la próxima corrida.
-- Permitir ejecución interactiva o automática desde línea de comandos.
-
-El flujo de trabajo está diseñado para reducir errores manuales, mantener trazabilidad y generar salidas listas para uso operativo.
-
-## Características principales
-
-- Procesamiento de remitos PDF con extracción de datos clave.
-- Procesamiento de canjes desde archivos Excel.
-- Consolidación de ítems repetidos por código.
-- Detección de discrepancias entre artículos declarados y extraídos.
-- Generación automática de planillas de descuento.
-- Actualización del stock base en `Productos.xlsx`.
-- Modo simulación para revisar cálculos sin afectar archivos.
-- Menú interactivo con administración de catálogo.
-- Archivación de documentos procesados en carpetas específicas.
-
-## Stack tecnológico
-
-- Python 3.x
-- OpenPyXL para manipulación de Excel
-- PyPDF para lectura de archivos PDF
-- gspread / google-auth para posibles integraciones con Google Sheets
-
-## Estructura del proyecto
-
-```text
-Agentes/
-├── agent.py                  # Orquestador principal del agente
-├── canjes_parser.py          # Extracción de datos desde archivos Excel de canje
-├── consolidator.py           # Consolidación y suma de productos repetidos
-├── ejecutar.bat              # Acceso rápido para ejecutar la app en Windows
-├── main.py                   # Punto de entrada del sistema
-├── menu.py                   # Menú interactivo y flujo de usuario
-├── remito_parser.py          # Extracción y validación de remitos PDF
-├── requirements.txt          # Dependencias del proyecto
-├── sheets_manager.py         # Gestión de integración con Google Sheets
-├── stock_manager.py          # Manejo del catálogo, descuentos y actualización de stock
-├── Descuentos/
-│   ├── Productos.xlsx        # Base de stock principal
-│   ├── Mayoristas/           # Remitos pendientes por procesar
-│   ├── Canjes/               # Canjes pendientes por procesar
-│   ├── descuentos/           # Planillas generadas de descuento
-│   └── descontados/          # Documentos ya procesados
-└── README.md                 # Documentación del proyecto
-```
+- Extrae productos de remitos PDF y planillas de canje `.xlsx`.
+- Suma los productos repetidos entre documentos según su código.
+- Compara el total de unidades extraídas de un remito con el total declarado y muestra el resultado de la verificación.
+- Genera una planilla con stock inicial, descuento y stock final, además de un resumen de los pedidos procesados.
+- Señala en el informe los productos que no aparecen en el catálogo.
+- En ejecuciones reales, actualiza el stock del catálogo y archiva los documentos procesados.
+- Incluye ejecución interactiva y modo de simulación.
+- Protege con credenciales administrativas la opción para agregar productos al catálogo.
 
 ## Requisitos
 
-- Python 3.10 o superior recomendado
-- Pip instalado
-- Microsoft Excel o compatible para abrir archivos `.xlsx`
-- Acceso local a la carpeta `Descuentos/`
+- Python 3.10 o posterior.
+- `pip`.
+- Microsoft Excel o una aplicación compatible para revisar los archivos `.xlsx`.
+- El catálogo `Descuentos/Productos.xlsx`.
 
-## Instalación
+Las dependencias de Python están listadas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` están incluidas para la integración de Google Sheets; el flujo normal del menú usa el catálogo local de Excel.
 
-1. Clonar el repositorio:
+## Instalación y configuración
 
-```bash
-git clone <url-del-repositorio>
-cd Agentes
-```
+Desde la carpeta del proyecto, en Windows:
 
-2. Crear un entorno virtual (opcional pero recomendado):
-
-```bash
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-3. Instalar dependencias:
+La cuenta de administrador se configura en un archivo `.env` en la raíz del proyecto:
 
-```bash
-pip install -r requirements.txt
+```dotenv
+_ADMIN_USUARIO=tu_usuario
+_ADMIN_CLAVE=tu_contraseña
 ```
 
-## Uso
+Estas variables se utilizan para la opción **Agregar producto al catálogo**. Si no están definidas, esa opción deniega el acceso y muestra un aviso. El archivo `.env` está excluido de Git; no agregues credenciales reales al repositorio ni las compartas.
 
-### Modo interactivo
+## Preparar los archivos de trabajo
 
-Ejecuta el programa normalmente:
+El menú crea las carpetas de entrada y salida necesarias si no existen. Coloca los documentos pendientes en:
 
-```bash
+| Carpeta | Archivos admitidos |
+| --- | --- |
+| `Descuentos/Mayoristas/` | Remitos `.pdf` |
+| `Descuentos/Canjes/` | Canjes `.xlsx` |
+
+El catálogo se encuentra en `Descuentos/Productos.xlsx`. El gestor busca los productos desde la fila 3, leyendo el código de la columna A, la descripción de la B y el stock de la C. Usa la hoja llamada `Stock` cuando existe; si no, utiliza la hoja activa.
+
+Para los canjes, el lector busca encabezados `PEDIDO` y `CODIGO` en las primeras 14 filas y espera la descripción en la columna siguiente a `CODIGO`. Para los remitos, el PDF debe contener texto extraíble con el formato que reconoce el parser; los PDF escaneados como imagen pueden requerir OCR, que no está implementado.
+
+## Ejecución
+
+### Menú interactivo
+
+```powershell
 python main.py
 ```
 
-Se abrirá un menú con opciones como:
+Opciones disponibles:
 
-- Ejecutar descuento completo
-- Modo simulación
-- Procesar solo remitos
-- Procesar solo canjes
-- Ver historial
-- Restaurar archivos de prueba
-- Agregar producto al catálogo (acceso restringido)
+1. Procesar remitos y canjes pendientes.
+2. Simular el procesamiento sin guardar cambios ni mover documentos.
+3. Procesar solo remitos mayoristas.
+4. Procesar solo canjes.
+5. Consultar el historial de planillas generadas.
+6. Copiar archivos archivados de vuelta a las carpetas de entrada para pruebas.
+7. Agregar un producto al catálogo (requiere las credenciales del `.env`).
+0. Salir.
 
-### Modo automático
+También puedes iniciar el menú con `ejecutar.bat`.
 
-Se puede ejecutar sin abrir el menú:
+### Ejecución automática
 
-```bash
+Procesa todos los archivos pendientes de ambas carpetas sin abrir el menú:
+
+```powershell
 python main.py --auto
 ```
 
-Esto procesa automáticamente remitos y canjes pendientes.
+`--all` es un alias de `--auto`.
 
-### Modo simulación
+### Simulación desde la línea de comandos
 
-Para revisar cálculos sin escribir ni mover archivos:
-
-```bash
+```powershell
 python main.py --dry-run
 ```
 
-o:
+`--simulacion` es un alias de `--dry-run`. La simulación calcula y muestra el informe, pero no guarda la planilla, no actualiza `Productos.xlsx` y no mueve los documentos.
 
-```bash
-python main.py --simulacion
-```
+## Flujo y archivos generados
 
-## Flujo de operación
+En una ejecución real, el agente:
 
-El sistema ejecuta los siguientes pasos:
+1. Lee los documentos seleccionados de las carpetas de entrada.
+2. Extrae sus metadatos e ítems y muestra el resultado de las verificaciones.
+3. Consolida las cantidades por código de producto.
+4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA.xlsx`, con las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
+5. Actualiza la columna C del catálogo con el stock final de los productos existentes que tuvieron descuentos y actualiza `Productos_backup.xlsx`.
+6. Mueve los PDF procesados a `Descuentos/descontados/Mayoristas/` y los Excel a `Descuentos/descontados/Canjes/`.
 
-1. Localiza archivos pendientes en `Descuentos/Mayoristas` y `Descuentos/Canjes`.
-2. Extrae información de cada remito PDF o planilla Excel.
-3. Valida artículos declarados contra los extraídos.
-4. Consolida productos duplicados por código.
-5. Revisa si el producto existe en el catálogo base.
-6. Calcula el nuevo stock final.
-7. Genera una planilla de descuentos en `Descuentos/descuentos/`.
-8. Actualiza `Productos.xlsx` con los valores finales para la próxima corrida.
-9. Mueve los documentos procesados a la carpeta `Descuentos/descontados/`.
+En el informe, el descuento aparece como un número negativo. Los productos que no están en el catálogo se agregan al final de la planilla generada con una indicación; no se incorporan automáticamente a `Productos.xlsx`.
 
-## Salidas esperadas
+La planilla de salida usa la fecha del día en su nombre. Si se vuelve a ejecutar un procesamiento el mismo día, se genera el mismo nombre de archivo; conserva o respalda el informe anterior antes de repetir una corrida si necesitas mantener ambas versiones.
 
-Durante la ejecución se generan:
+## Consideraciones operativas
 
-- una planilla con columnas: `Código`, `Productos`, `Stock Inicial`, `Descuento`, `Stock Final`;
-- un resumen de pedidos descontados;
-- registros para productos no encontrados en el catálogo original;
-- actualización del stock base para el ciclo siguiente.
+- La simulación es la opción recomendada para revisar los cálculos antes de una ejecución real.
+- Una discrepancia entre artículos declarados y extraídos se informa en consola, pero no detiene por sí sola el procesamiento. Revisa el documento y el informe antes de continuar con una corrida real.
+- La ejecución real modifica el catálogo y mueve los documentos; mantén copias de seguridad antes de procesar datos importantes.
+- El modo de restauración copia los documentos archivados a las carpetas pendientes; no los elimina del archivo.
+- La autenticación administrativa usa las variables locales de `.env`; este mecanismo no debe considerarse una solución de autenticación para una aplicación expuesta a usuarios remotos.
 
-## Consideraciones importantes
+## Módulos principales
 
-- El proyecto está orientado a uso local y operativo, no como una API REST.
-- El catálogo base debe mantenerse actualizado en `Descuentos/Productos.xlsx`.
-- Los archivos en `Mayoristas` y `Canjes` se procesan por lotes según el estado del sistema.
-- La función de administración está protegida por credenciales configuradas en `menu.py`.
-- En modo simulación no se guardan cambios ni se mueven documentos.
-
-## Recomendaciones
-
-- Mantener un backup del archivo `Productos.xlsx` antes de corridas importantes.
-- Revisar el historial de planillas generadas para auditoría.
-- Validar con la carpeta `descuentos/` antes de confirmar cambios operativos.
-- Usar el modo `--dry-run` cuando se quiera validar la lógica antes de aplicar descuentos reales.
-
-## Licencia
-
-Este proyecto se entrega con fines operativos internos y de gestión de inventario. Ajustar la licencia según la política de la organización o cliente donde se implemente.
-
-## Contacto
-
-Si es necesario mantener, ampliar o adaptar este sistema, se recomienda documentar cualquier cambio en el flujo de stock, validaciones o estructura de archivos antes de utilizarlo en producción.
+| Archivo | Responsabilidad |
+| --- | --- |
+| [`main.py`](main.py) | Punto de entrada y selección del modo de ejecución. |
+| [`menu.py`](menu.py) | Menú interactivo, rutas de trabajo, autenticación y archivado. |
+| [`agent.py`](agent.py) | Orquesta la lectura, consolidación y aplicación de descuentos. |
+| [`remito_parser.py`](remito_parser.py) | Extracción de ítems y metadatos de PDF. |
+| [`canjes_parser.py`](canjes_parser.py) | Extracción de ítems y metadatos de canjes Excel. |
+| [`consolidator.py`](consolidator.py) | Agrupación y suma de ítems por código. |
+| [`stock_manager.py`](stock_manager.py) | Lectura y actualización del catálogo Excel y creación del informe. |
+| [`sheets_manager.py`](sheets_manager.py) | Módulo de gestión de stock con Google Sheets, separado del flujo local del menú. |

@@ -7,12 +7,14 @@ procesar remitos mayoristas, canjes, ver el historial y restaurar archivos de pr
 import sys
 import shutil
 import getpass
+import os
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Credenciales de administrador para funciones restringidas
-_ADMIN_USUARIO = "gregory"
-_ADMIN_CLAVE   = "caracas1713"
+load_dotenv(Path(__file__).parent / ".env")
+_ADMIN_USUARIO = os.getenv("_ADMIN_USUARIO")
+_ADMIN_CLAVE = os.getenv("_ADMIN_CLAVE")
 
 # Configurar salida UTF-8 para consola de Windows
 if sys.platform == "win32":
@@ -192,6 +194,13 @@ class MenuAgente:
         Retorna True si las credenciales son válidas, False en caso contrario.
         Ctrl+C durante el login cancela la autenticación limpiamente.
         """
+        if not _ADMIN_USUARIO or not _ADMIN_CLAVE:
+            print(
+                "\n[ERROR] Credenciales de administrador no configuradas. "
+                "Defina _ADMIN_USUARIO y _ADMIN_CLAVE en el archivo .env."
+            )
+            return False
+
         print("\n" + "-" * 72)
         print("  ACCESO RESTRINGIDO - Se requieren credenciales de administrador")
         print("-" * 72)
