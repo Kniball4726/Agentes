@@ -28,6 +28,32 @@ from .agent import AgenteRemitosStock
 from .stock_manager import StockManager
 
 
+def preparar_carpeta_descuentos(base_dir: Path) -> None:
+    carpeta_descuentos = base_dir / "Descuentos"
+    rutas_carpetas = (
+        carpeta_descuentos / "Mayoristas",
+        carpeta_descuentos / "Canjes",
+        carpeta_descuentos / "MercadoLibre",
+        carpeta_descuentos / "descuentos",
+        carpeta_descuentos / "descontados" / "Mayoristas",
+        carpeta_descuentos / "descontados" / "Canjes",
+        carpeta_descuentos / "descontados" / "MercadoLibre",
+    )
+    for ruta in rutas_carpetas:
+        ruta.mkdir(parents=True, exist_ok=True)
+
+    plantillas = base_dir / "plantillas"
+    for nombre_archivo in ("Productos.xlsx", "Productos_backup.xlsx"):
+        destino = carpeta_descuentos / nombre_archivo
+        if not destino.exists():
+            origen = plantillas / nombre_archivo
+            if not origen.is_file():
+                raise FileNotFoundError(
+                    f"No se encontró la plantilla requerida para crear {destino}: {origen}"
+                )
+            shutil.copy2(origen, destino)
+
+
 class MenuAgente:
     def __init__(self):
         self.base_dir = Path(__file__).resolve().parent.parent
@@ -38,12 +64,7 @@ class MenuAgente:
         self.carpeta_descuentos = self.base_dir / "Descuentos" / "descuentos"
         self.carpeta_descontados = self.base_dir / "Descuentos" / "descontados"
 
-        # Asegurar directorios
-        self.carpeta_mayoristas.mkdir(parents=True, exist_ok=True)
-        self.carpeta_canjes.mkdir(parents=True, exist_ok=True)
-        self.carpeta_mercado_libre.mkdir(parents=True, exist_ok=True)
-        self.carpeta_descuentos.mkdir(parents=True, exist_ok=True)
-        self.carpeta_descontados.mkdir(parents=True, exist_ok=True)
+        preparar_carpeta_descuentos(self.base_dir)
 
     def _obtener_pendientes(self):
         mayoristas = sorted(list(self.carpeta_mayoristas.glob("*.pdf")))

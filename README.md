@@ -95,7 +95,7 @@ El archivo `.env` está excluido de Git. No publiques credenciales reales ni las
 
 ## Preparar los archivos
 
-El menú crea las carpetas de entrada y salida si no existen. Coloca los archivos pendientes en:
+Al iniciar, el agente crea `Descuentos/` y sus carpetas de entrada, salida y archivado si no existen. Si faltan, inicializa `Productos.xlsx` y `Productos_backup.xlsx` desde las plantillas incluidas en `plantillas/`. No reemplaza archivos existentes. Coloca los archivos pendientes en:
 
 | Carpeta                      | Contenido                                                           |
 | ---------------------------- | ------------------------------------------------------------------- |
@@ -171,6 +171,9 @@ Agentes/
 ├── ejecutar.bat              # Lanzador para Windows
 ├── main.py                   # Punto de entrada y modos de ejecución
 ├── requirements.txt          # Dependencias de Python
+├── plantillas/               # Catálogo inicial y su respaldo
+│   ├── Productos.xlsx
+│   └── Productos_backup.xlsx
 ├── src/                       # Código fuente y módulos internos
 │   ├── __init__.py
 │   ├── agent.py               # Orquestación de lectura, consolidación y descuentos
@@ -187,10 +190,13 @@ Agentes/
     ├── Canjes/               # Canjes Excel pendientes
     ├── MercadoLibre/         # Pedidos Word pendientes de asociación
     ├── descuentos/           # Informes de descuentos generados
-    └── descontados/          # Documentos procesados, separados por tipo
+    └── descontados/          # Documentos procesados
+        ├── Mayoristas/
+        ├── Canjes/
+        └── MercadoLibre/
 ```
 
-`main.py`, `ejecutar.bat`, `requirements.txt`, `.env` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
+`main.py`, `ejecutar.bat`, `requirements.txt`, `.env`, `plantillas/` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
 
 ## Notas operativas
 
