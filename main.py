@@ -5,21 +5,25 @@ También soporta modo automático (--auto o --all) y modo simulación (--dry-run
 """
 
 import sys
-from src.menu import MenuAgente
 
 
 def main():
-    menu = MenuAgente()
-
     if "--auto" in sys.argv or "--all" in sys.argv:
+        from src.menu import MenuAgente
+
+        menu = MenuAgente()
         print("[AUTO] Ejecutando procesamiento completo automático...")
         menu.procesar(incluir_mayoristas=True, incluir_canjes=True, simulacion=False)
     elif "--dry-run" in sys.argv or "--simulacion" in sys.argv:
+        from src.menu import MenuAgente
+
+        menu = MenuAgente()
         print("[SIMULACION] Ejecutando simulación...")
         menu.procesar(incluir_mayoristas=True, incluir_canjes=True, simulacion=True)
     else:
-        # Por defecto abre el panel de control interactivo
-        menu.iniciar()
+        from src.gui import InterfazGrafica
+
+        InterfazGrafica().iniciar()
 
 
 if __name__ == "__main__":

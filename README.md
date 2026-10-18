@@ -25,7 +25,7 @@ Aplicación de escritorio para procesar remitos mayoristas en PDF y solicitudes 
 - Señala en el informe los productos que no están en el catálogo.
 - Compara cada descripción de Mercado Libre con el catálogo; aplica una unidad por registro solo si encuentra una coincidencia inequívoca.
 - En una ejecución real, actualiza el stock del catálogo y archiva los documentos procesados.
-- Ofrece menú interactivo, ejecución automática y simulación.
+- Ofrece una interfaz gráfica de escritorio con Tkinter, ejecución automática y simulación.
 - Protege con credenciales administrativas la opción para agregar productos al catálogo.
 
 ## Requisitos e instaladores
@@ -35,11 +35,11 @@ Aplicación de escritorio para procesar remitos mayoristas en PDF y solicitudes 
 | Python 3.10 o posterior                      | Ejecutar la aplicación                              | [Descargas oficiales de Python para Windows](https://www.python.org/downloads/windows/)                                              |
 | Git for Windows *(opcional)*               | Clonar y actualizar el repositorio desde la terminal | [Descarga oficial de Git](https://git-scm.com/download/win)                                                                          |
 | Visual Studio Code *(opcional)*            | Editar el código y abrir la terminal integrada      | [Descarga oficial de VS Code](https://code.visualstudio.com/Download)                                                                |
-| Microsoft Excel o LibreOffice *(opcional)* | Revisar los archivos `.xlsx`                       | [Microsoft 365](https://www.microsoft.com/microsoft-365) · [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) |
+| Microsoft Excel o LibreOffice *(opcional)* | Revisar los archivos `.xls` y `.xlsx`              | [Microsoft 365](https://www.microsoft.com/microsoft-365) · [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) |
 
 La instalación de Python incluye `pip`, que se usa para instalar las dependencias del proyecto. Al instalar Python en Windows, activa la opción **Add python.exe to PATH** si aparece en el instalador.
 
-Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; el menú estándar opera con el catálogo local de Excel.
+Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; la aplicación opera con el catálogo local de Excel. La interfaz gráfica utiliza Tkinter, incluido en las instalaciones estándar de Python para Windows.
 
 ## Instalación
 
@@ -89,13 +89,30 @@ _ADMIN_USUARIO=tu_usuario
 _ADMIN_CLAVE=tu_contraseña
 ```
 
-Estas credenciales se solicitan al elegir **Agregar producto al catálogo** en el menú. Si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso.
+Estas credenciales se solicitan al elegir **Agregar producto** en la interfaz gráfica. Si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso.
 
 El archivo `.env` está excluido de Git. No publiques credenciales reales ni las incluyas en capturas o archivos compartidos.
 
 ## Preparar los archivos
 
-Al iniciar, el agente crea `Descuentos/` y sus carpetas de entrada, salida y archivado si no existen. Si faltan, inicializa `Productos.xlsx` y `Productos_backup.xlsx` desde las plantillas incluidas en `plantillas/`. No reemplaza archivos existentes. Coloca los archivos pendientes en:
+Antes de ejecutar, crea en la raíz del proyecto la carpeta `Descuentos/` y coloca dentro el catálogo `Productos.xlsx`; el programa no crea ni inicializa ese archivo y se detendrá si falta. La estructura que usa el agente es:
+
+```text
+Descuentos/
+├── Productos.xlsx        # Obligatorio: catálogo y stock base
+├── Mayoristas/           # Remitos PDF pendientes
+├── Canjes/               # Canjes Excel pendientes
+├── MercadoLibre/         # Pedidos Word pendientes
+├── descuentos/           # Informes generados
+└── descontados/          # Documentos procesados
+    ├── Mayoristas/
+    ├── Canjes/
+    └── MercadoLibre/
+```
+
+Solo `Productos.xlsx` es obligatorio crear manualmente. Al iniciar, el agente crea las carpetas de entrada y de informes si no existen; las subcarpetas de `descontados/` se crean al procesar documentos. El archivo `Productos_backup.xlsx` se genera al guardar cambios en el catálogo. No se reemplaza un catálogo existente ni se inicializa desde plantillas.
+
+Coloca los archivos pendientes en:
 
 | Carpeta                      | Contenido                                                           |
 | ---------------------------- | ------------------------------------------------------------------- |
@@ -111,29 +128,29 @@ En los documentos de Mercado Libre, cada párrafo no vacío o fila de tabla con 
 
 ## Uso
 
-### Menú interactivo
+### Interfaz gráfica
 
 ```powershell
 python main.py
 ```
 
-También puedes iniciar la aplicación haciendo doble clic en `ejecutar.bat`.
+Se abrirá la interfaz de escritorio de Tkinter. Desde allí puedes:
 
-El menú permite:
+- Seleccionar una o más fuentes: remitos mayoristas, canjes o pedidos de Mercado Libre.
+- La interfaz se abre en modo oscuro; puedes cambiar al modo claro desmarcando **Modo oscuro**.
+- Simular el procesamiento sin guardar cambios ni mover documentos.
+- Ejecutar el procesamiento real, que actualiza el catálogo y archiva los documentos después de pedir confirmación.
+- Consultar el estado de los archivos y abrir informes generados.
+- Ver los informes del más reciente al más antiguo; selecciona uno y pulsa **Abrir informe seleccionado** o haz doble clic para abrirlo.
+- Abrir un borrador de correo o WhatsApp Web para compartir el informe seleccionado (el más reciente se usa si no cambias la selección). El archivo se deja seleccionado en el Explorador para adjuntarlo; debes confirmar el envío en la aplicación.
+- Restaurar documentos archivados a las carpetas de entrada para pruebas.
+- Validar primero las credenciales administrativas de `.env` y, solo si son correctas, abrir el formulario para agregar un producto.
 
-1. Procesar remitos, canjes y documentos de Mercado Libre pendientes.
-2. Simular todas las fuentes sin guardar cambios ni mover documentos.
-3. Procesar solo remitos mayoristas.
-4. Procesar solo canjes.
-5. Procesar solo documentos de Mercado Libre.
-6. Consultar las planillas generadas.
-7. Copiar documentos archivados de vuelta a las carpetas de entrada para pruebas.
-8. Agregar un producto al catálogo (requiere credenciales de `.env`).
-9. Salir.
+El procesamiento se ejecuta en segundo plano para que la ventana siga respondiendo. También puedes iniciar la interfaz haciendo doble clic en `ejecutar.bat`.
 
 ### Ejecución automática
 
-Procesa todos los documentos pendientes, incluidos los pedidos de Mercado Libre, sin mostrar el menú:
+Procesa todos los documentos pendientes, incluidos los pedidos de Mercado Libre, sin abrir la interfaz gráfica:
 
 ```powershell
 python main.py --auto
@@ -147,7 +164,7 @@ python main.py --auto
 python main.py --dry-run
 ```
 
-`--simulacion` es un alias de `--dry-run`. La simulación calcula y muestra el informe, pero no guarda la planilla, no actualiza `Productos.xlsx` y no mueve los documentos.
+`--simulacion` es un alias de `--dry-run`. La simulación calcula y muestra el informe en la consola, pero no guarda la planilla, no actualiza `Productos.xlsx` y no mueve los documentos.
 
 ## Flujo de procesamiento
 
@@ -156,13 +173,13 @@ En una ejecución real, el agente:
 1. Lee los documentos seleccionados de las carpetas de entrada.
 2. Extrae metadatos e ítems y muestra los resultados de las verificaciones.
 3. Consolida las cantidades por código de producto.
-4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA.xlsx`, con las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
+4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, con la fecha y hora de ejecución y las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
 5. Actualiza en `Productos.xlsx` el stock final de productos existentes que tuvieron descuentos, y guarda también `Productos_backup.xlsx`.
 6. Mueve los remitos PDF a `Descuentos/descontados/Mayoristas/`, los canjes Excel a `Descuentos/descontados/Canjes/` y los documentos Word a `Descuentos/descontados/MercadoLibre/`.
 
 Los descuentos aparecen como valores negativos. Los códigos que no están en el catálogo se incluyen al final del informe, pero no se agregan automáticamente a `Productos.xlsx`. Las descripciones de Mercado Libre que no se pudieron asociar se registran como pendientes de revisión en una sección aparte del informe.
 
-El archivo de salida usa la fecha del día. Si ejecutas más de un procesamiento en la misma fecha, se reutiliza el mismo nombre; respalda el informe anterior si necesitas conservarlo.
+Cada archivo de salida incluye la fecha y la hora de ejecución (`HH-MM-SS`) en su nombre, para distinguir los informes de varias ejecuciones en un mismo día. Los informes nuevos usan el formato `.xls` de Excel 97–2003, cuyo límite es de 65.536 filas; la interfaz también sigue mostrando informes `.xlsx` anteriores.
 
 ## Estructura del proyecto
 
@@ -171,9 +188,6 @@ Agentes/
 ├── ejecutar.bat              # Lanzador para Windows
 ├── main.py                   # Punto de entrada y modos de ejecución
 ├── requirements.txt          # Dependencias de Python
-├── plantillas/               # Catálogo inicial y su respaldo
-│   ├── Productos.xlsx
-│   └── Productos_backup.xlsx
 ├── src/                       # Código fuente y módulos internos
 │   ├── __init__.py
 │   ├── agent.py               # Orquestación de lectura, consolidación y descuentos
@@ -186,17 +200,17 @@ Agentes/
 │   └── stock_manager.py       # Catálogo Excel e informes de descuentos
 └── Descuentos/
     ├── Productos.xlsx        # Catálogo y stock base
-    ├── Mayoristas/           # Remitos PDF pendientes
-    ├── Canjes/               # Canjes Excel pendientes
-    ├── MercadoLibre/         # Pedidos Word pendientes de asociación
-    ├── descuentos/           # Informes de descuentos generados
+    ├── Mayoristas/           # Creada al iniciar; remitos PDF pendientes
+    ├── Canjes/               # Creada al iniciar; canjes Excel pendientes
+    ├── MercadoLibre/         # Creada al iniciar; pedidos Word pendientes
+    ├── descuentos/           # Creada al iniciar; informes de descuentos generados
     └── descontados/          # Documentos procesados
-        ├── Mayoristas/
+        ├── Mayoristas/       # Creadas al procesar documentos
         ├── Canjes/
         └── MercadoLibre/
 ```
 
-`main.py`, `ejecutar.bat`, `requirements.txt`, `.env`, `plantillas/` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
+`main.py`, `ejecutar.bat`, `requirements.txt`, `.env` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
 
 ## Notas operativas
 

@@ -6,7 +6,7 @@ Lee la planilla de productos original y genera el archivo de descuentos cumplien
 3. Descuento en columna D (valor negativo) y Stock Final en columna E.
 4. Agregado de productos no encontrados al final con leyenda explicativa.
 5. Inclusión al final de los pedidos descontados (Cliente, Tipo de Descuento y N° de Remito).
-6. Guardado en 'descuento+<fecha>.xlsx' en la carpeta 'descuentos'.
+6. Guardado en 'Descuento<fecha>.xls' (Excel 97–2003) en la carpeta 'descuentos'.
 7. Actualización automática de Productos.xlsx con el Stock Final para encadenar corridas.
 """
 
@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import openpyxl
+import xlwt
 from .consolidator import ItemConsolidado
 from .remito_parser import ResultadoRemito, normalizar_codigo
 
@@ -145,8 +146,8 @@ class StockManager:
         actualizar_stock_base(), haciendo que sea el Stock Inicial de la próxima corrida.
         """
         carpeta_destino = Path(carpeta_destino)
-        fecha_str = datetime.now().strftime("%d-%m-%Y")
-        nombre_archivo = f"Descuento{fecha_str}.xlsx"
+        fecha_hora_str = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        nombre_archivo = f"Descuento{fecha_hora_str}.xls"
         ruta_guardado = carpeta_destino / nombre_archivo
 
         # 1. Crear nuevo libro de trabajo limpio
@@ -287,7 +288,7 @@ class StockManager:
         # 5. Guardar archivo de salida si no es modo simulación
         if guardar_archivo:
             carpeta_destino.mkdir(parents=True, exist_ok=True)
-            wb_salida.save(str(ruta_guardado))
+            self._guardar_informe_xls(wb_salida, ruta_guardado)
             archivo_final = str(ruta_guardado)
         else:
             archivo_final = f"[SIMULACIÓN - NO GUARDADO] {ruta_guardado.name}"
@@ -296,6 +297,40 @@ class StockManager:
             descuentos_aplicados=descuentos,
             archivo_guardado=archivo_final
         )
+
+    @staticmethod
+    def _guardar_informe_xls(libro: openpyxl.Workbook, ruta: Path) -> None:
+        hoja_origen = libro.active
+        if hoja_origen.max_row > 65_536:
+            raise ValueError(
+                "El informe supera el límite de 65.536 filas del formato XLS."
+            )
+
+        libro_xls = xlwt.Workbook(encoding="utf-8")
+        hoja_xls = libro_xls.add_sheet(hoja_origen.title[:31])
+        estilo_texto = xlwt.easyxf(num_format_str="@")
+        estilo_entero = xlwt.easyxf(num_format_str="0")
+
+        for columna in range(1, hoja_origen.max_column + 1):
+            ancho = hoja_origen.column_dimensions[
+                openpyxl.utils.get_column_letter(columna)
+            ].width
+            if ancho:
+                hoja_xls.col(columna - 1).width = min(int(ancho * 256), 65_535)
+
+        for fila in hoja_origen.iter_rows():
+            for celda in fila:
+                if celda.value is None:
+                    continue
+                estilo = (
+                    estilo_entero
+                    if isinstance(celda.value, (int, float))
+                    and not isinstance(celda.value, bool)
+                    else estilo_texto
+                )
+                hoja_xls.write(celda.row - 1, celda.column - 1, celda.value, estilo)
+
+        libro_xls.save(str(ruta))
 
     def actualizar_stock_base(self, descuentos: List[RegistroDescuento]) -> int:
         """
