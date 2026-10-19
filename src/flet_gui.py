@@ -16,6 +16,7 @@ import flet as ft
 from .internal_chat import detectar_intencion
 from .menu import MenuAgente
 from .stock_manager import StockManager
+from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
 
 
 ROJO = ft.Colors.RED_700
@@ -28,6 +29,10 @@ SECUNDARIO = ft.Colors.BLUE_GREY_600
 class InterfazFlet:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
+        self.user_store = UserStore(
+            Path(__file__).resolve().parent.parent / "data" / "usuarios.sqlite3"
+        )
+        self.usuario_actual: User | None = None
         self.modo_oscuro = True
         self.fondo = ft.Colors.BLACK
         self.superficie = ft.Colors.BLUE_GREY_900
@@ -56,7 +61,11 @@ class InterfazFlet:
         )
         self.contadores: dict[str, ft.Text] = {}
         self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
-        self.construir()
+        self._configurar_ventana()
+        if self.user_store.has_users:
+            self.mostrar_inicio_sesion()
+        else:
+            self.mostrar_configuracion_inicial()
 
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
         self.modo_oscuro = not self.modo_oscuro
@@ -74,65 +83,176 @@ class InterfazFlet:
             self.secundario = ft.Colors.BLUE_GREY_600
             self.borde = ft.Colors.GREY_300
             self.fondo_acento = ft.Colors.RED_50
-        self.page.theme_mode = (
-            ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
-        )
+        self.construir()
+
+    def _configurar_ventana(self) -> None:
+        self.page.title = "Agente de control de stock"
+        self.page.padding = 0
         self.page.bgcolor = self.fondo
+        self.page.theme_mode = ft.ThemeMode.DARK
         self.page.theme = ft.Theme(color_scheme_seed=ROJO)
-        self.controles_tarea.clear()
-        if self.page.controls:
-            self.page.controls.clear()
+        self.page.window.width = 1440
+        self.page.window.height = 900
+        self.page.window.min_width = 1050
+        self.page.window.min_height = 720
+
+    def mostrar_inicio_sesion(self, error: str = "") -> None:
+        usuario = ft.TextField(label="Usuario", autofocus=True)
+        clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
+        mensaje = ft.Text(error, color=ft.Colors.RED_400)
+
+        def iniciar(_evento: ft.Event) -> None:
+            autenticado = self.user_store.authenticate(
+                usuario.value or "", clave.value or ""
+            )
+            if autenticado is None:
+                mensaje.value = "Usuario o contraseña incorrectos, o cuenta inactiva."
+                self.page.update()
+                return
+            self.usuario_actual = autenticado
+            self.construir()
+
+        self.page.controls.clear()
         self.page.add(
-            ft.Row(
-                [
-                    ft.Container(
-                        width=258,
-                        bgcolor=self.superficie,
-                        padding=20,
-                        content=ft.Column(
-                            self._sidebar_controls(),
-                            spacing=8,
-                            scroll=ft.ScrollMode.AUTO,
-                        ),
-                    ),
-                    ft.Container(
-                        expand=True,
-                        padding=22,
-                        content=ft.Column(
-                            [
-                                self.encabezado(),
-                                self.panel_metricas(),
-                                ft.Row(
-                                    [
-                                        self.panel_informes_actividad(),
-                                        self.panel_chat(),
-                                    ],
-                                    expand=True,
-                                    spacing=18,
-                                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-                                ),
-                                self.estado_tarea,
-                            ],
-                            expand=True,
-                            spacing=16,
-                        ),
-                    ),
-                ],
+            ft.Container(
                 expand=True,
-                spacing=0,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                alignment=ft.Alignment.CENTER,
+                bgcolor=self.fondo,
+                content=ft.Container(
+                    width=420,
+                    padding=28,
+                    bgcolor=self.superficie,
+                    border=ft.Border.all(1, self.borde),
+                    border_radius=16,
+                    content=ft.Column(
+                        [
+                            ft.Text(
+                                "Iniciar sesión",
+                                size=24,
+                                weight=ft.FontWeight.BOLD,
+                                color=self.texto,
+                            ),
+                            ft.Text(
+                                "Agente de control de stock",
+                                color=self.secundario,
+                            ),
+                            usuario,
+                            clave,
+                            mensaje,
+                            ft.Button(
+                                "Ingresar",
+                                icon=ft.Icons.LOGIN,
+                                on_click=iniciar,
+                                bgcolor=ROJO,
+                                color=ft.Colors.WHITE,
+                                width=360,
+                            ),
+                        ],
+                        tight=True,
+                        spacing=14,
+                    ),
+                ),
             )
         )
-        if not self.conversacion.controls:
-            self.escribir_chat(
-                "Agente",
-                "Hola. Puedo consultar el estado, mostrar informes y ejecutar "
-                "simulaciones de solo lectura. Escribe /ayuda para ver los comandos.",
+        self.page.update()
+
+    def mostrar_configuracion_inicial(self, error: str = "") -> None:
+        usuario = ft.TextField(label="Usuario administrador", autofocus=True)
+        clave = ft.TextField(
+            label="Contraseña (mínimo 10 caracteres)",
+            password=True,
+            can_reveal_password=True,
+        )
+        confirmar = ft.TextField(
+            label="Confirmar contraseña",
+            password=True,
+            can_reveal_password=True,
+        )
+        mensaje = ft.Text(error, color=ft.Colors.RED_400)
+
+        def crear_administrador(_evento: ft.Event) -> None:
+            if clave.value != confirmar.value:
+                mensaje.value = "Las contraseñas no coinciden."
+                self.page.update()
+                return
+            try:
+                self.usuario_actual = self.user_store.create_initial_admin(
+                    usuario.value or "", clave.value or ""
+                )
+            except (ValueError, UserStoreError) as error:
+                mensaje.value = str(error)
+                self.page.update()
+                return
+            self.construir()
+
+        self.page.controls.clear()
+        self.page.add(
+            ft.Container(
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+                bgcolor=self.fondo,
+                content=ft.Container(
+                    width=460,
+                    padding=28,
+                    bgcolor=self.superficie,
+                    border=ft.Border.all(1, self.borde),
+                    border_radius=16,
+                    content=ft.Column(
+                        [
+                            ft.Text(
+                                "Configurar administrador",
+                                size=24,
+                                weight=ft.FontWeight.BOLD,
+                                color=self.texto,
+                            ),
+                            ft.Text(
+                                "Crea la primera cuenta para proteger el acceso al sistema.",
+                                color=self.secundario,
+                            ),
+                            usuario,
+                            clave,
+                            confirmar,
+                            mensaje,
+                            ft.Button(
+                                "Crear cuenta y continuar",
+                                icon=ft.Icons.PERSON_ADD,
+                                on_click=crear_administrador,
+                                bgcolor=ROJO,
+                                color=ft.Colors.WHITE,
+                                width=400,
+                            ),
+                        ],
+                        tight=True,
+                        spacing=14,
+                    ),
+                ),
             )
-        self.actualizar_estado()
+        )
+        self.page.update()
+
+    def cerrar_sesion(self, _evento: ft.Event) -> None:
+        self.usuario_actual = None
+        self.controles_tarea.clear()
+        self.mostrar_inicio_sesion()
+
+    def exigir_roles(self, *roles: UserRole) -> bool:
+        if self.usuario_actual is None:
+            self.mostrar_inicio_sesion()
+            return False
+        usuario = self.user_store.get_user(self.usuario_actual.id)
+        if usuario is None or not usuario.active:
+            self.usuario_actual = None
+            self.mostrar_inicio_sesion("La cuenta ya no está activa. Inicia sesión nuevamente.")
+            return False
+        self.usuario_actual = usuario
+        if usuario.role not in roles:
+            self.notificar("Tu rol no tiene permiso para realizar esta acción.")
+            return False
+        return True
 
     def _sidebar_controls(self) -> list[ft.Control]:
-        return [
+        assert self.usuario_actual is not None
+        controls: list[ft.Control] = [
             ft.Row(
                 [
                     ft.Container(
@@ -153,42 +273,68 @@ class InterfazFlet:
                 ],
                 spacing=10,
             ),
-            ft.Divider(height=22, color=self.borde),
-            ft.Text("FUENTES", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
-            self.mayoristas,
-            self.canjes,
-            self.mercado_libre,
-            ft.Divider(height=18, color=self.borde),
-            ft.Text("PROCESAMIENTO", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
-            self.boton("Procesar y actualizar stock", ft.Icons.PLAY_ARROW, self.procesar_real),
-            self.boton("Simular sin guardar", ft.Icons.SCIENCE, self.simular),
-            ft.Divider(height=18, color=self.borde),
-            ft.Text("HERRAMIENTAS", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
-            self.boton("Abrir informe", ft.Icons.OPEN_IN_NEW, self.abrir_informe),
-            self.boton("Compartir por correo", ft.Icons.EMAIL, self.compartir_correo),
-            self.boton("WhatsApp Web", ft.Icons.CHAT, self.compartir_whatsapp),
-            self.boton("Restaurar documentos", ft.Icons.RESTORE, self.confirmar_restaurar),
-            self.boton("Agregar producto", ft.Icons.ADD_BOX, self.mostrar_acceso_admin),
-            ft.Container(height=8),
-            ft.Row(
-                [
-                    ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_600, size=10),
-                    ft.Text("Agente local activo", size=12, color=self.secundario),
-                ],
-                spacing=8,
+            ft.Text(
+                f"{self.usuario_actual.username} · {self.usuario_actual.role}",
+                size=11,
+                color=self.secundario,
             ),
+            ft.Divider(height=22, color=self.borde),
         ]
+        if self.usuario_actual.role in ("administrador", "operador"):
+            controls.extend(
+                [
+                    ft.Text("FUENTES", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                    self.mayoristas,
+                    self.canjes,
+                    self.mercado_libre,
+                    ft.Divider(height=18, color=self.borde),
+                    ft.Text("PROCESAMIENTO", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                    self.boton("Procesar y actualizar stock", ft.Icons.PLAY_ARROW, self.procesar_real),
+                    self.boton("Simular sin guardar", ft.Icons.SCIENCE, self.simular),
+                ]
+            )
+        controls.extend(
+            [
+                ft.Divider(height=18, color=self.borde),
+                ft.Text("INFORMES", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                self.boton("Abrir informe", ft.Icons.OPEN_IN_NEW, self.abrir_informe),
+                self.boton("Compartir por correo", ft.Icons.EMAIL, self.compartir_correo),
+                self.boton("WhatsApp Web", ft.Icons.CHAT, self.compartir_whatsapp),
+            ]
+        )
+        if self.usuario_actual.role == "administrador":
+            controls.extend(
+                [
+                    ft.Divider(height=18, color=self.borde),
+                    ft.Text("ADMINISTRACIÓN", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                    self.boton("Gestionar usuarios", ft.Icons.GROUP, self.mostrar_gestion_usuarios),
+                    self.boton("Restaurar documentos", ft.Icons.RESTORE, self.confirmar_restaurar),
+                    self.boton("Agregar producto", ft.Icons.ADD_BOX, self.mostrar_acceso_admin),
+                ]
+            )
+        controls.extend(
+            [
+                ft.Container(height=8),
+                ft.Row(
+                    [
+                        ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_600, size=10),
+                        ft.Text("Agente local activo", size=12, color=self.secundario),
+                    ],
+                    spacing=8,
+                ),
+            ]
+        )
+        return controls
 
     def construir(self) -> None:
-        self.page.title = "Agente de control de stock"
-        self.page.padding = 0
+        if self.usuario_actual is None:
+            self.mostrar_inicio_sesion()
+            return
+        self._configurar_ventana()
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
-        self.page.theme = ft.Theme(color_scheme_seed=ROJO)
-        self.page.window.width = 1440
-        self.page.window.height = 900
-        self.page.window.min_width = 1050
-        self.page.window.min_height = 720
+        self.controles_tarea.clear()
+        self.page.controls.clear()
 
         sidebar = ft.Container(
             width=258,
@@ -271,6 +417,7 @@ class InterfazFlet:
         )
 
     def encabezado(self) -> ft.Control:
+        assert self.usuario_actual is not None
         boton_tema = ft.Button(
             content="Modo claro" if self.modo_oscuro else "Modo oscuro",
             icon=ft.Icons.WB_SUNNY if self.modo_oscuro else ft.Icons.DARK_MODE,
@@ -300,6 +447,11 @@ class InterfazFlet:
                 ft.Row(
                     [
                         boton_tema,
+                        ft.TextButton(
+                            f"{self.usuario_actual.username} · Cerrar sesión",
+                            icon=ft.Icons.LOGOUT,
+                            on_click=self.cerrar_sesion,
+                        ),
                         self.boton(
                             "Actualizar", ft.Icons.REFRESH, self.actualizar_estado, 150
                         ),
@@ -458,6 +610,8 @@ class InterfazFlet:
         )
 
     def actualizar_estado(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
         mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
         archivados = self.menu._obtener_archivados()
         informes = sorted(
@@ -518,6 +672,8 @@ class InterfazFlet:
         )
 
     async def enviar_chat(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
         mensaje = (self.entrada_chat.value or "").strip()
         if not mensaje:
             return
@@ -545,6 +701,8 @@ class InterfazFlet:
                 respuesta = "Ya hay una operación en curso. Inténtalo de nuevo al finalizar."
             elif not any(self.fuentes_seleccionadas()):
                 respuesta = "Selecciona al menos una fuente antes de iniciar la simulación."
+            elif self.usuario_actual is None or self.usuario_actual.role == "consulta":
+                respuesta = "Tu rol no tiene permiso para iniciar simulaciones."
             else:
                 respuesta = "Simulación de solo lectura iniciada."
                 await self.simular(None)
@@ -581,9 +739,13 @@ class InterfazFlet:
         )
 
     async def simular(self, _evento: ft.Event | None) -> None:
+        if not self.exigir_roles("administrador", "operador"):
+            return
         await self.procesar(simulacion=True)
 
     def procesar_real(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles("administrador", "operador"):
+            return
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Text("Confirmar procesamiento real"),
@@ -599,10 +761,14 @@ class InterfazFlet:
         self.page.show_dialog(dialogo)
 
     async def confirmar_procesar_real(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles("administrador", "operador"):
+            return
         self.page.pop_dialog()
         await self.procesar(simulacion=False)
 
     async def procesar(self, simulacion: bool) -> None:
+        if not self.exigir_roles("administrador", "operador"):
+            return
         if self.ocupado:
             self.notificar("Ya hay una operación en curso.")
             return
@@ -670,6 +836,8 @@ class InterfazFlet:
         self.page.show_dialog(dialogo)
 
     def ruta_informe(self) -> Path | None:
+        if not self.exigir_roles(*USER_ROLES):
+            return None
         if self.informe_seleccionado and self.informe_seleccionado.exists():
             return self.informe_seleccionado
         if self.informes:
@@ -691,6 +859,8 @@ class InterfazFlet:
         subprocess.Popen(["explorer.exe", f"/select,{ruta}"])
 
     def compartir_correo(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
         ruta = self.ruta_informe()
         if ruta is None:
             return
@@ -703,6 +873,8 @@ class InterfazFlet:
             self.notificar(f"No se pudo abrir el correo o el informe:\n{error}")
 
     def compartir_whatsapp(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
         ruta = self.ruta_informe()
         if ruta is None:
             return
@@ -714,6 +886,8 @@ class InterfazFlet:
             self.notificar(f"No se pudo abrir WhatsApp o el informe:\n{error}")
 
     def confirmar_restaurar(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles("administrador"):
+            return
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Text("Restaurar documentos"),
@@ -729,53 +903,150 @@ class InterfazFlet:
         self.page.show_dialog(dialogo)
 
     async def restaurar(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles("administrador"):
+            return
         self.page.pop_dialog()
         await self.ejecutar_tarea(
             "Restauración de documentos",
             self.menu.restaurar_para_pruebas,
         )
 
-    def mostrar_acceso_admin(self, _evento: ft.Event) -> None:
-        usuario_admin = os.getenv("_ADMIN_USUARIO")
-        clave_admin = os.getenv("_ADMIN_CLAVE")
-        if not usuario_admin or not clave_admin:
-            self.notificar(
-                "Define _ADMIN_USUARIO y _ADMIN_CLAVE en el archivo .env."
-            )
+    def mostrar_gestion_usuarios(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles("administrador"):
             return
-
-        usuario = ft.TextField(label="Usuario administrador")
-        clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
+        nuevo_usuario = ft.TextField(label="Nombre de usuario")
+        nueva_clave = ft.TextField(
+            label="Contraseña (mínimo 10 caracteres)",
+            password=True,
+            can_reveal_password=True,
+        )
+        nuevo_rol = ft.Dropdown(
+            label="Rol",
+            value="consulta",
+            options=[
+                ft.DropdownOption(key=role, text=role.capitalize())
+                for role in USER_ROLES
+            ],
+            width=220,
+        )
+        mensaje = ft.Text(color=ft.Colors.RED_400, size=12)
+        usuarios = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=240)
+        crear_boton = ft.Button(
+            "Crear usuario",
+            icon=ft.Icons.PERSON_ADD,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+        )
         dialogo = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Validar acceso administrativo"),
-            content=ft.Column([usuario, clave], tight=True, width=360),
+            title=ft.Text("Gestión de usuarios"),
+            content=ft.Column(
+                [
+                    nuevo_usuario,
+                    nueva_clave,
+                    nuevo_rol,
+                    mensaje,
+                    crear_boton,
+                    ft.Divider(),
+                    usuarios,
+                ],
+                tight=True,
+                width=520,
+            ),
             actions=[
-                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
-                self.boton_dialogo(
-                    "Validar",
-                    lambda _e: self.validar_acceso(
-                        usuario.value, clave.value, usuario_admin, clave_admin
-                    ),
-                ),
+                self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog())
             ],
         )
+
+        def actualizar_lista() -> None:
+            usuarios.controls.clear()
+            actual = self.usuario_actual
+            for usuario in self.user_store.list_users():
+                selector_rol = ft.Dropdown(
+                    value=usuario.role,
+                    options=[
+                        ft.DropdownOption(key=role, text=role.capitalize())
+                        for role in USER_ROLES
+                    ],
+                    width=160,
+                    disabled=actual is not None and usuario.id == actual.id,
+                )
+                boton_estado = ft.TextButton(
+                    "Desactivar" if usuario.active else "Activar",
+                    on_click=lambda _e, user_id=usuario.id, active=not usuario.active: cambiar_estado(
+                        user_id, active
+                    ),
+                    disabled=actual is not None and usuario.id == actual.id,
+                )
+                selector_rol.on_select = lambda _e, user_id=usuario.id, dropdown=selector_rol: cambiar_rol(
+                    user_id, dropdown.value or ""
+                )
+                usuarios.controls.append(
+                    ft.Row(
+                        [
+                            ft.Text(
+                                f"{usuario.username}{' (inactivo)' if not usuario.active else ''}",
+                                expand=True,
+                            ),
+                            selector_rol,
+                            boton_estado,
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    )
+                )
+
+        def cambiar_rol(user_id: int, role: str) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            try:
+                self.user_store.update_role(user_id, role)
+                mensaje.value = ""
+            except (ValueError, UserStoreError) as error:
+                mensaje.value = str(error)
+            actualizar_lista()
+            self.page.update()
+
+        def cambiar_estado(user_id: int, active: bool) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            try:
+                self.user_store.set_active(user_id, active)
+                mensaje.value = ""
+            except UserStoreError as error:
+                mensaje.value = str(error)
+            actualizar_lista()
+            self.page.update()
+
+        def crear_usuario(_evento: ft.Event) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            try:
+                self.user_store.create_user(
+                    nuevo_usuario.value or "",
+                    nueva_clave.value or "",
+                    nuevo_rol.value or "",
+                )
+            except (ValueError, UserStoreError) as error:
+                mensaje.value = str(error)
+            else:
+                nuevo_usuario.value = ""
+                nueva_clave.value = ""
+                mensaje.value = "Usuario creado."
+            actualizar_lista()
+            self.page.update()
+
+        crear_boton.on_click = crear_usuario
+        actualizar_lista()
         self.page.show_dialog(dialogo)
 
-    def validar_acceso(
-        self,
-        usuario: str | None,
-        clave: str | None,
-        usuario_admin: str,
-        clave_admin: str,
-    ) -> None:
-        if usuario != usuario_admin or clave != clave_admin:
-            self.notificar("El usuario o la contraseña no son correctos.")
+    def mostrar_acceso_admin(self, _evento: ft.Event) -> None:
+        if not self.exigir_roles("administrador"):
             return
-        self.page.pop_dialog()
         self.mostrar_formulario_producto()
 
     def mostrar_formulario_producto(self) -> None:
+        if not self.exigir_roles("administrador"):
+            return
         campos = {
             "codigo": ft.TextField(label="Código del nuevo producto"),
             "nombre": ft.TextField(label="Nombre del producto"),
@@ -784,6 +1055,8 @@ class InterfazFlet:
         }
 
         async def guardar(_evento: ft.Event) -> None:
+            if not self.exigir_roles("administrador"):
+                return
             codigo = (campos["codigo"].value or "").strip()
             nombre = (campos["nombre"].value or "").strip()
             referencia = (campos["referencia"].value or "").strip()

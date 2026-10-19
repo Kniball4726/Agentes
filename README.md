@@ -26,6 +26,7 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Compara las líneas numeradas de Mercado Libre con el catálogo y descuenta la cantidad indicada solo si encuentra una coincidencia clara.
 - En una ejecución real, actualiza el stock del catálogo y archiva los documentos procesados.
 - Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
+- En Flet, protege el acceso con cuentas locales en SQLite y roles de administrador, operador y consulta.
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
 - Incluye ejecución automática, simulación y un menú interactivo de consola para procesar fuentes por separado, consultar el historial y restaurar documentos.
 - Protege con credenciales administrativas el alta de productos en el catálogo.
@@ -42,16 +43,22 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 
 La instalación de Python incluye `pip`, que se usa para instalar las dependencias del proyecto. Al instalar Python en Windows, activa la opción **Add python.exe to PATH** si aparece en el instalador.
 
-Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; la aplicación opera con el catálogo local de Excel. La interfaz gráfica utiliza Tkinter, incluido en las instalaciones estándar de Python para Windows.
+Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; la aplicación opera con el catálogo local de Excel. Tkinter está incluido en las instalaciones estándar de Python para Windows.
 
-Hay un prototipo alternativo de escritorio en Flet. Para probarlo sin reemplazar la interfaz Tkinter predeterminada, instala las dependencias actualizadas y ejecuta:
+La interfaz Flet se inicia desde `ejecutar.bat` o con `python main.py --flet`. Al iniciar por primera vez, crea la cuenta de administrador; en los siguientes inicios solicita usuario y contraseña. La interfaz Tkinter permanece disponible al ejecutar `python main.py` sin argumentos.
 
 ```powershell
 python -m pip install -r requirements.txt
 python main.py --flet
 ```
 
-La opción `--flet` abre el nuevo panel; al ejecutar `python main.py` sin argumentos se mantiene la interfaz Tkinter actual mientras se evalúa el prototipo.
+Las cuentas se guardan en `data/usuarios.sqlite3`, dentro de la carpeta del proyecto. La primera cuenta se crea como administrador. Desde **Gestionar usuarios**, un administrador puede crear usuarios, cambiar roles y activar o desactivar cuentas. Los roles son:
+
+- **Administrador**: procesamiento, simulación, informes, restauración de documentos, alta de productos y gestión de usuarios.
+- **Operador**: procesamiento, simulación e informes.
+- **Consulta**: solo consulta del estado e informes.
+
+Las contraseñas se almacenan con hash PBKDF2-HMAC-SHA256 y sal aleatoria; la aplicación nunca las guarda en texto plano. Protege el acceso a la carpeta `data/` y respalda la base SQLite periódicamente con la aplicación cerrada. La autenticación por roles se aplica a Flet; la interfaz Tkinter y los modos de consola antiguos continúan disponibles como rutas separadas.
 
 ## Instalación
 
@@ -94,14 +101,14 @@ Si PowerShell impide activar el entorno por la política de ejecución, puedes e
 
 ## Configuración
 
-Crea un archivo llamado `.env` en la carpeta raíz del proyecto —junto a `main.py`— con las credenciales que quieras asignar a la función administrativa:
+La interfaz Flet crea la cuenta inicial de administrador en pantalla; no requiere configurar credenciales en `.env`. Si utilizas la interfaz Tkinter antigua, su función de alta administrativa aún usa estas variables:
 
 ```dotenv
 _ADMIN_USUARIO=tu_usuario
 _ADMIN_CLAVE=tu_contraseña
 ```
 
-Estas credenciales se solicitan al elegir **Agregar producto** en la interfaz gráfica. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. Tras validar las credenciales, se puede insertar un producto debajo de otro código del catálogo, con stock inicial opcional. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
+Estas credenciales solo se solicitan al elegir **Agregar producto** en la interfaz Tkinter antigua. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. En Flet, el administrador autenticado puede agregar productos directamente. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
 
 El chat de la pestaña **Chat con agente** funciona localmente, sin clave API ni servicios externos. Reconoce consultas sobre estado y archivos pendientes, informes, ayuda y solicitudes de simulación. También acepta los comandos `/estado`, `/informes`, `/ayuda` y `/simular`. La simulación es de solo lectura; no guarda informes, no modifica el catálogo ni mueve documentos. El chat no puede iniciar un procesamiento real. Los resultados de las simulaciones aparecen en la pestaña **Actividad**.
 
