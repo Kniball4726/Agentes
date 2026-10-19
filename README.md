@@ -44,6 +44,15 @@ La instalación de Python incluye `pip`, que se usa para instalar las dependenci
 
 Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; la aplicación opera con el catálogo local de Excel. La interfaz gráfica utiliza Tkinter, incluido en las instalaciones estándar de Python para Windows.
 
+Hay un prototipo alternativo de escritorio en Flet. Para probarlo sin reemplazar la interfaz Tkinter predeterminada, instala las dependencias actualizadas y ejecuta:
+
+```powershell
+python -m pip install -r requirements.txt
+python main.py --flet
+```
+
+La opción `--flet` abre el nuevo panel; al ejecutar `python main.py` sin argumentos se mantiene la interfaz Tkinter actual mientras se evalúa el prototipo.
+
 ## Instalación
 
 ### 1. Obtener el proyecto

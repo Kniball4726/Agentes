@@ -20,6 +20,10 @@ def main():
         menu = MenuAgente()
         print("[SIMULACION] Ejecutando simulación...")
         menu.procesar(incluir_mayoristas=True, incluir_canjes=True, simulacion=True)
+    elif "--flet" in sys.argv:
+        from src.flet_gui import iniciar
+
+        iniciar()
     else:
         from src.gui import InterfazGrafica
 

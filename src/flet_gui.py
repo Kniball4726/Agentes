@@ -1,0 +1,836 @@
+"""Prototipo de escritorio en Flet para el agente de control de stock."""
+
+import asyncio
+import contextlib
+import io
+import os
+import subprocess
+import traceback
+import urllib.parse
+import webbrowser
+from pathlib import Path
+from typing import Callable
+
+import flet as ft
+
+from .internal_chat import detectar_intencion
+from .menu import MenuAgente
+from .stock_manager import StockManager
+
+
+ROJO = ft.Colors.RED_700
+FONDO = ft.Colors.GREY_100
+SUPERFICIE = ft.Colors.WHITE
+TEXTO = ft.Colors.BLUE_GREY_900
+SECUNDARIO = ft.Colors.BLUE_GREY_600
+
+
+class InterfazFlet:
+    def __init__(self, page: ft.Page) -> None:
+        self.page = page
+        self.modo_oscuro = True
+        self.fondo = ft.Colors.BLACK
+        self.superficie = ft.Colors.BLUE_GREY_900
+        self.texto = ft.Colors.WHITE
+        self.secundario = ft.Colors.BLUE_GREY_300
+        self.borde = ft.Colors.BLUE_GREY_700
+        self.fondo_acento = ft.Colors.RED_700
+        self.menu = MenuAgente()
+        self.ocupado = False
+        self.informes: list[Path] = []
+        self.informe_seleccionado: Path | None = None
+        self.controles_tarea: list[ft.Button] = []
+        self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
+        self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
+        self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
+        self.estado_tarea = ft.Text("Listo", color=self.secundario, size=12)
+        self.lista_informes = ft.ListView(expand=True, spacing=4)
+        self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
+        self.conversacion = ft.ListView(expand=True, spacing=8, auto_scroll=True)
+        self.entrada_chat = ft.TextField(
+            hint_text="Escribe una consulta o /ayuda",
+            expand=True,
+            min_lines=1,
+            max_lines=3,
+            on_submit=self.enviar_chat,
+        )
+        self.contadores: dict[str, ft.Text] = {}
+        self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
+        self.construir()
+
+    def alternar_tema(self, _evento: ft.Event | None = None) -> None:
+        self.modo_oscuro = not self.modo_oscuro
+        if self.modo_oscuro:
+            self.fondo = ft.Colors.BLACK
+            self.superficie = ft.Colors.BLUE_GREY_900
+            self.texto = ft.Colors.WHITE
+            self.secundario = ft.Colors.BLUE_GREY_300
+            self.borde = ft.Colors.BLUE_GREY_700
+            self.fondo_acento = ft.Colors.RED_700
+        else:
+            self.fondo = ft.Colors.GREY_100
+            self.superficie = ft.Colors.WHITE
+            self.texto = ft.Colors.BLUE_GREY_900
+            self.secundario = ft.Colors.BLUE_GREY_600
+            self.borde = ft.Colors.GREY_300
+            self.fondo_acento = ft.Colors.RED_50
+        self.page.theme_mode = (
+            ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
+        )
+        self.page.bgcolor = self.fondo
+        self.page.theme = ft.Theme(color_scheme_seed=ROJO)
+        self.controles_tarea.clear()
+        if self.page.controls:
+            self.page.controls.clear()
+        self.page.add(
+            ft.Row(
+                [
+                    ft.Container(
+                        width=258,
+                        bgcolor=self.superficie,
+                        padding=20,
+                        content=ft.Column(
+                            self._sidebar_controls(),
+                            spacing=8,
+                            scroll=ft.ScrollMode.AUTO,
+                        ),
+                    ),
+                    ft.Container(
+                        expand=True,
+                        padding=22,
+                        content=ft.Column(
+                            [
+                                self.encabezado(),
+                                self.panel_metricas(),
+                                ft.Row(
+                                    [
+                                        self.panel_informes_actividad(),
+                                        self.panel_chat(),
+                                    ],
+                                    expand=True,
+                                    spacing=18,
+                                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                                ),
+                                self.estado_tarea,
+                            ],
+                            expand=True,
+                            spacing=16,
+                        ),
+                    ),
+                ],
+                expand=True,
+                spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+            )
+        )
+        if not self.conversacion.controls:
+            self.escribir_chat(
+                "Agente",
+                "Hola. Puedo consultar el estado, mostrar informes y ejecutar "
+                "simulaciones de solo lectura. Escribe /ayuda para ver los comandos.",
+            )
+        self.actualizar_estado()
+
+    def _sidebar_controls(self) -> list[ft.Control]:
+        return [
+            ft.Row(
+                [
+                    ft.Container(
+                        width=42,
+                        height=42,
+                        border_radius=12,
+                        bgcolor=ft.Colors.RED_50 if self.modo_oscuro else ft.Colors.RED_50,
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Icon(ft.Icons.INVENTORY_2, color=ROJO),
+                    ),
+                    ft.Column(
+                        [
+                            ft.Text("StockAgent", size=18, weight=ft.FontWeight.BOLD, color=self.texto),
+                            ft.Text("Panel de control", size=11, color=self.secundario),
+                        ],
+                        spacing=2,
+                    ),
+                ],
+                spacing=10,
+            ),
+            ft.Divider(height=22, color=self.borde),
+            ft.Text("FUENTES", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+            self.mayoristas,
+            self.canjes,
+            self.mercado_libre,
+            ft.Divider(height=18, color=self.borde),
+            ft.Text("PROCESAMIENTO", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+            self.boton("Procesar y actualizar stock", ft.Icons.PLAY_ARROW, self.procesar_real),
+            self.boton("Simular sin guardar", ft.Icons.SCIENCE, self.simular),
+            ft.Divider(height=18, color=self.borde),
+            ft.Text("HERRAMIENTAS", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+            self.boton("Abrir informe", ft.Icons.OPEN_IN_NEW, self.abrir_informe),
+            self.boton("Compartir por correo", ft.Icons.EMAIL, self.compartir_correo),
+            self.boton("WhatsApp Web", ft.Icons.CHAT, self.compartir_whatsapp),
+            self.boton("Restaurar documentos", ft.Icons.RESTORE, self.confirmar_restaurar),
+            self.boton("Agregar producto", ft.Icons.ADD_BOX, self.mostrar_acceso_admin),
+            ft.Container(height=8),
+            ft.Row(
+                [
+                    ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_600, size=10),
+                    ft.Text("Agente local activo", size=12, color=self.secundario),
+                ],
+                spacing=8,
+            ),
+        ]
+
+    def construir(self) -> None:
+        self.page.title = "Agente de control de stock"
+        self.page.padding = 0
+        self.page.bgcolor = self.fondo
+        self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
+        self.page.theme = ft.Theme(color_scheme_seed=ROJO)
+        self.page.window.width = 1440
+        self.page.window.height = 900
+        self.page.window.min_width = 1050
+        self.page.window.min_height = 720
+
+        sidebar = ft.Container(
+            width=258,
+            bgcolor=self.superficie,
+            padding=20,
+            content=ft.Column(
+                self._sidebar_controls(),
+                spacing=8,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+        )
+
+        dashboard_controls: list[ft.Control] = [
+            self.encabezado(),
+            self.panel_metricas(),
+            ft.Row(
+                [
+                    self.panel_informes_actividad(),
+                    self.panel_chat(),
+                ],
+                expand=True,
+                spacing=18,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+            ),
+            self.estado_tarea,
+        ]
+        dashboard = ft.Column(
+            dashboard_controls,
+            expand=True,
+            spacing=16,
+        )
+        self.page.add(
+            ft.Row(
+                [
+                    sidebar,
+                    ft.Container(
+                        expand=True,
+                        padding=22,
+                        content=dashboard,
+                    ),
+                ],
+                expand=True,
+                spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+            )
+        )
+        if not self.conversacion.controls:
+            self.escribir_chat(
+                "Agente",
+                "Hola. Puedo consultar el estado, mostrar informes y ejecutar "
+                "simulaciones de solo lectura. Escribe /ayuda para ver los comandos.",
+            )
+        self.actualizar_estado()
+
+    def boton(
+        self,
+        texto: str,
+        icono: ft.IconData,
+        accion: Callable,
+        ancho: int = 218,
+    ) -> ft.Button:
+        control = ft.Button(
+            content=texto,
+            icon=icono,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+            on_click=accion,
+            width=ancho,
+        )
+        self.controles_tarea.append(control)
+        return control
+
+    @staticmethod
+    def boton_dialogo(texto: str, accion: Callable) -> ft.Button:
+        return ft.Button(
+            content=texto,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+            on_click=accion,
+        )
+
+    def encabezado(self) -> ft.Control:
+        boton_tema = ft.Button(
+            content="Modo claro" if self.modo_oscuro else "Modo oscuro",
+            icon=ft.Icons.WB_SUNNY if self.modo_oscuro else ft.Icons.DARK_MODE,
+            on_click=self.alternar_tema,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+        )
+        return ft.Row(
+            [
+                ft.Column(
+                    [
+                        ft.Text(
+                            "Panel de control",
+                            size=28,
+                            weight=ft.FontWeight.BOLD,
+                            color=self.texto,
+                        ),
+                        ft.Text(
+                            "Gestiona tus documentos, inventario y actividad.",
+                            size=14,
+                            color=self.secundario,
+                        ),
+                        self.pendientes_texto,
+                    ],
+                    spacing=4,
+                ),
+                ft.Row(
+                    [
+                        boton_tema,
+                        self.boton(
+                            "Actualizar", ft.Icons.REFRESH, self.actualizar_estado, 150
+                        ),
+                    ],
+                    spacing=10,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+    def panel_metricas(self) -> ft.Control:
+        metricas = [
+            ("PDF pendientes", "pdf", ft.Icons.DESCRIPTION),
+            ("Canjes pendientes", "canjes", ft.Icons.SHOPPING_BAG),
+            ("Pedidos ML", "ml", ft.Icons.LOCAL_SHIPPING),
+            ("Informes", "informes", ft.Icons.INSERT_CHART),
+        ]
+        tarjetas = []
+        for titulo, clave, icono in metricas:
+            valor = ft.Text("0", size=25, weight=ft.FontWeight.BOLD, color=self.texto)
+            self.contadores[clave] = valor
+            tarjetas.append(
+                ft.Container(
+                    expand=True,
+                    bgcolor=self.superficie,
+                    border=ft.Border.all(1, self.borde),
+                    border_radius=12,
+                    padding=16,
+                    content=ft.Row(
+                        [
+                            ft.Container(
+                                width=40,
+                                height=40,
+                                border_radius=10,
+                                bgcolor=ft.Colors.RED_50,
+                                alignment=ft.Alignment.CENTER,
+                                content=ft.Icon(icono, color=ROJO, size=20),
+                            ),
+                            ft.Column(
+                                [
+                                    ft.Text(titulo, size=11, color=self.secundario),
+                                    valor,
+                                ],
+                                spacing=3,
+                            ),
+                        ],
+                        spacing=12,
+                    ),
+                )
+            )
+        return ft.Row(tarjetas, spacing=12)
+
+    def panel_informes_actividad(self) -> ft.Control:
+        contenido_informes = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text("Informes generados", size=16, weight=ft.FontWeight.BOLD, color=self.texto),
+                        ft.Icon(ft.Icons.DESCRIPTION, color=ROJO, size=18),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                self.lista_informes,
+            ],
+            expand=True,
+            spacing=10,
+        )
+        contenido_actividad = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text("Actividad", size=16, weight=ft.FontWeight.BOLD, color=self.texto),
+                        ft.Icon(ft.Icons.BOLT, color=ROJO, size=18),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                self.actividad,
+            ],
+            expand=True,
+            spacing=10,
+        )
+        return ft.Column(
+            [
+                self.tarjeta(contenido_informes, expand=True),
+                self.tarjeta(contenido_actividad, expand=True),
+            ],
+            expand=3,
+            spacing=16,
+        )
+
+    def panel_chat(self) -> ft.Control:
+        return ft.Container(
+            width=340,
+            bgcolor=self.superficie,
+            border=ft.Border.all(1, self.borde),
+            border_radius=14,
+            padding=16,
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Container(
+                                width=36,
+                                height=36,
+                                border_radius=10,
+                                bgcolor=ft.Colors.RED_50,
+                                alignment=ft.Alignment.CENTER,
+                                content=ft.Icon(ft.Icons.SMART_TOY, color=ROJO, size=19),
+                            ),
+                            ft.Column(
+                                [
+                                    ft.Text("Chat con agente", size=15, weight=ft.FontWeight.BOLD, color=self.texto),
+                                    ft.Text("Local · Sin conexión externa", size=11, color=self.secundario),
+                                ],
+                                spacing=2,
+                            ),
+                        ],
+                        spacing=9,
+                    ),
+                    ft.Divider(height=14, color=self.borde),
+                    self.conversacion,
+                    ft.Row(
+                        [
+                            self.entrada_chat,
+                            ft.IconButton(
+                                icon=ft.Icons.SEND,
+                                icon_color=ft.Colors.WHITE,
+                                bgcolor=ROJO,
+                                tooltip="Enviar mensaje",
+                                on_click=self.enviar_chat,
+                            ),
+                        ],
+                        spacing=6,
+                        vertical_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                    ft.Text(
+                        "Prueba /estado, /informes, /ayuda o /simular",
+                        size=10,
+                        color=self.secundario,
+                    ),
+                ],
+                expand=True,
+                spacing=8,
+            ),
+        )
+
+    def tarjeta(self, contenido: ft.Control, expand: bool = False) -> ft.Container:
+        return ft.Container(
+            expand=expand,
+            bgcolor=self.superficie,
+            border=ft.Border.all(1, self.borde),
+            border_radius=14,
+            padding=16,
+            content=contenido,
+        )
+
+    def actualizar_estado(self, _evento: ft.Event | None = None) -> None:
+        mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
+        archivados = self.menu._obtener_archivados()
+        informes = sorted(
+            self.menu._obtener_generados(),
+            key=lambda ruta: (ruta.stat().st_mtime_ns, ruta.name.casefold()),
+            reverse=True,
+        )
+        self.informes = informes
+        self.contadores["pdf"].value = str(len(mayoristas))
+        self.contadores["canjes"].value = str(len(canjes))
+        self.contadores["ml"].value = str(len(mercado_libre))
+        self.contadores["informes"].value = str(len(informes))
+        total_archivados = sum(map(len, archivados))
+        self.pendientes_texto.value = (
+            f"Archivados: {total_archivados} · Informes: {len(informes)}"
+        )
+        self.lista_informes.controls.clear()
+        if not informes:
+            self.lista_informes.controls.append(
+                ft.Text("Todavía no hay informes.", size=12, color=self.secundario)
+            )
+        else:
+            for ruta in informes:
+                self.lista_informes.controls.append(
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.DESCRIPTION, color=ROJO, size=19),
+                        title=ft.Text(ruta.name, size=12, color=self.texto),
+                        on_click=lambda _e, archivo=ruta: self.seleccionar_informe(archivo),
+                    )
+                )
+        if self.page.controls:
+            self.page.update()
+
+    def seleccionar_informe(self, ruta: Path) -> None:
+        self.informe_seleccionado = ruta
+        self.estado_tarea.value = f"Informe seleccionado: {ruta.name}"
+        self.page.update()
+
+    def escribir_chat(self, emisor: str, mensaje: str) -> None:
+        color = ROJO if emisor == "Tú" else ft.Colors.RED_300
+        if emisor == "Tú":
+            bgcolor = ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50
+        else:
+            bgcolor = ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_100
+        self.conversacion.controls.append(
+            ft.Container(
+                bgcolor=bgcolor,
+                border_radius=10,
+                padding=10,
+                content=ft.Column(
+                    [
+                        ft.Text(emisor, size=10, weight=ft.FontWeight.BOLD, color=color),
+                        ft.Text(mensaje, size=12, color=self.texto),
+                    ],
+                    spacing=3,
+                ),
+            )
+        )
+
+    async def enviar_chat(self, _evento: ft.Event | None = None) -> None:
+        mensaje = (self.entrada_chat.value or "").strip()
+        if not mensaje:
+            return
+        self.entrada_chat.value = ""
+        self.escribir_chat("Tú", mensaje)
+        intencion = detectar_intencion(mensaje)
+        if intencion == "estado":
+            respuesta = self.resumen_estado()
+        elif intencion == "informes":
+            respuesta = self.resumen_informes()
+        elif intencion == "saludo":
+            respuesta = (
+                "¡Hola! Puedo consultar el estado y los informes, explicar el "
+                "uso del sistema o iniciar una simulación de solo lectura. "
+                "Escribe /ayuda para ver las opciones."
+            )
+        elif intencion == "ayuda":
+            respuesta = (
+                "Consulta archivos pendientes con /estado, lista informes con "
+                "/informes o ejecuta una simulación de solo lectura con /simular. "
+                "No puedo iniciar un procesamiento real desde el chat."
+            )
+        elif intencion == "simular":
+            if self.ocupado:
+                respuesta = "Ya hay una operación en curso. Inténtalo de nuevo al finalizar."
+            elif not any(self.fuentes_seleccionadas()):
+                respuesta = "Selecciona al menos una fuente antes de iniciar la simulación."
+            else:
+                respuesta = "Simulación de solo lectura iniciada."
+                await self.simular(None)
+        else:
+            respuesta = (
+                "Puedo ayudar con el estado de archivos, los informes y las "
+                "simulaciones. Prueba /ayuda."
+            )
+        self.escribir_chat("Agente", respuesta)
+        self.page.update()
+
+    def resumen_estado(self) -> str:
+        mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
+        archivados = self.menu._obtener_archivados()
+        return (
+            f"Pendientes: {len(mayoristas)} PDF mayoristas, {len(canjes)} Excel "
+            f"de canjes y {len(mercado_libre)} DOCX de Mercado Libre. "
+            f"Archivados: {sum(map(len, archivados))}. "
+            f"Informes disponibles: {len(self.menu._obtener_generados())}."
+        )
+
+    def resumen_informes(self) -> str:
+        informes = self.menu._obtener_generados()
+        if not informes:
+            return "Todavía no hay informes generados."
+        nombres = [ruta.name for ruta in informes[-10:]]
+        return "Informes recientes:\n" + "\n".join(nombres)
+
+    def fuentes_seleccionadas(self) -> tuple[bool, bool, bool]:
+        return (
+            bool(self.mayoristas.value),
+            bool(self.canjes.value),
+            bool(self.mercado_libre.value),
+        )
+
+    async def simular(self, _evento: ft.Event | None) -> None:
+        await self.procesar(simulacion=True)
+
+    def procesar_real(self, _evento: ft.Event) -> None:
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Confirmar procesamiento real"),
+            content=ft.Text(
+                "Esta operación actualizará el catálogo y moverá los documentos "
+                "procesados a 'descontados'. ¿Quieres continuar?"
+            ),
+            actions=[
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                self.boton_dialogo("Confirmar", self.confirmar_procesar_real),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    async def confirmar_procesar_real(self, _evento: ft.Event) -> None:
+        self.page.pop_dialog()
+        await self.procesar(simulacion=False)
+
+    async def procesar(self, simulacion: bool) -> None:
+        if self.ocupado:
+            self.notificar("Ya hay una operación en curso.")
+            return
+        fuentes = self.fuentes_seleccionadas()
+        if not any(fuentes):
+            self.notificar("Selecciona al menos una fuente.")
+            return
+
+        await self.ejecutar_tarea(
+            "Simulación" if simulacion else "Procesamiento real",
+            lambda: self.menu.procesar(
+                incluir_mayoristas=fuentes[0],
+                incluir_canjes=fuentes[1],
+                incluir_mercado_libre=fuentes[2],
+                simulacion=simulacion,
+            ),
+        )
+
+    async def ejecutar_tarea(self, nombre: str, accion: Callable[[], object]) -> None:
+        self.ocupado = True
+        self.estado_tarea.value = f"En curso: {nombre}"
+        self.actualizar_estado_botones()
+        self.page.update()
+
+        salida = io.StringIO()
+
+        def ejecutar() -> None:
+            with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(salida):
+                accion()
+
+        try:
+            await asyncio.to_thread(ejecutar)
+        except Exception:
+            detalle = traceback.format_exc()
+            self.actividad.controls.append(
+                ft.Text(f"[ERROR]\n{detalle}", color=ft.Colors.RED_700, size=11)
+            )
+            self.estado_tarea.value = f"{nombre} terminó con un error."
+            self.notificar("La operación falló. Revisa el panel Actividad.")
+        else:
+            texto = salida.getvalue().strip()
+            if texto:
+                self.actividad.controls.append(
+                    ft.Text(texto, color=ft.Colors.BLUE_GREY_800, size=11)
+                )
+            self.estado_tarea.value = f"{nombre} finalizada."
+        finally:
+            self.ocupado = False
+            self.actualizar_estado_botones()
+            self.actualizar_estado()
+
+    def actualizar_estado_botones(self) -> None:
+        for control in self.controles_tarea:
+            control.disabled = self.ocupado
+        self.page.update()
+
+    def notificar(self, mensaje: str) -> None:
+        dialogo = ft.AlertDialog(
+            title=ft.Text("Aviso"),
+            content=ft.Text(mensaje),
+            actions=[
+                self.boton_dialogo("Aceptar", lambda _e: self.page.pop_dialog())
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    def ruta_informe(self) -> Path | None:
+        if self.informe_seleccionado and self.informe_seleccionado.exists():
+            return self.informe_seleccionado
+        if self.informes:
+            self.informe_seleccionado = self.informes[0]
+            return self.informe_seleccionado
+        self.notificar("Todavía no hay informes generados.")
+        return None
+
+    def abrir_informe(self, _evento: ft.Event) -> None:
+        ruta = self.ruta_informe()
+        if ruta is None:
+            return
+        try:
+            os.startfile(ruta)  # type: ignore[attr-defined]
+        except OSError as error:
+            self.notificar(f"No se pudo abrir el informe:\n{error}")
+
+    def abrir_carpeta_informe(self, ruta: Path) -> None:
+        subprocess.Popen(["explorer.exe", f"/select,{ruta}"])
+
+    def compartir_correo(self, _evento: ft.Event) -> None:
+        ruta = self.ruta_informe()
+        if ruta is None:
+            return
+        asunto = urllib.parse.quote(f"Informe de descuentos: {ruta.name}")
+        cuerpo = urllib.parse.quote(f"Adjunto el informe de descuentos {ruta.name}.")
+        try:
+            self.abrir_carpeta_informe(ruta)
+            os.startfile(f"mailto:?subject={asunto}&body={cuerpo}")  # type: ignore[attr-defined]
+        except OSError as error:
+            self.notificar(f"No se pudo abrir el correo o el informe:\n{error}")
+
+    def compartir_whatsapp(self, _evento: ft.Event) -> None:
+        ruta = self.ruta_informe()
+        if ruta is None:
+            return
+        try:
+            self.abrir_carpeta_informe(ruta)
+            if not webbrowser.open("https://web.whatsapp.com/"):
+                raise RuntimeError("No se pudo abrir WhatsApp Web.")
+        except (OSError, RuntimeError) as error:
+            self.notificar(f"No se pudo abrir WhatsApp o el informe:\n{error}")
+
+    def confirmar_restaurar(self, _evento: ft.Event) -> None:
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Restaurar documentos"),
+            content=ft.Text(
+                "Se copiarán los documentos archivados a sus carpetas pendientes. "
+                "¿Quieres continuar?"
+            ),
+            actions=[
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                self.boton_dialogo("Restaurar", self.restaurar),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    async def restaurar(self, _evento: ft.Event) -> None:
+        self.page.pop_dialog()
+        await self.ejecutar_tarea(
+            "Restauración de documentos",
+            self.menu.restaurar_para_pruebas,
+        )
+
+    def mostrar_acceso_admin(self, _evento: ft.Event) -> None:
+        usuario_admin = os.getenv("_ADMIN_USUARIO")
+        clave_admin = os.getenv("_ADMIN_CLAVE")
+        if not usuario_admin or not clave_admin:
+            self.notificar(
+                "Define _ADMIN_USUARIO y _ADMIN_CLAVE en el archivo .env."
+            )
+            return
+
+        usuario = ft.TextField(label="Usuario administrador")
+        clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Validar acceso administrativo"),
+            content=ft.Column([usuario, clave], tight=True, width=360),
+            actions=[
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                self.boton_dialogo(
+                    "Validar",
+                    lambda _e: self.validar_acceso(
+                        usuario.value, clave.value, usuario_admin, clave_admin
+                    ),
+                ),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    def validar_acceso(
+        self,
+        usuario: str | None,
+        clave: str | None,
+        usuario_admin: str,
+        clave_admin: str,
+    ) -> None:
+        if usuario != usuario_admin or clave != clave_admin:
+            self.notificar("El usuario o la contraseña no son correctos.")
+            return
+        self.page.pop_dialog()
+        self.mostrar_formulario_producto()
+
+    def mostrar_formulario_producto(self) -> None:
+        campos = {
+            "codigo": ft.TextField(label="Código del nuevo producto"),
+            "nombre": ft.TextField(label="Nombre del producto"),
+            "referencia": ft.TextField(label="Código del producto anterior"),
+            "stock": ft.TextField(label="Stock inicial (opcional)", keyboard_type=ft.KeyboardType.NUMBER),
+        }
+
+        async def guardar(_evento: ft.Event) -> None:
+            codigo = (campos["codigo"].value or "").strip()
+            nombre = (campos["nombre"].value or "").strip()
+            referencia = (campos["referencia"].value or "").strip()
+            stock_texto = (campos["stock"].value or "").strip()
+            if not codigo or not nombre or not referencia:
+                self.notificar("Completa el código, el nombre y el código de referencia.")
+                return
+            try:
+                stock = int(stock_texto) if stock_texto else None
+            except ValueError:
+                self.notificar("El stock inicial debe ser un número entero.")
+                return
+
+            self.page.pop_dialog()
+
+            def insertar() -> None:
+                stock_manager = StockManager(self.menu.ruta_excel_base)
+                exito, mensaje, _ = stock_manager.agregar_producto_en_posicion(
+                    codigo_nuevo=codigo,
+                    nombre_nuevo=nombre,
+                    codigo_arriba=referencia,
+                    stock_inicial=stock,
+                )
+                if not exito:
+                    raise ValueError(mensaje)
+                print(f"[OK] {mensaje}")
+
+            await self.ejecutar_tarea("Alta de producto", insertar)
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Datos del nuevo producto"),
+            content=ft.Column(list(campos.values()), tight=True, width=380),
+            actions=[
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                self.boton_dialogo("Guardar", guardar),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+async def main(page: ft.Page) -> None:
+    InterfazFlet(page)
+
+
+def iniciar() -> None:
+    ft.run(
+        main,
+        view=ft.AppView.FLET_APP,
+        name="Agente de control de stock",
+    )

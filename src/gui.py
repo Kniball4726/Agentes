@@ -254,19 +254,19 @@ class InterfazGrafica:
         )
         self.estilo.configure(
             "TButton",
-            background=colores["boton"],
-            foreground=colores["texto"],
-            bordercolor=colores["borde"],
-            focuscolor=colores["seleccion"],
+            background="#c62828",
+            foreground="#ffffff",
+            bordercolor="#a51f1f",
+            focuscolor="#8e0000",
         )
         self.estilo.map(
             "TButton",
             background=[
-                ("disabled", colores["fondo"]),
-                ("pressed", colores["seleccion"]),
-                ("active", colores["activo"]),
+                ("disabled", "#b85c5c"),
+                ("pressed", "#8e0000"),
+                ("active", "#b71c1c"),
             ],
-            foreground=[("disabled", colores["secundario"])],
+            foreground=[("disabled", "#f5dada")],
         )
         self.estilo.configure(
             "TCheckbutton",
