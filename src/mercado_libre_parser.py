@@ -1,13 +1,17 @@
-"""Lee pedidos de Mercado Libre en DOCX y busca coincidencias exactas en el catálogo."""
+"""Lee pedidos de Mercado Libre en DOCX y asocia productos con el catálogo."""
 
 import re
 import unicodedata
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 from docx import Document
 
 from .remito_parser import ItemRemito, ResultadoRemito
+
+_UMBRAL_SIMILITUD = 0.84
+_MARGEN_MINIMO_SIMILITUD = 0.08
 
 
 def _normalizar_descripcion(descripcion: str) -> str:
@@ -16,90 +20,150 @@ def _normalizar_descripcion(descripcion: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", texto).split())
 
 
+def _normalizar_para_busqueda(descripcion: str) -> str:
+    texto = _normalizar_descripcion(descripcion)
+    equivalencias = (
+        (r"\bultra\s+tech\b", "ut"),
+        (r"\bvitatech\b", "vt"),
+        (r"\bcapsulas?\b", "caps"),
+        (r"\bcomprimidos?\b", "comp"),
+        (r"\bgramos?\b|\bgrs?\b", "g"),
+        (r"\bunidades\b", "unidad"),
+    )
+    for patron, reemplazo in equivalencias:
+        texto = re.sub(patron, reemplazo, texto)
+    texto = re.sub(r"\b(de|del|x)\b", " ", texto)
+    return " ".join(texto.split())
+
+
 def _buscar_codigo(
     descripcion: str,
     descripciones_catalogo: Dict[str, List[str]]
 ) -> Tuple[str | None, str]:
-    codigos = descripciones_catalogo.get(_normalizar_descripcion(descripcion), [])
+    clave = _normalizar_para_busqueda(descripcion)
+    catalogo_normalizado = {
+        codigo: [_normalizar_para_busqueda(nombre) for nombre in nombres]
+        for codigo, nombres in descripciones_catalogo.items()
+    }
+    codigos = [
+        codigo for codigo, nombres in catalogo_normalizado.items()
+        if clave in nombres
+    ]
     if len(codigos) == 1:
         return codigos[0], ""
     if codigos:
         return None, "Descripción coincidente con más de un código del catálogo"
-    return None, "No se encontró una coincidencia exacta en el catálogo"
+
+    tokens = clave.split()
+    if not tokens:
+        return None, "No se encontró una coincidencia exacta en el catálogo"
+
+    numeros_consulta = {token for token in tokens if token.isdigit()}
+    puntuaciones = {}
+    for codigo, nombres in catalogo_normalizado.items():
+        puntuacion = 0.0
+        for nombre in nombres:
+            tokens_nombre = nombre.split()
+            numeros_producto = {token for token in tokens_nombre if token.isdigit()}
+            if (
+                not tokens_nombre
+                or tokens_nombre[0] != tokens[0]
+                or not numeros_producto.issubset(numeros_consulta)
+            ):
+                continue
+            puntuacion = max(
+                puntuacion,
+                SequenceMatcher(None, clave, nombre).ratio(),
+            )
+        if puntuacion >= _UMBRAL_SIMILITUD:
+            puntuaciones[codigo] = puntuacion
+
+    mejores = sorted(puntuaciones.items(), key=lambda item: item[1], reverse=True)
+    if mejores:
+        if (
+            len(mejores) > 1
+            and mejores[0][1] - mejores[1][1] < _MARGEN_MINIMO_SIMILITUD
+        ):
+            return None, "Coincidencia aproximada ambigua entre varios productos"
+        return mejores[0][0], ""
+    return None, "No se encontró una coincidencia suficientemente clara en el catálogo"
+
+
+def _extraer_producto_numerado(linea: str) -> Tuple[int, str] | None:
+    coincidencia = re.match(r"^\s*(\d+)[.)]?\s+(.+?)\s*$", linea)
+    if not coincidencia:
+        return None
+    return int(coincidencia.group(1)), coincidencia.group(2)
 
 
 def parsear_pedido_mercado_libre(
     ruta_docx: str | Path,
     productos_catalogo: List[Tuple[str, str]]
 ) -> ResultadoRemito:
-    """Cada párrafo no vacío y cada fila de tabla representan una unidad."""
+    """Procesa líneas de producto numeradas y usa su número inicial como cantidad."""
     path = Path(ruta_docx)
     documento = Document(str(path))
     descripciones_catalogo: Dict[str, List[str]] = {}
     for codigo, nombre in productos_catalogo:
-        clave = _normalizar_descripcion(nombre)
-        if clave:
-            codigos = descripciones_catalogo.setdefault(clave, [])
-            if codigo not in codigos:
-                codigos.append(codigo)
+        if nombre:
+            nombres = descripciones_catalogo.setdefault(codigo, [])
+            if nombre not in nombres:
+                nombres.append(nombre)
 
-    registros: List[Tuple[str, List[str]]] = [
-        (parrafo.text.strip(), [])
-        for parrafo in documento.paragraphs
-        if parrafo.text.strip()
-    ]
+    registros: List[Tuple[int, str]] = []
+    for parrafo in documento.paragraphs:
+        for linea in parrafo.text.splitlines():
+            producto = _extraer_producto_numerado(linea)
+            if producto:
+                registros.append(producto)
+
     for tabla in documento.tables:
         for fila in tabla.rows:
-            celdas = [celda.text.strip() for celda in fila.cells if celda.text.strip()]
-            if celdas:
-                registros.append((" ".join(celdas), celdas))
+            celdas = [
+                [linea.strip() for linea in celda.text.splitlines() if linea.strip()]
+                for celda in fila.cells
+            ]
+            productos_fila: List[Tuple[int, str]] = []
+            indice = 0
+            while indice < len(celdas):
+                for linea in celdas[indice]:
+                    producto = _extraer_producto_numerado(linea)
+                    if producto:
+                        productos_fila.append(producto)
+                    elif re.fullmatch(r"\s*\d+\s*[.)]?\s*", linea):
+                        siguiente = indice + 1
+                        while siguiente < len(celdas) and not celdas[siguiente]:
+                            siguiente += 1
+                        if siguiente < len(celdas):
+                            descripcion = " ".join(celdas[siguiente])
+                            cantidad = int(re.search(r"\d+", linea).group())
+                            productos_fila.append((cantidad, descripcion))
+                indice += 1
+            registros.extend(dict.fromkeys(productos_fila))
 
     items: List[ItemRemito] = []
     sin_coincidencia: List[Tuple[str, str]] = []
-    for descripcion, celdas in registros:
-        resultados_celdas = [
-            _buscar_codigo(celda, descripciones_catalogo)
-            for celda in celdas
-        ]
-        codigos_en_fila = {codigo for codigo, _ in resultados_celdas if codigo is not None}
-        ambiguas_en_fila = [
-            motivo
-            for codigo, motivo in resultados_celdas
-            if codigo is None and "más de un código" in motivo
-        ]
-
-        if len(codigos_en_fila) > 1 or ambiguas_en_fila:
-            codigo = None
-            motivo = (
-                "La fila contiene descripciones ambiguas"
-                if ambiguas_en_fila
-                else "La fila contiene descripciones coincidentes con varios productos"
-            )
-        elif len(codigos_en_fila) == 1:
-            codigo = next(iter(codigos_en_fila))
-            motivo = ""
-        else:
-            codigo, motivo = _buscar_codigo(descripcion, descripciones_catalogo)
-
+    for cantidad, descripcion in registros:
+        codigo, motivo = _buscar_codigo(descripcion, descripciones_catalogo)
         if codigo is None:
-            sin_coincidencia.append((descripcion, motivo))
+            sin_coincidencia.append((f"{cantidad} {descripcion}", motivo))
             continue
 
         items.append(ItemRemito(
             codigo=codigo,
             descripcion=descripcion,
-            cantidad=1,
+            cantidad=cantidad,
             origen_remito=f"ML-{path.stem}"
         ))
 
-    total_registros = len(registros)
+    total_unidades = sum(cantidad for cantidad, _ in registros)
     return ResultadoRemito(
         archivo=path.name,
         numero_remito=f"ML-{path.stem}",
         fecha="Mercado Libre",
         cliente="Mercado Libre",
-        articulos_declarados=total_registros,
-        articulos_extraidos=len(items),
+        articulos_declarados=total_unidades,
+        articulos_extraidos=sum(item.cantidad for item in items),
         verificacion_ok=not sin_coincidencia,
         items=items,
         descripciones_sin_coincidencia=sin_coincidencia

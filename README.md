@@ -21,9 +21,9 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Lee remitos mayoristas en PDF, planillas de canje `.xlsx` y pedidos de Mercado Libre en `.docx`.
 - Consolida productos repetidos por código y suma sus cantidades.
 - Compara el total de unidades extraídas de un remito con el total declarado y muestra discrepancias.
-- Genera una planilla con stock inicial, descuento, stock final y resumen de pedidos.
+- Genera un informe de descuentos listo para presentar, con indicadores, detalle de stock y resumen de pedidos.
 - Señala en el informe los productos que no están en el catálogo.
-- Compara cada descripción de Mercado Libre con el catálogo; aplica una unidad por registro solo si encuentra una coincidencia inequívoca.
+- Compara las líneas numeradas de Mercado Libre con el catálogo y descuenta la cantidad indicada solo si encuentra una coincidencia clara.
 - En una ejecución real, actualiza el stock del catálogo y archiva los documentos procesados.
 - Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
@@ -122,11 +122,13 @@ Coloca los archivos pendientes en:
 | `Descuentos/Canjes/`       | Planillas de canje `.xlsx`                                        |
 | `Descuentos/MercadoLibre/` | Documentos Word `.docx`, con una descripción por párrafo o fila |
 
-El catálogo de productos debe estar en `Descuentos/Productos.xlsx`. El gestor busca los productos desde la fila 3: código en la columna A, descripción en la B y stock en la C. Usa la hoja `Stock` cuando existe; si no, usa la hoja activa.
+El catálogo de productos debe estar en `Descuentos/Productos.xlsx`. El gestor detecta las columnas por sus encabezados y usa la hoja `Stock` cuando existe; si no, usa la hoja activa. En el catálogo incorporado, la hoja es `Hoja1`: código en A, producto en C y datos de stock en D (`Stock Inicial`), E (`Descuento`) y F (`Stock Final`), con productos desde la fila 4. Los stocks vacíos se interpretan como cero. Después de un descuento, el saldo final queda en F y se usa como stock actual en la siguiente corrida. También se mantiene compatibilidad con catálogos anteriores que usan código, descripción y stock en A, B y C desde la fila 3.
+
+El archivo agregado estaba guardado como XLS binario pese a tener extensión `.xlsx`; ya se convirtió a XLSX real y se conservó el original como `Productos_original.xls`. No renombres ese respaldo como `Productos.xlsx`.
 
 Para leer un canje, el programa busca los encabezados `PEDIDO` y `CODIGO` en las primeras 14 filas y espera la descripción en la columna siguiente a `CODIGO`. Los PDF deben contener texto extraíble y respetar el formato reconocido por el parser. No se incluye OCR para documentos escaneados como imagen.
 
-En los documentos de Mercado Libre, cada párrafo no vacío o fila de tabla con contenido representa un producto y descuenta **una unidad**. El agente compara la descripción completa con la columna de productos del catálogo, ignorando diferencias de mayúsculas, acentos, puntuación y espacios. No hace búsqueda aproximada: si no encuentra una coincidencia única, no descuenta ese registro y lo informa en consola y en la planilla generada. Si una descripción aparece asociada a más de un código del catálogo, también se considera ambigua y no se descuenta.
+En los documentos de Mercado Libre, solo se procesan las líneas de producto que comienzan con un número seguido de su descripción (por ejemplo, `2 Creatina 300 g UT`); el número inicial indica cuántas unidades descontar. Se ignoran las líneas sin ese formato, como nombres de clientes y notas. La búsqueda normaliza mayúsculas, acentos, puntuación y abreviaturas habituales; si no hay coincidencia exacta, permite una aproximada solo cuando supera un umbral conservador, mantiene el mismo término inicial y no contradice las cantidades del nombre. Si dos productos quedan demasiado parecidos, no descuenta y deja la línea pendiente para revisión.
 
 ## Uso
 
@@ -185,8 +187,8 @@ En una ejecución real, el agente:
 1. Lee los documentos seleccionados de las carpetas de entrada.
 2. Extrae metadatos e ítems y muestra los resultados de las verificaciones.
 3. Consolida las cantidades por código de producto.
-4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, con la fecha y hora de ejecución y las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
-5. Actualiza en `Productos.xlsx` el stock final de productos existentes que tuvieron descuentos, y guarda también `Productos_backup.xlsx`.
+4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, con portada, indicadores, fondos claros, movimientos resaltados, secciones de pedidos y pendientes, panel superior inmovilizado y diseño de impresión apaisado. El detalle conserva las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
+5. Actualiza en `Productos.xlsx` el stock inicial, el descuento y el stock final de los productos afectados, y guarda también `Productos_backup.xlsx`. Los códigos repetidos se descuentan una sola vez y sus filas quedan sincronizadas.
 6. Mueve los remitos PDF a `Descuentos/descontados/Mayoristas/`, los canjes Excel a `Descuentos/descontados/Canjes/` y los documentos Word a `Descuentos/descontados/MercadoLibre/`.
 
 Los descuentos aparecen como valores negativos. Los códigos que no están en el catálogo se incluyen al final del informe, pero no se agregan automáticamente a `Productos.xlsx`. Las descripciones de Mercado Libre que no se pudieron asociar se registran como pendientes de revisión en una sección aparte del informe.
@@ -212,6 +214,7 @@ Agentes/
 │   └── stock_manager.py       # Catálogo Excel e informes de descuentos
 └── Descuentos/
     ├── Productos.xlsx        # Catálogo y stock base
+    ├── Productos_original.xls # Respaldo del archivo binario original (tras la conversión)
     ├── Mayoristas/           # Creada al iniciar; remitos PDF pendientes
     ├── Canjes/               # Creada al iniciar; canjes Excel pendientes
     ├── MercadoLibre/         # Creada al iniciar; pedidos Word pendientes
