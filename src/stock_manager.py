@@ -675,8 +675,23 @@ class StockManager:
             if celda.fill.fill_type == "solid":
                 patron.pattern = xlwt.Pattern.SOLID_PATTERN
                 indice_color = color_index(celda.fill.fgColor)
-                if indice_color is not None:
-                    patron.pattern_fore_colour = indice_color
+                rgb_relleno = rgb_por_indice.get(indice_color)
+                luminancia = (
+                    sum(
+                        peso * canal
+                        for peso, canal in zip(
+                            (0.2126, 0.7152, 0.0722),
+                            rgb_relleno,
+                        )
+                    )
+                    if rgb_relleno
+                    else 255
+                )
+                patron.pattern_fore_colour = (
+                    indice_color
+                    if indice_color is not None and luminancia >= 190
+                    else 9
+                )
             estilo.pattern = patron
             estilo.num_format_str = celda.number_format or "General"
             estilos[celda.style_id] = estilo

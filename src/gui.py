@@ -13,6 +13,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, TextIO
 
+from .gemini_chat import GeminiChatClient
 from .menu import MenuAgente
 from .stock_manager import StockManager
 
@@ -48,6 +49,9 @@ class InterfazGrafica:
         self.estilo.theme_use("clam")
         self._botones_tarea: list[ttk.Button] = []
         self._rutas_informes: list[Path] = []
+        self.gemini_client = GeminiChatClient()
+        self.historial_chat: list[dict[str, str]] = []
+        self.chat_ocupado = False
 
         self._crear_interfaz()
         self._aplicar_tema()
@@ -156,15 +160,52 @@ class InterfazGrafica:
         scroll_informes.pack(side=tk.RIGHT, fill=tk.Y)
         self.lista_informes.configure(yscrollcommand=scroll_informes.set)
 
-        salida = ttk.LabelFrame(contenido, text="Actividad", padding=8)
-        salida.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.paneles = ttk.Notebook(contenido)
+        self.paneles.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        salida = ttk.Frame(self.paneles, padding=8)
+        self.paneles.add(salida, text="Actividad")
         self.consola = tk.Text(salida, wrap=tk.WORD, height=16, state=tk.DISABLED)
         self.consola.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll_salida = ttk.Scrollbar(
-            salida, orient=tk.VERTICAL, command=self.consola.yview
-        )
+        scroll_salida = ttk.Scrollbar(salida, orient=tk.VERTICAL, command=self.consola.yview)
         scroll_salida.pack(side=tk.RIGHT, fill=tk.Y)
         self.consola.configure(yscrollcommand=scroll_salida.set)
+
+        chat = ttk.Frame(self.paneles, padding=8)
+        self.paneles.add(chat, text="Chat con Gemini")
+        ttk.Label(
+            chat,
+            text=(
+                "Tus mensajes se envían a Google Gemini. No se adjuntan "
+                "automáticamente el catálogo ni tus documentos. "
+                "Comandos locales: /estado, /informes y /simular."
+            ),
+            wraplength=500,
+        ).pack(anchor=tk.W, pady=(0, 8))
+        self.etiqueta_estado_chat = ttk.Label(chat, text="Gemini responderá en español.")
+        self.etiqueta_estado_chat.pack(side=tk.BOTTOM, anchor=tk.W, pady=(5, 0))
+
+        entrada_chat = ttk.Frame(chat)
+        entrada_chat.pack(side=tk.BOTTOM, fill=tk.X, pady=(8, 0))
+        self.boton_enviar_chat = ttk.Button(
+            entrada_chat, text="Enviar", command=self._enviar_mensaje_chat
+        )
+        self.boton_enviar_chat.pack(side=tk.RIGHT, anchor=tk.S)
+        self.entrada_chat = tk.Text(entrada_chat, wrap=tk.WORD, height=3)
+        self.entrada_chat.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        self.entrada_chat.bind("<Control-Return>", self._enviar_mensaje_chat_evento)
+
+        conversacion = ttk.Frame(chat)
+        conversacion.pack(fill=tk.BOTH, expand=True)
+        self.transcripcion_chat = tk.Text(
+            conversacion, wrap=tk.WORD, height=12, state=tk.DISABLED
+        )
+        scroll_chat = ttk.Scrollbar(
+            conversacion, orient=tk.VERTICAL, command=self.transcripcion_chat.yview
+        )
+        scroll_chat.pack(side=tk.RIGHT, fill=tk.Y)
+        self.transcripcion_chat.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.transcripcion_chat.configure(yscrollcommand=scroll_chat.set)
 
         self.etiqueta_estado_tarea = ttk.Label(contenedor, text="Listo")
         self.etiqueta_estado_tarea.pack(anchor=tk.W, pady=(8, 0))
@@ -320,6 +361,110 @@ class InterfazGrafica:
         self.consola.see(tk.END)
         self.consola.configure(state=tk.DISABLED)
 
+    def _escribir_chat(self, emisor: str, texto: str) -> None:
+        self.transcripcion_chat.configure(state=tk.NORMAL)
+        self.transcripcion_chat.insert(tk.END, f"{emisor}:\n{texto}\n\n")
+        self.transcripcion_chat.see(tk.END)
+        self.transcripcion_chat.configure(state=tk.DISABLED)
+
+    def _enviar_mensaje_chat_evento(self, _evento: tk.Event) -> str:
+        self._enviar_mensaje_chat()
+        return "break"
+
+    def _enviar_mensaje_chat(self) -> None:
+        mensaje = self.entrada_chat.get("1.0", tk.END).strip()
+        if not mensaje:
+            return
+        if self.chat_ocupado:
+            self.etiqueta_estado_chat.configure(
+                text="Espera a que termine la respuesta actual."
+            )
+            return
+
+        self.entrada_chat.delete("1.0", tk.END)
+        self._escribir_chat("Tú", mensaje)
+        comando = mensaje.casefold()
+        if comando == "/estado":
+            self._escribir_chat("Agente", self._resumen_estado())
+            return
+        if comando == "/informes":
+            self._escribir_chat("Agente", self._resumen_informes())
+            return
+        if comando == "/simular":
+            self._simular_desde_chat()
+            return
+
+        historial = [*self.historial_chat, {"role": "user", "content": mensaje}]
+        self.chat_ocupado = True
+        self.boton_enviar_chat.configure(state=tk.DISABLED)
+        self.etiqueta_estado_chat.configure(text="Consultando Gemini…")
+
+        def consultar() -> None:
+            try:
+                respuesta = self.gemini_client.responder(historial)
+            except Exception as error:
+                self.eventos.put(("chat_error", str(error)))
+            else:
+                self.historial_chat[:] = [
+                    *historial,
+                    {"role": "assistant", "content": respuesta},
+                ][-20:]
+                self.eventos.put(("chat_response", respuesta))
+
+        threading.Thread(target=consultar, daemon=True).start()
+
+    def _resumen_estado(self) -> str:
+        mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
+        archivados = self.menu._obtener_archivados()
+        informes = self.menu._obtener_generados()
+        return (
+            f"Pendientes: {len(mayoristas)} PDF mayoristas, {len(canjes)} Excel "
+            f"de canjes y {len(mercado_libre)} DOCX de Mercado Libre. "
+            f"Archivados: {sum(map(len, archivados))}. "
+            f"Informes disponibles: {len(informes)}."
+        )
+
+    def _resumen_informes(self) -> str:
+        informes = self.menu._obtener_generados()
+        if not informes:
+            return "Todavía no hay informes generados."
+        nombres = [ruta.name for ruta in informes[-20:]]
+        listado = "\n".join(f"• {nombre}" for nombre in nombres)
+        return f"Informes disponibles ({len(informes)}):\n{listado}"
+
+    def _simular_desde_chat(self) -> None:
+        if self.ocupado:
+            self._escribir_chat(
+                "Agente",
+                "No puedo iniciar la simulación mientras otra tarea está en curso.",
+            )
+            return
+        fuentes = (
+            self.incluir_mayoristas.get(),
+            self.incluir_canjes.get(),
+            self.incluir_mercado_libre.get(),
+        )
+        if not any(fuentes):
+            self._escribir_chat(
+                "Agente",
+                "Selecciona al menos una fuente en la ventana principal antes de simular.",
+            )
+            return
+
+        self._escribir_chat(
+            "Agente",
+            "Inicié una simulación de solo lectura. Revisa sus resultados en la pestaña Actividad.",
+        )
+        self._iniciar_tarea(
+            "Simulación solicitada desde el chat",
+            lambda: self.menu.procesar(
+                incluir_mayoristas=fuentes[0],
+                incluir_canjes=fuentes[1],
+                incluir_mercado_libre=fuentes[2],
+                simulacion=True,
+            ),
+        )
+
     def _iniciar_tarea(self, nombre: str, accion: Callable[[], None]) -> None:
         if self.ocupado:
             return
@@ -398,6 +543,18 @@ class InterfazGrafica:
                     for boton in self._botones_tarea:
                         boton.configure(state=tk.NORMAL)
                     self._actualizar_estado()
+                elif tipo == "chat_response":
+                    self._escribir_chat("Gemini", contenido)
+                    self.chat_ocupado = False
+                    self.boton_enviar_chat.configure(state=tk.NORMAL)
+                    self.etiqueta_estado_chat.configure(text="Respuesta recibida.")
+                elif tipo == "chat_error":
+                    self._escribir_chat("Error", contenido)
+                    self.chat_ocupado = False
+                    self.boton_enviar_chat.configure(state=tk.NORMAL)
+                    self.etiqueta_estado_chat.configure(
+                        text="No se pudo completar la consulta."
+                    )
         except queue.Empty:
             pass
         self.root.after(100, self._procesar_eventos)
