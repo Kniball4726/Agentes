@@ -29,7 +29,7 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
 - Incluye ejecución automática, simulación y un menú interactivo de consola para procesar fuentes por separado, consultar el historial y restaurar documentos.
 - Protege con credenciales administrativas el alta de productos en el catálogo.
-- Incluye un chat opcional con Google Gemini para consultas, consulta local del estado e informes y simulaciones de solo lectura.
+- Incluye un chat local por intenciones para consultar el estado y los informes, recibir ayuda y ejecutar simulaciones de solo lectura, sin enviar mensajes a servicios externos.
 
 ## Requisitos e instaladores
 
@@ -94,15 +94,7 @@ _ADMIN_CLAVE=tu_contraseña
 
 Estas credenciales se solicitan al elegir **Agregar producto** en la interfaz gráfica. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. Tras validar las credenciales, se puede insertar un producto debajo de otro código del catálogo, con stock inicial opcional. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
 
-Para habilitar el chat con Gemini, agrega también una clave de Google AI Studio:
-
-```dotenv
-GEMINI_API_KEY=tu_clave_de_gemini
-```
-
-La clave es opcional para el resto de la aplicación. Los mensajes y el historial de conversación se envían a Google Gemini para responder; la aplicación no adjunta automáticamente el catálogo ni los documentos. La API se invoca con `store=false` y el historial se conserva solo en memoria mientras la aplicación está abierta. Los comandos `/estado` y `/informes` se resuelven localmente; `/simular` ejecuta el modo de solo lectura y no guarda informes, modifica el catálogo ni mueve documentos. El chat no puede iniciar un procesamiento real. El archivo `.env` está excluido de Git. No publiques credenciales reales ni las incluyas en capturas o archivos compartidos.
-
-En la pestaña **Chat con Gemini** puedes escribir una consulta libre o usar `/estado`, `/informes` y `/simular`. Los resultados detallados de las simulaciones aparecen en la pestaña **Actividad**.
+El chat de la pestaña **Chat con agente** funciona localmente, sin clave API ni servicios externos. Reconoce consultas sobre estado y archivos pendientes, informes, ayuda y solicitudes de simulación. También acepta los comandos `/estado`, `/informes`, `/ayuda` y `/simular`. La simulación es de solo lectura; no guarda informes, no modifica el catálogo ni mueve documentos. El chat no puede iniciar un procesamiento real. Los resultados de las simulaciones aparecen en la pestaña **Actividad**.
 
 ## Preparar los archivos
 

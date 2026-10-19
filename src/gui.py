@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, TextIO
 
-from .gemini_chat import GeminiChatClient
+from .internal_chat import detectar_intencion
 from .menu import MenuAgente
 from .stock_manager import StockManager
 
@@ -49,10 +49,6 @@ class InterfazGrafica:
         self.estilo.theme_use("clam")
         self._botones_tarea: list[ttk.Button] = []
         self._rutas_informes: list[Path] = []
-        self.gemini_client = GeminiChatClient()
-        self.historial_chat: list[dict[str, str]] = []
-        self.chat_ocupado = False
-
         self._crear_interfaz()
         self._aplicar_tema()
         self._actualizar_estado()
@@ -172,17 +168,18 @@ class InterfazGrafica:
         self.consola.configure(yscrollcommand=scroll_salida.set)
 
         chat = ttk.Frame(self.paneles, padding=8)
-        self.paneles.add(chat, text="Chat con Gemini")
+        self.paneles.add(chat, text="Chat con agente")
         ttk.Label(
             chat,
             text=(
-                "Tus mensajes se envían a Google Gemini. No se adjuntan "
-                "automáticamente el catálogo ni tus documentos. "
-                "Comandos locales: /estado, /informes y /simular."
+                "Chat local: tus mensajes no salen de este equipo. Pregunta "
+                "por el estado, los informes, pide ayuda o solicita una simulación."
             ),
             wraplength=500,
         ).pack(anchor=tk.W, pady=(0, 8))
-        self.etiqueta_estado_chat = ttk.Label(chat, text="Gemini responderá en español.")
+        self.etiqueta_estado_chat = ttk.Label(
+            chat, text="Agente interno listo. Comandos: /estado, /informes, /simular."
+        )
         self.etiqueta_estado_chat.pack(side=tk.BOTTOM, anchor=tk.W, pady=(5, 0))
 
         entrada_chat = ttk.Frame(chat)
@@ -375,43 +372,39 @@ class InterfazGrafica:
         mensaje = self.entrada_chat.get("1.0", tk.END).strip()
         if not mensaje:
             return
-        if self.chat_ocupado:
-            self.etiqueta_estado_chat.configure(
-                text="Espera a que termine la respuesta actual."
-            )
-            return
 
         self.entrada_chat.delete("1.0", tk.END)
         self._escribir_chat("Tú", mensaje)
-        comando = mensaje.casefold()
-        if comando == "/estado":
+        intencion = detectar_intencion(mensaje)
+        if intencion == "estado":
             self._escribir_chat("Agente", self._resumen_estado())
-            return
-        if comando == "/informes":
+        elif intencion == "informes":
             self._escribir_chat("Agente", self._resumen_informes())
-            return
-        if comando == "/simular":
+        elif intencion == "simular":
             self._simular_desde_chat()
-            return
-
-        historial = [*self.historial_chat, {"role": "user", "content": mensaje}]
-        self.chat_ocupado = True
-        self.boton_enviar_chat.configure(state=tk.DISABLED)
-        self.etiqueta_estado_chat.configure(text="Consultando Gemini…")
-
-        def consultar() -> None:
-            try:
-                respuesta = self.gemini_client.responder(historial)
-            except Exception as error:
-                self.eventos.put(("chat_error", str(error)))
-            else:
-                self.historial_chat[:] = [
-                    *historial,
-                    {"role": "assistant", "content": respuesta},
-                ][-20:]
-                self.eventos.put(("chat_response", respuesta))
-
-        threading.Thread(target=consultar, daemon=True).start()
+        elif intencion == "saludo":
+            self._escribir_chat(
+                "Agente",
+                "¡Hola! Puedo consultar el estado y los informes, explicar cómo "
+                "usar la aplicación o iniciar una simulación de solo lectura. "
+                "Escribe /ayuda para ver los comandos.",
+            )
+        elif intencion == "ayuda":
+            self._escribir_chat(
+                "Agente",
+                "Puedo consultar archivos pendientes y archivados (/estado), "
+                "listar informes (/informes) o simular el procesamiento "
+                "seleccionado (/simular). La simulación no guarda cambios ni "
+                "mueve documentos. El chat no puede iniciar un procesamiento real.",
+            )
+        else:
+            self._escribir_chat(
+                "Agente",
+                "Soy el agente local y solo entiendo consultas sobre el estado, "
+                "los informes, ayuda y simulaciones. Prueba /ayuda. No envío "
+                "mensajes a servicios externos.",
+            )
+        self.etiqueta_estado_chat.configure(text="Respuesta del agente interno.")
 
     def _resumen_estado(self) -> str:
         mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
@@ -543,18 +536,6 @@ class InterfazGrafica:
                     for boton in self._botones_tarea:
                         boton.configure(state=tk.NORMAL)
                     self._actualizar_estado()
-                elif tipo == "chat_response":
-                    self._escribir_chat("Gemini", contenido)
-                    self.chat_ocupado = False
-                    self.boton_enviar_chat.configure(state=tk.NORMAL)
-                    self.etiqueta_estado_chat.configure(text="Respuesta recibida.")
-                elif tipo == "chat_error":
-                    self._escribir_chat("Error", contenido)
-                    self.chat_ocupado = False
-                    self.boton_enviar_chat.configure(state=tk.NORMAL)
-                    self.etiqueta_estado_chat.configure(
-                        text="No se pudo completar la consulta."
-                    )
         except queue.Empty:
             pass
         self.root.after(100, self._procesar_eventos)
