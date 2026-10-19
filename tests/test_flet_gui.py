@@ -80,6 +80,7 @@ class FletGuiTests(unittest.TestCase):
         interfaz, _, page = self.crear_interfaz()
 
         self.assertEqual(len(page.controls), 1)
+        self.assertTrue(page.window.maximized)
         self.assertEqual(len(interfaz.controles_tarea), 9)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
@@ -132,6 +133,7 @@ class FletGuiTests(unittest.TestCase):
         self.assertIsNone(interfaz.usuario_actual)
         self.assertEqual(len(page.controls), 1)
         self.assertEqual(len(interfaz.controles_tarea), 0)
+        self.assertTrue(page.window.maximized)
 
     def test_first_run_shows_administrator_setup(self):
         page = FakePage()

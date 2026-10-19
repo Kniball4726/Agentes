@@ -91,8 +91,7 @@ class InterfazFlet:
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.theme = ft.Theme(color_scheme_seed=ROJO)
-        self.page.window.width = 1440
-        self.page.window.height = 900
+        self.page.window.maximized = True
         self.page.window.min_width = 1050
         self.page.window.min_height = 720
 
@@ -330,7 +329,6 @@ class InterfazFlet:
         if self.usuario_actual is None:
             self.mostrar_inicio_sesion()
             return
-        self._configurar_ventana()
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
         self.controles_tarea.clear()
