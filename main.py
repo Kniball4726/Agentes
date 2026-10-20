@@ -1,6 +1,6 @@
 """
 Punto de Entrada Principal del Agente de Stock y Remitos.
-Al ejecutarse sin argumentos abre el Menú Interactivo.
+Al ejecutarse sin argumentos abre la interfaz de Flet.
 También soporta modo automático (--auto o --all) y modo simulación (--dry-run).
 """
 
@@ -20,14 +20,14 @@ def main():
         menu = MenuAgente()
         print("[SIMULACION] Ejecutando simulación...")
         menu.procesar(incluir_mayoristas=True, incluir_canjes=True, simulacion=True)
-    elif "--flet" in sys.argv:
-        from src.flet_gui import iniciar
-
-        iniciar()
-    else:
+    elif "--tkinter" in sys.argv:
         from src.gui import InterfazGrafica
 
         InterfazGrafica().iniciar()
+    else:
+        from src.flet_gui import iniciar
+
+        iniciar()
 
 
 if __name__ == "__main__":

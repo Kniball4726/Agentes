@@ -15,6 +15,7 @@ import flet as ft
 
 from .internal_chat import detectar_intencion
 from .menu import MenuAgente
+from .paths import application_root
 from .stock_manager import StockManager
 from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
 
@@ -30,7 +31,7 @@ class InterfazFlet:
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         self.user_store = UserStore(
-            Path(__file__).resolve().parent.parent / "data" / "usuarios.sqlite3"
+            application_root() / "data" / "usuarios.sqlite3"
         )
         self.usuario_actual: User | None = None
         self.modo_oscuro = True
@@ -87,6 +88,9 @@ class InterfazFlet:
 
     def _configurar_ventana(self) -> None:
         self.page.title = "Agente de control de stock"
+        self.page.window.icon = str(
+            Path(__file__).resolve().parent / "img" / "ultratech.ico"
+        )
         self.page.padding = 0
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK
@@ -260,7 +264,16 @@ class InterfazFlet:
                         border_radius=12,
                         bgcolor=ft.Colors.RED_50 if self.modo_oscuro else ft.Colors.RED_50,
                         alignment=ft.Alignment.CENTER,
-                        content=ft.Icon(ft.Icons.INVENTORY_2, color=ROJO),
+                        content=ft.Image(
+                            src=(
+                                Path(__file__).resolve().parent
+                                / "img"
+                                / "ultratech.png"
+                            ).read_bytes(),
+                            width=42,
+                            height=42,
+                            fit=ft.BoxFit.CONTAIN,
+                        ),
                     ),
                     ft.Column(
                         [

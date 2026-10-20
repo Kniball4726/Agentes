@@ -12,7 +12,9 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+from .paths import application_root
+
+load_dotenv(application_root() / ".env")
 _ADMIN_USUARIO = os.getenv("_ADMIN_USUARIO")
 _ADMIN_CLAVE = os.getenv("_ADMIN_CLAVE")
 
@@ -30,7 +32,7 @@ from .stock_manager import StockManager
 
 class MenuAgente:
     def __init__(self):
-        self.base_dir = Path(__file__).resolve().parent.parent
+        self.base_dir = application_root()
         self.ruta_excel_base = self.base_dir / "Descuentos" / "Productos.xlsx"
         self.carpeta_mayoristas = self.base_dir / "Descuentos" / "Mayoristas"
         self.carpeta_canjes = self.base_dir / "Descuentos" / "Canjes"

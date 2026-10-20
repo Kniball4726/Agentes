@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
@@ -81,11 +82,25 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertEqual(len(page.controls), 1)
         self.assertTrue(page.window.maximized)
+        self.assertEqual(
+            page.window.icon,
+            str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
+        )
         self.assertEqual(len(interfaz.controles_tarea), 9)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
         self.assertEqual(interfaz.estado_tarea.value, "Listo")
+
+    def test_sidebar_displays_the_selected_logo(self):
+        interfaz, _, _ = self.crear_interfaz()
+
+        logo_row = cast(ft.Row, interfaz._sidebar_controls()[0])
+        logo_container = cast(ft.Container, logo_row.controls[0])
+        logo = cast(ft.Image, logo_container.content)
+
+        self.assertIsInstance(logo, ft.Image)
+        self.assertTrue(cast(bytes, logo.src).startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_simulation_calls_agent_in_read_only_mode(self):
         interfaz, menu, _ = self.crear_interfaz()

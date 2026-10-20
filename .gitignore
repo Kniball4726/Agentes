@@ -4,3 +4,6 @@
 Descuentos
 ejecutar.bat
 ttech
+build/
+dist/
+*.spec

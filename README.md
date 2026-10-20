@@ -45,14 +45,23 @@ La instalación de Python incluye `pip`, que se usa para instalar las dependenci
 
 Las dependencias de la aplicación están enumeradas en [`requirements.txt`](requirements.txt). `gspread` y `google-auth` se usan para la integración con Google Sheets; la aplicación opera con el catálogo local de Excel. Tkinter está incluido en las instalaciones estándar de Python para Windows.
 
-La interfaz Flet se inicia desde `ejecutar.bat` o con `python main.py --flet`. Al iniciar por primera vez, crea la cuenta de administrador; en los siguientes inicios solicita usuario y contraseña. La interfaz Tkinter permanece disponible al ejecutar `python main.py` sin argumentos.
+La interfaz Flet se inicia desde `ejecutar.bat` o con `python main.py`. Al iniciar por primera vez, crea la cuenta de administrador; en los siguientes inicios solicita usuario y contraseña. La interfaz Tkinter permanece disponible con `python main.py --tkinter`.
 
 ```powershell
 python -m pip install -r requirements.txt
-python main.py --flet
+python main.py
 ```
 
-Las cuentas se guardan en `data/usuarios.sqlite3`, dentro de la carpeta del proyecto. La primera cuenta se crea como administrador. Desde **Gestionar usuarios**, un administrador puede crear usuarios, cambiar roles y activar o desactivar cuentas. Los roles son:
+Para generar un ejecutable independiente de Windows con el logo de la aplicación, instala también las dependencias de compilación y ejecuta `crear_exe.bat`:
+
+```powershell
+python -m pip install -r requirements-build.txt
+.\crear_exe.bat
+```
+
+El ejecutable queda en `dist\StockAgent.exe`. Para usarlo o distribuirlo, conserva junto a él la carpeta `Descuentos` con `Productos.xlsx`; la compilación copia el catálogo actual automáticamente. Los documentos pendientes, informes y la base local de usuarios se guardan junto al ejecutable; no se incluyen en el paquete. La interfaz Flet usa esa base SQLite para las cuentas y no necesita `.env`. Este archivo solo se requiere para las funciones administrativas de la interfaz Tkinter antigua.
+
+Las cuentas se guardan en `data/usuarios.sqlite3`, bajo la carpeta del proyecto al ejecutarlo desde el código, o junto al ejecutable al abrir la versión empaquetada. La primera cuenta se crea como administrador. Desde **Gestionar usuarios**, un administrador puede crear usuarios, cambiar roles y activar o desactivar cuentas. Los roles son:
 
 - **Administrador**: procesamiento, simulación, informes, restauración de documentos, alta de productos y gestión de usuarios.
 - **Operador**: procesamiento, simulación e informes.
@@ -110,6 +119,8 @@ _ADMIN_CLAVE=tu_contraseña
 
 Estas credenciales solo se solicitan al elegir **Agregar producto** en la interfaz Tkinter antigua. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. En Flet, el administrador autenticado puede agregar productos directamente. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
 
+Flet carga el archivo `.env` si existe, pero no lo necesita para iniciar sesión ni para las funciones de administración de usuarios o de alta de productos. Estas cuentas y permisos se administran desde `data/usuarios.sqlite3`.
+
 El chat de la pestaña **Chat con agente** funciona localmente, sin clave API ni servicios externos. Reconoce consultas sobre estado y archivos pendientes, informes, ayuda y solicitudes de simulación. También acepta los comandos `/estado`, `/informes`, `/ayuda` y `/simular`. La simulación es de solo lectura; no guarda informes, no modifica el catálogo ni mueve documentos. El chat no puede iniciar un procesamiento real. Los resultados de las simulaciones aparecen en la pestaña **Actividad**.
 
 ## Preparar los archivos
@@ -155,7 +166,7 @@ En los documentos de Mercado Libre, solo se procesan las líneas de producto que
 python main.py
 ```
 
-Se abrirá la interfaz de escritorio de Tkinter. Desde allí puedes:
+Se abrirá la interfaz de escritorio de Flet. Desde allí puedes:
 
 - Seleccionar una o más fuentes: remitos mayoristas, canjes o pedidos de Mercado Libre.
 - La interfaz se abre en modo oscuro; puedes cambiar al modo claro desmarcando **Modo oscuro**.
@@ -167,7 +178,7 @@ Se abrirá la interfaz de escritorio de Tkinter. Desde allí puedes:
 - Restaurar documentos archivados a las carpetas de entrada para pruebas.
 - Validar primero las credenciales administrativas de `.env` y, solo si son correctas, abrir el formulario para agregar un producto.
 
-El procesamiento se ejecuta en segundo plano para que la ventana siga respondiendo. También puedes iniciar la interfaz haciendo doble clic en `ejecutar.bat`.
+El procesamiento se ejecuta en segundo plano para que la ventana siga respondiendo. También puedes iniciar la interfaz haciendo doble clic en `ejecutar.bat` o usar `dist\StockAgent.exe` después de compilarlo. Para abrir la interfaz anterior de Tkinter, ejecuta `python main.py --tkinter`.
 
 ### Menú interactivo de consola
 
@@ -217,8 +228,11 @@ Cada archivo de salida incluye la fecha y la hora de ejecución (`HH-MM-SS`) en 
 ```text
 Agentes/
 ├── ejecutar.bat              # Lanzador para Windows
+├── crear_exe.bat             # Compilación del ejecutable para Windows
 ├── main.py                   # Punto de entrada y modos de ejecución
 ├── requirements.txt          # Dependencias de Python
+├── requirements-build.txt    # Dependencias adicionales para crear el .exe
+├── src/paths.py              # Resolución de la carpeta de datos en ejecución
 ├── src/                       # Código fuente y módulos internos
 │   ├── __init__.py
 │   ├── agent.py               # Orquestación de lectura, consolidación y descuentos
@@ -242,7 +256,7 @@ Agentes/
         └── MercadoLibre/
 ```
 
-`main.py`, `ejecutar.bat`, `requirements.txt`, `.env` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
+`main.py`, `ejecutar.bat`, `crear_exe.bat`, los archivos de dependencias, `.env` y `Descuentos/` permanecen en la raíz del proyecto. El resto de los módulos Python se encuentra dentro de `src/`.
 
 ## Notas operativas
 
