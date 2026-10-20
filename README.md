@@ -39,7 +39,7 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 | Python 3.10 o posterior                      | Ejecutar la aplicación                              | [Descargas oficiales de Python para Windows](https://www.python.org/downloads/windows/)                                              |
 | Git for Windows *(opcional)*               | Clonar y actualizar el repositorio desde la terminal | [Descarga oficial de Git](https://git-scm.com/download/win)                                                                          |
 | Visual Studio Code *(opcional)*            | Editar el código y abrir la terminal integrada      | [Descarga oficial de VS Code](https://code.visualstudio.com/Download)                                                                |
-| Microsoft Excel o LibreOffice *(opcional)* | Revisar los archivos `.xls` y `.xlsx`              | [Microsoft 365](https://www.microsoft.com/microsoft-365) · [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) |
+| Microsoft Excel o LibreOffice *(opcional)* | Revisar los archivos `.xls` y `.xlsx`            | [Microsoft 365](https://www.microsoft.com/microsoft-365) · [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) |
 
 La instalación de Python incluye `pip`, que se usa para instalar las dependencias del proyecto. Al instalar Python en Windows, activa la opción **Add python.exe to PATH** si aparece en el instalador.
 
