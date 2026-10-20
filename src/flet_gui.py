@@ -802,7 +802,11 @@ class InterfazFlet:
         except Exception:
             detalle = traceback.format_exc()
             self.actividad.controls.append(
-                ft.Text(f"[ERROR]\n{detalle}", color=ft.Colors.RED_700, size=11)
+                ft.Text(
+                    f"[ERROR]\n{detalle}",
+                    color=ft.Colors.RED_400 if self.modo_oscuro else ft.Colors.RED_700,
+                    size=14,
+                )
             )
             self.estado_tarea.value = f"{nombre} terminó con un error."
             self.notificar("La operación falló. Revisa el panel Actividad.")
@@ -810,7 +814,7 @@ class InterfazFlet:
             texto = salida.getvalue().strip()
             if texto:
                 self.actividad.controls.append(
-                    ft.Text(texto, color=ft.Colors.BLUE_GREY_800, size=11)
+                    ft.Text(texto, color=self.texto, size=14)
                 )
             self.estado_tarea.value = f"{nombre} finalizada."
         finally:

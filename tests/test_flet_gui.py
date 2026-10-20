@@ -110,6 +110,8 @@ class FletGuiTests(unittest.TestCase):
             "Simulación comprobada",
             salida.value,
         )
+        self.assertEqual(salida.color, ft.Colors.WHITE)
+        self.assertEqual(salida.size, 14)
 
     def test_chat_uses_local_status_command(self):
         interfaz, _, _ = self.crear_interfaz()
