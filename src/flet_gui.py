@@ -8,6 +8,7 @@ import subprocess
 import traceback
 import urllib.parse
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -45,6 +46,7 @@ class InterfazFlet:
         self.ocupado = False
         self.informes: list[Path] = []
         self.informe_seleccionado: Path | None = None
+        self.seleccion_fecha_restauracion: ft.Dropdown | None = None
         self.controles_tarea: list[ft.Button] = []
         self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
         self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
@@ -321,7 +323,11 @@ class InterfazFlet:
                     ft.Text("ADMINISTRACIÓN", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
                     self.boton("Gestionar usuarios", ft.Icons.GROUP, self.mostrar_gestion_usuarios),
                     self.boton("Restaurar documentos", ft.Icons.RESTORE, self.confirmar_restaurar),
-                    self.boton("Agregar producto", ft.Icons.ADD_BOX, self.mostrar_acceso_admin),
+                    self.boton(
+                        "Gestionar productos",
+                        ft.Icons.ADD_BOX,
+                        self.mostrar_gestion_productos,
+                    ),
                 ]
             )
         controls.extend(
@@ -798,13 +804,16 @@ class InterfazFlet:
             ),
         )
 
-    async def ejecutar_tarea(self, nombre: str, accion: Callable[[], object]) -> None:
+    async def ejecutar_tarea(
+        self, nombre: str, accion: Callable[[], object]
+    ) -> bool:
         self.ocupado = True
         self.estado_tarea.value = f"En curso: {nombre}"
         self.actualizar_estado_botones()
         self.page.update()
 
         salida = io.StringIO()
+        exito = False
 
         def ejecutar() -> None:
             with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(salida):
@@ -830,10 +839,12 @@ class InterfazFlet:
                     ft.Text(texto, color=self.texto, size=14)
                 )
             self.estado_tarea.value = f"{nombre} finalizada."
+            exito = True
         finally:
             self.ocupado = False
             self.actualizar_estado_botones()
             self.actualizar_estado()
+        return exito
 
     def actualizar_estado_botones(self) -> None:
         for control in self.controles_tarea:
@@ -903,12 +914,39 @@ class InterfazFlet:
     def confirmar_restaurar(self, _evento: ft.Event) -> None:
         if not self.exigir_roles("administrador"):
             return
+        fechas = self.menu.fechas_descuento_disponibles()
+        if not fechas:
+            self.notificar(
+                "No hay documentos archivados asociados a informes de descuento."
+            )
+            return
+        seleccion_fecha = ft.Dropdown(
+            label="Fecha de descuento",
+            value=fechas[0],
+            options=[
+                ft.DropdownOption(
+                    key=fecha,
+                    text=datetime.strptime(fecha, "%Y-%m-%d").strftime("%d/%m/%Y"),
+                )
+                for fecha in fechas
+            ],
+            width=250,
+        )
+        self.seleccion_fecha_restauracion = seleccion_fecha
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Text("Restaurar documentos"),
-            content=ft.Text(
-                "Se copiarán los documentos archivados a sus carpetas pendientes. "
-                "¿Quieres continuar?"
+            content=ft.Column(
+                [
+                    ft.Text(
+                        "Selecciona la fecha de descuento de los documentos "
+                        "que quieres restaurar. Si ya existe un archivo con el "
+                        "mismo nombre en pendientes, será reemplazado."
+                    ),
+                    seleccion_fecha,
+                ],
+                tight=True,
+                spacing=12,
             ),
             actions=[
                 self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
@@ -920,10 +958,17 @@ class InterfazFlet:
     async def restaurar(self, _evento: ft.Event) -> None:
         if not self.exigir_roles("administrador"):
             return
+        if self.seleccion_fecha_restauracion is None:
+            self.notificar("No se cargó la selección de fecha.")
+            return
+        fecha = self.seleccion_fecha_restauracion.value
+        if not fecha:
+            self.notificar("Selecciona una fecha de descuento.")
+            return
         self.page.pop_dialog()
         await self.ejecutar_tarea(
             "Restauración de documentos",
-            self.menu.restaurar_para_pruebas,
+            lambda: self.menu.restaurar_para_pruebas(fecha),
         )
 
     def mostrar_gestion_usuarios(self, _evento: ft.Event | None = None) -> None:
@@ -1059,7 +1104,225 @@ class InterfazFlet:
             return
         self.mostrar_formulario_producto()
 
-    def mostrar_formulario_producto(self) -> None:
+    def mostrar_gestion_productos(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles("administrador"):
+            return
+        stock_manager = StockManager(self.menu.ruta_excel_base)
+        busqueda = ft.TextField(
+            label="Buscar por código o nombre",
+            expand=True,
+        )
+        productos = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
+
+        def actualizar_lista(_evento: ft.Event | None = None) -> None:
+            productos.controls.clear()
+            consulta = (busqueda.value or "").strip().casefold()
+            for producto in stock_manager.listar_productos():
+                codigo = str(producto["code"])
+                nombre = str(producto["name"])
+                activo = bool(producto["active"])
+                if consulta and consulta not in f"{codigo} {nombre}".casefold():
+                    continue
+                productos.controls.append(
+                    ft.Container(
+                        padding=8,
+                        border=ft.Border.all(1, self.borde),
+                        border_radius=8,
+                        content=ft.Row(
+                            [
+                                ft.Text(codigo, width=100, color=self.texto),
+                                ft.Text(nombre, expand=True, color=self.texto),
+                                ft.Text(
+                                    str(producto["stock"]),
+                                    width=70,
+                                    color=self.texto,
+                                ),
+                                ft.Text(
+                                    "Activo" if activo else "Inactivo",
+                                    width=80,
+                                    color=(
+                                        ft.Colors.GREEN_400
+                                        if activo
+                                        else self.secundario
+                                    ),
+                                ),
+                                ft.TextButton(
+                                    "Editar",
+                                    on_click=lambda _e, item=producto: editar(item),
+                                ),
+                                ft.TextButton(
+                                    "Desactivar" if activo else "Reactivar",
+                                    on_click=lambda _e, code=codigo, status=activo: confirmar_estado(
+                                        code, not status
+                                    ),
+                                ),
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    )
+                )
+            if not productos.controls:
+                productos.controls.append(
+                    ft.Text("No se encontraron productos.", color=self.secundario)
+                )
+            self.page.update()
+
+        def editar(producto) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            codigo_original = str(producto["code"])
+            campo_codigo = ft.TextField(label="Código", value=codigo_original)
+            campo_nombre = ft.TextField(
+                label="Nombre", value=str(producto["name"])
+            )
+            campo_stock = ft.TextField(
+                label="Stock",
+                value=str(producto["stock"]),
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+            campos: list[ft.Control] = [
+                campo_codigo,
+                campo_nombre,
+                campo_stock,
+            ]
+
+            async def guardar_edicion(_evento: ft.Event) -> None:
+                if not self.exigir_roles("administrador"):
+                    return
+                codigo = (campo_codigo.value or "").strip()
+                nombre = (campo_nombre.value or "").strip()
+                stock_texto = (campo_stock.value or "").strip()
+                if not codigo or not nombre or not stock_texto:
+                    self.notificar("Completa el código, el nombre y el stock.")
+                    return
+                try:
+                    stock = int(stock_texto)
+                except ValueError:
+                    self.notificar("El stock debe ser un número entero.")
+                    return
+                self.page.pop_dialog()
+                actualizado = await self.ejecutar_tarea(
+                    "Edición de producto",
+                    lambda: stock_manager.actualizar_producto(
+                        codigo_original, codigo, nombre, stock
+                    ),
+                )
+                if actualizado:
+                    actualizar_lista()
+
+            dialogo_edicion = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Editar producto {codigo_original}"),
+                content=ft.Column(campos, tight=True, width=380),
+                actions=[
+                    self.boton_dialogo(
+                        "Cancelar", lambda _e: self.page.pop_dialog()
+                    ),
+                    self.boton_dialogo("Guardar", guardar_edicion),
+                ],
+            )
+            self.page.show_dialog(dialogo_edicion)
+
+        def confirmar_estado(codigo: str, activo: bool) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            accion = "reactivar" if activo else "desactivar"
+
+            async def aceptar_estado(_evento: ft.Event) -> None:
+                await cambiar_estado(codigo, activo)
+
+            dialogo_estado = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Confirmar {accion}"),
+                content=ft.Text(
+                    (
+                        f"El producto {codigo} volverá a incluirse en futuros informes."
+                        if activo
+                        else f"El producto {codigo} se conservará en el catálogo, "
+                        "pero no se incluirá en futuros informes."
+                    )
+                ),
+                actions=[
+                    self.boton_dialogo(
+                        "Cancelar", lambda _e: self.page.pop_dialog()
+                    ),
+                    self.boton_dialogo(
+                        accion.capitalize(),
+                        aceptar_estado,
+                    ),
+                ],
+            )
+            self.page.show_dialog(dialogo_estado)
+
+        async def cambiar_estado(codigo: str, activo: bool) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            self.page.pop_dialog()
+            actualizado = await self.ejecutar_tarea(
+                "Actualización del estado del producto",
+                lambda: stock_manager.cambiar_estado_producto(codigo, activo),
+            )
+            if actualizado:
+                actualizar_lista()
+
+        def agregar(_evento: ft.Event) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            self.mostrar_formulario_producto(actualizar_lista)
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Gestión de productos"),
+            content=ft.Column(
+                [
+                    ft.Text(
+                        "Las bajas son lógicas: el producto se conserva, "
+                        "pero no aparece en futuros informes."
+                    ),
+                    ft.Row(
+                        [
+                            busqueda,
+                            ft.Button(
+                                "Agregar producto",
+                                icon=ft.Icons.ADD,
+                                on_click=agregar,
+                                bgcolor=ROJO,
+                                color=ft.Colors.WHITE,
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Text(
+                                "Código", width=100, weight=ft.FontWeight.BOLD
+                            ),
+                            ft.Text(
+                                "Nombre", expand=True, weight=ft.FontWeight.BOLD
+                            ),
+                            ft.Text("Stock", width=70, weight=ft.FontWeight.BOLD),
+                            ft.Text("Estado", width=80, weight=ft.FontWeight.BOLD),
+                            ft.Container(width=145),
+                        ]
+                    ),
+                    ft.Container(
+                        height=420,
+                        content=productos,
+                    ),
+                ],
+                tight=True,
+                width=900,
+            ),
+            actions=[
+                self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog())
+            ],
+        )
+        busqueda.on_change = actualizar_lista
+        actualizar_lista()
+        self.page.show_dialog(dialogo)
+
+    def mostrar_formulario_producto(
+        self, al_guardar: Callable[[], None] | None = None
+    ) -> None:
         if not self.exigir_roles("administrador"):
             return
         campos = {
@@ -1099,7 +1362,9 @@ class InterfazFlet:
                     raise ValueError(mensaje)
                 print(f"[OK] {mensaje}")
 
-            await self.ejecutar_tarea("Alta de producto", insertar)
+            creado = await self.ejecutar_tarea("Alta de producto", insertar)
+            if creado and al_guardar is not None:
+                al_guardar()
 
         dialogo = ft.AlertDialog(
             modal=True,

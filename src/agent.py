@@ -3,8 +3,7 @@ Módulo del Agente Verificador y Gestor de Stock.
 Orquesta el flujo completo para remitos PDF, canjes Excel y pedidos de Mercado Libre:
 1. Percepción: Extrae remitos PDF, canjes Excel y pedidos DOCX de Mercado Libre.
 2. Razonamiento: Consolida y suma duplicados de productos entre todas las fuentes.
-3. Acción: Descuenta el stock en la planilla (exclusivamente en columna C),
-   agrega los no catalogados al final y emite un informe de auditoría detallado.
+3. Acción: Consulta el catálogo SQLite y emite un informe de auditoría detallado.
 """
 
 from dataclasses import dataclass
@@ -128,8 +127,8 @@ class AgenteRemitosStock:
         else:
             print("   [INFO] No se detectaron codigos repetidos.")
 
-        # 3. ACCIÓN: Generar el informe usando Productos.xlsx como plantilla de solo lectura.
-        print("\n[3. Accion] Generando planilla de descuentos desde la plantilla...")
+        # 3. ACCIÓN: Generar el informe desde SQLite y usar Productos.xlsx como plantilla visual.
+        print("\n[3. Accion] Generando planilla de descuentos desde el catálogo SQLite...")
         reporte_stock = self.stock_manager.aplicar_descuentos(
             items_consolidados=consolidados,
             carpeta_destino=carpeta_descuentos,
@@ -140,9 +139,11 @@ class AgenteRemitosStock:
         nuevos = [d for d in reporte_stock.descuentos_aplicados if d.es_nuevo_agregado]
 
         print(f"   [OK] Planilla generada con {len(reporte_stock.descuentos_aplicados)} productos descontados.")
+        if reporte_stock.archivo_pdf:
+            print(f"   [OK] Informe PDF generado: {reporte_stock.archivo_pdf}")
         if nuevos:
             print(f"   [INFO] Se incluyeron {len(nuevos)} productos no encontrados en el informe.")
-        print("   [INFO] Productos.xlsx se utilizó solo como plantilla; no fue modificado.")
+        print("   [INFO] El catálogo y el orden provienen de SQLite; Productos.xlsx aporta el formato.")
 
         return ReporteMisionAgente(
             total_documentos=total_docs,

@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.parse
 import webbrowser
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from typing import Callable, TextIO
 
 from .internal_chat import detectar_intencion
@@ -630,15 +630,41 @@ class InterfazGrafica:
             )
 
     def _restaurar(self) -> None:
+        fechas = self.menu.fechas_descuento_disponibles()
+        if not fechas:
+            messagebox.showinfo(
+                "Restaurar documentos",
+                "No hay documentos archivados asociados a informes de descuento.",
+                parent=self.root,
+            )
+            return
+        opciones = "\n".join(
+            f"{indice}. {datetime.strptime(fecha, '%Y-%m-%d').strftime('%d/%m/%Y')}"
+            for indice, fecha in enumerate(fechas, start=1)
+        )
+        seleccion = simpledialog.askinteger(
+            "Fecha de descuento",
+            f"Selecciona la fecha cuyos documentos quieres restaurar:\n\n{opciones}",
+            minvalue=1,
+            maxvalue=len(fechas),
+            parent=self.root,
+        )
+        if seleccion is None:
+            return
+        fecha = fechas[seleccion - 1]
         if not messagebox.askyesno(
             "Restaurar documentos",
-            "Se copiarán todos los documentos archivados a sus carpetas "
-            "pendientes. Si existe un archivo con el mismo nombre, puede "
-            "sobrescribirse. ¿Continuar?",
+            f"Se restaurarán los documentos descontados el "
+            f"{datetime.strptime(fecha, '%Y-%m-%d').strftime('%d/%m/%Y')}. "
+            "Si existe un archivo con el mismo nombre, puede sobrescribirse. "
+            "¿Continuar?",
             parent=self.root,
         ):
             return
-        self._iniciar_tarea("Restauración de documentos", self.menu.restaurar_para_pruebas)
+        self._iniciar_tarea(
+            "Restauración de documentos",
+            lambda: self.menu.restaurar_para_pruebas(fecha),
+        )
 
     def _mostrar_formulario_producto(self) -> None:
         usuario_admin = os.getenv("_ADMIN_USUARIO")

@@ -16,6 +16,7 @@ class FakeMenu:
 
     def __init__(self):
         self.procesamientos = []
+        self.restauraciones = []
 
     def _obtener_pendientes(self):
         return [], [], []
@@ -29,6 +30,13 @@ class FakeMenu:
     def procesar(self, **opciones):
         self.procesamientos.append(opciones)
         print("Simulación comprobada")
+
+    def fechas_descuento_disponibles(self):
+        return ["2026-10-22", "2026-10-21"]
+
+    def restaurar_para_pruebas(self, fecha):
+        self.restauraciones.append(fecha)
+        print(f"Restaurando {fecha}")
 
 
 class FakePage:
@@ -168,6 +176,42 @@ class FletGuiTests(unittest.TestCase):
         interfaz.mostrar_gestion_usuarios(None)
 
         self.assertEqual(len(page.dialogos), 1)
+
+    def test_admin_can_open_product_management_dashboard(self):
+        interfaz, _, page = self.crear_interfaz()
+        productos = [
+            {
+                "code": "100",
+                "name": "Producto",
+                "stock": 5,
+                "active": 1,
+            }
+        ]
+        with patch(
+            "src.flet_gui.StockManager",
+            return_value=SimpleNamespace(listar_productos=lambda: productos),
+        ):
+            interfaz.mostrar_gestion_productos()
+
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertEqual(cast(ft.Text, dialogo.title).value, "Gestión de productos")
+        lista = cast(ft.Container, dialogo.content.controls[3])
+        self.assertEqual(len(cast(ft.Column, lista.content).controls), 1)
+
+    def test_admin_restores_documents_for_selected_discount_date(self):
+        interfaz, menu, page = self.crear_interfaz()
+
+        interfaz.confirmar_restaurar(None)
+
+        dialogo = page.dialogos[-1]
+        selector = cast(ft.Dropdown, dialogo.content.controls[1])
+        self.assertEqual(selector.value, "2026-10-22")
+        selector.value = "2026-10-21"
+        asyncio.run(interfaz.restaurar(None))
+
+        self.assertEqual(menu.restauraciones, ["2026-10-21"])
+        self.assertEqual(page.dialogos, [])
 
     def test_consultation_role_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="consulta")

@@ -8,9 +8,13 @@ import sys
 import shutil
 import getpass
 import os
+import re
+import unicodedata
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
+import openpyxl
+import xlrd
 
 from .paths import application_root
 
@@ -63,8 +67,156 @@ class MenuAgente:
         informes = [
             *self.carpeta_descuentos.glob("*.xls"),
             *self.carpeta_descuentos.glob("*.xlsx"),
+            *self.carpeta_descuentos.glob("*.pdf"),
         ]
         return sorted(informes, key=lambda ruta: ruta.stat().st_mtime_ns)
+
+    @staticmethod
+    def _leer_referencias_informe(ruta_informe: Path) -> list[tuple[str, str]]:
+        if ruta_informe.suffix.lower() == ".xls":
+            hoja = xlrd.open_workbook(str(ruta_informe)).sheet_by_index(0)
+            filas = [
+                [hoja.cell_value(fila, columna) for columna in range(hoja.ncols)]
+                for fila in range(hoja.nrows)
+            ]
+        else:
+            libro = openpyxl.load_workbook(
+                ruta_informe, read_only=True, data_only=True
+            )
+            hoja = libro.active
+            filas = [list(fila) for fila in hoja.iter_rows(values_only=True)]
+            libro.close()
+
+        tipos = {
+            "REMITO MAYORISTA": "Mayoristas",
+            "CANJE": "Canjes",
+            "MERCADO LIBRE": "MercadoLibre",
+        }
+        encabezados_posibles = (
+            "PEDIDOS CON PRODUCTOS DESCONTADOS",
+            "PEDIDOS DESCONTADOS EN ESTA PLANILLA",
+            "PEDIDOS PROCESADOS",
+        )
+        for indice, fila in enumerate(filas[:-1]):
+            encabezado_pedidos = any(
+                any(
+                    encabezado in str(valor or "").strip().upper()
+                    for encabezado in encabezados_posibles
+                )
+                for valor in fila
+            )
+            encabezados_columnas = [
+                str(valor or "").strip().upper()
+                for valor in filas[indice + 1]
+            ]
+            if (
+                not encabezado_pedidos
+                or not encabezados_columnas
+                or not encabezados_columnas[0].startswith("TIPO")
+                or len(encabezados_columnas) < 3
+                or "CLIENTE" not in encabezados_columnas[1]
+                or "REMITO" not in encabezados_columnas[2]
+            ):
+                continue
+
+            referencias = []
+            for fila_documento in filas[indice + 2:]:
+                tipo = (
+                    str(fila_documento[0] or "").strip().upper()
+                    if fila_documento
+                    else ""
+                )
+                categoria = tipos.get(tipo)
+                if categoria is None:
+                    break
+                if len(fila_documento) > 2 and fila_documento[2] is not None:
+                    referencias.append(
+                        (categoria, str(fila_documento[2]).strip())
+                    )
+            return referencias
+        return []
+
+    @staticmethod
+    def _normalizar_referencia(texto: str) -> str:
+        normalizado = unicodedata.normalize("NFKD", texto)
+        return "".join(
+            caracter
+            for caracter in normalizado
+            if not unicodedata.combining(caracter)
+        ).strip().casefold()
+
+    def _buscar_archivado(
+        self, categoria: str, referencia: str, archivados: list[Path]
+    ) -> Path | None:
+        if categoria == "Mayoristas":
+            numeros = re.findall(r"\d+", referencia)
+            if not numeros:
+                return None
+            numero_remito = numeros[-1].lstrip("0")
+            for archivo in archivados:
+                coincidencia = re.match(r"(\d+)", archivo.stem)
+                if coincidencia and coincidencia.group(1).lstrip("0") == numero_remito:
+                    return archivo
+            return None
+
+        prefijo = "CANJE-" if categoria == "Canjes" else "ML-"
+        referencia_archivo = referencia
+        if referencia_archivo.upper().startswith(prefijo):
+            referencia_archivo = referencia_archivo[len(prefijo):]
+        referencia_normalizada = self._normalizar_referencia(referencia_archivo)
+        for archivo in archivados:
+            nombre_normalizado = self._normalizar_referencia(archivo.stem)
+            if (
+                nombre_normalizado == referencia_normalizada
+                or nombre_normalizado.startswith(referencia_normalizada)
+            ):
+                return archivo
+        return None
+
+    def _restauraciones_por_fecha(self) -> dict[str, list[tuple[Path, Path]]]:
+        carpetas_pendientes = {
+            "Mayoristas": self.carpeta_mayoristas,
+            "Canjes": self.carpeta_canjes,
+            "MercadoLibre": self.carpeta_mercado_libre,
+        }
+        archivados = self._obtener_archivados()
+        archivados_por_categoria = {
+            "Mayoristas": archivados[0],
+            "Canjes": archivados[1],
+            "MercadoLibre": archivados[2],
+        }
+        restauraciones: dict[str, dict[Path, Path]] = {}
+        for informe in self._obtener_generados():
+            if informe.suffix.lower() not in {".xls", ".xlsx"}:
+                continue
+            coincidencia = re.match(
+                r"^Descuento(\d{2}-\d{2}-\d{4})_", informe.stem
+            )
+            if not coincidencia:
+                continue
+            try:
+                fecha = datetime.strptime(
+                    coincidencia.group(1), "%d-%m-%Y"
+                ).date().isoformat()
+            except ValueError:
+                continue
+            for categoria, referencia in self._leer_referencias_informe(informe):
+                archivado = self._buscar_archivado(
+                    categoria,
+                    referencia,
+                    archivados_por_categoria[categoria],
+                )
+                if archivado is not None:
+                    destino = carpetas_pendientes[categoria] / archivado.name
+                    restauraciones.setdefault(fecha, {})[archivado] = destino
+        return {
+            fecha: list(archivos.items())
+            for fecha, archivos in restauraciones.items()
+        }
+
+    def fechas_descuento_disponibles(self) -> list[str]:
+        """Fechas con documentos archivados asociados a un informe de descuento."""
+        return sorted(self._restauraciones_por_fecha(), reverse=True)
 
     def mostrar_banner(self):
         may, can, ml = self._obtener_pendientes()
@@ -80,7 +232,7 @@ class MenuAgente:
         print(f"  * Pendientes Canjes (Excel)   : {len(can)} archivo(s)")
         print(f"  * Pendientes Mercado Libre    : {len(ml)} archivo(s)")
         print(f"  * Archivos en Descontados     : {len(arch_m) + len(arch_c) + len(arch_ml)} archivo(s)")
-        print(f"  * Planillas Descuento Creadas : {len(generados)} archivo(s)")
+        print(f"  * Informes de Descuento       : {len(generados)} archivo(s)")
         print("-" * 72)
 
     def procesar(
@@ -202,28 +354,50 @@ class MenuAgente:
                 print(f"  {i}. {arch.name:<30} | {tam_kb:>6.1f} KB | Creado: {mtime}")
         print("=" * 70)
 
-    def restaurar_para_pruebas(self):
-        arch_m, arch_c, arch_ml = self._obtener_archivados()
-        total = len(arch_m) + len(arch_c) + len(arch_ml)
+    def restaurar_para_pruebas(self, fecha_descuento: str | None = None) -> int:
+        restauraciones = self._restauraciones_por_fecha()
+        fechas = sorted(restauraciones, reverse=True)
+        if not fechas:
+            print(
+                "\n[INFO] No hay documentos archivados asociados a informes "
+                "de descuento."
+            )
+            return 0
 
-        if total == 0:
-            print("\n[INFO] No hay archivos en 'descontados' para restaurar.")
-            return
+        if fecha_descuento is None:
+            print("\nFechas de descuento disponibles:")
+            for indice, fecha in enumerate(fechas, start=1):
+                print(f"  [{indice}] {datetime.fromisoformat(fecha).strftime('%d/%m/%Y')}")
+            seleccion = input("Seleccione el número de la fecha a restaurar: ").strip()
+            if not seleccion.isdigit() or not 1 <= int(seleccion) <= len(fechas):
+                print("\n[ERROR] Selección de fecha no válida.")
+                return 0
+            fecha_descuento = fechas[int(seleccion) - 1]
+        else:
+            try:
+                fecha_descuento = datetime.strptime(
+                    fecha_descuento, "%Y-%m-%d"
+                ).date().isoformat()
+            except ValueError:
+                print("\n[ERROR] La fecha de descuento no tiene un formato válido.")
+                return 0
 
-        print(f"\nRestaurando {total} archivos desde 'descontados' hacia sus carpetas pendientes...")
-        for f in arch_m:
-            shutil.copy2(str(f), str(self.carpeta_mayoristas / f.name))
-            print(f"  * Copiado a Mayoristas: {f.name}")
+        archivos = restauraciones.get(fecha_descuento)
+        if not archivos:
+            print("\n[ERROR] No hay documentos archivados para esa fecha.")
+            return 0
 
-        for f in arch_c:
-            shutil.copy2(str(f), str(self.carpeta_canjes / f.name))
-            print(f"  * Copiado a Canjes: {f.name}")
+        fecha_legible = datetime.fromisoformat(fecha_descuento).strftime("%d/%m/%Y")
+        print(
+            f"\nRestaurando {len(archivos)} documentos descontados el "
+            f"{fecha_legible}..."
+        )
+        for origen, destino in archivos:
+            shutil.copy2(str(origen), str(destino))
+            print(f"  * Copiado: {origen.name} -> {destino.parent.name}")
 
-        for f in arch_ml:
-            shutil.copy2(str(f), str(self.carpeta_mercado_libre / f.name))
-            print(f"  * Copiado a Mercado Libre: {f.name}")
-
-        print("[OK] Archivos restaurados exitosamente para nuevas pruebas.")
+        print("[OK] Documentos restaurados exitosamente.")
+        return len(archivos)
 
     def _autenticar(self) -> bool:
         """

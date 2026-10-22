@@ -78,6 +78,15 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
         if 'SUPPLEMENTS SRL' in clean or 'Operacion:' in clean:
             recording = True
             continue
+
+        if recording and re.fullmatch(
+            r'P.gina\s+\d+\s+de\s+\d+', clean, re.IGNORECASE
+        ):
+            if buffer:
+                items_raw.append(buffer)
+                buffer = ""
+            recording = False
+            continue
         
         # La tabla termina antes de las observaciones o datos de logística
         if recording and any(stop_word in clean for stop_word in ['OBSERVACIONES', 'DATOS LOGISTICA', 'Forma de Pago:']):

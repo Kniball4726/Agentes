@@ -1,16 +1,35 @@
-"""Lee el catálogo como plantilla y genera informes de descuentos en Excel."""
+"""Carga el catálogo desde SQLite y genera informes Excel con la plantilla visual."""
 
 from dataclasses import dataclass
 from copy import copy
 from datetime import datetime
+import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import shutil
+import sqlite3
+import tempfile
+from typing import Dict, List, Literal, Optional, Tuple
 import unicodedata
 import openpyxl
+from openpyxl.utils import get_column_letter
 import xlwt
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+from xml.sax.saxutils import escape
 from .consolidator import ItemConsolidado
+from .product_store import ProductStore
 from .remito_parser import ResultadoRemito, normalizar_codigo
+
+
+_ALINEACIONES_PDF: dict[str, Literal[0, 1, 2]] = {
+    "left": 0,
+    "center": 1,
+    "right": 2,
+}
 
 
 @dataclass
@@ -28,12 +47,29 @@ class RegistroDescuento:
 class ReporteStock:
     descuentos_aplicados: List[RegistroDescuento]
     archivo_guardado: str
+    archivo_pdf: Optional[str] = None
 
 
 class StockManager:
-    def __init__(self, ruta_excel_base: str | Path, nombre_hoja: str = "Stock"):
+    def __init__(
+        self,
+        ruta_excel_base: str | Path,
+        nombre_hoja: str = "Stock",
+        ruta_base_datos: str | Path | None = None,
+    ):
         self.ruta_excel_base = Path(ruta_excel_base)
         self.nombre_hoja = nombre_hoja
+        carpeta_base_datos = (
+            self.ruta_excel_base.parent.parent
+            if self.ruta_excel_base.parent.name.casefold() == "descuentos"
+            else self.ruta_excel_base.parent
+        )
+        self.ruta_base_datos = (
+            Path(ruta_base_datos)
+            if ruta_base_datos is not None
+            else carpeta_base_datos / "data" / "productos.sqlite3"
+        )
+        self.product_store = ProductStore(self.ruta_base_datos)
         # Lista ordenada de productos únicos: (fila_original, codigo, nombre, stock_actual)
         self.productos_base: List[Tuple[int, str, str, int]] = []
         self.filas_catalogo: List[Tuple[int, str, str, int]] = []
@@ -112,19 +148,24 @@ class StockManager:
         return 0
 
     def _cargar_catalogo(self):
-        """Carga productos desde el esquema detectado o desde el formato tradicional A:C."""
+        """Importa el catálogo inicial y después carga productos desde SQLite."""
         if not self.ruta_excel_base.exists():
             raise FileNotFoundError(f"No se encontró el archivo de stock en: {self.ruta_excel_base}")
-
-        wb = openpyxl.load_workbook(str(self.ruta_excel_base))
-        sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
-        self._detectar_esquema(sheet)
 
         self.productos_base.clear()
         self.filas_catalogo.clear()
         self.catalogo.clear()
         self._filas_por_codigo.clear()
 
+        wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
+        sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+        if sheet is None:
+            wb.close()
+            raise ValueError(
+                f"No se encontró una hoja activa en {self.ruta_excel_base}."
+            )
+        self._detectar_esquema(sheet)
+        productos_plantilla = []
         for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
             val_cod = sheet.cell(row=fila, column=self._col_codigo).value
             if val_cod is not None and str(val_cod).strip() != "":
@@ -132,15 +173,185 @@ class StockManager:
                 nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
                 if not nombre:
                     continue
-
-                self._filas_por_codigo.setdefault(cod, []).append(fila)
                 stock_num = self._leer_stock(sheet, fila)
-                self.filas_catalogo.append((fila, cod, nombre, stock_num))
-                if cod in self.catalogo:
-                    continue
+                productos_plantilla.append((fila, cod, nombre, stock_num))
+        wb.close()
 
-                self.productos_base.append((fila, cod, nombre, stock_num))
-                self.catalogo[cod] = (fila, nombre, stock_num)
+        self.product_store.import_template_once(productos_plantilla)
+        primera_aparicion: set[str] = set()
+        for indice, producto in enumerate(self.product_store.list_catalog_rows()):
+            cod = str(producto["code"])
+            nombre = str(producto["display_name"])
+            nombre_catalogo = str(producto["name"])
+            stock_num = int(producto["stock"])
+            fila_plantilla = producto["template_row"]
+            fila_estilo = int(fila_plantilla) if fila_plantilla is not None else 0
+            fila_catalogo = indice + self._fila_inicio_datos
+
+            self.filas_catalogo.append(
+                (fila_estilo, cod, nombre, stock_num)
+            )
+            self._filas_por_codigo.setdefault(cod, []).append(fila_catalogo)
+            if cod in primera_aparicion:
+                continue
+
+            primera_aparicion.add(cod)
+            self.productos_base.append(
+                (fila_catalogo, cod, nombre_catalogo, stock_num)
+            )
+            self.catalogo[cod] = (fila_catalogo, nombre_catalogo, stock_num)
+
+    def listar_productos(self) -> List[sqlite3.Row]:
+        """Devuelve todos los productos para la pantalla de administración."""
+        return self.product_store.list_products()
+
+    def actualizar_producto(
+        self, codigo_actual: str, codigo_nuevo: str, nombre: str, stock: int
+    ) -> None:
+        codigo_actual = normalizar_codigo(codigo_actual)
+        codigo_nuevo = normalizar_codigo(codigo_nuevo)
+        nombre = nombre.strip()
+        if not codigo_actual or not codigo_nuevo or not nombre:
+            raise ValueError("El código y el nombre del producto son obligatorios.")
+
+        contenido_original = self.ruta_excel_base.read_bytes()
+        respaldo = self.ruta_excel_base.with_name(
+            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
+        )
+        plantilla_actualizada = False
+
+        def sincronizar_plantilla() -> list[int]:
+            nonlocal plantilla_actualizada
+            shutil.copy2(self.ruta_excel_base, respaldo)
+            libro = openpyxl.load_workbook(str(self.ruta_excel_base))
+            try:
+                hoja = (
+                    libro[self.nombre_hoja]
+                    if self.nombre_hoja in libro.sheetnames
+                    else libro.active
+                )
+                if hoja is None:
+                    raise ValueError("No se encontró una hoja para actualizar.")
+
+                filas_producto = [
+                    fila
+                    for fila in range(self._fila_inicio_datos, hoja.max_row + 1)
+                    if normalizar_codigo(
+                        str(hoja.cell(fila, self._col_codigo).value or "")
+                    )
+                    == codigo_actual
+                ]
+                filas_catalogo_producto = [
+                    producto
+                    for producto in self.product_store.list_catalog_rows(
+                        include_inactive=True
+                    )
+                    if str(producto["code"]) == codigo_actual
+                ]
+                if not filas_producto or len(filas_producto) != len(
+                    filas_catalogo_producto
+                ):
+                    raise RuntimeError(
+                        f"Las filas de '{codigo_actual}' en Productos.xlsx "
+                        "no coinciden con el catálogo."
+                    )
+
+                codigo_excel = (
+                    int(codigo_nuevo)
+                    if codigo_nuevo.isdigit()
+                    else codigo_nuevo
+                )
+                for fila in filas_producto:
+                    hoja.cell(fila, self._col_codigo, codigo_excel)
+                    hoja.cell(fila, self._col_nombre, nombre)
+                    if self._col_stock_final is not None:
+                        columna_inicial = self._col_stock_inicial or self._col_stock
+                        hoja.cell(fila, columna_inicial, stock)
+                        if self._col_descuento is not None:
+                            hoja.cell(fila, self._col_descuento, None)
+                        hoja.cell(fila, self._col_stock_final, stock)
+                    else:
+                        hoja.cell(fila, self._col_stock, stock)
+
+                with tempfile.NamedTemporaryFile(
+                    suffix=self.ruta_excel_base.suffix,
+                    dir=self.ruta_excel_base.parent,
+                    delete=False,
+                ) as temporal:
+                    ruta_temporal = Path(temporal.name)
+                try:
+                    libro.save(ruta_temporal)
+                finally:
+                    libro.close()
+                try:
+                    os.replace(ruta_temporal, self.ruta_excel_base)
+                    plantilla_actualizada = True
+                finally:
+                    if ruta_temporal.exists():
+                        ruta_temporal.unlink()
+
+            except Exception:
+                libro.close()
+                raise
+
+            libro_verificacion = openpyxl.load_workbook(
+                str(self.ruta_excel_base), data_only=True, read_only=True
+            )
+            try:
+                hoja_verificacion = (
+                    libro_verificacion[self.nombre_hoja]
+                    if self.nombre_hoja in libro_verificacion.sheetnames
+                    else libro_verificacion.active
+                )
+                if hoja_verificacion is None:
+                    raise ValueError(
+                        "No se pudo verificar la plantilla después de la edición."
+                    )
+                return [
+                    fila
+                    for fila in range(
+                        self._fila_inicio_datos,
+                        hoja_verificacion.max_row + 1,
+                    )
+                    if hoja_verificacion.cell(
+                        fila, self._col_codigo
+                    ).value is not None
+                    and str(
+                        hoja_verificacion.cell(fila, self._col_nombre).value or ""
+                    ).strip()
+                ]
+            finally:
+                libro_verificacion.close()
+
+        def restaurar_plantilla() -> None:
+            if not plantilla_actualizada:
+                return
+            with tempfile.NamedTemporaryFile(
+                suffix=self.ruta_excel_base.suffix,
+                dir=self.ruta_excel_base.parent,
+                delete=False,
+            ) as temporal:
+                temporal.write(contenido_original)
+                ruta_temporal = Path(temporal.name)
+            try:
+                os.replace(ruta_temporal, self.ruta_excel_base)
+            finally:
+                if ruta_temporal.exists():
+                    ruta_temporal.unlink()
+
+        self.product_store.update_product(
+            old_code=codigo_actual,
+            new_code=codigo_nuevo,
+            name=nombre,
+            stock=stock,
+            synchronize_template=sincronizar_plantilla,
+            restore_template=restaurar_plantilla,
+        )
+        self._cargar_catalogo()
+
+    def cambiar_estado_producto(self, codigo: str, activo: bool) -> None:
+        self.product_store.set_product_active(normalizar_codigo(codigo), activo)
+        self._cargar_catalogo()
 
     def agregar_producto_en_posicion(
         self,
@@ -150,8 +361,8 @@ class StockManager:
         stock_inicial: Optional[int] = None
     ) -> Tuple[bool, str, Optional[int]]:
         """
-        Inserta un nuevo producto en la planilla Productos.xlsx inmediatamente
-        debajo del producto indicado por codigo_arriba.
+        Inserta un nuevo producto en SQLite inmediatamente debajo del código
+        indicado por codigo_arriba, conservando el orden del catálogo.
 
         Retorna: (exito: bool, mensaje: str, fila_insertada: Optional[int])
         """
@@ -167,34 +378,176 @@ class StockManager:
         if cod_arriba_norm not in self.catalogo:
             return False, f"No se encontro el producto de referencia con codigo '{cod_arriba_norm}' en el catalogo.", None
 
-        fila_arriba, nombre_arriba, _ = self.catalogo[cod_arriba_norm]
-        fila_nueva = fila_arriba + 1
+        contenido_original = self.ruta_excel_base.read_bytes()
+        respaldo = self.ruta_excel_base.with_name(
+            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
+        )
+        plantilla_actualizada = False
 
-        # 3. Cargar el libro base y realizar la inserción
-        wb = openpyxl.load_workbook(str(self.ruta_excel_base))
-        sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+        def sincronizar_plantilla(orden: int) -> list[int]:
+            nonlocal plantilla_actualizada
+            shutil.copy2(self.ruta_excel_base, respaldo)
+            libro = openpyxl.load_workbook(str(self.ruta_excel_base))
+            try:
+                hoja = (
+                    libro[self.nombre_hoja]
+                    if self.nombre_hoja in libro.sheetnames
+                    else libro.active
+                )
+                if hoja is None:
+                    raise ValueError("No se encontró una hoja para actualizar.")
+                fila_referencia = next(
+                    (
+                        fila
+                        for fila in range(
+                            self._fila_inicio_datos, hoja.max_row + 1
+                        )
+                        if normalizar_codigo(
+                            str(
+                                hoja.cell(fila, self._col_codigo).value or ""
+                            )
+                        )
+                        == cod_arriba_norm
+                    ),
+                    None,
+                )
+                if fila_referencia is None:
+                    raise ValueError(
+                        f"No se encontró el código de referencia "
+                        f"'{cod_arriba_norm}' en Productos.xlsx."
+                    )
 
-        # Insertar fila debajo de fila_arriba
-        sheet.insert_rows(fila_nueva, 1)
+                fila_nueva = fila_referencia + 1
+                hoja.insert_rows(fila_nueva, 1)
+                for columna in range(1, hoja.max_column + 1):
+                    origen = hoja.cell(fila_referencia, columna)
+                    destino = hoja.cell(fila_nueva, columna)
+                    if origen.has_style:
+                        destino._style = copy(origen._style)
+                    if origen.number_format:
+                        destino.number_format = origen.number_format
+                hoja.row_dimensions[fila_nueva].height = (
+                    hoja.row_dimensions[fila_referencia].height
+                )
 
-        # Configurar valores y formato
-        cod_val = int(cod_nuevo_norm) if cod_nuevo_norm.isdigit() else cod_nuevo_norm
-        sheet.cell(row=fila_nueva, column=self._col_codigo, value=cod_val)
-        sheet.cell(row=fila_nueva, column=self._col_nombre, value=str(nombre_nuevo).strip())
+                codigo_excel = (
+                    int(cod_nuevo_norm)
+                    if cod_nuevo_norm.isdigit()
+                    else cod_nuevo_norm
+                )
+                hoja.cell(fila_nueva, self._col_codigo, codigo_excel)
+                hoja.cell(
+                    fila_nueva,
+                    self._col_nombre,
+                    str(nombre_nuevo).strip(),
+                )
+                stock = stock_inicial or 0
+                if self._col_stock_final is not None:
+                    columna_inicial = self._col_stock_inicial or self._col_stock
+                    hoja.cell(fila_nueva, columna_inicial, stock)
+                    if self._col_descuento is not None:
+                        hoja.cell(fila_nueva, self._col_descuento, None)
+                    hoja.cell(fila_nueva, self._col_stock_final, stock)
+                else:
+                    hoja.cell(fila_nueva, self._col_stock, stock)
 
-        celda_stock = sheet.cell(row=fila_nueva, column=self._col_stock)
-        celda_stock.value = int(stock_inicial) if stock_inicial is not None else None
-        celda_stock.number_format = '0'
+                with tempfile.NamedTemporaryFile(
+                    suffix=self.ruta_excel_base.suffix,
+                    dir=self.ruta_excel_base.parent,
+                    delete=False,
+                ) as temporal:
+                    ruta_temporal = Path(temporal.name)
+                try:
+                    libro.save(ruta_temporal)
+                finally:
+                    libro.close()
+                try:
+                    os.replace(ruta_temporal, self.ruta_excel_base)
+                    plantilla_actualizada = True
+                finally:
+                    if ruta_temporal.exists():
+                        ruta_temporal.unlink()
+            except Exception:
+                libro.close()
+                raise
 
-        # 4. Guardar archivo base y actualizar respaldo
-        wb.save(str(self.ruta_excel_base))
-        backup_path = self.ruta_excel_base.with_name(f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}")
-        wb.save(str(backup_path))
+            libro_verificacion = openpyxl.load_workbook(
+                str(self.ruta_excel_base), data_only=True, read_only=True
+            )
+            try:
+                hoja_verificacion = (
+                    libro_verificacion[self.nombre_hoja]
+                    if self.nombre_hoja in libro_verificacion.sheetnames
+                    else libro_verificacion.active
+                )
+                if hoja_verificacion is None:
+                    raise ValueError(
+                        "No se pudo verificar la plantilla después del alta."
+                    )
+                filas_plantilla = [
+                    fila
+                    for fila in range(
+                        self._fila_inicio_datos,
+                        hoja_verificacion.max_row + 1,
+                    )
+                    if hoja_verificacion.cell(
+                        fila, self._col_codigo
+                    ).value is not None
+                    and str(
+                        hoja_verificacion.cell(
+                            fila, self._col_nombre
+                        ).value
+                        or ""
+                    ).strip()
+                ]
+                if (
+                    orden >= len(filas_plantilla)
+                    or filas_plantilla[orden] != fila_nueva
+                ):
+                    raise RuntimeError(
+                        "El orden insertado en Productos.xlsx no coincide "
+                        "con el orden de SQLite."
+                    )
+                return filas_plantilla
+            finally:
+                libro_verificacion.close()
 
-        # 5. Recargar catálogo en memoria
+        def restaurar_plantilla() -> None:
+            if not plantilla_actualizada:
+                return
+            with tempfile.NamedTemporaryFile(
+                suffix=self.ruta_excel_base.suffix,
+                dir=self.ruta_excel_base.parent,
+                delete=False,
+            ) as temporal:
+                temporal.write(contenido_original)
+                ruta_temporal = Path(temporal.name)
+            try:
+                os.replace(ruta_temporal, self.ruta_excel_base)
+            finally:
+                if ruta_temporal.exists():
+                    ruta_temporal.unlink()
+
+        try:
+            orden, nombre_arriba = self.product_store.add_product_after(
+                code=cod_nuevo_norm,
+                name=str(nombre_nuevo).strip(),
+                reference_code=cod_arriba_norm,
+                stock=stock_inicial or 0,
+                synchronize_template=sincronizar_plantilla,
+                restore_template=restaurar_plantilla,
+            )
+        except (ValueError, OSError, RuntimeError) as error:
+            return False, str(error), None
+
         self._cargar_catalogo()
 
-        return True, f"Producto '{nombre_nuevo}' [{cod_nuevo_norm}] insertado con exito en la fila {fila_nueva} (debajo de [{cod_arriba_norm}] {nombre_arriba}).", fila_nueva
+        fila_nueva = orden + self._fila_inicio_datos
+        return True, (
+            f"Producto '{nombre_nuevo}' [{cod_nuevo_norm}] insertado en la "
+            f"posición {fila_nueva} del catálogo (debajo de [{cod_arriba_norm}] "
+            f"{nombre_arriba})."
+        ), fila_nueva
 
     def aplicar_descuentos(
         self,
@@ -209,6 +562,7 @@ class StockManager:
         fecha_hora_str = fecha_generacion.strftime("%d-%m-%Y_%H-%M-%S")
         nombre_archivo = f"Descuento{fecha_hora_str}.xls"
         ruta_guardado = carpeta_destino / nombre_archivo
+        ruta_pdf = ruta_guardado.with_suffix(".pdf")
 
         descuentos: List[RegistroDescuento] = []
         for _, cod, nombre, stock_ant in self.productos_base:
@@ -249,7 +603,7 @@ class StockManager:
                 cod,
                 ", ".join(item.remitos_origen),
                 item.descripcion,
-                "Código no encontrado en Productos.xlsx",
+                "Código no encontrado en el catálogo SQLite",
             )
             for cod, item in items_consolidados.items()
             if cod not in self.catalogo
@@ -267,6 +621,7 @@ class StockManager:
 
         wb_salida, ws_salida = self._crear_informe_desde_plantilla(
             len(descuentos),
+            sum(descuento.cantidad_descontada for descuento in descuentos),
             fecha_generacion.strftime("%d/%m/%y"),
             filas_productos,
             pedidos_descontados,
@@ -276,18 +631,23 @@ class StockManager:
         if guardar_archivo:
             carpeta_destino.mkdir(parents=True, exist_ok=True)
             self._guardar_informe_xls(wb_salida, ruta_guardado)
+            self._guardar_informe_pdf(wb_salida, ruta_pdf)
             archivo_final = str(ruta_guardado)
+            archivo_pdf = str(ruta_pdf)
         else:
             archivo_final = f"[SIMULACIÓN - NO GUARDADO] {ruta_guardado.name}"
+            archivo_pdf = None
 
         return ReporteStock(
             descuentos_aplicados=descuentos,
-            archivo_guardado=archivo_final
+            archivo_guardado=archivo_final,
+            archivo_pdf=archivo_pdf,
         )
 
     def _crear_informe_desde_plantilla(
         self,
         cantidad_descuentos: int,
+        unidades_descontadas: int,
         fecha_generacion: str,
         filas_productos: List[Tuple[int, str, Optional[int], str, Optional[int]]],
         pedidos_descontados: List[ResultadoRemito],
@@ -303,10 +663,16 @@ class StockManager:
         hoja_salida = libro_salida.active
         hoja_salida.title = hoja_plantilla.title[:31]
         hoja_salida.sheet_view.showGridLines = hoja_plantilla.sheet_view.showGridLines
-        hoja_salida.page_setup.orientation = hoja_plantilla.page_setup.orientation
+        hoja_salida.page_setup.orientation = "portrait"
+        hoja_salida.page_setup.paperSize = hoja_salida.PAPERSIZE_A4
         hoja_salida.page_setup.fitToWidth = 1
         hoja_salida.page_setup.fitToHeight = 0
         hoja_salida.sheet_properties.pageSetUpPr.fitToPage = True
+        margen_cm = 2 / 2.54
+        hoja_salida.page_margins.left = margen_cm
+        hoja_salida.page_margins.right = margen_cm
+        hoja_salida.page_margins.top = margen_cm
+        hoja_salida.page_margins.bottom = margen_cm
         hoja_salida.freeze_panes = "A4"
 
         def copiar_estilo(origen, destino) -> None:
@@ -319,13 +685,15 @@ class StockManager:
             destino.number_format = origen.number_format
             destino.protection = copy(origen.protection)
 
-        def aplicar_encabezado(fila: int, color_fondo: str) -> None:
-            for columna in range(1, 5):
+        def aplicar_encabezado(
+            fila: int, color_fondo: str, cantidad_columnas: int = 4
+        ) -> None:
+            for columna in range(1, cantidad_columnas + 1):
                 celda = hoja_salida.cell(fila, columna)
                 celda.fill = PatternFill("solid", fgColor=color_fondo)
                 celda.font = Font(
                     name="Arial",
-                    size=12 if fila == 1 else 10,
+                    size=9,
                     bold=True,
                     color="17365D",
                 )
@@ -345,7 +713,6 @@ class StockManager:
             celda.alignment = Alignment(vertical="center", wrap_text=True)
         columnas_plantilla = (
             self._col_codigo,
-            2,
             self._col_nombre,
             self._col_descuento or self._col_stock,
         )
@@ -356,7 +723,7 @@ class StockManager:
             letra_plantilla = openpyxl.utils.get_column_letter(columna_plantilla)
             dimension = hoja_plantilla.column_dimensions[letra_plantilla]
             ancho = dimension.width
-            if columna_salida == 4:
+            if columna_salida == 3:
                 ancho = max(ancho or 0, 22)
             hoja_salida.column_dimensions[letra_salida].width = ancho
             hoja_salida.column_dimensions[letra_salida].hidden = dimension.hidden
@@ -372,30 +739,31 @@ class StockManager:
                 destino = hoja_salida.cell(fila, columna_salida)
                 copiar_estilo(origen, destino)
 
-        for encabezado in ("A1:A2", "B1:B2", "C1:C2", "D1:D2"):
+        for encabezado in ("A1:A2", "B1:B2", "C1:D2"):
             hoja_salida.merge_cells(encabezado)
         hoja_salida["A1"] = (
             hoja_plantilla.cell(1, self._col_codigo).value or "CODIGO"
         )
         hoja_salida["B1"] = (
-            hoja_plantilla.cell(1, 2).value or "UNIDADES"
-        )
-        hoja_salida["C1"] = (
             hoja_plantilla.cell(1, self._col_nombre).value or "PRODUCTOS"
         )
-        hoja_salida["D1"] = f"FECHA: {fecha_generacion}"
-        aplicar_encabezado(1, "D9EAF7")
+        hoja_salida["C1"] = f"FECHA: {fecha_generacion}"
+        aplicar_encabezado(1, "D9EAF7", 3)
+        hoja_salida["D1"].fill = PatternFill("solid", fgColor="D9EAF7")
+        hoja_salida["D1"].border = Border(
+            bottom=Side(style="thin", color="D9E2F3")
+        )
 
         encabezado_productos = hoja_plantilla.cell(3, self._col_nombre).value
-        hoja_salida["C3"] = (
+        hoja_salida["B3"] = (
             encabezado_productos
             if self._col_stock_inicial is not None and encabezado_productos
             else "PRODUCTOS"
         )
-        hoja_salida["D3"] = "DESCUENTO"
-        hoja_salida["D3"].number_format = "@"
-        aplicar_encabezado(3, "D9EAF7")
-        hoja_salida.row_dimensions[1].height = 25
+        hoja_salida["C3"] = "DESCUENTO"
+        hoja_salida["C3"].number_format = "@"
+        aplicar_encabezado(3, "D9EAF7", 3)
+        hoja_salida.row_dimensions[1].height = 48
         hoja_salida.row_dimensions[2].height = 10
         hoja_salida.row_dimensions[3].height = 24
 
@@ -407,7 +775,7 @@ class StockManager:
             fila_original, codigo, unidades, nombre, descuento = producto
             fila_estilo = (
                 fila_original
-                if fila_original <= hoja_plantilla.max_row
+                if 0 < fila_original <= hoja_plantilla.max_row
                 else fila_estilo_producto
             )
             hoja_salida.row_dimensions[fila_salida].height = (
@@ -421,18 +789,28 @@ class StockManager:
                 copiar_estilo(origen, destino)
             codigo_salida = int(codigo) if codigo.isdigit() else codigo
             hoja_salida.cell(fila_salida, 1, codigo_salida)
-            hoja_salida.cell(fila_salida, 2, unidades)
-            hoja_salida.cell(fila_salida, 3, nombre)
+            hoja_salida.cell(fila_salida, 2, nombre)
             if descuento is not None:
-                hoja_salida.cell(fila_salida, 4, descuento).number_format = "0"
+                hoja_salida.cell(fila_salida, 3, descuento).number_format = "0"
 
         fila_actual = 4 + len(filas_productos)
-        hoja_salida.cell(fila_actual, 3, "TOTAL PRODUCTOS DESCONTADOS:")
-        hoja_salida.cell(fila_actual, 4, cantidad_descuentos)
+        hoja_salida.cell(fila_actual, 2, "TOTAL CÓDIGOS DE PRODUCTO DESCONTADOS:")
+        hoja_salida.cell(fila_actual, 3, cantidad_descuentos)
         self._copiar_estilo_fila(
-            hoja_plantilla, hoja_salida, 3, fila_actual, 4
+            hoja_plantilla, hoja_salida, 3, fila_actual, 3
         )
-        for columna in range(1, 5):
+        for columna in range(1, 4):
+            celda = hoja_salida.cell(fila_actual, columna)
+            celda.fill = PatternFill("solid", fgColor="D9EAF7")
+            celda.font = Font(name="Arial", size=10, bold=True, color="17365D")
+            celda.alignment = Alignment(vertical="center", wrap_text=True)
+        fila_actual += 1
+        hoja_salida.cell(fila_actual, 2, "TOTAL UNIDADES DESCONTADAS:")
+        hoja_salida.cell(fila_actual, 3, unidades_descontadas)
+        self._copiar_estilo_fila(
+            hoja_plantilla, hoja_salida, 3, fila_actual, 3
+        )
+        for columna in range(1, 4):
             celda = hoja_salida.cell(fila_actual, columna)
             celda.fill = PatternFill("solid", fgColor="D9EAF7")
             celda.font = Font(name="Arial", size=10, bold=True, color="17365D")
@@ -545,9 +923,9 @@ class StockManager:
         )
         columnas_plantilla = (
             self._col_codigo,
-            2,
             self._col_nombre,
             self._col_descuento or self._col_stock,
+            self._col_stock_final or self._col_stock,
         )
         for columna in range(1, cantidad_columnas + 1):
             origen = hoja_plantilla.cell(
@@ -765,9 +1143,14 @@ class StockManager:
             if dimension.height is not None:
                 hoja_xls.row(fila - 1).height = int(dimension.height * 20)
 
-        hoja_xls.portrait = False
-        hoja_xls.fit_width_to_pages = 1
-        hoja_xls.fit_height_to_pages = 0
+        hoja_xls.portrait = hoja_origen.page_setup.orientation == "portrait"
+        hoja_xls.paper_size_code = int(hoja_origen.page_setup.paperSize)
+        hoja_xls.left_margin = hoja_origen.page_margins.left
+        hoja_xls.right_margin = hoja_origen.page_margins.right
+        hoja_xls.top_margin = hoja_origen.page_margins.top
+        hoja_xls.bottom_margin = hoja_origen.page_margins.bottom
+        hoja_xls.fit_width_to_pages = hoja_origen.page_setup.fitToWidth
+        hoja_xls.fit_height_to_pages = hoja_origen.page_setup.fitToHeight
         if hoja_origen.freeze_panes:
             fila_inmovilizada, columna_inmovilizada = (
                 openpyxl.utils.cell.coordinate_to_tuple(hoja_origen.freeze_panes)
@@ -781,57 +1164,178 @@ class StockManager:
 
         libro_xls.save(str(ruta))
 
+    @staticmethod
+    def _guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
+        hoja = libro.active
+        if hoja is None:
+            raise ValueError("El informe no contiene una hoja activa para exportar.")
+        cantidad_columnas = max(hoja.max_column, 1)
+        anchos_excel = [
+            max(
+                hoja.column_dimensions[
+                    get_column_letter(columna)
+                ].width
+                or 10,
+                8,
+            )
+            for columna in range(1, cantidad_columnas + 1)
+        ]
+        ancho_disponible = A4[0] - 4 * cm - 6 * cantidad_columnas
+        suma_anchos = sum(anchos_excel)
+        anchos_columnas = [
+            ancho_disponible * ancho / suma_anchos for ancho in anchos_excel
+        ]
+
+        def color_excel(color) -> colors.Color | None:
+            if color is None or color.type != "rgb" or not color.rgb:
+                return None
+            codigo = str(color.rgb)[-6:]
+            try:
+                return colors.HexColor(f"#{codigo}")
+            except ValueError:
+                return None
+
+        contenido = []
+        estilos = []
+        for numero_fila in range(1, hoja.max_row + 1):
+            fila_contenido = []
+            for numero_columna in range(1, cantidad_columnas + 1):
+                celda = hoja.cell(numero_fila, numero_columna)
+                valor = "" if celda.value is None else escape(str(celda.value))
+                valor = valor.replace("\n", "<br/>")
+                alineacion = _ALINEACIONES_PDF.get(
+                    celda.alignment.horizontal or "", 0
+                )
+                tamano_fuente = min(max(celda.font.sz or 9, 7), 12)
+                estilo_parrafo = ParagraphStyle(
+                    name=f"celda_{numero_fila}_{numero_columna}",
+                    fontName=(
+                        "Helvetica-Bold"
+                        if celda.font.bold
+                        else "Helvetica-Oblique"
+                        if celda.font.italic
+                        else "Helvetica"
+                    ),
+                    fontSize=tamano_fuente,
+                    leading=tamano_fuente * 1.2,
+                    alignment=alineacion,
+                    textColor=color_excel(celda.font.color)
+                    or colors.HexColor("#263445"),
+                    splitLongWords=1,
+                )
+                fila_contenido.append(Paragraph(valor, estilo_parrafo))
+                if celda.fill.fill_type == "solid":
+                    color_fondo = color_excel(celda.fill.fgColor)
+                    if color_fondo is not None:
+                        estilos.append(
+                            ("BACKGROUND", (numero_columna - 1, numero_fila - 1),
+                             (numero_columna - 1, numero_fila - 1), color_fondo)
+                        )
+                if celda.alignment.vertical == "top":
+                    alineacion_vertical = "TOP"
+                elif celda.alignment.vertical == "center":
+                    alineacion_vertical = "MIDDLE"
+                else:
+                    alineacion_vertical = "BOTTOM"
+                estilos.append(
+                    (
+                        "VALIGN",
+                        (numero_columna - 1, numero_fila - 1),
+                        (numero_columna - 1, numero_fila - 1),
+                        alineacion_vertical,
+                    )
+                )
+                for lado in ("left", "right", "top", "bottom"):
+                    borde = getattr(celda.border, lado)
+                    if borde is None or borde.style is None:
+                        continue
+                    ancho_borde = {
+                        "hair": 0.25,
+                        "thin": 0.5,
+                        "medium": 1,
+                        "thick": 1.5,
+                    }.get(borde.style, 0.5)
+                    color_borde = color_excel(borde.color) or colors.HexColor(
+                        "#D6DEE8"
+                    )
+                    estilos.append(
+                        (
+                            {
+                                "left": "LINEBEFORE",
+                                "right": "LINEAFTER",
+                                "top": "LINEABOVE",
+                                "bottom": "LINEBELOW",
+                            }[lado],
+                            (numero_columna - 1, numero_fila - 1),
+                            (numero_columna - 1, numero_fila - 1),
+                            ancho_borde,
+                            color_borde,
+                        )
+                    )
+            contenido.append(fila_contenido)
+
+        for rango in hoja.merged_cells.ranges:
+            min_col, min_row, max_col, max_row = rango.bounds
+            if (
+                max_col <= cantidad_columnas
+                and max_row <= hoja.max_row
+                and (min_col, min_row) != (max_col, max_row)
+            ):
+                estilos.append(
+                    (
+                        "SPAN",
+                        (min_col - 1, min_row - 1),
+                        (max_col - 1, max_row - 1),
+                    )
+                )
+
+        def pie_pagina(canvas, documento) -> None:
+            canvas.saveState()
+            canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(colors.HexColor("#5B6573"))
+            canvas.drawRightString(
+                A4[0] - 2 * cm,
+                2 * cm - 8,
+                f"Página {documento.page}",
+            )
+            canvas.restoreState()
+
+        tabla = Table(
+            contenido,
+            colWidths=anchos_columnas,
+            repeatRows=min(3, len(contenido)),
+            hAlign="LEFT",
+            splitByRow=1,
+        )
+        estilos.extend(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+        tabla.setStyle(TableStyle(estilos))
+        documento = SimpleDocTemplate(
+            str(ruta),
+            pagesize=A4,
+            leftMargin=2 * cm,
+            rightMargin=2 * cm,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm,
+            title=ruta.stem,
+        )
+        documento.build([tabla], onFirstPage=pie_pagina, onLaterPages=pie_pagina)
+
     def actualizar_stock_base(self, descuentos: List[RegistroDescuento]) -> int:
-        """
-        Guarda los saldos en las columnas de stock detectadas. En el esquema con
-        Stock Inicial/Descuento/Stock Final, el Stock Final será el saldo de partida
-        de la siguiente corrida.
-
-        Si hay códigos repetidos, sincroniza todas sus filas sin duplicar el descuento.
-
-        Retorna la cantidad de filas actualizadas.
-        """
+        """Persiste en SQLite los saldos nuevos de cada producto descontado."""
         existentes = [d for d in descuentos if not d.es_nuevo_agregado]
         if not existentes:
             return 0
 
-        actualizaciones = {d.codigo: d for d in existentes}
-
-        wb = openpyxl.load_workbook(str(self.ruta_excel_base))
-        sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
-
-        actualizados = 0
-        for cod, filas in self._filas_por_codigo.items():
-            descuento = actualizaciones.get(cod)
-            if descuento is None:
-                continue
-            for fila in filas:
-                if self._col_stock_final is not None:
-                    celda_inicial = sheet.cell(row=fila, column=self._col_stock_inicial or self._col_stock)
-                    celda_inicial.value = descuento.stock_anterior
-                    celda_inicial.number_format = '0'
-                    if self._col_descuento is not None:
-                        celda_descuento = sheet.cell(row=fila, column=self._col_descuento)
-                        celda_descuento.value = -descuento.cantidad_descontada
-                        celda_descuento.number_format = '0'
-                    celda_final = sheet.cell(row=fila, column=self._col_stock_final)
-                    celda_final.value = descuento.stock_nuevo
-                    celda_final.number_format = '0'
-                else:
-                    celda = sheet.cell(row=fila, column=self._col_stock)
-                    celda.value = descuento.stock_nuevo
-                    celda.number_format = '0'
-                actualizados += 1
-
-        wb.save(str(self.ruta_excel_base))
-
-        # Actualizar también el backup automático
-        backup_path = self.ruta_excel_base.with_name(
-            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
-        )
-        wb.save(str(backup_path))
-
-        # Recargar catálogo en memoria con los valores nuevos
+        actualizaciones = {
+            descuento.codigo: descuento.stock_nuevo for descuento in existentes
+        }
+        filas_actualizadas = self.product_store.update_stocks(actualizaciones)
         self._cargar_catalogo()
-
-        return actualizados
+        return filas_actualizadas

@@ -1,6 +1,6 @@
 # Agente de control de stock y remitos
 
-Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solicitudes de canje en Excel y pedidos de Mercado Libre en Word. Consolida las cantidades por código, genera informes de descuentos y utiliza un catálogo local de Excel como referencia y plantilla.
+Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solicitudes de canje en Excel y pedidos de Mercado Libre en Word. Consolida las cantidades por código, genera informes de descuentos y utiliza SQLite como catálogo, manteniendo Excel como plantilla visual y formato de salida.
 
 > **Plataforma principal:** Windows · **Lenguaje:** Python 3.10+
 
@@ -22,15 +22,16 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Lee remitos mayoristas en PDF, planillas de canje `.xlsx` y pedidos de Mercado Libre en `.docx`.
 - Consolida productos repetidos por código y suma sus cantidades.
 - Compara el total de unidades extraídas de un remito con el total declarado y muestra discrepancias.
-- Genera un informe de descuentos con el formato visual de `Productos.xlsx`, el contador de productos descontados y sin columnas de stock inicial/final.
+- Genera el informe de descuentos en Excel `.xls` y PDF A4 vertical, con márgenes de 2 cm, el formato visual de `Productos.xlsx`, el contador de productos descontados y sin columnas de stock inicial/final.
 - Señala en el informe los productos que no están en el catálogo.
 - Compara las líneas numeradas de Mercado Libre con el catálogo y descuenta la cantidad indicada solo si encuentra una coincidencia clara.
-- Usa `Productos.xlsx` como plantilla de solo lectura al generar descuentos y archiva los documentos procesados.
+- Migra el catálogo de `Productos.xlsx` una sola vez a `data/productos.sqlite3`; genera los informes desde SQLite, conserva el orden y las filas repetidas de la plantilla, y sincroniza las altas y ediciones desde el panel administrador con una copia de seguridad previa.
 - Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
 - En Flet, protege el acceso con cuentas locales en SQLite y roles de administrador, operador y consulta.
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
 - Incluye ejecución automática, simulación y un menú interactivo de consola para procesar fuentes por separado, consultar el historial y restaurar documentos.
-- Protege con credenciales administrativas el alta de productos en el catálogo.
+- Permite restaurar documentos archivados seleccionando la fecha de descuento registrada en los informes.
+- Incluye un CRUD de productos para administradores: consulta y búsqueda, altas, edición de código/nombre/stock, y bajas lógicas con opción de reactivación. Las ediciones se sincronizan con SQLite y `Productos.xlsx`; los productos inactivos se conservan, pero se omiten en futuros informes.
 - Incluye un chat local por intenciones para consultar el estado y los informes, recibir ayuda y ejecutar simulaciones de solo lectura, sin enviar mensajes a servicios externos.
 
 ## Requisitos e instaladores
@@ -60,9 +61,9 @@ python -m pip install -r requirements-build.txt
 .\crear_exe.bat
 ```
 
-El ejecutable queda en `dist\StockAgent.exe`. Para usarlo o distribuirlo, conserva junto a él la carpeta `Descuentos` con `Productos.xlsx`; la compilación copia el catálogo actual automáticamente. Los documentos pendientes, informes y la base local de usuarios se guardan junto al ejecutable; no se incluyen en el paquete. La interfaz Flet usa esa base SQLite para las cuentas y no necesita `.env`. Este archivo solo se requiere para las funciones administrativas de la interfaz Tkinter antigua.
+El ejecutable queda en `dist\StockAgent.exe`. Para usarlo o distribuirlo, conserva junto a él la carpeta `Descuentos` con `Productos.xlsx`; la compilación copia el catálogo actual automáticamente. Los documentos pendientes, informes y las bases SQLite de usuarios y productos se guardan junto al ejecutable; no se incluyen en el paquete y se crean en el primer inicio. La interfaz Flet usa la base de usuarios para las cuentas y no necesita `.env`. Este archivo solo se requiere para las funciones administrativas de la interfaz Tkinter antigua.
 
-Las cuentas se guardan en `data/usuarios.sqlite3`, bajo la carpeta del proyecto al ejecutarlo desde el código, o junto al ejecutable al abrir la versión empaquetada. La primera cuenta se crea como administrador. Desde **Gestionar usuarios**, un administrador puede crear usuarios, cambiar roles y activar o desactivar cuentas. Los roles son:
+Las cuentas se guardan en `data/usuarios.sqlite3` y el catálogo en `data/productos.sqlite3`, bajo la carpeta del proyecto al ejecutarlo desde el código, o junto al ejecutable al abrir la versión empaquetada. La primera cuenta se crea como administrador. Desde **Gestionar usuarios**, un administrador puede crear usuarios, cambiar roles y activar o desactivar cuentas. Los roles son:
 
 - **Administrador**: procesamiento, simulación, informes, restauración de documentos, alta de productos y gestión de usuarios.
 - **Operador**: procesamiento, simulación e informes.
@@ -118,7 +119,7 @@ _ADMIN_USUARIO=tu_usuario
 _ADMIN_CLAVE=tu_contraseña
 ```
 
-Estas credenciales solo se solicitan al elegir **Agregar producto** en la interfaz Tkinter antigua. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. En Flet, el administrador autenticado puede agregar productos directamente. Al guardar el alta, también se actualiza `Productos_backup.xlsx`.
+Estas credenciales solo se solicitan al elegir **Agregar producto** en la interfaz Tkinter antigua. Se permiten hasta tres intentos; si falta cualquiera de las dos variables, la opción deniega el acceso y muestra un aviso. En Flet, el administrador autenticado puede gestionar el catálogo desde **Gestionar productos**.
 
 Flet carga el archivo `.env` si existe, pero no lo necesita para iniciar sesión ni para las funciones de administración de usuarios o de alta de productos. Estas cuentas y permisos se administran desde `data/usuarios.sqlite3`.
 
@@ -141,7 +142,7 @@ Descuentos/
     └── MercadoLibre/
 ```
 
-Solo `Productos.xlsx` es obligatorio crear manualmente. Al iniciar, el agente crea las carpetas de entrada y de informes si no existen; las subcarpetas de `descontados/` se crean al procesar documentos. El archivo `Productos_backup.xlsx` se genera al guardar cambios en el catálogo. No se reemplaza un catálogo existente ni se inicializa desde plantillas.
+Solo `Productos.xlsx` es obligatorio crear manualmente. En la primera ejecución, el agente importa sus productos a `data/productos.sqlite3`; la importación conserva la posición y las filas repetidas por código. Desde entonces SQLite es la fuente de datos. Las altas nuevas se guardan también en el libro, debajo del producto de referencia. Antes de cada alta o edición se crea `Productos_backup.xlsx`. Las bajas administrativas son lógicas: conservan el producto en el catálogo y la plantilla, pero lo excluyen de futuros informes hasta reactivarlo. Al iniciar, el agente crea las carpetas de entrada y de informes si no existen; las subcarpetas de `descontados/` se crean al procesar documentos.
 
 Coloca los archivos pendientes en:
 
@@ -151,7 +152,7 @@ Coloca los archivos pendientes en:
 | `Descuentos/Canjes/`       | Planillas de canje `.xlsx`                                        |
 | `Descuentos/MercadoLibre/` | Documentos Word `.docx`, con una descripción por párrafo o fila |
 
-El catálogo de productos debe estar en `Descuentos/Productos.xlsx`. El gestor detecta las columnas por sus encabezados y usa la hoja `Stock` cuando existe; si no, usa la hoja activa. En el catálogo incorporado, la hoja es `Hoja1`: código en A, producto en C y datos de stock en D (`Stock Inicial`), E (`Descuento`) y F (`Stock Final`), con productos desde la fila 4. Los stocks vacíos se interpretan como cero. Durante el procesamiento de descuentos, `Productos.xlsx` se usa solo como plantilla y no se modifica. También se mantiene compatibilidad con catálogos anteriores que usan código, descripción y stock en A, B y C desde la fila 3.
+El catálogo de importación y plantilla visual debe estar en `Descuentos/Productos.xlsx`. El gestor detecta las columnas por sus encabezados y usa la hoja `Stock` cuando existe; si no, usa la hoja activa. En la plantilla incorporada, la hoja `Hoja1` ya no incluye la columna «UNIDADES»: el código está en A, el producto en B y los datos de stock en C (`Stock Inicial`), D (`Descuento`) y E (`Stock Final`), con productos desde la fila 4. Los stocks vacíos se interpretan como cero. La primera carga crea `data/productos.sqlite3`; las ejecuciones siguientes leen los productos y su orden desde SQLite. Las altas nuevas se insertan debajo del producto de referencia; las ediciones sincronizan el código, el nombre y el stock entre la base y todas las filas correspondientes en la plantilla, siempre con una copia previa en `Productos_backup.xlsx`. También se mantiene compatibilidad con catálogos anteriores que usan código, descripción y stock en A, B y C desde la fila 3.
 
 El archivo agregado estaba guardado como XLS binario pese a tener extensión `.xlsx`; ya se convirtió a XLSX real y se conservó el original como `Productos_original.xls`. No renombres ese respaldo como `Productos.xlsx`.
 
@@ -172,12 +173,12 @@ Se abrirá la interfaz de escritorio de Flet. Desde allí puedes:
 - Seleccionar una o más fuentes: remitos mayoristas, canjes o pedidos de Mercado Libre.
 - La interfaz se abre en modo oscuro; puedes cambiar al modo claro desmarcando **Modo oscuro**.
 - Simular el procesamiento sin guardar cambios ni mover documentos.
-- Ejecutar el procesamiento real, que genera el informe y archiva los documentos después de pedir confirmación; no modifica `Productos.xlsx`.
+- Ejecutar el procesamiento real, que genera el informe y archiva los documentos después de pedir confirmación; no modifica `Productos.xlsx`. La gestión de productos del administrador agrega y edita el catálogo tanto en SQLite como en la plantilla.
 - Consultar el estado de los archivos y abrir informes generados.
 - Ver los informes del más reciente al más antiguo; selecciona uno y pulsa **Abrir informe seleccionado** o haz doble clic para abrirlo.
 - Abrir un borrador de correo o WhatsApp Web para compartir el informe seleccionado (el más reciente se usa si no cambias la selección). El archivo se deja seleccionado en el Explorador para adjuntarlo; debes confirmar el envío en la aplicación.
 - Restaurar documentos archivados a las carpetas de entrada para pruebas.
-- Validar primero las credenciales administrativas de `.env` y, solo si son correctas, abrir el formulario para agregar un producto.
+- Abrir **Gestionar productos** para buscar, agregar, editar, desactivar y reactivar productos.
 
 El procesamiento se ejecuta en segundo plano para que la ventana siga respondiendo. También puedes iniciar la interfaz haciendo doble clic en `ejecutar.bat` o usar `dist\StockAgent.exe` después de compilarlo. Para abrir la interfaz anterior de Tkinter, ejecuta `python main.py --tkinter`.
 
@@ -216,8 +217,8 @@ En una ejecución real, el agente:
 1. Lee los documentos seleccionados de las carpetas de entrada.
 2. Extrae metadatos e ítems y muestra los resultados de las verificaciones.
 3. Consolida las cantidades por código de producto.
-4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, usando el diseño visual de la plantilla. Conserva todos los productos del catálogo, muestra el descuento únicamente cuando corresponde y coloca la fecha de generación (`DD/MM/AA`) en el encabezado. El total de productos descontados aparece al terminar el detalle del catálogo, sin mostrar stock inicial ni final.
-5. Mantiene `Productos.xlsx` sin cambios. Al final del informe incluye los pedidos con productos descontados y los productos o descripciones que no se descontaron por falta de coincidencia. Los códigos repetidos se descuentan una sola vez y los productos no encontrados no se agregan al catálogo.
+4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003 y un informe PDF con el mismo nombre base. El PDF usa hoja A4 vertical con márgenes de 2 cm. Ambos informes usan el diseño visual de la plantilla y el orden del catálogo SQLite; conservan todos los productos y las filas repetidas por código, muestran únicamente código, producto y descuento en el detalle, y colocan la fecha de generación (`DD/MM/AA`) en el encabezado. Los totales de códigos y unidades descontados aparecen al terminar el detalle del catálogo, sin mostrar stock inicial ni final.
+5. Mantiene `Productos.xlsx` sin cambios. Al final del informe incluye los pedidos con productos descontados y los productos o descripciones que no se descontaron por falta de coincidencia. Los códigos repetidos se descuentan una sola vez y los productos no encontrados no se agregan al catálogo SQLite.
 6. Mueve los remitos PDF a `Descuentos/descontados/Mayoristas/`, los canjes Excel a `Descuentos/descontados/Canjes/` y los documentos Word a `Descuentos/descontados/MercadoLibre/`.
 
 Los descuentos aparecen como valores negativos. Los códigos que no están en el catálogo se incluyen al final del informe, pero no se agregan a `Productos.xlsx`. Las descripciones de Mercado Libre que no se pudieron asociar se registran como pendientes de revisión durante el procesamiento.
@@ -228,7 +229,7 @@ Cada archivo de salida incluye la fecha y la hora de ejecución (`HH-MM-SS`) en 
 
 ### Arquitectura y flujo
 
-`main.py` selecciona la interfaz o el modo de ejecución. `src/menu.py` prepara las carpetas y coordina la ejecución; `src/agent.py` orquesta la lectura de documentos, consolidación y creación del informe. Los parsers convierten cada formato de entrada en objetos `ResultadoRemito` con sus ítems, y `src/consolidator.py` agrupa las cantidades por código. `src/stock_manager.py` lee el catálogo y genera el informe; durante el procesamiento lo utiliza como plantilla de solo lectura.
+`main.py` selecciona la interfaz o el modo de ejecución. `src/menu.py` prepara las carpetas y coordina la ejecución; `src/agent.py` orquesta la lectura de documentos, consolidación y creación del informe. Los parsers convierten cada formato de entrada en objetos `ResultadoRemito` con sus ítems, y `src/consolidator.py` agrupa las cantidades por código. `src/product_store.py` importa una vez el catálogo desde Excel y administra los productos en SQLite; `src/stock_manager.py` consulta esa base y conserva la plantilla Excel para estilos y formato de informe.
 
 La interfaz principal está implementada en `src/flet_gui.py`. `src/gui.py` conserva la interfaz Tkinter. La autenticación local de Flet se apoya en `src/user_store.py`; `src/internal_chat.py` implementa las consultas locales del chat y `src/paths.py` determina la raíz de datos para ejecución desde código o desde el ejecutable.
 
@@ -325,6 +326,6 @@ Agentes/
 
 - Ejecuta primero una simulación para revisar los cálculos antes de procesar documentos reales.
 - Una discrepancia entre las unidades declaradas y extraídas se informa, pero no detiene por sí sola el procesamiento. Revisa el documento antes de una ejecución real.
-- El procesamiento real genera el informe y mueve los documentos, pero no modifica `Productos.xlsx`. La opción administrativa de alta de productos sí puede modificar el catálogo; conserva copias de seguridad antes de utilizarla.
+- El procesamiento real genera el informe y mueve los documentos, pero no modifica `Productos.xlsx`. Los productos se administran principalmente en `data/productos.sqlite3`; las altas y ediciones se reflejan en la plantilla y crean `Productos_backup.xlsx` antes de modificarla. Las bajas lógicas se conservan en SQLite y Excel y se excluyen de informes hasta reactivarlas. Conserva copias de seguridad de ambas fuentes antes de realizar mantenimiento manual.
 - La opción de restauración **copia** los documentos archivados a las carpetas pendientes; no elimina los originales archivados.
 - La autenticación mediante `.env` está pensada para uso local; no es un sistema de autenticación para una aplicación expuesta a usuarios remotos.
