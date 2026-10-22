@@ -761,8 +761,8 @@ class InterfazFlet:
             modal=True,
             title=ft.Text("Confirmar procesamiento real"),
             content=ft.Text(
-                "Esta operación actualizará el catálogo y moverá los documentos "
-                "procesados a 'descontados'. ¿Quieres continuar?"
+                "Esta operación generará el informe y moverá los documentos "
+                "procesados a 'descontados'. No modificará Productos.xlsx. ¿Quieres continuar?"
             ),
             actions=[
                 self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),

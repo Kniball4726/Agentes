@@ -1,16 +1,7 @@
-"""
-Módulo de Gestión de Stock (Excel).
-Lee la planilla de productos original y genera el archivo de descuentos cumpliendo:
-1. Estructura de 5 columnas (A: CÓDIGO, B: PRODUCTOS, C: STOCK INICIAL, D: DESCUENTO, E: STOCK FINAL).
-2. Sin formatos de moneda o decimales (0.00).
-3. Descuento en columna D (valor negativo) y Stock Final en columna E.
-4. Agregado de productos no encontrados al final con leyenda explicativa.
-5. Inclusión al final de los pedidos descontados (Cliente, Tipo de Descuento y N° de Remito).
-6. Guardado en 'Descuento<fecha>.xls' (Excel 97–2003) en la carpeta 'descuentos'.
-7. Actualización automática de Productos.xlsx con el Stock Final para encadenar corridas.
-"""
+"""Lee el catálogo como plantilla y genera informes de descuentos en Excel."""
 
 from dataclasses import dataclass
+from copy import copy
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -45,6 +36,7 @@ class StockManager:
         self.nombre_hoja = nombre_hoja
         # Lista ordenada de productos únicos: (fila_original, codigo, nombre, stock_actual)
         self.productos_base: List[Tuple[int, str, str, int]] = []
+        self.filas_catalogo: List[Tuple[int, str, str, int]] = []
         self.catalogo: Dict[str, Tuple[int, str, int]] = {}
         self._filas_por_codigo: Dict[str, List[int]] = {}
         self._col_codigo = 1
@@ -129,6 +121,7 @@ class StockManager:
         self._detectar_esquema(sheet)
 
         self.productos_base.clear()
+        self.filas_catalogo.clear()
         self.catalogo.clear()
         self._filas_por_codigo.clear()
 
@@ -141,10 +134,11 @@ class StockManager:
                     continue
 
                 self._filas_por_codigo.setdefault(cod, []).append(fila)
+                stock_num = self._leer_stock(sheet, fila)
+                self.filas_catalogo.append((fila, cod, nombre, stock_num))
                 if cod in self.catalogo:
                     continue
 
-                stock_num = self._leer_stock(sheet, fila)
                 self.productos_base.append((fila, cod, nombre, stock_num))
                 self.catalogo[cod] = (fila, nombre, stock_num)
 
@@ -209,225 +203,76 @@ class StockManager:
         pedidos_procesados: Optional[List[ResultadoRemito]] = None,
         guardar_archivo: bool = True
     ) -> ReporteStock:
-        """
-        Construye una planilla de descuento con 5 columnas:
-          A: CÓDIGO | B: PRODUCTOS | C: STOCK INICIAL | D: DESCUENTO | E: STOCK FINAL
-
-        - Stock Inicial: valor actual leído de Productos.xlsx antes del descuento.
-        - Descuento: cantidad descontada en esta corrida (valor negativo).
-        - Stock Final: Stock Inicial + Descuento (el nuevo stock resultante).
-
-        El Stock Final se escribe de vuelta en Productos.xlsx mediante
-        actualizar_stock_base(), haciendo que sea el Stock Inicial de la próxima corrida.
-        """
+        """Genera un informe con el diseño del catálogo, sin modificarlo."""
         carpeta_destino = Path(carpeta_destino)
-        fecha_hora_str = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        fecha_generacion = datetime.now()
+        fecha_hora_str = fecha_generacion.strftime("%d-%m-%Y_%H-%M-%S")
         nombre_archivo = f"Descuento{fecha_hora_str}.xls"
         ruta_guardado = carpeta_destino / nombre_archivo
 
-        # 1. Crear nuevo libro de trabajo limpio
-        wb_salida = openpyxl.Workbook()
-        ws_salida = wb_salida.active
-        ws_salida.title = "Stock"
-        ws_salida.sheet_view.showGridLines = False
-        ws_salida.freeze_panes = "A8"
-        ws_salida.page_setup.orientation = "landscape"
-        ws_salida.page_setup.fitToWidth = 1
-        ws_salida.page_setup.fitToHeight = 0
-        ws_salida.sheet_properties.pageSetUpPr.fitToPage = True
-        ws_salida.print_title_rows = "1:7"
-        ws_salida.sheet_properties.outlinePr.summaryBelow = True
-
-        for columna, ancho in {"A": 19, "B": 64, "C": 17, "D": 17, "E": 17}.items():
-            ws_salida.column_dimensions[columna].width = ancho
-
-        ws_salida.merge_cells("A1:E1")
-        ws_salida["A1"] = "REPORTE DE DESCUENTOS DE STOCK"
-        ws_salida.row_dimensions[1].height = 32
-        ws_salida.merge_cells("A2:E2")
-        ws_salida["A2"] = (
-            f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')} "
-            "| Informe de movimientos de inventario"
-        )
-        ws_salida.row_dimensions[2].height = 23
-
-        metricas = [
-            ("PRODUCTOS CON DESCUENTO", "A4:B4", "A5:B5"),
-            ("UNIDADES DESCONTADAS", "C4:C4", "C5:C5"),
-            ("PEDIDOS PROCESADOS", "D4:D4", "D5:D5"),
-            ("PENDIENTES DE REVISIÓN", "E4:E4", "E5:E5"),
-        ]
-        for titulo, rango_titulo, rango_valor in metricas:
-            ws_salida.merge_cells(rango_titulo)
-            ws_salida.merge_cells(rango_valor)
-            celda_titulo = ws_salida[rango_titulo.split(":")[0]]
-            celda_titulo.value = titulo
-            celda_valor = ws_salida[rango_valor.split(":")[0]]
-            celda_valor.value = 0
-        ws_salida.row_dimensions[4].height = 22
-        ws_salida.row_dimensions[5].height = 30
-
-        ws_salida.merge_cells("A7:E7")
-        ws_salida["A7"] = "DETALLE DE PRODUCTOS Y MOVIMIENTOS"
-        ws_salida.row_dimensions[7].height = 23
-
-        encabezados = ["CÓDIGO", "PRODUCTOS", "STOCK INICIAL", "DESCUENTO", "STOCK FINAL"]
-        for c, titulo in enumerate(encabezados, start=1):
-            ws_salida.cell(row=8, column=c, value=titulo).number_format = '@'
-
         descuentos: List[RegistroDescuento] = []
-        fila_actual = 9
-
-        # 2. Poblar los productos existentes en el catálogo
         for _, cod, nombre, stock_ant in self.productos_base:
-            cod_val = int(cod) if cod.isdigit() else cod
-            ws_salida.cell(row=fila_actual, column=1, value=cod_val)
-            ws_salida.cell(row=fila_actual, column=2, value=nombre)
+            item = items_consolidados.get(cod)
+            if item is None:
+                continue
+            descuentos.append(RegistroDescuento(
+                codigo=cod,
+                nombre_producto=nombre,
+                fila_excel=4 + len(descuentos),
+                stock_anterior=stock_ant,
+                cantidad_descontada=item.cantidad_total,
+                stock_nuevo=int(stock_ant - item.cantidad_total),
+            ))
 
-            # Columna C: Stock Inicial (siempre se muestra, haya o no descuento)
-            celda_si = ws_salida.cell(row=fila_actual, column=3)
-            celda_si.value = stock_ant
-            celda_si.number_format = '0'
+        filas_productos = []
+        for fila_original, cod, nombre, _ in self.filas_catalogo:
+            item = items_consolidados.get(cod)
+            filas_productos.append((
+                fila_original,
+                cod,
+                item.cantidad_total if item else None,
+                nombre,
+                -item.cantidad_total if item else None,
+            ))
 
-            if cod in items_consolidados:
-                item = items_consolidados[cod]
-                nuevo_stock = int(stock_ant - item.cantidad_total)
-
-                # Columna D: Descuento (negativo → deja en claro que es una resta)
-                celda_d = ws_salida.cell(row=fila_actual, column=4)
-                celda_d.value = -item.cantidad_total
-                celda_d.number_format = '0'
-
-                # Columna E: Stock Final
-                celda_sf = ws_salida.cell(row=fila_actual, column=5)
-                celda_sf.value = nuevo_stock
-                celda_sf.number_format = '0'
-
-                descuentos.append(RegistroDescuento(
-                    codigo=cod,
-                    nombre_producto=nombre,
-                    fila_excel=fila_actual,
-                    stock_anterior=stock_ant,
-                    cantidad_descontada=item.cantidad_total,
-                    stock_nuevo=nuevo_stock,
-                    es_nuevo_agregado=False
-                ))
-            # Si no tuvo descuento: columnas D y E quedan vacías (None)
-
-            fila_actual += 1
-
-        # 3. Agregar al final los productos que NO estaban en el catálogo original
-        for cod, item in items_consolidados.items():
-            if cod not in self.catalogo:
-                nombre_explicativo = f"{item.descripcion} (NO SE ENCUENTRA EN LA LISTA ORIGINAL)"
-                nuevo_stock = int(-item.cantidad_total)
-
-                cod_val = int(cod) if cod.isdigit() else cod
-                ws_salida.cell(row=fila_actual, column=1, value=cod_val)
-                ws_salida.cell(row=fila_actual, column=2, value=nombre_explicativo)
-
-                # SI = 0, Descuento = -cantidad, SF = -cantidad
-                ws_salida.cell(row=fila_actual, column=3, value=0).number_format = '0'
-                celda_d = ws_salida.cell(row=fila_actual, column=4)
-                celda_d.value = -item.cantidad_total
-                celda_d.number_format = '0'
-                celda_sf = ws_salida.cell(row=fila_actual, column=5)
-                celda_sf.value = nuevo_stock
-                celda_sf.number_format = '0'
-
-                descuentos.append(RegistroDescuento(
-                    codigo=cod,
-                    nombre_producto=nombre_explicativo,
-                    fila_excel=fila_actual,
-                    stock_anterior=0,
-                    cantidad_descontada=item.cantidad_total,
-                    stock_nuevo=nuevo_stock,
-                    es_nuevo_agregado=True
-                ))
-
-                fila_actual += 1
-
-        fila_ultimo_producto = fila_actual - 1
-        total_unidades = sum(descuento.cantidad_descontada for descuento in descuentos)
-        cantidad_pendientes = sum(
-            len(doc.descripciones_sin_coincidencia)
-            for doc in (pedidos_procesados or [])
-        )
-        for referencia, valor in (
-            ("A5", len(descuentos)),
-            ("C5", total_unidades),
-            ("D5", len(pedidos_procesados or [])),
-            ("E5", cantidad_pendientes),
-        ):
-            ws_salida[referencia] = valor
-
-        # 4. Sección de resumen de pedidos procesados
-        if pedidos_procesados:
-            fila_actual += 2
-            ws_salida.merge_cells(
-                start_row=fila_actual,
-                start_column=1,
-                end_row=fila_actual,
-                end_column=5,
+        codigos_descontados = {registro.codigo for registro in descuentos}
+        pedidos_descontados = [
+            documento
+            for documento in (pedidos_procesados or [])
+            if any(
+                normalizar_codigo(item.codigo) in codigos_descontados
+                for item in documento.items
             )
-            ws_salida.cell(row=fila_actual, column=1, value="PEDIDOS PROCESADOS")
-            ws_salida.row_dimensions[fila_actual].height = 23
-            fila_actual += 1
-
-            for columna, titulo in enumerate(
-                ("TIPO", "CLIENTE", "N° REMITO / PEDIDO"), start=1
-            ):
-                ws_salida.cell(row=fila_actual, column=columna, value=titulo).number_format = '@'
-            fila_actual += 1
-
-            for doc in pedidos_procesados:
-                if doc.archivo.lower().endswith(".pdf"):
-                    tipo_desc = "Remito Mayorista"
-                elif doc.archivo.lower().endswith(".docx"):
-                    tipo_desc = "Mercado Libre"
-                else:
-                    tipo_desc = "Canje"
-                ws_salida.cell(row=fila_actual, column=1, value=tipo_desc).number_format = '@'
-                ws_salida.cell(row=fila_actual, column=2, value=doc.cliente).number_format = '@'
-                ws_salida.cell(row=fila_actual, column=3, value=str(doc.numero_remito)).number_format = '@'
-                fila_actual += 1
-
-            pendientes_ml = [
-                (doc.archivo, descripcion, motivo)
-                for doc in pedidos_procesados
-                for descripcion, motivo in doc.descripciones_sin_coincidencia
-            ]
-            if pendientes_ml:
-                fila_actual += 2
-                ws_salida.merge_cells(
-                    start_row=fila_actual,
-                    start_column=1,
-                    end_row=fila_actual,
-                    end_column=5,
-                )
-                ws_salida.cell(
-                    row=fila_actual,
-                    column=1,
-                    value="LÍNEAS DE MERCADO LIBRE PENDIENTES DE REVISIÓN",
-                )
-                ws_salida.row_dimensions[fila_actual].height = 23
-                fila_actual += 1
-                for columna, titulo in enumerate(("ARCHIVO", "DESCRIPCIÓN", "MOTIVO"), start=1):
-                    ws_salida.cell(row=fila_actual, column=columna, value=titulo).number_format = '@'
-                fila_actual += 1
-                for archivo, descripcion, motivo in pendientes_ml:
-                    ws_salida.cell(row=fila_actual, column=1, value=archivo).number_format = '@'
-                    ws_salida.cell(row=fila_actual, column=2, value=descripcion).number_format = '@'
-                    ws_salida.cell(row=fila_actual, column=3, value=motivo).number_format = '@'
-                    fila_actual += 1
-
-        self._estilizar_informe(
-            ws_salida,
-            fila_ultimo_producto=fila_ultimo_producto,
-            fila_final=fila_actual - 1,
+        ]
+        productos_sin_coincidencia = [
+            (
+                cod,
+                ", ".join(item.remitos_origen),
+                item.descripcion,
+                "Código no encontrado en Productos.xlsx",
+            )
+            for cod, item in items_consolidados.items()
+            if cod not in self.catalogo
+        ]
+        productos_sin_coincidencia.extend(
+            (
+                "",
+                documento.archivo,
+                descripcion,
+                motivo,
+            )
+            for documento in (pedidos_procesados or [])
+            for descripcion, motivo in documento.descripciones_sin_coincidencia
         )
 
-        # 5. Guardar archivo de salida si no es modo simulación
+        wb_salida, ws_salida = self._crear_informe_desde_plantilla(
+            len(descuentos),
+            fecha_generacion.strftime("%d/%m/%y"),
+            filas_productos,
+            pedidos_descontados,
+            productos_sin_coincidencia,
+        )
+
         if guardar_archivo:
             carpeta_destino.mkdir(parents=True, exist_ok=True)
             self._guardar_informe_xls(wb_salida, ruta_guardado)
@@ -440,128 +285,282 @@ class StockManager:
             archivo_guardado=archivo_final
         )
 
-    @staticmethod
-    def _estilizar_informe(ws, fila_ultimo_producto: int, fila_final: int) -> None:
-        navy = "17365D"
-        light_blue = "D9EAF7"
-        pale_blue = "F3F7FB"
-        border_color = "D6DEE8"
-        slate = "5B6573"
-        red = "FCE4D6"
-        dark_red = "9C0006"
+    def _crear_informe_desde_plantilla(
+        self,
+        cantidad_descuentos: int,
+        fecha_generacion: str,
+        filas_productos: List[Tuple[int, str, Optional[int], str, Optional[int]]],
+        pedidos_descontados: List[ResultadoRemito],
+        productos_sin_coincidencia: List[Tuple[str, str, str, str]],
+    ):
+        libro_plantilla = openpyxl.load_workbook(self.ruta_excel_base)
+        hoja_plantilla = (
+            libro_plantilla[self.nombre_hoja]
+            if self.nombre_hoja in libro_plantilla.sheetnames
+            else libro_plantilla.active
+        )
+        libro_salida = openpyxl.Workbook()
+        hoja_salida = libro_salida.active
+        hoja_salida.title = hoja_plantilla.title[:31]
+        hoja_salida.sheet_view.showGridLines = hoja_plantilla.sheet_view.showGridLines
+        hoja_salida.page_setup.orientation = hoja_plantilla.page_setup.orientation
+        hoja_salida.page_setup.fitToWidth = 1
+        hoja_salida.page_setup.fitToHeight = 0
+        hoja_salida.sheet_properties.pageSetUpPr.fitToPage = True
+        hoja_salida.freeze_panes = "A4"
 
-        thin_gray = Side(style="thin", color=border_color)
-        for cell in ws[1]:
-            cell.fill = PatternFill("solid", fgColor=light_blue)
-            cell.font = Font(name="Aptos Display", size=19, bold=True, color=navy)
-            cell.alignment = Alignment(vertical="center")
-        for cell in ws[2]:
-            cell.fill = PatternFill("solid", fgColor="EAF0F6")
-            cell.font = Font(name="Aptos", size=10, italic=True, color=slate)
-            cell.alignment = Alignment(vertical="center")
+        def copiar_estilo(origen, destino) -> None:
+            if not origen.has_style:
+                return
+            destino.font = copy(origen.font)
+            destino.fill = copy(origen.fill)
+            destino.border = copy(origen.border)
+            destino.alignment = copy(origen.alignment)
+            destino.number_format = origen.number_format
+            destino.protection = copy(origen.protection)
 
-        for row in (4, 5):
-            for cell in ws[row]:
-                cell.border = Border(
-                    left=thin_gray,
-                    right=thin_gray,
-                    top=thin_gray,
-                    bottom=thin_gray,
+        def aplicar_encabezado(fila: int, color_fondo: str) -> None:
+            for columna in range(1, 5):
+                celda = hoja_salida.cell(fila, columna)
+                celda.fill = PatternFill("solid", fgColor=color_fondo)
+                celda.font = Font(
+                    name="Arial",
+                    size=12 if fila == 1 else 10,
+                    bold=True,
+                    color="17365D",
                 )
-                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for cell in ws[4]:
-            cell.fill = PatternFill("solid", fgColor=light_blue)
-            cell.font = Font(name="Aptos", size=9, bold=True, color=navy)
-        for cell in ws[5]:
-            cell.fill = PatternFill("solid", fgColor=pale_blue)
-            cell.font = Font(name="Aptos Display", size=15, bold=True, color=navy)
-
-        for cell in ws[7]:
-            cell.fill = PatternFill("solid", fgColor="EAF0F6")
-            cell.font = Font(name="Aptos", size=11, bold=True, color=navy)
-            cell.alignment = Alignment(vertical="center")
-
-        for cell in ws[8]:
-            cell.fill = PatternFill("solid", fgColor=light_blue)
-            cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = Border(bottom=Side(style="medium", color=border_color))
-        ws.row_dimensions[8].height = 28
-
-        for fila in range(9, fila_ultimo_producto + 1):
-            tiene_descuento = ws.cell(row=fila, column=4).value is not None
-            es_nuevo = "NO SE ENCUENTRA EN LA LISTA ORIGINAL" in str(
-                ws.cell(row=fila, column=2).value or ""
-            )
-            for columna in range(1, 6):
-                cell = ws.cell(row=fila, column=columna)
-                cell.fill = PatternFill(
-                    "solid",
-                    fgColor=red if es_nuevo else (
-                        light_blue if tiene_descuento else (
-                            "FFFFFF" if fila % 2 else pale_blue
-                        )
-                    ),
-                )
-                cell.border = Border(bottom=thin_gray)
-                cell.font = Font(
-                    name="Aptos",
-                    size=10,
-                    color=dark_red if es_nuevo else (
-                        "263445" if tiene_descuento else "7F8995"
-                    ),
-                    bold=es_nuevo,
-                )
-                cell.alignment = Alignment(
-                    horizontal="left" if columna == 2 else "center",
+                celda.alignment = Alignment(
+                    horizontal="center",
                     vertical="center",
-                    wrap_text=columna == 2,
+                    wrap_text=True,
                 )
-                if columna >= 3:
-                    cell.number_format = '#,##0;[Red]-#,##0;0'
-            ws.row_dimensions[fila].height = 20
-            if tiene_descuento:
-                ws.cell(row=fila, column=4).font = Font(
-                    name="Aptos", size=10, bold=True, color=dark_red
-                )
-                ws.cell(row=fila, column=5).font = Font(
-                    name="Aptos", size=10, bold=True, color=navy
-                )
-            if ws.cell(row=fila, column=5).value is not None and ws.cell(
-                row=fila, column=5
-            ).value < 0:
-                ws.cell(row=fila, column=5).fill = PatternFill("solid", fgColor=red)
-                ws.cell(row=fila, column=5).font = Font(
-                    name="Aptos", size=10, bold=True, color=dark_red
+                celda.border = Border(
+                    bottom=Side(style="thin", color="D9E2F3")
                 )
 
-        for fila in range(1, fila_final + 1):
-            if fila in (1, 2, 4, 5, 7, 8) or 9 <= fila <= fila_ultimo_producto:
-                continue
-            valor = ws.cell(row=fila, column=1).value
-            if valor in ("PEDIDOS PROCESADOS", "LÍNEAS DE MERCADO LIBRE PENDIENTES DE REVISIÓN"):
-                for cell in ws[fila]:
-                    cell.fill = PatternFill("solid", fgColor="EAF0F6")
-                    cell.font = Font(name="Aptos", size=11, bold=True, color=navy)
-                    cell.alignment = Alignment(vertical="center")
-            elif valor in ("TIPO", "ARCHIVO"):
-                for cell in ws[fila]:
-                    cell.fill = PatternFill("solid", fgColor=light_blue)
-                    cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
-                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            else:
-                for columna in range(1, 6):
-                    cell = ws.cell(row=fila, column=columna)
-                    cell.fill = PatternFill(
-                        "solid",
-                        fgColor="FFFFFF" if fila % 2 else pale_blue,
-                    )
-                    cell.font = Font(name="Aptos", size=10, color="263445")
-                    cell.alignment = Alignment(vertical="top", wrap_text=True)
-                    cell.border = Border(bottom=thin_gray)
-                ws.row_dimensions[fila].height = 30
+        def aplicar_titulo_seccion(fila: int, color_fondo: str) -> None:
+            celda = hoja_salida.cell(fila, 1)
+            celda.fill = PatternFill("solid", fgColor=color_fondo)
+            celda.font = Font(name="Arial", size=11, bold=True, color="17365D")
+            celda.alignment = Alignment(vertical="center", wrap_text=True)
+        columnas_plantilla = (
+            self._col_codigo,
+            2,
+            self._col_nombre,
+            self._col_descuento or self._col_stock,
+        )
+        for columna_salida, columna_plantilla in enumerate(
+            columnas_plantilla, start=1
+        ):
+            letra_salida = openpyxl.utils.get_column_letter(columna_salida)
+            letra_plantilla = openpyxl.utils.get_column_letter(columna_plantilla)
+            dimension = hoja_plantilla.column_dimensions[letra_plantilla]
+            ancho = dimension.width
+            if columna_salida == 4:
+                ancho = max(ancho or 0, 22)
+            hoja_salida.column_dimensions[letra_salida].width = ancho
+            hoja_salida.column_dimensions[letra_salida].hidden = dimension.hidden
 
-        ws.print_area = f"A1:E{max(1, fila_final)}"
+        for fila in range(1, 4):
+            hoja_salida.row_dimensions[fila].height = (
+                hoja_plantilla.row_dimensions[fila].height
+            )
+            for columna_salida, columna_plantilla in enumerate(
+                columnas_plantilla, start=1
+            ):
+                origen = hoja_plantilla.cell(fila, columna_plantilla)
+                destino = hoja_salida.cell(fila, columna_salida)
+                copiar_estilo(origen, destino)
+
+        for encabezado in ("A1:A2", "B1:B2", "C1:C2", "D1:D2"):
+            hoja_salida.merge_cells(encabezado)
+        hoja_salida["A1"] = (
+            hoja_plantilla.cell(1, self._col_codigo).value or "CODIGO"
+        )
+        hoja_salida["B1"] = (
+            hoja_plantilla.cell(1, 2).value or "UNIDADES"
+        )
+        hoja_salida["C1"] = (
+            hoja_plantilla.cell(1, self._col_nombre).value or "PRODUCTOS"
+        )
+        hoja_salida["D1"] = f"FECHA: {fecha_generacion}"
+        aplicar_encabezado(1, "D9EAF7")
+
+        encabezado_productos = hoja_plantilla.cell(3, self._col_nombre).value
+        hoja_salida["C3"] = (
+            encabezado_productos
+            if self._col_stock_inicial is not None and encabezado_productos
+            else "PRODUCTOS"
+        )
+        hoja_salida["D3"] = "DESCUENTO"
+        hoja_salida["D3"].number_format = "@"
+        aplicar_encabezado(3, "D9EAF7")
+        hoja_salida.row_dimensions[1].height = 25
+        hoja_salida.row_dimensions[2].height = 10
+        hoja_salida.row_dimensions[3].height = 24
+
+        fila_estilo_producto = min(
+            max(self._fila_inicio_datos, 1),
+            max(hoja_plantilla.max_row, 1),
+        )
+        for fila_salida, producto in enumerate(filas_productos, start=4):
+            fila_original, codigo, unidades, nombre, descuento = producto
+            fila_estilo = (
+                fila_original
+                if fila_original <= hoja_plantilla.max_row
+                else fila_estilo_producto
+            )
+            hoja_salida.row_dimensions[fila_salida].height = (
+                hoja_plantilla.row_dimensions[fila_estilo].height
+            )
+            for columna_salida, columna_plantilla in enumerate(
+                columnas_plantilla, start=1
+            ):
+                origen = hoja_plantilla.cell(fila_estilo, columna_plantilla)
+                destino = hoja_salida.cell(fila_salida, columna_salida)
+                copiar_estilo(origen, destino)
+            codigo_salida = int(codigo) if codigo.isdigit() else codigo
+            hoja_salida.cell(fila_salida, 1, codigo_salida)
+            hoja_salida.cell(fila_salida, 2, unidades)
+            hoja_salida.cell(fila_salida, 3, nombre)
+            if descuento is not None:
+                hoja_salida.cell(fila_salida, 4, descuento).number_format = "0"
+
+        fila_actual = 4 + len(filas_productos)
+        hoja_salida.cell(fila_actual, 3, "TOTAL PRODUCTOS DESCONTADOS:")
+        hoja_salida.cell(fila_actual, 4, cantidad_descuentos)
+        self._copiar_estilo_fila(
+            hoja_plantilla, hoja_salida, 3, fila_actual, 4
+        )
+        for columna in range(1, 5):
+            celda = hoja_salida.cell(fila_actual, columna)
+            celda.fill = PatternFill("solid", fgColor="D9EAF7")
+            celda.font = Font(name="Arial", size=10, bold=True, color="17365D")
+            celda.alignment = Alignment(vertical="center", wrap_text=True)
+        fila_actual += 1
+        hoja_salida.merge_cells(
+            start_row=fila_actual,
+            start_column=1,
+            end_row=fila_actual,
+            end_column=4,
+        )
+        hoja_salida.cell(fila_actual, 1, "PEDIDOS CON PRODUCTOS DESCONTADOS")
+        self._copiar_estilo_fila(
+            hoja_plantilla, hoja_salida, 3, fila_actual, 4
+        )
+        aplicar_titulo_seccion(fila_actual, "EAF0F6")
+        fila_actual += 1
+        for columna, titulo in enumerate(
+            ("TIPO", "CLIENTE", "N° REMITO / PEDIDO"), start=1
+        ):
+            hoja_salida.cell(fila_actual, columna, titulo)
+        self._copiar_estilo_fila(
+            hoja_plantilla, hoja_salida, 3, fila_actual, 4
+        )
+        aplicar_encabezado(fila_actual, "D9EAF7")
+        if pedidos_descontados:
+            for documento in pedidos_descontados:
+                fila_actual += 1
+                if documento.archivo.lower().endswith(".pdf"):
+                    tipo = "Remito Mayorista"
+                elif documento.archivo.lower().endswith(".docx"):
+                    tipo = "Mercado Libre"
+                else:
+                    tipo = "Canje"
+                for columna, valor in enumerate(
+                    (tipo, documento.cliente, str(documento.numero_remito)),
+                    start=1,
+                ):
+                    hoja_salida.cell(fila_actual, columna, valor)
+                self._copiar_estilo_fila(
+                    hoja_plantilla, hoja_salida, fila_estilo_producto,
+                    fila_actual, 4,
+                )
+        else:
+            fila_actual += 1
+            hoja_salida.merge_cells(
+                start_row=fila_actual,
+                start_column=1,
+                end_row=fila_actual,
+                end_column=4,
+            )
+            hoja_salida.cell(fila_actual, 1, "No hubo pedidos con productos descontados.")
+            self._copiar_estilo_fila(
+                hoja_plantilla, hoja_salida, fila_estilo_producto,
+                fila_actual, 4,
+            )
+        fila_actual += 1
+
+        if productos_sin_coincidencia:
+            hoja_salida.merge_cells(
+                start_row=fila_actual,
+                start_column=1,
+                end_row=fila_actual,
+                end_column=4,
+            )
+            hoja_salida.cell(
+                fila_actual,
+                1,
+                "PRODUCTOS NO DESCONTADOS - SIN COINCIDENCIA",
+            )
+            self._copiar_estilo_fila(
+                hoja_plantilla, hoja_salida, 3, fila_actual, 4
+            )
+            aplicar_titulo_seccion(fila_actual, "FCE4D6")
+            fila_actual += 1
+            for columna, titulo in enumerate(
+                ("CÓDIGO", "ARCHIVO / PEDIDO", "PRODUCTO / DESCRIPCIÓN", "MOTIVO"),
+                start=1,
+            ):
+                hoja_salida.cell(fila_actual, columna, titulo)
+            self._copiar_estilo_fila(
+                hoja_plantilla, hoja_salida, 3, fila_actual, 4
+            )
+            aplicar_encabezado(fila_actual, "D9EAF7")
+            for codigo, archivo, descripcion, motivo in productos_sin_coincidencia:
+                fila_actual += 1
+                hoja_salida.cell(fila_actual, 1, codigo)
+                hoja_salida.cell(fila_actual, 2, archivo)
+                hoja_salida.cell(fila_actual, 3, descripcion)
+                hoja_salida.cell(fila_actual, 4, motivo)
+                self._copiar_estilo_fila(
+                    hoja_plantilla, hoja_salida, fila_estilo_producto,
+                    fila_actual, 4,
+                )
+
+        libro_plantilla.close()
+        hoja_salida.print_area = f"A1:D{max(3, fila_actual)}"
+        return libro_salida, hoja_salida
+
+    def _copiar_estilo_fila(
+        self,
+        hoja_plantilla,
+        hoja_salida,
+        fila_plantilla: int,
+        fila_salida: int,
+        cantidad_columnas: int,
+    ) -> None:
+        hoja_salida.row_dimensions[fila_salida].height = (
+            hoja_plantilla.row_dimensions[fila_plantilla].height
+        )
+        columnas_plantilla = (
+            self._col_codigo,
+            2,
+            self._col_nombre,
+            self._col_descuento or self._col_stock,
+        )
+        for columna in range(1, cantidad_columnas + 1):
+            origen = hoja_plantilla.cell(
+                fila_plantilla, columnas_plantilla[columna - 1]
+            )
+            destino = hoja_salida.cell(fila_salida, columna)
+            if origen.has_style:
+                destino.font = copy(origen.font)
+                destino.fill = copy(origen.fill)
+                destino.border = copy(origen.border)
+                destino.alignment = copy(origen.alignment)
+                destino.number_format = origen.number_format
+                destino.protection = copy(origen.protection)
 
     @staticmethod
     def _guardar_informe_xls(libro: openpyxl.Workbook, ruta: Path) -> None:
@@ -603,6 +602,35 @@ class StockManager:
         }
         for indice, rgb in rgb_por_indice.items():
             libro_xls.set_colour_RGB(indice, *rgb)
+
+        siguiente_color = 0x2D
+        for fila in hoja_origen.iter_rows():
+            for celda in fila:
+                colores_celda = (
+                    celda.font.color,
+                    celda.fill.fgColor,
+                    celda.fill.bgColor,
+                    *(
+                        getattr(getattr(celda.border, lado), "color", None)
+                        for lado in ("left", "right", "top", "bottom")
+                    ),
+                )
+                for color in colores_celda:
+                    if color is None or color.type != "rgb" or not color.rgb:
+                        continue
+                    codigo_rgb = str(color.rgb)[-6:].upper()
+                    if codigo_rgb in colores:
+                        continue
+                    if siguiente_color > 0x3F:
+                        break
+                    colores[codigo_rgb] = siguiente_color
+                    rgb = tuple(
+                        int(codigo_rgb[indice:indice + 2], 16)
+                        for indice in (0, 2, 4)
+                    )
+                    rgb_por_indice[siguiente_color] = rgb
+                    libro_xls.set_colour_RGB(siguiente_color, *rgb)
+                    siguiente_color += 1
 
         colores_borde = {
             "hair": xlwt.Borders.HAIR,
@@ -698,11 +726,13 @@ class StockManager:
             return estilo
 
         for columna in range(1, hoja_origen.max_column + 1):
-            ancho = hoja_origen.column_dimensions[
+            dimension = hoja_origen.column_dimensions[
                 openpyxl.utils.get_column_letter(columna)
-            ].width
+            ]
+            ancho = dimension.width
             if ancho:
                 hoja_xls.col(columna - 1).width = min(int(ancho * 256), 65_535)
+            hoja_xls.col(columna - 1).hidden = dimension.hidden
 
         rangos_combinados = {}
         celdas_combinadas = set()
@@ -738,8 +768,16 @@ class StockManager:
         hoja_xls.portrait = False
         hoja_xls.fit_width_to_pages = 1
         hoja_xls.fit_height_to_pages = 0
-        hoja_xls.set_panes_frozen(True)
-        hoja_xls.set_horz_split_pos(7)
+        if hoja_origen.freeze_panes:
+            fila_inmovilizada, columna_inmovilizada = (
+                openpyxl.utils.cell.coordinate_to_tuple(hoja_origen.freeze_panes)
+            )
+            if fila_inmovilizada > 1 or columna_inmovilizada > 1:
+                hoja_xls.set_panes_frozen(True)
+                if fila_inmovilizada > 1:
+                    hoja_xls.set_horz_split_pos(fila_inmovilizada - 1)
+                if columna_inmovilizada > 1:
+                    hoja_xls.set_vert_split_pos(columna_inmovilizada - 1)
 
         libro_xls.save(str(ruta))
 

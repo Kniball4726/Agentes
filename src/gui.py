@@ -495,8 +495,8 @@ class InterfazGrafica:
         tipo = "Simulación" if simulacion else "Procesamiento real"
         if not simulacion and not messagebox.askyesno(
             "Confirmar procesamiento",
-            "Esta operación actualizará el catálogo y moverá los documentos "
-            "procesados a 'descontados'. ¿Quieres continuar?",
+            "Esta operación generará el informe y moverá los documentos "
+            "procesados a 'descontados'. No modificará Productos.xlsx. ¿Quieres continuar?",
             parent=self.root,
         ):
             return

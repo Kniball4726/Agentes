@@ -6,7 +6,7 @@ from unittest.mock import patch
 import openpyxl
 
 from src.consolidator import ItemConsolidado
-from src.remito_parser import ResultadoRemito
+from src.remito_parser import ItemRemito, ResultadoRemito
 from src.stock_manager import RegistroDescuento, StockManager
 
 
@@ -106,67 +106,112 @@ class StockManagerTests(unittest.TestCase):
             self.assertEqual(libro_actualizado.active["D5"].value, 5)
             self.assertEqual(StockManager(ruta).catalogo["101"][2], 5)
 
-    def test_builds_professional_discount_report(self):
+    def test_builds_discount_report_from_read_only_template(self):
         with tempfile.TemporaryDirectory() as directorio:
             ruta = Path(directorio) / "Productos.xlsx"
             libro = openpyxl.Workbook()
             hoja = libro.active
-            hoja.append(["CODIGO", "PRODUCTOS", "STOCK"])
-            hoja.append([])
-            hoja.append([101, "Producto con descuento", 10])
-            hoja.append([202, "Producto sin descuento", 3])
+            hoja.merge_cells("A1:A2")
+            hoja.merge_cells("B1:B2")
+            hoja.merge_cells("C1:C2")
+            hoja.merge_cells("D1:F2")
+            hoja["A1"] = "Codigo"
+            hoja["B1"] = "UNIDADES"
+            hoja["C1"] = "Productos"
+            hoja["D1"] = "Descuento"
+            hoja["C3"] = "Línea"
+            hoja["D3"] = "Stock Inicial"
+            hoja["E3"] = "Descuento"
+            hoja["F3"] = "Stock Final"
+            hoja["A4"] = 101
+            hoja["B4"] = "Producto con descuento"
+            hoja["C4"] = "Producto con descuento"
+            hoja["D4"] = 10
+            hoja["A5"] = 202
+            hoja["B5"] = "Producto sin descuento"
+            hoja["C5"] = "Producto sin descuento"
+            hoja["D5"] = 3
+            hoja["A4"].fill = openpyxl.styles.PatternFill("solid", fgColor="CCCCFF")
+            hoja["E4"].fill = openpyxl.styles.PatternFill("solid", fgColor="FF8080")
+            hoja.column_dimensions["B"].hidden = True
+            hoja.column_dimensions["C"].width = 42
             libro.save(ruta)
+            contenido_plantilla = ruta.read_bytes()
 
             manager = StockManager(ruta)
-            documento = ResultadoRemito(
-                archivo="pedido.docx",
-                numero_remito="ML-pedido",
+            pedido = ResultadoRemito(
+                archivo="pedido.pdf",
+                numero_remito="R-123",
                 fecha="Hoy",
                 cliente="Cliente Ejemplo",
                 articulos_declarados=3,
-                articulos_extraidos=2,
+                articulos_extraidos=1,
                 verificacion_ok=False,
+                items=[ItemRemito("101", "Producto con descuento", 2, "R-123")],
                 descripciones_sin_coincidencia=[
-                    ("1 Producto pendiente", "No se encontró en el catálogo")
+                    ("Producto sin coincidencia", "No se encontró en el catálogo")
                 ],
             )
-            libros_guardados = []
-
-            with patch.object(
-                StockManager,
-                "_guardar_informe_xls",
-                side_effect=lambda libro_salida, _: libros_guardados.append(libro_salida),
-            ):
+            with patch.object(StockManager, "_guardar_informe_xls", wraps=StockManager._guardar_informe_xls) as guardar:
                 manager.aplicar_descuentos(
-                    {"101": ItemConsolidado("101", "Producto con descuento", 2)},
+                    {
+                        "101": ItemConsolidado("101", "Producto con descuento", 2),
+                        "999": ItemConsolidado("999", "Producto no catalogado", 1),
+                    },
                     Path(directorio) / "informes",
-                    pedidos_procesados=[documento],
+                    pedidos_procesados=[pedido],
                 )
 
-            hoja_reporte = libros_guardados[0].active
-            self.assertEqual(hoja_reporte["A1"].value, "REPORTE DE DESCUENTOS DE STOCK")
-            self.assertEqual(hoja_reporte["A5"].value, 1)
-            self.assertEqual(hoja_reporte["C5"].value, 2)
-            self.assertEqual(hoja_reporte["D5"].value, 1)
-            self.assertEqual(hoja_reporte["E5"].value, 1)
-            self.assertEqual(hoja_reporte["A9"].value, 101)
-            self.assertEqual(hoja_reporte["D9"].value, -2)
-            self.assertEqual(hoja_reporte.freeze_panes, "A8")
-            self.assertIn("A1:E1", {str(rango) for rango in hoja_reporte.merged_cells.ranges})
+            libro_salida = guardar.call_args.args[0]
+            hoja_reporte = libro_salida.active
+            self.assertRegex(hoja_reporte["D1"].value, r"^FECHA: \d{2}/\d{2}/\d{2}$")
+            self.assertEqual(hoja_reporte["A1"].value, "Codigo")
+            self.assertEqual(hoja_reporte["C3"].value, "Línea")
+            self.assertEqual(hoja_reporte["D3"].value, "DESCUENTO")
+            self.assertEqual(
+                [hoja_reporte.cell(4, columna).value for columna in range(1, 5)],
+                [101, 2, "Producto con descuento", -2],
+            )
+            self.assertEqual(
+                [hoja_reporte.cell(5, columna).value for columna in range(1, 5)],
+                [202, None, "Producto sin descuento", None],
+            )
+            self.assertEqual(hoja_reporte["C6"].value, "TOTAL PRODUCTOS DESCONTADOS:")
+            self.assertEqual(hoja_reporte["D6"].value, 1)
+            self.assertEqual(hoja_reporte["A1"].fill.fgColor.rgb, "00D9EAF7")
+            self.assertEqual(hoja_reporte["A1"].font.color.rgb, "0017365D")
             self.assertTrue(hoja_reporte["A1"].font.bold)
-            self.assertEqual(hoja_reporte["A9"].fill.fgColor.rgb, "00D9EAF7")
-            self.assertEqual(hoja_reporte["B9"].font.color.rgb, "00263445")
-            self.assertEqual(hoja_reporte["B10"].font.color.rgb, "007F8995")
-            for fila in hoja_reporte.iter_rows():
-                for celda in fila:
-                    color = celda.fill.fgColor.rgb
-                    if celda.fill.fill_type == "solid" and color:
-                        rgb = tuple(int(color[indice:indice + 2], 16) for indice in (2, 4, 6))
-                        luminancia = sum(
-                            peso * canal
-                            for peso, canal in zip((0.2126, 0.7152, 0.0722), rgb)
-                        )
-                        self.assertGreaterEqual(luminancia, 190)
+            self.assertGreaterEqual(hoja_reporte.column_dimensions["D"].width, 22)
+            self.assertEqual(hoja_reporte["A3"].fill.fgColor.rgb, "00D9EAF7")
+            self.assertEqual(hoja_reporte["A7"].fill.fgColor.rgb, "00EAF0F6")
+            self.assertEqual(hoja_reporte["A8"].fill.fgColor.rgb, "00D9EAF7")
+            self.assertEqual(hoja_reporte.max_column, 4)
+            self.assertIn("D1:D2", {str(rango) for rango in hoja_reporte.merged_cells.ranges})
+            valores_informe = [
+                celda.value
+                for fila in hoja_reporte.iter_rows()
+                for celda in fila
+                if celda.value is not None
+            ]
+            self.assertIn("PEDIDOS CON PRODUCTOS DESCONTADOS", valores_informe)
+            self.assertIn("Cliente Ejemplo", valores_informe)
+            self.assertIn("R-123", valores_informe)
+            self.assertIn("PRODUCTOS NO DESCONTADOS - SIN COINCIDENCIA", valores_informe)
+            self.assertIn("Producto sin coincidencia", valores_informe)
+            self.assertIn("Producto no catalogado", valores_informe)
+            self.assertEqual(hoja_reporte.freeze_panes, "A4")
+            self.assertTrue(hoja_reporte.column_dimensions["B"].hidden)
+            self.assertEqual(hoja_reporte["A4"].fill.fgColor.rgb, "00CCCCFF")
+            self.assertEqual(hoja_reporte["D4"].fill.fgColor.rgb, "00FF8080")
+            self.assertFalse(any("STOCK INICIAL" in str(valor).upper() for valor in valores_informe))
+            self.assertFalse(any("STOCK FINAL" in str(valor).upper() for valor in valores_informe))
+            self.assertEqual(
+                len([fila for fila in range(4, hoja_reporte.max_row + 1)
+                     if hoja_reporte.cell(fila, 1).value in (101, 202)]),
+                2,
+            )
+            self.assertTrue(Path(guardar.call_args.args[1]).exists())
+            self.assertEqual(ruta.read_bytes(), contenido_plantilla)
 
 
 if __name__ == "__main__":

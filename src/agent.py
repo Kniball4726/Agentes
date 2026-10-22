@@ -128,8 +128,8 @@ class AgenteRemitosStock:
         else:
             print("   [INFO] No se detectaron codigos repetidos.")
 
-        # 3. ACCIÓN: Generar planilla de descuento (Stock Inicial | Descuento | Stock Final)
-        print("\n[3. Accion] Generando planilla de descuento con control de inventario...")
+        # 3. ACCIÓN: Generar el informe usando Productos.xlsx como plantilla de solo lectura.
+        print("\n[3. Accion] Generando planilla de descuentos desde la plantilla...")
         reporte_stock = self.stock_manager.aplicar_descuentos(
             items_consolidados=consolidados,
             carpeta_destino=carpeta_descuentos,
@@ -137,20 +137,12 @@ class AgenteRemitosStock:
             guardar_archivo=not simulacion
         )
 
-        existentes = [d for d in reporte_stock.descuentos_aplicados if not d.es_nuevo_agregado]
         nuevos = [d for d in reporte_stock.descuentos_aplicados if d.es_nuevo_agregado]
 
-        print(f"   [OK] Planilla generada con {len(existentes)} productos descontados (SI → Desc → SF).")
+        print(f"   [OK] Planilla generada con {len(reporte_stock.descuentos_aplicados)} productos descontados.")
         if nuevos:
-            print(f"   [INFO] Se agregaron {len(nuevos)} productos no encontrados al final de la lista.")
-
-        # 3b. ACTUALIZACIÓN DE STOCK BASE: Stock Final → Stock Inicial de la próxima corrida
-        if not simulacion:
-            print("\n[3b. Actualizacion] Escribiendo Stock Final en Productos.xlsx para la próxima corrida...")
-            actualizados = self.stock_manager.actualizar_stock_base(reporte_stock.descuentos_aplicados)
-            print(f"   [OK] {actualizados} producto(s) actualizados en el catálogo base.")
-        else:
-            print("\n[SIMULACION] Productos.xlsx no fue modificado (modo solo lectura).")
+            print(f"   [INFO] Se incluyeron {len(nuevos)} productos no encontrados en el informe.")
+        print("   [INFO] Productos.xlsx se utilizó solo como plantilla; no fue modificado.")
 
         return ReporteMisionAgente(
             total_documentos=total_docs,

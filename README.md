@@ -1,6 +1,6 @@
 # Agente de control de stock y remitos
 
-Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solicitudes de canje en Excel y pedidos de Mercado Libre en Word. Consolida las cantidades por código, genera informes de descuentos y actualiza un catálogo local de Excel.
+Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solicitudes de canje en Excel y pedidos de Mercado Libre en Word. Consolida las cantidades por código, genera informes de descuentos y utiliza un catálogo local de Excel como referencia y plantilla.
 
 > **Plataforma principal:** Windows · **Lenguaje:** Python 3.10+
 
@@ -13,6 +13,7 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - [Preparar los archivos](#preparar-los-archivos)
 - [Uso](#uso)
 - [Flujo de procesamiento](#flujo-de-procesamiento)
+- [Guía para desarrolladores](#guía-para-desarrolladores)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Notas operativas](#notas-operativas)
 
@@ -21,10 +22,10 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Lee remitos mayoristas en PDF, planillas de canje `.xlsx` y pedidos de Mercado Libre en `.docx`.
 - Consolida productos repetidos por código y suma sus cantidades.
 - Compara el total de unidades extraídas de un remito con el total declarado y muestra discrepancias.
-- Genera un informe de descuentos listo para presentar, con indicadores, detalle de stock y resumen de pedidos.
+- Genera un informe de descuentos con el formato visual de `Productos.xlsx`, el contador de productos descontados y sin columnas de stock inicial/final.
 - Señala en el informe los productos que no están en el catálogo.
 - Compara las líneas numeradas de Mercado Libre con el catálogo y descuenta la cantidad indicada solo si encuentra una coincidencia clara.
-- En una ejecución real, actualiza el stock del catálogo y archiva los documentos procesados.
+- Usa `Productos.xlsx` como plantilla de solo lectura al generar descuentos y archiva los documentos procesados.
 - Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
 - En Flet, protege el acceso con cuentas locales en SQLite y roles de administrador, operador y consulta.
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
@@ -150,7 +151,7 @@ Coloca los archivos pendientes en:
 | `Descuentos/Canjes/`       | Planillas de canje `.xlsx`                                        |
 | `Descuentos/MercadoLibre/` | Documentos Word `.docx`, con una descripción por párrafo o fila |
 
-El catálogo de productos debe estar en `Descuentos/Productos.xlsx`. El gestor detecta las columnas por sus encabezados y usa la hoja `Stock` cuando existe; si no, usa la hoja activa. En el catálogo incorporado, la hoja es `Hoja1`: código en A, producto en C y datos de stock en D (`Stock Inicial`), E (`Descuento`) y F (`Stock Final`), con productos desde la fila 4. Los stocks vacíos se interpretan como cero. Después de un descuento, el saldo final queda en F y se usa como stock actual en la siguiente corrida. También se mantiene compatibilidad con catálogos anteriores que usan código, descripción y stock en A, B y C desde la fila 3.
+El catálogo de productos debe estar en `Descuentos/Productos.xlsx`. El gestor detecta las columnas por sus encabezados y usa la hoja `Stock` cuando existe; si no, usa la hoja activa. En el catálogo incorporado, la hoja es `Hoja1`: código en A, producto en C y datos de stock en D (`Stock Inicial`), E (`Descuento`) y F (`Stock Final`), con productos desde la fila 4. Los stocks vacíos se interpretan como cero. Durante el procesamiento de descuentos, `Productos.xlsx` se usa solo como plantilla y no se modifica. También se mantiene compatibilidad con catálogos anteriores que usan código, descripción y stock en A, B y C desde la fila 3.
 
 El archivo agregado estaba guardado como XLS binario pese a tener extensión `.xlsx`; ya se convirtió a XLSX real y se conservó el original como `Productos_original.xls`. No renombres ese respaldo como `Productos.xlsx`.
 
@@ -171,7 +172,7 @@ Se abrirá la interfaz de escritorio de Flet. Desde allí puedes:
 - Seleccionar una o más fuentes: remitos mayoristas, canjes o pedidos de Mercado Libre.
 - La interfaz se abre en modo oscuro; puedes cambiar al modo claro desmarcando **Modo oscuro**.
 - Simular el procesamiento sin guardar cambios ni mover documentos.
-- Ejecutar el procesamiento real, que actualiza el catálogo y archiva los documentos después de pedir confirmación.
+- Ejecutar el procesamiento real, que genera el informe y archiva los documentos después de pedir confirmación; no modifica `Productos.xlsx`.
 - Consultar el estado de los archivos y abrir informes generados.
 - Ver los informes del más reciente al más antiguo; selecciona uno y pulsa **Abrir informe seleccionado** o haz doble clic para abrirlo.
 - Abrir un borrador de correo o WhatsApp Web para compartir el informe seleccionado (el más reciente se usa si no cambias la selección). El archivo se deja seleccionado en el Explorador para adjuntarlo; debes confirmar el envío en la aplicación.
@@ -215,13 +216,75 @@ En una ejecución real, el agente:
 1. Lee los documentos seleccionados de las carpetas de entrada.
 2. Extrae metadatos e ítems y muestra los resultados de las verificaciones.
 3. Consolida las cantidades por código de producto.
-4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, con portada, indicadores, fondos claros, movimientos resaltados, secciones de pedidos y pendientes, panel superior inmovilizado y diseño de impresión apaisado. El detalle conserva las columnas `CÓDIGO`, `PRODUCTOS`, `STOCK INICIAL`, `DESCUENTO` y `STOCK FINAL`.
-5. Actualiza en `Productos.xlsx` el stock inicial, el descuento y el stock final de los productos afectados, y guarda también `Productos_backup.xlsx`. Los códigos repetidos se descuentan una sola vez y sus filas quedan sincronizadas.
+4. Genera `Descuentos/descuentos/DescuentoDD-MM-AAAA_HH-MM-SS.xls` en formato Excel 97–2003, usando el diseño visual de la plantilla. Conserva todos los productos del catálogo, muestra el descuento únicamente cuando corresponde y coloca la fecha de generación (`DD/MM/AA`) en el encabezado. El total de productos descontados aparece al terminar el detalle del catálogo, sin mostrar stock inicial ni final.
+5. Mantiene `Productos.xlsx` sin cambios. Al final del informe incluye los pedidos con productos descontados y los productos o descripciones que no se descontaron por falta de coincidencia. Los códigos repetidos se descuentan una sola vez y los productos no encontrados no se agregan al catálogo.
 6. Mueve los remitos PDF a `Descuentos/descontados/Mayoristas/`, los canjes Excel a `Descuentos/descontados/Canjes/` y los documentos Word a `Descuentos/descontados/MercadoLibre/`.
 
-Los descuentos aparecen como valores negativos. Los códigos que no están en el catálogo se incluyen al final del informe, pero no se agregan automáticamente a `Productos.xlsx`. Las descripciones de Mercado Libre que no se pudieron asociar se registran como pendientes de revisión en una sección aparte del informe.
+Los descuentos aparecen como valores negativos. Los códigos que no están en el catálogo se incluyen al final del informe, pero no se agregan a `Productos.xlsx`. Las descripciones de Mercado Libre que no se pudieron asociar se registran como pendientes de revisión durante el procesamiento.
 
 Cada archivo de salida incluye la fecha y la hora de ejecución (`HH-MM-SS`) en su nombre, para distinguir los informes de varias ejecuciones en un mismo día. Los informes nuevos usan el formato `.xls` de Excel 97–2003, cuyo límite es de 65.536 filas; la interfaz también sigue mostrando informes `.xlsx` anteriores.
+
+## Guía para desarrolladores
+
+### Arquitectura y flujo
+
+`main.py` selecciona la interfaz o el modo de ejecución. `src/menu.py` prepara las carpetas y coordina la ejecución; `src/agent.py` orquesta la lectura de documentos, consolidación y creación del informe. Los parsers convierten cada formato de entrada en objetos `ResultadoRemito` con sus ítems, y `src/consolidator.py` agrupa las cantidades por código. `src/stock_manager.py` lee el catálogo y genera el informe; durante el procesamiento lo utiliza como plantilla de solo lectura.
+
+La interfaz principal está implementada en `src/flet_gui.py`. `src/gui.py` conserva la interfaz Tkinter. La autenticación local de Flet se apoya en `src/user_store.py`; `src/internal_chat.py` implementa las consultas locales del chat y `src/paths.py` determina la raíz de datos para ejecución desde código o desde el ejecutable.
+
+### Preparar el entorno de desarrollo
+
+Se requiere Python 3.10 o posterior. Desde la raíz del repositorio, crea un entorno virtual e instala las dependencias:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Para iniciar la interfaz Flet durante el desarrollo:
+
+```powershell
+python main.py
+```
+
+Otros modos disponibles son:
+
+```powershell
+python main.py --tkinter
+python main.py --dry-run
+python -m src.menu
+```
+
+La aplicación requiere `Descuentos/Productos.xlsx` para iniciar; utiliza el archivo existente como catálogo de consulta y plantilla. No uses datos reales para las pruebas automatizadas: las pruebas crean archivos temporales.
+
+### Pruebas
+
+El proyecto usa `unittest`. Desde la raíz del repositorio ejecuta todas las pruebas con:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Para ejecutar un archivo de pruebas específico:
+
+```powershell
+python -m unittest discover -s tests -p test_stock_manager.py -v
+```
+
+Las pruebas están organizadas por área: `test_stock_manager.py` cubre catálogo e informes; `test_mercado_libre_parser.py`, el análisis de pedidos DOCX; `test_flet_gui.py`, la interfaz y roles; `test_user_store.py`, las cuentas locales; `test_internal_chat.py`, el chat; y `test_app_paths.py`, la resolución de rutas.
+
+### Dependencias y ejecutable
+
+Las dependencias de ejecución están en `requirements.txt`. Las necesarias para empaquetar se declaran en `requirements-build.txt`. Para compilar en Windows:
+
+```powershell
+python -m pip install -r requirements-build.txt
+.\crear_exe.bat
+```
+
+El script crea `dist/StockAgent.exe` y copia `Descuentos/Productos.xlsx` a `dist/Descuentos/`. Para probar el paquete, conserva esa estructura junto al ejecutable. Los datos de ejecución y las cuentas se crean junto al ejecutable según las rutas definidas por `src/paths.py`.
 
 ## Estructura del proyecto
 
@@ -262,6 +325,6 @@ Agentes/
 
 - Ejecuta primero una simulación para revisar los cálculos antes de procesar documentos reales.
 - Una discrepancia entre las unidades declaradas y extraídas se informa, pero no detiene por sí sola el procesamiento. Revisa el documento antes de una ejecución real.
-- La ejecución real modifica el catálogo y mueve los documentos. Mantén copias de seguridad antes de procesar información importante.
+- El procesamiento real genera el informe y mueve los documentos, pero no modifica `Productos.xlsx`. La opción administrativa de alta de productos sí puede modificar el catálogo; conserva copias de seguridad antes de utilizarla.
 - La opción de restauración **copia** los documentos archivados a las carpetas pendientes; no elimina los originales archivados.
 - La autenticación mediante `.env` está pensada para uso local; no es un sistema de autenticación para una aplicación expuesta a usuarios remotos.

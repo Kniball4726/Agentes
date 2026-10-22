@@ -12,6 +12,10 @@ from .remito_parser import ItemRemito, ResultadoRemito
 
 _UMBRAL_SIMILITUD = 0.84
 _MARGEN_MINIMO_SIMILITUD = 0.08
+_SABORES = {
+    "banana", "coco", "chocolate", "dulce", "frambuesa", "frutilla",
+    "leche", "limon", "naranja", "vainilla",
+}
 
 
 def _normalizar_descripcion(descripcion: str) -> str:
@@ -25,6 +29,7 @@ def _normalizar_para_busqueda(descripcion: str) -> str:
     equivalencias = (
         (r"\bultra\s+tech\b", "ut"),
         (r"\bvitatech\b", "vt"),
+        (r"\bcreatina\b", "creatine"),
         (r"\bcapsulas?\b", "caps"),
         (r"\bcomprimidos?\b", "comp"),
         (r"\bgramos?\b|\bgrs?\b", "g"),
@@ -58,17 +63,39 @@ def _buscar_codigo(
     if not tokens:
         return None, "No se encontró una coincidencia exacta en el catálogo"
 
+    tokens_producto = set(tokens) - {"ut", "vt"}
+    if tokens_producto:
+        codigos_por_terminos = [
+            codigo
+            for codigo, nombres in catalogo_normalizado.items()
+            if any(
+                tokens_producto.issubset(set(nombre.split()) - {"ut", "vt"})
+                for nombre in nombres
+            )
+        ]
+        if len(codigos_por_terminos) == 1:
+            return codigos_por_terminos[0], ""
+        if codigos_por_terminos:
+            return None, "Coincidencia aproximada ambigua entre varios productos"
+
     numeros_consulta = {token for token in tokens if token.isdigit()}
+    sabores_consulta = set(tokens) & _SABORES
     puntuaciones = {}
     for codigo, nombres in catalogo_normalizado.items():
         puntuacion = 0.0
         for nombre in nombres:
             tokens_nombre = nombre.split()
             numeros_producto = {token for token in tokens_nombre if token.isdigit()}
+            sabores_producto = set(tokens_nombre) & _SABORES
             if (
                 not tokens_nombre
                 or tokens_nombre[0] != tokens[0]
                 or not numeros_producto.issubset(numeros_consulta)
+                or (
+                    sabores_consulta
+                    and sabores_producto
+                    and sabores_consulta.isdisjoint(sabores_producto)
+                )
             ):
                 continue
             puntuacion = max(
@@ -142,11 +169,19 @@ def parsear_pedido_mercado_libre(
             registros.extend(dict.fromkeys(productos_fila))
 
     items: List[ItemRemito] = []
-    sin_coincidencia: List[Tuple[str, str]] = []
+    sin_coincidencia: Dict[str, Tuple[int, str, str]] = {}
     for cantidad, descripcion in registros:
         codigo, motivo = _buscar_codigo(descripcion, descripciones_catalogo)
         if codigo is None:
-            sin_coincidencia.append((f"{cantidad} {descripcion}", motivo))
+            clave = _normalizar_descripcion(descripcion)
+            cantidad_acumulada, descripcion_original, motivo_original = (
+                sin_coincidencia.get(clave, (0, descripcion, motivo))
+            )
+            sin_coincidencia[clave] = (
+                cantidad_acumulada + cantidad,
+                descripcion_original,
+                motivo_original,
+            )
             continue
 
         items.append(ItemRemito(
@@ -166,5 +201,8 @@ def parsear_pedido_mercado_libre(
         articulos_extraidos=sum(item.cantidad for item in items),
         verificacion_ok=not sin_coincidencia,
         items=items,
-        descripciones_sin_coincidencia=sin_coincidencia
+        descripciones_sin_coincidencia=[
+            (f"{cantidad} {descripcion}", motivo)
+            for cantidad, descripcion, motivo in sin_coincidencia.values()
+        ]
     )
