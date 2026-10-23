@@ -18,7 +18,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from xml.sax.saxutils import escape
 from .consolidator import ItemConsolidado
 from .product_store import ProductStore
@@ -1169,22 +1169,6 @@ class StockManager:
         hoja = libro.active
         if hoja is None:
             raise ValueError("El informe no contiene una hoja activa para exportar.")
-        cantidad_columnas = max(hoja.max_column, 1)
-        anchos_excel = [
-            max(
-                hoja.column_dimensions[
-                    get_column_letter(columna)
-                ].width
-                or 10,
-                8,
-            )
-            for columna in range(1, cantidad_columnas + 1)
-        ]
-        ancho_disponible = A4[0] - 4 * cm - 6 * cantidad_columnas
-        suma_anchos = sum(anchos_excel)
-        anchos_columnas = [
-            ancho_disponible * ancho / suma_anchos for ancho in anchos_excel
-        ]
 
         def color_excel(color) -> colors.Color | None:
             if color is None or color.type != "rgb" or not color.rgb:
@@ -1195,127 +1179,501 @@ class StockManager:
             except ValueError:
                 return None
 
-        contenido = []
-        estilos = []
-        for numero_fila in range(1, hoja.max_row + 1):
-            fila_contenido = []
-            for numero_columna in range(1, cantidad_columnas + 1):
-                celda = hoja.cell(numero_fila, numero_columna)
-                valor = "" if celda.value is None else escape(str(celda.value))
-                valor = valor.replace("\n", "<br/>")
-                alineacion = _ALINEACIONES_PDF.get(
-                    celda.alignment.horizontal or "", 0
-                )
-                tamano_fuente = min(max(celda.font.sz or 9, 7), 12)
-                estilo_parrafo = ParagraphStyle(
-                    name=f"celda_{numero_fila}_{numero_columna}",
-                    fontName=(
-                        "Helvetica-Bold"
-                        if celda.font.bold
-                        else "Helvetica-Oblique"
-                        if celda.font.italic
-                        else "Helvetica"
-                    ),
-                    fontSize=tamano_fuente,
-                    leading=tamano_fuente * 1.2,
-                    alignment=alineacion,
-                    textColor=color_excel(celda.font.color)
-                    or colors.HexColor("#263445"),
-                    splitLongWords=1,
-                )
-                fila_contenido.append(Paragraph(valor, estilo_parrafo))
-                if celda.fill.fill_type == "solid":
-                    color_fondo = color_excel(celda.fill.fgColor)
-                    if color_fondo is not None:
-                        estilos.append(
-                            ("BACKGROUND", (numero_columna - 1, numero_fila - 1),
-                             (numero_columna - 1, numero_fila - 1), color_fondo)
-                        )
-                if celda.alignment.vertical == "top":
-                    alineacion_vertical = "TOP"
-                elif celda.alignment.vertical == "center":
-                    alineacion_vertical = "MIDDLE"
-                else:
-                    alineacion_vertical = "BOTTOM"
-                estilos.append(
-                    (
-                        "VALIGN",
-                        (numero_columna - 1, numero_fila - 1),
-                        (numero_columna - 1, numero_fila - 1),
-                        alineacion_vertical,
-                    )
-                )
-                for lado in ("left", "right", "top", "bottom"):
-                    borde = getattr(celda.border, lado)
-                    if borde is None or borde.style is None:
-                        continue
-                    ancho_borde = {
-                        "hair": 0.25,
-                        "thin": 0.5,
-                        "medium": 1,
-                        "thick": 1.5,
-                    }.get(borde.style, 0.5)
-                    color_borde = color_excel(borde.color) or colors.HexColor(
-                        "#D6DEE8"
-                    )
-                    estilos.append(
-                        (
-                            {
-                                "left": "LINEBEFORE",
-                                "right": "LINEAFTER",
-                                "top": "LINEABOVE",
-                                "bottom": "LINEBELOW",
-                            }[lado],
-                            (numero_columna - 1, numero_fila - 1),
-                            (numero_columna - 1, numero_fila - 1),
-                            ancho_borde,
-                            color_borde,
-                        )
-                    )
-            contenido.append(fila_contenido)
+        def formatear_valor(celda) -> str:
+            val = celda.value
+            if val is None:
+                return ""
+            if isinstance(val, float) and val.is_integer():
+                val = int(val)
+            res = escape(str(val))
+            return res.replace("\n", "<br/>")
 
-        for rango in hoja.merged_cells.ranges:
-            min_col, min_row, max_col, max_row = rango.bounds
-            if (
-                max_col <= cantidad_columnas
-                and max_row <= hoja.max_row
-                and (min_col, min_row) != (max_col, max_row)
-            ):
-                estilos.append(
-                    (
-                        "SPAN",
-                        (min_col - 1, min_row - 1),
-                        (max_col - 1, max_row - 1),
-                    )
-                )
+        ancho_util = A4[0] - 4 * cm  # Exactamente 481.8898 pt
+
+        # Detectar si la hoja tiene las secciones estándar del reporte
+        fila_inicio_pedidos = None
+        fila_inicio_no_descontados = None
+
+        for num_f in range(1, hoja.max_row + 1):
+            val_a = str(hoja.cell(num_f, 1).value or "").strip().upper()
+            if "PEDIDOS CON PRODUCTOS DESCONTADOS" in val_a and fila_inicio_pedidos is None:
+                fila_inicio_pedidos = num_f
+            elif "PRODUCTOS NO DESCONTADOS" in val_a and fila_inicio_no_descontados is None:
+                fila_inicio_no_descontados = num_f
+
+        tiene_secciones = (fila_inicio_pedidos is not None) or (fila_inicio_no_descontados is not None)
 
         def pie_pagina(canvas, documento) -> None:
             canvas.saveState()
             canvas.setFont("Helvetica", 8)
             canvas.setFillColor(colors.HexColor("#5B6573"))
+            canvas.setStrokeColor(colors.HexColor("#D6DEE8"))
+            canvas.setLineWidth(0.4)
+            canvas.line(2 * cm, 1.8 * cm + 6, A4[0] - 2 * cm, 1.8 * cm + 6)
+            canvas.drawString(
+                2 * cm,
+                1.8 * cm - 6,
+                "StockAgent · Informe de Control de Stock",
+            )
             canvas.drawRightString(
                 A4[0] - 2 * cm,
-                2 * cm - 8,
+                1.8 * cm - 6,
                 f"Página {documento.page}",
             )
             canvas.restoreState()
 
-        tabla = Table(
-            contenido,
-            colWidths=anchos_columnas,
-            repeatRows=min(3, len(contenido)),
-            hAlign="LEFT",
-            splitByRow=1,
-        )
-        estilos.extend(
-            [
+        elementos = []
+
+        if tiene_secciones:
+            # 1. TABLA PRINCIPAL: CATÁLOGO Y DESCUENTOS (3 Columnas)
+            fin_catalogo = (
+                fila_inicio_pedidos
+                if fila_inicio_pedidos is not None
+                else (
+                    fila_inicio_no_descontados
+                    if fila_inicio_no_descontados is not None
+                    else (hoja.max_row + 1)
+                )
+            )
+
+            # Anchos perfectamente calibrados para hoja A4 (Suma = 481.89 pt)
+            col_widths_cat = [68, 348.89, 65]
+
+            contenido_cat = []
+            estilos_cat = [
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.8),
+            ]
+
+            for num_f in range(1, fin_catalogo):
+                fila_celdas = []
+                es_encabezado_principal = num_f in (1, 2)
+                es_encabezado_secundario = num_f == 3
+                es_total = False
+
+                val_b = str(hoja.cell(num_f, 2).value or "").upper()
+                if (
+                    "TOTAL CÓDIGOS" in val_b
+                    or "TOTAL UNIDADES" in val_b
+                    or "TOTAL CODIGOS" in val_b
+                ):
+                    es_total = True
+
+                for col_idx in (1, 2, 3):
+                    celda = hoja.cell(num_f, col_idx)
+                    texto_html = formatear_valor(celda)
+
+                    if es_encabezado_principal:
+                        tam_fuente = 8.5
+                        leading = 10
+                        es_negrita = True
+                        color_texto = colors.HexColor("#17365D")
+                        align = 1  # CENTER
+                    elif es_encabezado_secundario:
+                        tam_fuente = 8.5
+                        leading = 10
+                        es_negrita = True
+                        color_texto = colors.HexColor("#17365D")
+                        align = 1 if col_idx != 2 else 0
+                    elif es_total:
+                        tam_fuente = 8.5
+                        leading = 10
+                        es_negrita = True
+                        color_texto = colors.HexColor("#17365D")
+                        align = 1 if col_idx == 3 else 0
+                    else:
+                        tam_fuente = 8
+                        leading = 9.5
+                        es_negrita = col_idx == 3 and texto_html != ""
+                        color_texto = (
+                            colors.HexColor("#C00000")
+                            if (col_idx == 3 and "-" in texto_html)
+                            else (
+                                color_excel(celda.font.color)
+                                or colors.HexColor("#263445")
+                            )
+                        )
+                        align = 1 if col_idx in (1, 3) else 0
+
+                    p_style = ParagraphStyle(
+                        name=f"cat_{num_f}_{col_idx}",
+                        fontName="Helvetica-Bold" if es_negrita else "Helvetica",
+                        fontSize=tam_fuente,
+                        leading=leading,
+                        alignment=align,
+                        textColor=color_texto,
+                        splitLongWords=True,
+                    )
+                    fila_celdas.append(Paragraph(texto_html, p_style))
+
+                    if celda.fill.fill_type == "solid":
+                        cf = color_excel(celda.fill.fgColor)
+                        if cf is not None:
+                            estilos_cat.append(
+                                (
+                                    "BACKGROUND",
+                                    (col_idx - 1, num_f - 1),
+                                    (col_idx - 1, num_f - 1),
+                                    cf,
+                                )
+                            )
+
+                    estilos_cat.append(
+                        (
+                            "GRID",
+                            (0, num_f - 1),
+                            (-1, num_f - 1),
+                            0.35,
+                            colors.HexColor("#D6DEE8"),
+                        )
+                    )
+
+                contenido_cat.append(fila_celdas)
+
+            if len(contenido_cat) >= 2:
+                estilos_cat.append(("SPAN", (0, 0), (0, 1)))
+                estilos_cat.append(("SPAN", (1, 0), (1, 1)))
+                estilos_cat.append(("SPAN", (2, 0), (2, 1)))
+                estilos_cat.append(("VALIGN", (0, 0), (2, 1), "MIDDLE"))
+
+            tabla_cat = Table(
+                contenido_cat,
+                colWidths=col_widths_cat,
+                repeatRows=min(3, len(contenido_cat)),
+                hAlign="LEFT",
+                splitByRow=1,
+            )
+            tabla_cat.setStyle(TableStyle(estilos_cat))
+            elementos.append(tabla_cat)
+
+            # 2. TABLA DE PEDIDOS CON PRODUCTOS DESCONTADOS (3 Columnas)
+            if fila_inicio_pedidos is not None:
+                fin_pedidos = (
+                    fila_inicio_no_descontados
+                    if fila_inicio_no_descontados is not None
+                    else (hoja.max_row + 1)
+                )
+                col_widths_ped = [95, 250, 136.89]
+
+                contenido_ped = []
+                estilos_ped = [
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+
+                fila_rel = 0
+                for num_f in range(fila_inicio_pedidos, fin_pedidos):
+                    fila_celdas = []
+                    es_titulo = num_f == fila_inicio_pedidos
+                    es_encabezado = num_f == fila_inicio_pedidos + 1
+                    val_1 = str(hoja.cell(num_f, 1).value or "").strip()
+                    es_vacio_info = "No hubo pedidos" in val_1
+
+                    for col_idx in (1, 2, 3):
+                        celda = hoja.cell(num_f, col_idx)
+                        texto_html = formatear_valor(celda)
+
+                        if es_titulo:
+                            tam_fuente = 9
+                            leading = 11
+                            es_negrita = True
+                            color_texto = colors.HexColor("#17365D")
+                            align = 0
+                        elif es_encabezado:
+                            tam_fuente = 8.5
+                            leading = 10
+                            es_negrita = True
+                            color_texto = colors.HexColor("#17365D")
+                            align = 1 if col_idx != 2 else 0
+                        elif es_vacio_info:
+                            tam_fuente = 8
+                            leading = 9.5
+                            es_negrita = False
+                            color_texto = colors.HexColor("#5B6573")
+                            align = 1
+                        else:
+                            tam_fuente = 7.5
+                            leading = 9
+                            es_negrita = False
+                            color_texto = colors.HexColor("#263445")
+                            align = 1 if col_idx == 1 else 0
+
+                        p_style = ParagraphStyle(
+                            name=f"ped_{num_f}_{col_idx}",
+                            fontName="Helvetica-Bold" if es_negrita else "Helvetica",
+                            fontSize=tam_fuente,
+                            leading=leading,
+                            alignment=align,
+                            textColor=color_texto,
+                            splitLongWords=True,
+                        )
+                        fila_celdas.append(Paragraph(texto_html, p_style))
+
+                        if celda.fill.fill_type == "solid":
+                            cf = color_excel(celda.fill.fgColor)
+                            if cf is not None:
+                                estilos_ped.append(
+                                    (
+                                        "BACKGROUND",
+                                        (col_idx - 1, fila_rel),
+                                        (col_idx - 1, fila_rel),
+                                        cf,
+                                    )
+                                )
+
+                    if es_titulo:
+                        estilos_ped.append(("SPAN", (0, fila_rel), (2, fila_rel)))
+                        estilos_ped.append(
+                            (
+                                "BACKGROUND",
+                                (0, fila_rel),
+                                (2, fila_rel),
+                                colors.HexColor("#EAF0F6"),
+                            )
+                        )
+                    elif es_vacio_info:
+                        estilos_ped.append(("SPAN", (0, fila_rel), (2, fila_rel)))
+
+                    estilos_ped.append(
+                        (
+                            "GRID",
+                            (0, fila_rel),
+                            (-1, fila_rel),
+                            0.35,
+                            colors.HexColor("#D6DEE8"),
+                        )
+                    )
+                    contenido_ped.append(fila_celdas)
+                    fila_rel += 1
+
+                elementos.append(Spacer(1, 12))
+                tabla_ped = Table(
+                    contenido_ped,
+                    colWidths=col_widths_ped,
+                    repeatRows=2,
+                    hAlign="LEFT",
+                    splitByRow=1,
+                )
+                tabla_ped.setStyle(TableStyle(estilos_ped))
+                elementos.append(tabla_ped)
+
+            # 3. TABLA DE PRODUCTOS NO DESCONTADOS - SIN COINCIDENCIA (4 Columnas)
+            if fila_inicio_no_descontados is not None:
+                col_widths_no = [55, 95, 195, 136.89]
+
+                contenido_no = []
+                estilos_no = [
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+
+                fila_rel = 0
+                for num_f in range(fila_inicio_no_descontados, hoja.max_row + 1):
+                    fila_celdas = []
+                    es_titulo = num_f == fila_inicio_no_descontados
+                    es_encabezado = num_f == fila_inicio_no_descontados + 1
+
+                    for col_idx in (1, 2, 3, 4):
+                        celda = hoja.cell(num_f, col_idx)
+                        texto_html = formatear_valor(celda)
+
+                        if es_titulo:
+                            tam_fuente = 9
+                            leading = 11
+                            es_negrita = True
+                            color_texto = colors.HexColor("#C00000")
+                            align = 0
+                        elif es_encabezado:
+                            tam_fuente = 8
+                            leading = 9.5
+                            es_negrita = True
+                            color_texto = colors.HexColor("#17365D")
+                            align = 1 if col_idx in (1, 2) else 0
+                        else:
+                            tam_fuente = 7.5
+                            leading = 8.5
+                            es_negrita = False
+                            color_texto = colors.HexColor("#263445")
+                            align = 1 if col_idx == 1 else 0
+
+                        p_style = ParagraphStyle(
+                            name=f"no_{num_f}_{col_idx}",
+                            fontName="Helvetica-Bold" if es_negrita else "Helvetica",
+                            fontSize=tam_fuente,
+                            leading=leading,
+                            alignment=align,
+                            textColor=color_texto,
+                            splitLongWords=True,
+                        )
+                        fila_celdas.append(Paragraph(texto_html, p_style))
+
+                        if celda.fill.fill_type == "solid":
+                            cf = color_excel(celda.fill.fgColor)
+                            if cf is not None:
+                                estilos_no.append(
+                                    (
+                                        "BACKGROUND",
+                                        (col_idx - 1, fila_rel),
+                                        (col_idx - 1, fila_rel),
+                                        cf,
+                                    )
+                                )
+
+                    if es_titulo:
+                        estilos_no.append(("SPAN", (0, fila_rel), (3, fila_rel)))
+                        estilos_no.append(
+                            (
+                                "BACKGROUND",
+                                (0, fila_rel),
+                                (3, fila_rel),
+                                colors.HexColor("#FCE4D6"),
+                            )
+                        )
+
+                    estilos_no.append(
+                        (
+                            "GRID",
+                            (0, fila_rel),
+                            (-1, fila_rel),
+                            0.35,
+                            colors.HexColor("#D6DEE8"),
+                        )
+                    )
+                    contenido_no.append(fila_celdas)
+                    fila_rel += 1
+
+                elementos.append(Spacer(1, 12))
+                tabla_no = Table(
+                    contenido_no,
+                    colWidths=col_widths_no,
+                    repeatRows=2,
+                    hAlign="LEFT",
+                    splitByRow=1,
+                )
+                tabla_no.setStyle(TableStyle(estilos_no))
+                elementos.append(tabla_no)
+
+        else:
+            # FALLBACK GENERAL: Si es un libro sin secciones específicas
+            usa_3_cols = (
+                hoja.max_column == 3
+                or (
+                    hoja.max_column == 4
+                    and all(
+                        hoja.cell(r, 4).value is None
+                        for r in range(4, min(hoja.max_row + 1, 25))
+                    )
+                )
+            )
+
+            if usa_3_cols:
+                cantidad_columnas = 3
+                anchos_columnas = [68, 348.89, 65]
+            else:
+                cantidad_columnas = max(hoja.max_column, 1)
+                anchos_excel = [
+                    max(
+                        hoja.column_dimensions[
+                            get_column_letter(columna)
+                        ].width
+                        or 10,
+                        8,
+                    )
+                    for columna in range(1, cantidad_columnas + 1)
+                ]
+                suma_anchos = sum(anchos_excel)
+                anchos_columnas = [
+                    ancho_util * ancho / suma_anchos for ancho in anchos_excel
+                ]
+
+            contenido = []
+            estilos = [
                 ("LEFTPADDING", (0, 0), (-1, -1), 3),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 3),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
-        )
-        tabla.setStyle(TableStyle(estilos))
+
+            for numero_fila in range(1, hoja.max_row + 1):
+                fila_contenido = []
+                es_encabezado = numero_fila <= 3
+                for numero_columna in range(1, cantidad_columnas + 1):
+                    celda = hoja.cell(numero_fila, numero_columna)
+                    valor = formatear_valor(celda)
+                    alineacion = _ALINEACIONES_PDF.get(
+                        celda.alignment.horizontal or "", 0
+                    )
+                    tamano_fuente = 8.5 if es_encabezado else 8
+                    leading = 10 if es_encabezado else 9.5
+                    estilo_parrafo = ParagraphStyle(
+                        name=f"celda_{numero_fila}_{numero_columna}",
+                        fontName=(
+                            "Helvetica-Bold"
+                            if (celda.font.bold or es_encabezado)
+                            else "Helvetica-Oblique"
+                            if celda.font.italic
+                            else "Helvetica"
+                        ),
+                        fontSize=tamano_fuente,
+                        leading=leading,
+                        alignment=alineacion,
+                        textColor=color_excel(celda.font.color)
+                        or colors.HexColor("#263445"),
+                        splitLongWords=True,
+                    )
+                    fila_contenido.append(Paragraph(valor, estilo_parrafo))
+                    if celda.fill.fill_type == "solid":
+                        color_fondo = color_excel(celda.fill.fgColor)
+                        if color_fondo is not None:
+                            estilos.append(
+                                (
+                                    "BACKGROUND",
+                                    (numero_columna - 1, numero_fila - 1),
+                                    (numero_columna - 1, numero_fila - 1),
+                                    color_fondo,
+                                )
+                            )
+                    estilos.append(
+                        (
+                            "GRID",
+                            (0, numero_fila - 1),
+                            (-1, numero_fila - 1),
+                            0.35,
+                            colors.HexColor("#D6DEE8"),
+                        )
+                    )
+                contenido.append(fila_contenido)
+
+            for rango in hoja.merged_cells.ranges:
+                min_col, min_row, max_col, max_row = rango.bounds
+                if min_col <= cantidad_columnas and min_row <= hoja.max_row:
+                    c_fin = min(max_col, cantidad_columnas)
+                    r_fin = min(max_row, hoja.max_row)
+                    if (min_col, min_row) != (c_fin, r_fin):
+                        estilos.append(
+                            (
+                                "SPAN",
+                                (min_col - 1, min_row - 1),
+                                (c_fin - 1, r_fin - 1),
+                            )
+                        )
+
+            tabla = Table(
+                contenido,
+                colWidths=anchos_columnas,
+                repeatRows=min(3, len(contenido)),
+                hAlign="LEFT",
+                splitByRow=1,
+            )
+            tabla.setStyle(TableStyle(estilos))
+            elementos.append(tabla)
+
         documento = SimpleDocTemplate(
             str(ruta),
             pagesize=A4,
@@ -1325,7 +1683,7 @@ class StockManager:
             bottomMargin=2 * cm,
             title=ruta.stem,
         )
-        documento.build([tabla], onFirstPage=pie_pagina, onLaterPages=pie_pagina)
+        documento.build(elementos, onFirstPage=pie_pagina, onLaterPages=pie_pagina)
 
     def actualizar_stock_base(self, descuentos: List[RegistroDescuento]) -> int:
         """Persiste en SQLite los saldos nuevos de cada producto descontado."""

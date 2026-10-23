@@ -159,6 +159,18 @@ class FletGuiTests(unittest.TestCase):
         self.assertEqual(len(page.controls), 1)
         self.assertEqual(len(interfaz.controles_tarea), 0)
         self.assertTrue(page.window.maximized)
+        self.assertIsNone(getattr(page, "floating_action_button", None))
+        self.assertEqual(len(getattr(page, "overlay", [])), 0)
+
+    def test_assistant_hidden_on_logout(self):
+        interfaz, _, page = self.crear_interfaz()
+        self.assertIsNotNone(getattr(page, "floating_action_button", None))
+
+        interfaz.cerrar_sesion(None)
+        self.assertIsNone(interfaz.usuario_actual)
+        self.assertIsNone(getattr(page, "floating_action_button", None))
+        self.assertEqual(len(getattr(page, "overlay", [])), 0)
+        self.assertFalse(interfaz.chat_visible)
 
     def test_first_run_shows_administrator_setup(self):
         page = FakePage()
@@ -221,6 +233,44 @@ class FletGuiTests(unittest.TestCase):
         self.assertEqual(menu.procesamientos, [])
         self.assertEqual(len(page.dialogos), 1)
         self.assertEqual(len(interfaz.controles_tarea), 4)
+
+
+    def test_floating_action_button_and_chat_toggle(self):
+        interfaz, _, page = self.crear_interfaz()
+        self.assertIsNotNone(interfaz.boton_chat_flotante)
+        self.assertIsNotNone(interfaz.ventana_chat_flotante)
+        self.assertFalse(interfaz.chat_visible)
+        self.assertFalse(interfaz.ventana_chat_flotante.visible)
+
+        interfaz.alternar_chat_flotante()
+        self.assertTrue(interfaz.chat_visible)
+        self.assertTrue(interfaz.ventana_chat_flotante.visible)
+
+        interfaz.cerrar_chat_flotante()
+        self.assertFalse(interfaz.chat_visible)
+        self.assertFalse(interfaz.ventana_chat_flotante.visible)
+
+    def test_chat_responds_to_stock_and_critical_queries(self):
+        interfaz, _, _ = self.crear_interfaz()
+        productos = [
+            {"code": "1001", "name": "Filtro", "stock": 2, "active": 1},
+            {"code": "1002", "name": "Bujía", "stock": 20, "active": 1},
+        ]
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(listar_productos=lambda: productos)):
+            interfaz.entrada_chat.value = "/criticos"
+            asyncio.run(interfaz.enviar_chat())
+            respuesta_control = cast(ft.Container, interfaz.conversacion.controls[-1])
+            columna = cast(ft.Column, respuesta_control.content)
+            texto = cast(ft.Text, columna.controls[1]).value
+            self.assertIn("Filtro", texto)
+
+            interfaz.entrada_chat.value = "/stock 1002"
+            asyncio.run(interfaz.enviar_chat())
+            respuesta_control = cast(ft.Container, interfaz.conversacion.controls[-1])
+            columna = cast(ft.Column, respuesta_control.content)
+            texto = cast(ft.Text, columna.controls[1]).value
+            self.assertIn("Bujía", texto)
+            self.assertIn("20 unidades", texto)
 
 
 if __name__ == "__main__":

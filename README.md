@@ -10,6 +10,7 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - [Requisitos e instaladores](#requisitos-e-instaladores)
 - [Instalación](#instalación)
 - [Configuración](#configuración)
+- [Asistente Virtual Flotante (Bot Local)](#asistente-virtual-flotante-bot-local)
 - [Preparar los archivos](#preparar-los-archivos)
 - [Uso](#uso)
 - [Flujo de procesamiento](#flujo-de-procesamiento)
@@ -18,6 +19,11 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - [Notas operativas](#notas-operativas)
 
 ## Funciones
+### Nuevas funcionalidades
+- **PDF optimizado:** columnas alineadas, texto ajustado y todo en una sola hoja A4.
+- **Ejecutable actualizado:** el archivo `dist/StockAgent.exe` generado con PyInstaller incluye la última lógica y se ejecuta directamente en Windows.
+- **Asistente invisible en login:** el asistente virtual no se muestra en la pantalla de ingreso y desaparece al cerrar la sesión del usuario.
+- **Botón flotante mejorado:** el botón flotante está siempre disponible en la esquina inferior derecha y brinda acceso rápido a consultas y comandos sin interferir con la UI.
 
 - Lee remitos mayoristas en PDF, planillas de canje `.xlsx` y pedidos de Mercado Libre en `.docx`.
 - Consolida productos repetidos por código y suma sus cantidades.
@@ -26,13 +32,13 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Señala en el informe los productos que no están en el catálogo.
 - Compara las líneas numeradas de Mercado Libre con el catálogo y descuenta la cantidad indicada solo si encuentra una coincidencia clara.
 - Migra el catálogo de `Productos.xlsx` una sola vez a `data/productos.sqlite3`; genera los informes desde SQLite, conserva el orden y las filas repetidas de la plantilla, y sincroniza las altas y ediciones desde el panel administrador con una copia de seguridad previa.
-- Ofrece una interfaz gráfica de escritorio con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes.
+- Ofrece una interfaz gráfica de escritorio moderna en Flet con selección de fuentes, tema oscuro/claro, actividad en segundo plano e historial de informes organizados a pantalla completa.
 - En Flet, protege el acceso con cuentas locales en SQLite y roles de administrador, operador y consulta.
 - Permite abrir y compartir el informe seleccionado por correo o WhatsApp Web; el usuario adjunta el archivo y confirma el envío.
 - Incluye ejecución automática, simulación y un menú interactivo de consola para procesar fuentes por separado, consultar el historial y restaurar documentos.
 - Permite restaurar documentos archivados seleccionando la fecha de descuento registrada en los informes.
 - Incluye un CRUD de productos para administradores: consulta y búsqueda, altas, edición de código/nombre/stock, y bajas lógicas con opción de reactivación. Las ediciones se sincronizan con SQLite y `Productos.xlsx`; los productos inactivos se conservan, pero se omiten en futuros informes.
-- Incluye un chat local por intenciones para consultar el estado y los informes, recibir ayuda y ejecutar simulaciones de solo lectura, sin enviar mensajes a servicios externos.
+- **Asistente Virtual Flotante (Bot Local):** Botón flotante siempre disponible en la esquina inferior derecha (`FloatingActionButton`) que despliega una ventana emergente sobrepuesta. Consulta inventario en tiempo real, alerta sobre stock crítico, realiza diagnóstico de bandejas de entrada, resume informes y permite simular descuentos mediante lenguaje natural y comandos rápidos sin servicios externos.
 
 ## Requisitos e instaladores
 
@@ -123,7 +129,38 @@ Estas credenciales solo se solicitan al elegir **Agregar producto** en la interf
 
 Flet carga el archivo `.env` si existe, pero no lo necesita para iniciar sesión ni para las funciones de administración de usuarios o de alta de productos. Estas cuentas y permisos se administran desde `data/usuarios.sqlite3`.
 
-El chat de la pestaña **Chat con agente** funciona localmente, sin clave API ni servicios externos. Reconoce consultas sobre estado y archivos pendientes, informes, ayuda y solicitudes de simulación. También acepta los comandos `/estado`, `/informes`, `/ayuda` y `/simular`. La simulación es de solo lectura; no guarda informes, no modifica el catálogo ni mueve documentos. El chat no puede iniciar un procesamiento real. Los resultados de las simulaciones aparecen en la pestaña **Actividad**.
+---
+
+## Asistente Virtual Flotante (Bot Local)
+
+El sistema integra un asistente interactivo local embebido en la aplicación como un **botón flotante circular** (`FloatingActionButton`) en la esquina inferior derecha. Al hacer clic en el botón, se despliega una ventana flotante superpuesta sobre el panel sin bloquear ni achicar los paneles de informes ni actividad.
+
+### Características del Bot:
+1. **100% Local y Privado:** No requiere claves de API, conexión a internet ni envía información a servidores externos.
+2. **Chips Rápidos (1 Clic):** Botones en el encabezado de la ventana para ejecutar acciones frecuentes al instante:
+   - `[📦 Críticos]`
+   - `[📋 Diagnóstico]`
+   - `[📄 Último]`
+   - `[📊 Estado]`
+   - `[🧪 Simular]`
+3. **Controles de Ventana:** Botones en la barra superior para minimizar la ventana, cerrarla o limpiar la conversación actual.
+4. **Consultas en Tiempo Real:** Conectado directamente a la base de datos SQLite y al sistema de archivos.
+
+### Comandos y Lenguaje Natural Soportados:
+
+| Comando | Consulta en lenguaje natural | Función |
+| :--- | :--- | :--- |
+| `/stock <código o nombre>` | `stock 1002`, `cuánto stock queda de filtro` | Consulta unidades disponibles, descripción, estado activo y nivel de stock en tiempo real. |
+| `/criticos` | `productos sin stock`, `hay stock bajo?` | Lista productos con $\le 5$ unidades o agotados para reabastecimiento. |
+| `/diagnostico` | `revisar archivos`, `diagnosticar pendientes` | Analiza el estado y cantidad de PDFs, Excels y Word pendientes en las carpetas. |
+| `/ultimo` | `último informe`, `qué se generó hoy?` | Detalla nombre, formato (PDF o XLS) y tamaño del último reporte generado. |
+| `/estado` | `archivos pendientes`, `estado del sistema` | Resumen cuantitativo de pendientes, archivados e informes. |
+| `/informes` | `mostrar informes`, `reportes disponibles` | Lista los informes generados disponibles para abrir. |
+| `/simular` | `quiero hacer una simulación`, `simular remitos` | Ejecuta una simulación completa de solo lectura sin descontar stock. |
+| `/limpiar` | `limpiar chat`, `borrar conversación` | Reinicia los mensajes de la ventana de chat. |
+| `/ayuda` | `qué puedes hacer?`, `comandos` | Despliega el resumen de comandos disponibles. |
+
+---
 
 ## Preparar los archivos
 
@@ -171,11 +208,13 @@ python main.py
 Se abrirá la interfaz de escritorio de Flet. Desde allí puedes:
 
 - Seleccionar una o más fuentes: remitos mayoristas, canjes o pedidos de Mercado Libre.
-- La interfaz se abre en modo oscuro; puedes cambiar al modo claro desmarcando **Modo oscuro**.
+- La interfaz se abre en modo oscuro; puedes cambiar al modo claro con el botón de tema.
+- Visualizar los **Informes generados** y el panel de **Actividad** a ancho completo con mayor legibilidad.
+- Acceder al **Asistente Virtual** en cualquier momento mediante el botón flotante en la esquina inferior derecha.
 - Simular el procesamiento sin guardar cambios ni mover documentos.
 - Ejecutar el procesamiento real, que genera el informe y archiva los documentos después de pedir confirmación; no modifica `Productos.xlsx`. La gestión de productos del administrador agrega y edita el catálogo tanto en SQLite como en la plantilla.
 - Consultar el estado de los archivos y abrir informes generados.
-- Ver los informes del más reciente al más antiguo; selecciona uno y pulsa **Abrir informe seleccionado** o haz doble clic para abrirlo.
+- Ver los informes del más reciente al más antiguo; selecciona uno y pulsa **Abrir informe** o haz doble clic para abrirlo.
 - Abrir un borrador de correo o WhatsApp Web para compartir el informe seleccionado (el más reciente se usa si no cambias la selección). El archivo se deja seleccionado en el Explorador para adjuntarlo; debes confirmar el envío en la aplicación.
 - Restaurar documentos archivados a las carpetas de entrada para pruebas.
 - Abrir **Gestionar productos** para buscar, agregar, editar, desactivar y reactivar productos.
@@ -231,7 +270,7 @@ Cada archivo de salida incluye la fecha y la hora de ejecución (`HH-MM-SS`) en 
 
 `main.py` selecciona la interfaz o el modo de ejecución. `src/menu.py` prepara las carpetas y coordina la ejecución; `src/agent.py` orquesta la lectura de documentos, consolidación y creación del informe. Los parsers convierten cada formato de entrada en objetos `ResultadoRemito` con sus ítems, y `src/consolidator.py` agrupa las cantidades por código. `src/product_store.py` importa una vez el catálogo desde Excel y administra los productos en SQLite; `src/stock_manager.py` consulta esa base y conserva la plantilla Excel para estilos y formato de informe.
 
-La interfaz principal está implementada en `src/flet_gui.py`. `src/gui.py` conserva la interfaz Tkinter. La autenticación local de Flet se apoya en `src/user_store.py`; `src/internal_chat.py` implementa las consultas locales del chat y `src/paths.py` determina la raíz de datos para ejecución desde código o desde el ejecutable.
+La interfaz principal está implementada en `src/flet_gui.py`. `src/gui.py` conserva la interfaz Tkinter. La autenticación local de Flet se apoya en `src/user_store.py`; `src/internal_chat.py` implementa el reconocimiento por lenguaje natural, consultas directas a SQLite, diagnósticos de archivos y atajos del asistente. `src/paths.py` determina la raíz de datos para ejecución desde código o desde el ejecutable.
 
 ### Preparar el entorno de desarrollo
 
@@ -271,10 +310,10 @@ python -m unittest discover -s tests -v
 Para ejecutar un archivo de pruebas específico:
 
 ```powershell
-python -m unittest discover -s tests -p test_stock_manager.py -v
+python -m unittest discover -s tests -p test_internal_chat.py -v
 ```
 
-Las pruebas están organizadas por área: `test_stock_manager.py` cubre catálogo e informes; `test_mercado_libre_parser.py`, el análisis de pedidos DOCX; `test_flet_gui.py`, la interfaz y roles; `test_user_store.py`, las cuentas locales; `test_internal_chat.py`, el chat; y `test_app_paths.py`, la resolución de rutas.
+Las pruebas están organizadas por área: `test_stock_manager.py` cubre catálogo e informes; `test_mercado_libre_parser.py`, el análisis de pedidos DOCX; `test_flet_gui.py`, la interfaz, roles y el widget flotante del bot; `test_user_store.py`, las cuentas locales; `test_internal_chat.py`, el procesamiento de lenguaje natural y formateadores del asistente; y `test_app_paths.py`, la resolución de rutas.
 
 ### Dependencias y ejecutable
 
@@ -302,11 +341,13 @@ Agentes/
 │   ├── agent.py               # Orquestación de lectura, consolidación y descuentos
 │   ├── canjes_parser.py       # Lectura de planillas de canje
 │   ├── consolidator.py        # Agrupación de productos por código
+│   ├── flet_gui.py            # Interfaz moderna Flet con panel completo y Bot Flotante
+│   ├── internal_chat.py       # Asistente virtual: NLP local, búsqueda de stock y diagnósticos
 │   ├── mercado_libre_parser.py # Lectura y asociación de pedidos DOCX al catálogo
 │   ├── menu.py                # Menú, autenticación y archivado
 │   ├── remito_parser.py       # Lectura y verificación de remitos PDF
 │   ├── sheets_manager.py      # Integración de stock con Google Sheets
-│   └── stock_manager.py       # Catálogo Excel e informes de descuentos
+│   └── stock_manager.py       # Catálogo SQLite/Excel e informes de descuentos
 └── Descuentos/
     ├── Productos.xlsx        # Catálogo y stock base
     ├── Productos_original.xls # Respaldo del archivo binario original (tras la conversión)
@@ -328,4 +369,4 @@ Agentes/
 - Una discrepancia entre las unidades declaradas y extraídas se informa, pero no detiene por sí sola el procesamiento. Revisa el documento antes de una ejecución real.
 - El procesamiento real genera el informe y mueve los documentos, pero no modifica `Productos.xlsx`. Los productos se administran principalmente en `data/productos.sqlite3`; las altas y ediciones se reflejan en la plantilla y crean `Productos_backup.xlsx` antes de modificarla. Las bajas lógicas se conservan en SQLite y Excel y se excluyen de informes hasta reactivarlas. Conserva copias de seguridad de ambas fuentes antes de realizar mantenimiento manual.
 - La opción de restauración **copia** los documentos archivados a las carpetas pendientes; no elimina los originales archivados.
-- La autenticación mediante `.env` está pensada para uso local; no es un sistema de autenticación para una aplicación expuesta a usuarios remotos.
+- El Asistente Virtual opera de forma local e interactiva; puedes utilizar los chips rápidos superiores o escribir comandos directos como `/stock <código>` y `/criticos` para supervisar el inventario sin abrir la administración de productos.

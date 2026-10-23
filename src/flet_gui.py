@@ -14,7 +14,14 @@ from typing import Callable
 
 import flet as ft
 
-from .internal_chat import detectar_intencion
+from .internal_chat import (
+    detectar_intencion,
+    extraer_termino_busqueda,
+    formatear_diagnostico_archivos,
+    formatear_respuesta_criticos,
+    formatear_respuesta_stock,
+    formatear_ultimo_informe,
+)
 from .menu import MenuAgente
 from .paths import application_root
 from .stock_manager import StockManager
@@ -64,6 +71,11 @@ class InterfazFlet:
         )
         self.contadores: dict[str, ft.Text] = {}
         self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
+        self.chat_visible = False
+        self.ventana_chat_flotante: ft.Container | None = None
+        self.boton_chat_flotante: ft.FloatingActionButton | None = None
+        if not hasattr(self.page, "overlay") or self.page.overlay is None:
+            self.page.overlay = []
         self._configurar_ventana()
         if self.user_store.has_users:
             self.mostrar_inicio_sesion()
@@ -117,6 +129,10 @@ class InterfazFlet:
             self.usuario_actual = autenticado
             self.construir()
 
+        self.chat_visible = False
+        self.page.floating_action_button = None
+        if hasattr(self.page, "overlay") and self.page.overlay is not None:
+            self.page.overlay.clear()
         self.page.controls.clear()
         self.page.add(
             ft.Container(
@@ -190,6 +206,10 @@ class InterfazFlet:
                 return
             self.construir()
 
+        self.chat_visible = False
+        self.page.floating_action_button = None
+        if hasattr(self.page, "overlay") and self.page.overlay is not None:
+            self.page.overlay.clear()
         self.page.controls.clear()
         self.page.add(
             ft.Container(
@@ -351,6 +371,10 @@ class InterfazFlet:
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
         self.controles_tarea.clear()
+        self.chat_visible = False
+        self.page.floating_action_button = None
+        if hasattr(self.page, "overlay") and self.page.overlay is not None:
+            self.page.overlay.clear()
         self.page.controls.clear()
 
         sidebar = ft.Container(
@@ -367,15 +391,7 @@ class InterfazFlet:
         dashboard_controls: list[ft.Control] = [
             self.encabezado(),
             self.panel_metricas(),
-            ft.Row(
-                [
-                    self.panel_informes_actividad(),
-                    self.panel_chat(),
-                ],
-                expand=True,
-                spacing=18,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-            ),
+            self.panel_informes_actividad(),
             self.estado_tarea,
         ]
         dashboard = ft.Column(
@@ -398,6 +414,29 @@ class InterfazFlet:
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
+        if hasattr(self.page, "overlay"):
+            if self.page.overlay is None:
+                self.page.overlay = []
+            else:
+                self.page.overlay.clear()
+            self.page.overlay.append(self.crear_ventana_chat_flotante())
+
+        self.boton_chat_flotante = ft.FloatingActionButton(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=20),
+                    ft.Text("Asistente", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD, size=13),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+            ),
+            bgcolor=ROJO,
+            tooltip="Abrir Asistente Virtual",
+            on_click=self.alternar_chat_flotante,
+            shape=ft.RoundedRectangleBorder(radius=16),
+            width=130,
+        )
+        self.page.floating_action_button = self.boton_chat_flotante
         if not self.conversacion.controls:
             self.escribir_chat(
                 "Agente",
@@ -551,70 +590,196 @@ class InterfazFlet:
             expand=True,
             spacing=10,
         )
-        return ft.Column(
+        return ft.Row(
             [
-                self.tarjeta(contenido_informes, expand=True),
-                self.tarjeta(contenido_actividad, expand=True),
+                self.tarjeta(contenido_informes, expand=1),
+                self.tarjeta(contenido_actividad, expand=1),
             ],
-            expand=3,
+            expand=True,
             spacing=16,
+            vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
-    def panel_chat(self) -> ft.Control:
-        return ft.Container(
-            width=340,
+    def alternar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
+        self.chat_visible = not self.chat_visible
+        if self.ventana_chat_flotante is not None:
+            self.ventana_chat_flotante.visible = self.chat_visible
+            self.page.update()
+
+    def cerrar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
+        self.chat_visible = False
+        if self.ventana_chat_flotante is not None:
+            self.ventana_chat_flotante.visible = False
+            self.page.update()
+
+    def limpiar_chat(self, _evento: ft.Event | None = None) -> None:
+        self.conversacion.controls.clear()
+        self.escribir_chat(
+            "Agente",
+            "Conversación reiniciada. Puedes consultar /stock <código>, /criticos, /diagnostico, /estado o /ayuda.",
+        )
+        self.page.update()
+
+    def ejecutar_comando_rapido(self, comando: str) -> None:
+        self.entrada_chat.value = comando
+        asyncio.create_task(self.enviar_chat(None))
+
+    def crear_ventana_chat_flotante(self) -> ft.Container:
+        encabezado_chat = ft.Row(
+            [
+                ft.Row(
+                    [
+                        ft.Container(
+                            width=34,
+                            height=34,
+                            border_radius=10,
+                            bgcolor=ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50,
+                            alignment=ft.Alignment.CENTER,
+                            content=ft.Icon(
+                                ft.Icons.SMART_TOY,
+                                color=ft.Colors.WHITE if self.modo_oscuro else ROJO,
+                                size=18,
+                            ),
+                        ),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    "Asistente StockAgent",
+                                    size=14,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=self.texto,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_400, size=8),
+                                        ft.Text("Local · Listo", size=10, color=self.secundario),
+                                    ],
+                                    spacing=4,
+                                ),
+                            ],
+                            spacing=1,
+                        ),
+                    ],
+                    spacing=8,
+                ),
+                ft.Row(
+                    [
+                        ft.IconButton(
+                            icon=ft.Icons.DELETE_SWEEP_OUTLINED,
+                            icon_color=self.secundario,
+                            icon_size=18,
+                            tooltip="Limpiar conversación",
+                            on_click=self.limpiar_chat,
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.KEYBOARD_ARROW_DOWN,
+                            icon_color=self.secundario,
+                            icon_size=20,
+                            tooltip="Minimizar",
+                            on_click=self.alternar_chat_flotante,
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.CLOSE,
+                            icon_color=self.secundario,
+                            icon_size=18,
+                            tooltip="Cerrar",
+                            on_click=self.cerrar_chat_flotante,
+                        ),
+                    ],
+                    spacing=0,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
+        chips_fila = ft.Row(
+            [
+                ft.Chip(
+                    label=ft.Text("📦 Críticos", size=11, color=self.texto),
+                    bgcolor=self.fondo,
+                    on_click=lambda _e: self.ejecutar_comando_rapido("/criticos"),
+                ),
+                ft.Chip(
+                    label=ft.Text("📋 Diagnóstico", size=11, color=self.texto),
+                    bgcolor=self.fondo,
+                    on_click=lambda _e: self.ejecutar_comando_rapido("/diagnostico"),
+                ),
+                ft.Chip(
+                    label=ft.Text("📄 Último", size=11, color=self.texto),
+                    bgcolor=self.fondo,
+                    on_click=lambda _e: self.ejecutar_comando_rapido("/ultimo"),
+                ),
+                ft.Chip(
+                    label=ft.Text("📊 Estado", size=11, color=self.texto),
+                    bgcolor=self.fondo,
+                    on_click=lambda _e: self.ejecutar_comando_rapido("/estado"),
+                ),
+                ft.Chip(
+                    label=ft.Text("🧪 Simular", size=11, color=self.texto),
+                    bgcolor=self.fondo,
+                    on_click=lambda _e: self.ejecutar_comando_rapido("/simular"),
+                ),
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=6,
+        )
+
+        input_fila = ft.Row(
+            [
+                self.entrada_chat,
+                ft.IconButton(
+                    icon=ft.Icons.SEND,
+                    icon_color=ft.Colors.WHITE,
+                    bgcolor=ROJO,
+                    tooltip="Enviar mensaje",
+                    on_click=self.enviar_chat,
+                ),
+            ],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.END,
+        )
+
+        pie_texto = ft.Text(
+            "Usa /stock <cód>, /criticos, /diagnostico, /estado o /ayuda",
+            size=10,
+            color=self.secundario,
+        )
+
+        self.ventana_chat_flotante = ft.Container(
+            width=390,
+            height=530,
+            right=24,
+            bottom=90,
             bgcolor=self.superficie,
             border=ft.Border.all(1, self.borde),
-            border_radius=14,
-            padding=16,
+            border_radius=16,
+            shadow=ft.BoxShadow(
+                blur_radius=22,
+                spread_radius=2,
+                color=ft.Colors.BLACK_54 if self.modo_oscuro else ft.Colors.BLACK_26,
+                offset=ft.Offset(0, 8),
+            ),
+            padding=14,
+            visible=self.chat_visible,
             content=ft.Column(
                 [
-                    ft.Row(
-                        [
-                            ft.Container(
-                                width=36,
-                                height=36,
-                                border_radius=10,
-                                bgcolor=ft.Colors.RED_50,
-                                alignment=ft.Alignment.CENTER,
-                                content=ft.Icon(ft.Icons.SMART_TOY, color=ROJO, size=19),
-                            ),
-                            ft.Column(
-                                [
-                                    ft.Text("Chat con agente", size=15, weight=ft.FontWeight.BOLD, color=self.texto),
-                                    ft.Text("Local · Sin conexión externa", size=11, color=self.secundario),
-                                ],
-                                spacing=2,
-                            ),
-                        ],
-                        spacing=9,
-                    ),
-                    ft.Divider(height=14, color=self.borde),
+                    encabezado_chat,
+                    chips_fila,
+                    ft.Divider(height=10, color=self.borde),
                     self.conversacion,
-                    ft.Row(
-                        [
-                            self.entrada_chat,
-                            ft.IconButton(
-                                icon=ft.Icons.SEND,
-                                icon_color=ft.Colors.WHITE,
-                                bgcolor=ROJO,
-                                tooltip="Enviar mensaje",
-                                on_click=self.enviar_chat,
-                            ),
-                        ],
-                        spacing=6,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
-                    ),
-                    ft.Text(
-                        "Prueba /estado, /informes, /ayuda o /simular",
-                        size=10,
-                        color=self.secundario,
-                    ),
+                    input_fila,
+                    pie_texto,
                 ],
                 expand=True,
                 spacing=8,
             ),
         )
+        return self.ventana_chat_flotante
+
+    def panel_chat(self) -> ft.Control:
+        if self.ventana_chat_flotante is None:
+            self.crear_ventana_chat_flotante()
+        return self.ventana_chat_flotante
 
     def tarjeta(self, contenido: ft.Control, expand: bool = False) -> ft.Container:
         return ft.Container(
@@ -703,16 +868,40 @@ class InterfazFlet:
             respuesta = self.resumen_informes()
         elif intencion == "saludo":
             respuesta = (
-                "¡Hola! Puedo consultar el estado y los informes, explicar el "
-                "uso del sistema o iniciar una simulación de solo lectura. "
-                "Escribe /ayuda para ver las opciones."
+                "¡Hola! Soy tu asistente de control de stock y remitos. "
+                "Puedo consultar el inventario en tiempo real, alertar sobre productos "
+                "críticos, analizar archivos pendientes o simular descuentos. "
+                "Escribe /ayuda para ver todos los comandos."
             )
         elif intencion == "ayuda":
             respuesta = (
-                "Consulta archivos pendientes con /estado, lista informes con "
-                "/informes o ejecuta una simulación de solo lectura con /simular. "
-                "No puedo iniciar un procesamiento real desde el chat."
+                "Comandos disponibles en el asistente:\n"
+                "• /stock <código o nombre>: Consulta stock y estado en tiempo real.\n"
+                "• /criticos: Lista productos con stock bajo (<= 5 un.) o agotados.\n"
+                "• /diagnostico: Analiza remitos, canjes y pedidos pendientes.\n"
+                "• /estado: Muestra resumen de pendientes y archivados.\n"
+                "• /informes: Lista todos los informes generados.\n"
+                "• /ultimo: Muestra información del informe más reciente.\n"
+                "• /simular: Ejecuta una simulación de prueba sin alterar stock.\n"
+                "• /limpiar: Limpia la pantalla del chat."
             )
+        elif intencion == "criticos":
+            stock_mgr = StockManager(self.menu.ruta_excel_base)
+            productos = stock_mgr.listar_productos()
+            respuesta = formatear_respuesta_criticos(productos)
+        elif intencion == "diagnostico":
+            mayoristas, canjes, ml = self.menu._obtener_pendientes()
+            respuesta = formatear_diagnostico_archivos(mayoristas, canjes, ml)
+        elif intencion == "ultimo_informe":
+            respuesta = formatear_ultimo_informe(self.informes)
+        elif intencion == "buscar_stock":
+            termino = extraer_termino_busqueda(mensaje)
+            stock_mgr = StockManager(self.menu.ruta_excel_base)
+            productos = stock_mgr.listar_productos()
+            respuesta = formatear_respuesta_stock(termino, productos)
+        elif intencion == "limpiar":
+            self.limpiar_chat()
+            return
         elif intencion == "simular":
             if self.ocupado:
                 respuesta = "Ya hay una operación en curso. Inténtalo de nuevo al finalizar."
@@ -725,8 +914,8 @@ class InterfazFlet:
                 await self.simular(None)
         else:
             respuesta = (
-                "Puedo ayudar con el estado de archivos, los informes y las "
-                "simulaciones. Prueba /ayuda."
+                "No reconocí la consulta. Puedes usar los botones rápidos o escribir "
+                "/stock <código>, /criticos, /diagnostico, /estado o /ayuda."
             )
         self.escribir_chat("Agente", respuesta)
         self.page.update()
