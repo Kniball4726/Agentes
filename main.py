@@ -1,10 +1,25 @@
 """
 Punto de Entrada Principal del Agente de Stock y Remitos.
-Al ejecutarse sin argumentos abre la interfaz de Flet.
-También soporta modo automático (--auto o --all) y modo simulación (--dry-run).
+Al ejecutarse sin argumentos abre la interfaz de Flet en modo Servidor Web (Opción 2)
+para permitir conexión desde múltiples máquinas en la red local.
+También soporta:
+  --desktop : abre la ventana nativa de escritorio (una sola máquina)
+  --port N  : define el puerto del servidor web (por defecto 8550)
+  --host IP : define la interfaz de escucha (por defecto 0.0.0.0)
+  --auto    : procesamiento completo automático
+  --dry-run : modo simulación por consola
 """
 
+import os
 import sys
+
+
+def _obtener_parametro(flag: str, valor_por_defecto: str) -> str:
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return sys.argv[idx + 1]
+    return valor_por_defecto
 
 
 def main():
@@ -25,9 +40,19 @@ def main():
 
         InterfazGrafica().iniciar()
     else:
-        from src.flet_gui import iniciar
+        from src.flet_gui import PUERTO_WEB_DEFAULT, iniciar
 
-        iniciar()
+        modo_web = "--desktop" not in sys.argv
+        host = _obtener_parametro("--host", os.environ.get("STOCKAGENT_HOST", "0.0.0.0"))
+        puerto_str = _obtener_parametro(
+            "--port", os.environ.get("STOCKAGENT_PORT", str(PUERTO_WEB_DEFAULT))
+        )
+        try:
+            puerto = int(puerto_str)
+        except ValueError:
+            puerto = PUERTO_WEB_DEFAULT
+
+        iniciar(modo_web=modo_web, host=host, port=puerto)
 
 
 if __name__ == "__main__":

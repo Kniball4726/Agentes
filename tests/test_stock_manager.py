@@ -379,6 +379,240 @@ class StockManagerTests(unittest.TestCase):
             self.assertTrue(Path(guardar.call_args.args[1]).exists())
             self.assertEqual(ruta.read_bytes(), contenido_plantilla)
 
+    def test_actualizar_stock_base_records_dispatch_and_audit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            db_path = Path(temp_dir) / "productos.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["1001", "Item A", 20])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=db_path)
+            descuentos = [
+                RegistroDescuento(
+                    codigo="1001",
+                    nombre_producto="Item A",
+                    fila_excel=3,
+                    stock_anterior=20,
+                    cantidad_descontada=5,
+                    stock_nuevo=15,
+                )
+            ]
+            actualizados = manager.actualizar_stock_base(
+                descuentos=descuentos,
+                sincronizar_excel=False,
+                nombre_archivo="informe_test.xlsx",
+            )
+            self.assertEqual(actualizados, 1)
+
+            prod_map = {p["code"]: p["stock"] for p in manager.product_store.list_products()}
+            self.assertIn("1001", prod_map)
+            self.assertEqual(prod_map["1001"], 15)
+
+            conn = manager.product_store._connect()
+            try:
+                despacho = conn.execute(
+                    "SELECT * FROM despachos WHERE nombre_archivo = 'informe_test.xlsx'"
+                ).fetchone()
+                self.assertIsNotNone(despacho)
+                self.assertEqual(despacho["total_articulos"], 5)
+
+                detalle = conn.execute(
+                    "SELECT * FROM despacho_detalles WHERE product_code = '1001'"
+                ).fetchone()
+                self.assertIsNotNone(detalle)
+                self.assertEqual(detalle["cantidad_descontada"], 5)
+                self.assertEqual(detalle["stock_nuevo"], 15)
+            finally:
+                conn.close()
+
+    def test_generar_pedido_sugerido_fabrica_excel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            db_path = Path(temp_dir) / "productos.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["P1", "Item Agotado", -2])
+            ws.append(["P2", "Item Quiebre", 3])
+            ws.append(["P3", "Item Optimo", 50])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=db_path)
+            ruta_generada = manager.generar_pedido_sugerido_fabrica(
+                ruta_salida=Path(temp_dir) / "Pedido_Test.xlsx",
+                solo_criticos=True,
+            )
+            self.assertTrue(ruta_generada.exists())
+
+            wb_out = openpyxl.load_workbook(ruta_generada)
+            ws_out = wb_out["Pedido a Fabrica"]
+            self.assertEqual(ws_out["A1"].value, "SUGERENCIA DE PEDIDO A FÁBRICA")
+
+            headers = [ws_out.cell(4, c).value for c in range(1, 8)]
+            self.assertEqual(
+                headers,
+                [
+                    "CÓDIGO",
+                    "PRODUCTO",
+                    "STOCK ACTUAL",
+                    "STOCK MÍNIMO",
+                    "STOCK MÁXIMO",
+                    "CANTIDAD SUGERIDA A PEDIR",
+                    "ESTADO",
+                ],
+            )
+
+            codigos_pedidos = [ws_out.cell(row, 1).value for row in (5, 6)]
+            self.assertIn("P1", codigos_pedidos)
+            self.assertIn("P2", codigos_pedidos)
+            self.assertNotIn("P3", codigos_pedidos)
+
+            row_p1 = 5 if ws_out.cell(5, 1).value == "P1" else 6
+            self.assertEqual(ws_out.cell(row_p1, 3).value, -2)
+            self.assertEqual(ws_out.cell(row_p1, 4).value, 5)
+            self.assertEqual(ws_out.cell(row_p1, 5).value, 100)
+            self.assertEqual(ws_out.cell(row_p1, 6).value, 102)
+            self.assertEqual(ws_out.cell(row_p1, 7).value, "AGOTADO")
+
+            row_p2 = 6 if row_p1 == 5 else 5
+            self.assertEqual(ws_out.cell(row_p2, 3).value, 3)
+            self.assertEqual(ws_out.cell(row_p2, 4).value, 5)
+            self.assertEqual(ws_out.cell(row_p2, 5).value, 100)
+            self.assertEqual(ws_out.cell(row_p2, 6).value, 97)
+            self.assertEqual(ws_out.cell(row_p2, 7).value, "QUIEBRE_INMINENTE")
+
+            wb_out.close()
+
+    def test_registrar_ingreso_fabrica_permite_negativos(self):
+        """Descuento manual con valor negativo debe reducir el stock, incluyendo quedar negativo."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["P1", "Producto A", 10])
+            ws.append(["P2", "Producto B", 3])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=Path(temp_dir) / "db.sqlite3")
+
+            # Descuento parcial: 10 + (-4) = 6
+            res = manager.registrar_ingreso_fabrica({"P1": -4}, sobrescribir=False)
+            self.assertEqual(res["P1"], (10, 6))
+
+            # Descuento que deja en negativo: 3 + (-5) = -2
+            manager2 = StockManager(excel_path, ruta_base_datos=Path(temp_dir) / "db.sqlite3")
+            res2 = manager2.registrar_ingreso_fabrica({"P2": -5}, sobrescribir=False)
+            self.assertEqual(res2["P2"], (3, -2))
+
+            # Sobrescribir nunca queda negativo (clamp a 0)
+            manager3 = StockManager(excel_path, ruta_base_datos=Path(temp_dir) / "db.sqlite3")
+            res3 = manager3.registrar_ingreso_fabrica({"P1": -99}, sobrescribir=True)
+            self.assertEqual(res3["P1"][1], 0)
+
+    def test_descontar_mercado_full(self):
+        """Descontar mercado full reduce el stock y registra el despacho."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            db_path = Path(temp_dir) / "db.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["F1", "Filtro Aceite", 20])
+            ws.append(["F2", "Bujía NGK", 15])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=db_path)
+            resumen = manager.descontar_mercado_full({"F1": 5, "F2": 3}, nombre_archivo="Envio_Full_01.xlsx")
+
+            self.assertEqual(resumen["F1"], (20, 15))
+            self.assertEqual(resumen["F2"], (15, 12))
+
+            # Verificar que quedó registrado en SQLite
+            manager2 = StockManager(excel_path, ruta_base_datos=db_path)
+            self.assertEqual(manager2.catalogo["F1"][2], 15)
+            self.assertEqual(manager2.catalogo["F2"][2], 12)
+
+    def test_actualizar_stock_base_crea_notificacion_para_operario(self):
+        """Cuando un operario descuenta stock, se genera una notificación para admin."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            db_path = Path(temp_dir) / "db.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["OP1", "Producto Operario", 50])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=db_path)
+            descuentos = [
+                RegistroDescuento("OP1", "Producto Operario", 50, 10, 40, 4, False)
+            ]
+            manager.actualizar_stock_base(
+                descuentos=descuentos,
+                nombre_archivo="remito_operador.pdf",
+                usuario="carlos_operario",
+            )
+
+            self.assertEqual(manager.contar_notificaciones_no_leidas(), 1)
+            notifs = manager.obtener_notificaciones_admin()
+            self.assertEqual(len(notifs), 1)
+            self.assertEqual(notifs[0]["operator_username"], "carlos_operario")
+            self.assertIn("carlos_operario", notifs[0]["message"])
+
+    def test_procesar_stock_fisico_genera_comparativa_excel_y_notificacion(self):
+        """Relevar stock físico actualiza stock_fisico, compara con digital, genera Excel unificado y notifica al admin."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            excel_path = Path(temp_dir) / "Productos.xlsx"
+            db_path = Path(temp_dir) / "db.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["A1", "Producto Exacto", 10])
+            ws.append(["A2", "Producto Faltante", 20])
+            ws.append(["A3", "Producto Sobrante", 5])
+            wb.save(excel_path)
+
+            manager = StockManager(excel_path, ruta_base_datos=db_path)
+            ruta_salida = Path(temp_dir) / "Comparativa_Unificada.xlsx"
+            ruta_doc, comparativa = manager.procesar_stock_fisico(
+                {"A1": 10, "A2": 15, "A3": 8},
+                usuario="lucia_operaria",
+                nombre_archivo="Conteo_Lunes.xlsx",
+                ruta_salida=ruta_salida,
+            )
+
+            self.assertTrue(ruta_doc.exists())
+            mapa = {item["code"]: item for item in comparativa}
+            self.assertEqual(mapa["A1"]["diferencia"], 0)
+            self.assertEqual(mapa["A1"]["estado"], "COINCIDE")
+            self.assertEqual(mapa["A2"]["diferencia"], -5)
+            self.assertEqual(mapa["A2"]["estado"], "FALTANTE")
+            self.assertEqual(mapa["A3"]["diferencia"], 3)
+            self.assertEqual(mapa["A3"]["estado"], "SOBRANTE")
+
+            # Verificar que se creó la notificación para el administrador
+            notifs = manager.obtener_notificaciones_admin()
+            self.assertEqual(len(notifs), 1)
+            self.assertEqual(notifs[0]["operator_username"], "lucia_operaria")
+            self.assertEqual(notifs[0]["notification_type"], "stock_fisico")
+            self.assertIn("Comparativa_Unificada.xlsx", notifs[0]["message"])
+
+            # Verificar que el Excel unificado tiene las 2 hojas
+            wb_comp = openpyxl.load_workbook(ruta_doc)
+            self.assertIn("Comparativa y Diferencias", wb_comp.sheetnames)
+            self.assertIn("Catálogo Unificado", wb_comp.sheetnames)
+            wb_comp.close()
+
 
 if __name__ == "__main__":
     unittest.main()

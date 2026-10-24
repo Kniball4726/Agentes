@@ -229,26 +229,30 @@ def formatear_respuesta_stock(termino: str, productos: Iterable[Any]) -> str:
 
 
 def formatear_respuesta_criticos(productos: Iterable[Any], umbral: int = 5) -> str:
-    """Retorna productos activos con stock menor o igual al umbral."""
+    """Retorna productos activos con stock menor o igual a su stock mínimo."""
     criticos = []
     for p in productos:
         codigo = str(p["code"] if isinstance(p, dict) or hasattr(p, "__getitem__") else getattr(p, "code", ""))
         nombre = str(p["name"] if isinstance(p, dict) or hasattr(p, "__getitem__") else getattr(p, "name", ""))
         stock = int(p["stock"] if isinstance(p, dict) or hasattr(p, "__getitem__") else getattr(p, "stock", 0))
         activo = bool(p["active"] if isinstance(p, dict) or hasattr(p, "__getitem__") else getattr(p, "active", True))
+        try:
+            minimo = int(p["stock_minimo"])
+        except Exception:
+            minimo = getattr(p, "stock_minimo", umbral)
 
-        if activo and stock <= umbral:
-            criticos.append((stock, codigo, nombre))
+        if activo and stock <= minimo:
+            criticos.append((stock, codigo, nombre, minimo))
 
     if not criticos:
-        return f"¡Excelente! No hay productos activos en nivel crítico (todos superan las {umbral} unidades)."
+        return "¡Excelente! No hay productos activos en nivel crítico ni quiebre de stock."
 
     criticos.sort(key=lambda x: (x[0], x[1]))
 
-    lineas = [f"⚠️ {len(criticos)} productos en nivel crítico (<= {umbral} un.):\n"]
-    for stk, cod, nom in criticos[:8]:
-        aviso = "[AGOTADO]" if stk <= 0 else "[BAJO]"
-        lineas.append(f"• {aviso} [{cod}] {nom[:34]} -> {stk} un.")
+    lineas = [f"⚠️ {len(criticos)} producto(s) en nivel crítico o quiebre de stock:\n"]
+    for stk, cod, nom, min_val in criticos[:8]:
+        aviso = "[AGOTADO]" if stk <= 0 else f"[BAJO - Mín: {min_val}]"
+        lineas.append(f"• {aviso} [{cod}] {nom[:32]} -> {stk} un.")
 
     if len(criticos) > 8:
         lineas.append(f"\n... y {len(criticos) - 8} productos más con bajo stock.")
@@ -257,10 +261,16 @@ def formatear_respuesta_criticos(productos: Iterable[Any], umbral: int = 5) -> s
 
 
 def formatear_diagnostico_archivos(
-    mayoristas: Sequence[Path], canjes: Sequence[Path], mercado_libre: Sequence[Path]
+    mayoristas: Sequence[Path],
+    canjes: Sequence[Path],
+    mercado_libre: Sequence[Path],
+    fabrica: Sequence[Path] | None = None,
+    mercado_full: Sequence[Path] | None = None,
 ) -> str:
     """Genera un análisis rápido de la bandeja de entrada de archivos."""
-    total = len(mayoristas) + len(canjes) + len(mercado_libre)
+    fab_lista = list(fabrica or [])
+    full_lista = list(mercado_full or [])
+    total = len(mayoristas) + len(canjes) + len(mercado_libre) + len(fab_lista) + len(full_lista)
     if total == 0:
         return (
             "📋 Diagnóstico de archivos:\n"
@@ -289,6 +299,20 @@ def formatear_diagnostico_archivos(
             lineas.append(f"   - {ml.name}")
         if len(mercado_libre) > 3:
             lineas.append(f"   - ...y {len(mercado_libre) - 3} más")
+
+    if fab_lista:
+        lineas.append(f"• Pedidos de Fábrica (Ingreso): {len(fab_lista)} archivo(s)")
+        for fb in fab_lista[:3]:
+            lineas.append(f"   - {fb.name}")
+        if len(fab_lista) > 3:
+            lineas.append(f"   - ...y {len(fab_lista) - 3} más")
+
+    if full_lista:
+        lineas.append(f"• Envíos Mercado Full (Excel): {len(full_lista)} planilla(s)")
+        for fl in full_lista[:3]:
+            lineas.append(f"   - {fl.name}")
+        if len(full_lista) > 3:
+            lineas.append(f"   - ...y {len(full_lista) - 3} más")
 
     lineas.append("\nTip: Ejecuta /simular para chequear consistencia sin descontar stock.")
     return "\n".join(lineas)

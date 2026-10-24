@@ -42,6 +42,8 @@ if errorlevel 1 (
     echo No se pudo copiar el catalogo a la carpeta de distribucion.
     exit /b 1
 )
+if exist "iniciar_servidor_web.bat" copy /Y "iniciar_servidor_web.bat" "dist\iniciar_servidor_web.bat" > nul
+if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
 
 echo.
 echo Ejecutable creado: dist\StockAgent.exe

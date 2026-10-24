@@ -31,6 +31,9 @@ if sys.platform == "win32":
         pass
 
 from .agent import AgenteRemitosStock
+from .factory_parser import parsear_archivo_fabrica
+from .mercado_full_parser import parsear_archivo_mercado_full
+from .physical_stock_parser import parsear_excel_stock_fisico
 from .stock_manager import StockManager
 
 
@@ -41,12 +44,18 @@ class MenuAgente:
         self.carpeta_mayoristas = self.base_dir / "Descuentos" / "Mayoristas"
         self.carpeta_canjes = self.base_dir / "Descuentos" / "Canjes"
         self.carpeta_mercado_libre = self.base_dir / "Descuentos" / "MercadoLibre"
+        self.carpeta_fabrica = self.base_dir / "Descuentos" / "Fabrica"
+        self.carpeta_mercado_full = self.base_dir / "Descuentos" / "MercadoFull"
+        self.carpeta_stock_fisico = self.base_dir / "Descuentos" / "StockFisico"
         self.carpeta_descuentos = self.base_dir / "Descuentos" / "descuentos"
         self.carpeta_descontados = self.base_dir / "Descuentos" / "descontados"
 
         self.carpeta_mayoristas.mkdir(parents=True, exist_ok=True)
         self.carpeta_canjes.mkdir(parents=True, exist_ok=True)
         self.carpeta_mercado_libre.mkdir(parents=True, exist_ok=True)
+        self.carpeta_fabrica.mkdir(parents=True, exist_ok=True)
+        self.carpeta_mercado_full.mkdir(parents=True, exist_ok=True)
+        self.carpeta_stock_fisico.mkdir(parents=True, exist_ok=True)
         self.carpeta_descuentos.mkdir(parents=True, exist_ok=True)
         self.carpeta_descontados.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +65,26 @@ class MenuAgente:
         mercado_libre = sorted(list(self.carpeta_mercado_libre.glob("*.docx")))
         return mayoristas, canjes, mercado_libre
 
+    def _obtener_pendientes_fabrica(self):
+        archivos = []
+        for ext in ("*.xlsx", "*.xls", "*.pdf"):
+            archivos.extend(self.carpeta_fabrica.glob(ext))
+        return sorted(archivos)
+
+    def _obtener_pendientes_mercado_full(self):
+        archivos = []
+        carpeta = getattr(self, "carpeta_mercado_full", self.base_dir / "Descuentos" / "MercadoFull")
+        for ext in ("*.xlsx", "*.xls"):
+            archivos.extend(carpeta.glob(ext))
+        return sorted(archivos)
+
+    def _obtener_pendientes_stock_fisico(self):
+        archivos = []
+        carpeta = getattr(self, "carpeta_stock_fisico", self.base_dir / "Descuentos" / "StockFisico")
+        for ext in ("*.xlsx", "*.xls"):
+            archivos.extend(carpeta.glob(ext))
+        return sorted(archivos)
+
     def _obtener_archivados(self):
         arch_may = list((self.carpeta_descontados / "Mayoristas").glob("*.pdf")) if (self.carpeta_descontados / "Mayoristas").exists() else []
         arch_can = list((self.carpeta_descontados / "Canjes").glob("*.xlsx")) if (self.carpeta_descontados / "Canjes").exists() else []
@@ -64,11 +93,22 @@ class MenuAgente:
         return arch_may, arch_can, arch_ml
 
     def _obtener_generados(self):
+        carpeta_fab = getattr(self, "carpeta_fabrica", None)
+        carpeta_pedidos_fab = carpeta_fab / "Pedidos_Sugeridos" if carpeta_fab else None
+        carpeta_sf = getattr(self, "carpeta_stock_fisico", None)
+        carpeta_comparativas = carpeta_sf / "Comparativas" if carpeta_sf else None
         informes = [
             *self.carpeta_descuentos.glob("*.xls"),
             *self.carpeta_descuentos.glob("*.xlsx"),
             *self.carpeta_descuentos.glob("*.pdf"),
         ]
+        if carpeta_pedidos_fab is not None and carpeta_pedidos_fab.exists():
+            informes.extend(carpeta_pedidos_fab.glob("*.xlsx"))
+            informes.extend(carpeta_pedidos_fab.glob("*.xls"))
+            informes.extend(carpeta_pedidos_fab.glob("*.pdf"))
+        if carpeta_comparativas is not None and carpeta_comparativas.exists():
+            informes.extend(carpeta_comparativas.glob("*.xlsx"))
+            informes.extend(carpeta_comparativas.glob("*.xls"))
         return sorted(informes, key=lambda ruta: ruta.stat().st_mtime_ns)
 
     @staticmethod
@@ -220,6 +260,8 @@ class MenuAgente:
 
     def mostrar_banner(self):
         may, can, ml = self._obtener_pendientes()
+        fab = self._obtener_pendientes_fabrica()
+        full = self._obtener_pendientes_mercado_full()
         arch_m, arch_c, arch_ml = self._obtener_archivados()
         generados = self._obtener_generados()
 
@@ -231,6 +273,8 @@ class MenuAgente:
         print(f"  * Pendientes Mayoristas (PDF) : {len(may)} archivo(s)")
         print(f"  * Pendientes Canjes (Excel)   : {len(can)} archivo(s)")
         print(f"  * Pendientes Mercado Libre    : {len(ml)} archivo(s)")
+        print(f"  * Pedidos de Fábrica (Ingreso): {len(fab)} archivo(s)")
+        print(f"  * Envíos Mercado Full (Excel) : {len(full)} archivo(s)")
         print(f"  * Archivos en Descontados     : {len(arch_m) + len(arch_c) + len(arch_ml)} archivo(s)")
         print(f"  * Informes de Descuento       : {len(generados)} archivo(s)")
         print("-" * 72)
@@ -240,7 +284,8 @@ class MenuAgente:
         incluir_mayoristas=True,
         incluir_canjes=True,
         simulacion=False,
-        incluir_mercado_libre=True
+        incluir_mercado_libre=True,
+        usuario="sistema",
     ):
         may_pend, can_pend, ml_pend = self._obtener_pendientes()
         remitos_pdf = may_pend if incluir_mayoristas else []
@@ -310,8 +355,18 @@ class MenuAgente:
         print(f"DESTINO DEL ARCHIVO: {reporte.reporte_stock.archivo_guardado}")
         print("=" * 70)
 
-        # 3. ARCHIVADO (solo si no es simulación)
+        # 3. ACTUALIZACIÓN EN BASE DE DATOS Y ARCHIVADO (solo si no es simulación)
         if not simulacion:
+            print("\n--- Actualizando saldos de stock en la base de datos ---")
+            nombre_informe = Path(reporte.reporte_stock.archivo_guardado).name
+            actualizados = stock_mgr.actualizar_stock_base(
+                descuentos=reporte.reporte_stock.descuentos_aplicados,
+                sincronizar_excel=False,
+                nombre_archivo=nombre_informe,
+                usuario=usuario,
+            )
+            print(f"   [OK] {actualizados} productos actualizados en la base de datos SQLite.")
+
             print("\n--- Archivando pedidos procesados en carpeta 'descontados' ---")
             dest_mayoristas = self.carpeta_descontados / "Mayoristas"
             dest_canjes = self.carpeta_descontados / "Canjes"
@@ -528,6 +583,246 @@ class MenuAgente:
         except Exception as e:
             print(f"\n[ERROR] Ocurrió un problema al acceder al catálogo: {e}")
 
+    def cargar_pedido_fabrica(self):
+        """
+        Permite procesar archivos de ingreso de fábrica (.xlsx, .xls, .pdf)
+        o ingresar manualmente códigos y cantidades para reabastecer stock.
+        """
+        if not self._autenticar():
+            print("\n[ACCESO DENEGADO] No se realizaron cambios.")
+            return
+
+        print("\n" + "=" * 72)
+        print("  CARGA DE PEDIDO DE FÁBRICA / REESTABLECIMIENTO DE STOCK")
+        print("=" * 72)
+        print("  [1] Procesar archivos en carpeta Descuentos/Fabrica")
+        print("  [2] Cargar stock manualmente por código")
+        print("  [0] Volver al menú principal")
+        print("-" * 72)
+
+        try:
+            subopcion = input("  Seleccione una opción [0-2]: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n  [CANCELADO] Operación cancelada por el usuario.")
+            return
+
+        if subopcion == "0":
+            return
+        elif subopcion == "1":
+            archivos = self._obtener_pendientes_fabrica()
+            if not archivos:
+                print(f"\n[AVISO] No hay archivos en la carpeta: {self.carpeta_fabrica}")
+                print("        Coloque allí archivos de fábrica (.xlsx, .xls o .pdf) y vuelva a intentar.")
+                return
+
+            print(f"\nSe encontraron {len(archivos)} archivo(s) de fábrica:")
+            for idx, a in enumerate(archivos, 1):
+                print(f"  {idx}. {a.name}")
+
+            print("\nTipo de operación:")
+            print("  [1] Sumar al stock actual (Reabastecimiento)")
+            print("  [2] Sobrescribir stock (Ajuste directo)")
+            try:
+                op_tipo = input("  Seleccione modo [1]: ").strip()
+                sobrescribir = (op_tipo == "2")
+            except (KeyboardInterrupt, EOFError):
+                print("\n  [CANCELADO] Operación cancelada.")
+                return
+
+            stock_mgr = StockManager(ruta_excel_base=self.ruta_excel_base)
+            total_procesados = 0
+            for a in archivos:
+                print(f"\nProcesando {a.name}...")
+                try:
+                    totales, detalle = parsear_archivo_fabrica(a)
+                    if not totales:
+                        print("  [AVISO] No se extrajeron productos con cantidad válida de este archivo.")
+                        continue
+                    resumen = stock_mgr.registrar_ingreso_fabrica(totales, sobrescribir=sobrescribir)
+                    print(f"  [OK] Se actualizaron {len(resumen)} productos en la base y Productos.xlsx.")
+                    for c, (s_ant, s_nvo) in resumen.items():
+                        nom = stock_mgr.catalogo[c][1]
+                        print(f"       Cod {c} ({nom[:30]}): {s_ant} -> {s_nvo}")
+                    
+                    # Mover a carpeta descontados/Fabrica
+                    dest_fab = self.carpeta_descontados / "Fabrica"
+                    dest_fab.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(a), str(dest_fab / a.name))
+                    print(f"       Archivo archivado en: {dest_fab}")
+                    total_procesados += 1
+                except Exception as e:
+                    print(f"  [ERROR] Falló el procesamiento de {a.name}: {e}")
+
+            print(f"\n[FIN] {total_procesados} archivo(s) procesados exitosamente.")
+
+        elif subopcion == "2":
+            stock_mgr = StockManager(ruta_excel_base=self.ruta_excel_base)
+            print("\nModo de carga manual (escriba 'fin' o deje código vacío para terminar):")
+            print("  [1] Sumar al stock actual (Reabastecimiento)")
+            print("  [2] Sobrescribir stock (Ajuste directo)")
+            try:
+                op_tipo = input("  Seleccione modo [1]: ").strip()
+                sobrescribir = (op_tipo == "2")
+            except (KeyboardInterrupt, EOFError):
+                print("\n  [CANCELADO] Operación cancelada.")
+                return
+
+            cargas: dict[str, int] = {}
+            while True:
+                try:
+                    cod = input("\n  Código de producto (o 'fin'): ").strip()
+                    if not cod or cod.lower() == "fin":
+                        break
+                    cod_norm = normalizar_codigo(cod)
+                    if cod_norm not in stock_mgr.catalogo:
+                        print(f"  [ERROR] El código '{cod_norm}' no existe en el catálogo.")
+                        continue
+                    _, nom, st_actual = stock_mgr.catalogo[cod_norm]
+                    print(f"  Producto: {nom} | Stock actual: {st_actual}")
+                    cant_str = input(f"  Cantidad a {'fijar' if sobrescribir else 'sumar'}: ").strip()
+                    if not cant_str:
+                        continue
+                    cant = int(cant_str)
+                    if cant < 0:
+                        print("  [ERROR] La cantidad no puede ser negativa.")
+                        continue
+                    cargas[cod_norm] = cant
+                except ValueError:
+                    print("  [ERROR] La cantidad debe ser un número entero.")
+                except (KeyboardInterrupt, EOFError):
+                    print("\n  [CANCELADO] Entrada interrumpida.")
+                    return
+
+            if not cargas:
+                print("\n[AVISO] No se ingresaron productos para actualizar.")
+                return
+
+            print(f"\nSe actualizarán {len(cargas)} producto(s).")
+            try:
+                conf = input("¿Confirmar actualización? [s/N]: ").strip().lower()
+                if conf != "s":
+                    print("\n[CANCELADO] No se realizaron cambios.")
+                    return
+                resumen = stock_mgr.registrar_ingreso_fabrica(cargas, sobrescribir=sobrescribir)
+                print(f"\n[OK] Se actualizaron {len(resumen)} productos exitosamente:")
+                for c, (s_ant, s_nvo) in resumen.items():
+                    nom = stock_mgr.catalogo[c][1]
+                    print(f"     Cod {c} ({nom[:30]}): {s_ant} -> {s_nvo}")
+            except Exception as e:
+                print(f"\n[ERROR] Ocurrió un error al actualizar el stock: {e}")
+
+    def generar_pedido_fabrica_cli(self):
+        """Genera el Excel con los pedidos sugeridos a fábrica según máximos y mínimos."""
+        if not self._autenticar():
+            print("\n[ACCESO DENEGADO] Requiere permisos de administrador.")
+            return
+
+        stock_mgr = StockManager(self.ruta_excel_base)
+        print("\n--- Generando Pedido Sugerido a Fábrica (Excel) ---")
+        try:
+            ruta = stock_mgr.generar_pedido_sugerido_fabrica(solo_criticos=True)
+            print(f"   [OK] Archivo generado exitosamente en:\n        {ruta}")
+        except Exception as e:
+            print(f"   [ERROR] No se pudo generar el pedido: {e}")
+
+    def descontar_mercado_full_cli(self):
+        """Procesa y descuenta las planillas Excel (.xlsx, .xls) de Mercado Envíos Full."""
+        if not self._autenticar():
+            print("\n[ACCESO DENEGADO] Requiere permisos de administrador.")
+            return
+
+        archivos = self._obtener_pendientes_mercado_full()
+        if not archivos:
+            print(f"\n[AVISO] No hay archivos pendientes en {self.carpeta_mercado_full}.")
+            return
+
+        print(f"\n--- Procesar Envíos Mercado Full ({len(archivos)} archivo(s)) ---")
+        stock_mgr = StockManager(self.ruta_excel_base)
+
+        for arch in archivos:
+            print(f"\nLeyendo: {arch.name}")
+            try:
+                totales, detalle = parsear_archivo_mercado_full(arch)
+            except Exception as e:
+                print(f"  [ERROR] No se pudo leer {arch.name}: {e}")
+                continue
+
+            if not totales:
+                print("  [AVISO] No se encontraron productos válidos en el archivo.")
+                continue
+
+            print(f"  Se detectaron {len(totales)} productos a descontar (Total unidades: {sum(totales.values())}).")
+            for cod, cant in list(totales.items())[:5]:
+                nom = stock_mgr.catalogo.get(cod, ("", "No encontrado", 0))[1]
+                stk = stock_mgr.catalogo.get(cod, ("", "", 0))[2]
+                print(f"   • [{cod}] {nom[:30]} | Descontar: {cant} | Stock act: {stk} -> {stk - cant}")
+            if len(totales) > 5:
+                print(f"   • ...y {len(totales) - 5} productos más.")
+
+            try:
+                conf = input(f"¿Confirmar descuento de {arch.name}? [s/N]: ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                print("\n  [CANCELADO] Operación interrumpida.")
+                return
+
+            if conf != "s":
+                print("  [SALTADO] No se aplicaron descuentos para este archivo.")
+                continue
+
+            try:
+                resumen = stock_mgr.descontar_mercado_full(totales, nombre_archivo=arch.name)
+                dest = self.carpeta_descontados / "MercadoFull"
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(arch), str(dest / arch.name))
+                print(f"  [OK] Descuento aplicado exitosamente. Archivo movido a {dest.name}/.")
+            except Exception as e:
+                print(f"  [ERROR] Falló al aplicar el descuento: {e}")
+
+    def hacer_stock_fisico_cli(self, usuario: str = "operario"):
+        """Lee planillas Excel en Descuentos/StockFisico, actualiza stock físico,
+        compara con el stock digital, genera el reporte unificado para admin y notifica.
+        """
+        archivos = self._obtener_pendientes_stock_fisico()
+        if not archivos:
+            print(f"\n[AVISO] No hay planillas pendientes en {self.carpeta_stock_fisico}.")
+            return
+
+        print(f"\n--- Relevamiento de Stock Físico ({len(archivos)} archivo(s)) ---")
+        stock_mgr = StockManager(self.ruta_excel_base)
+
+        for arch in archivos:
+            print(f"\nLeyendo: {arch.name}")
+            try:
+                totales, _ = parsear_excel_stock_fisico(arch)
+            except Exception as e:
+                print(f"  [ERROR] No se pudo leer {arch.name}: {e}")
+                continue
+
+            if not totales:
+                print("  [AVISO] No se encontraron productos válidos en el archivo.")
+                continue
+
+            ruta_doc, comparativa = stock_mgr.procesar_stock_fisico(
+                totales, usuario=usuario, nombre_archivo=arch.name
+            )
+            con_dif = [i for i in comparativa if i["diferencia"] != 0]
+            print(f"  [OK] Relevados: {len(comparativa)} | Con diferencias: {len(con_dif)}")
+            for item in comparativa[:10]:
+                dif = item["diferencia"]
+                dif_str = f"+{dif}" if dif > 0 else str(dif)
+                print(
+                    f"   • [{item['code']}] {item['name'][:30]} | "
+                    f"Digital: {item['stock_digital']} | Físico: {item['stock_fisico']} | "
+                    f"Dif: {dif_str} ({item['estado']})"
+                )
+            if len(comparativa) > 10:
+                print(f"   • ...y {len(comparativa) - 10} productos más.")
+            print(f"  [REPORTE UNIFICADO ADMIN] {ruta_doc}")
+
+            dest = self.carpeta_descontados / "StockFisico"
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(arch), str(dest / arch.name))
+
     def iniciar(self):
         try:
             while True:
@@ -538,14 +833,18 @@ class MenuAgente:
                 print("  [3] Procesar Solo Remitos Mayoristas (PDF)")
                 print("  [4] Procesar Solo Canjes (Excel)")
                 print("  [5] Procesar Solo Pedidos de Mercado Libre (DOCX)")
-                print("  [6] Ver Historial de Planillas Generadas")
-                print("  [7] Restaurar Archivos de Prueba (Descontados -> Pendientes)")
-                print("  [8] Agregar Producto al Catalogo  [ADMIN]")
+                print("  [6] Cargar Pedido de Fábrica / Ajustar Stock  [ADMIN]")
+                print("  [7] Ver Historial de Planillas Generadas")
+                print("  [8] Restaurar Archivos de Prueba (Descontados -> Pendientes)")
+                print("  [9] Agregar Producto al Catalogo  [ADMIN]")
+                print("  [10] Generar Pedido Sugerido a Fabrica (Excel)  [ADMIN]")
+                print("  [11] Descontar Envío Mercado Full (Excel)  [ADMIN]")
+                print("  [12] Hacer Stock Físico y Comparar con Digital (Excel)")
                 print("  [0] Salir")
                 print("-" * 72)
 
                 try:
-                    opcion = input(" Ingrese una opcion [0-8]: ").strip()
+                    opcion = input(" Ingrese una opcion [0-12]: ").strip()
                 except (KeyboardInterrupt, EOFError):
                     print("\n\n[INTERRUMPIDO] Saliendo del menu... ¡Hasta luego!\n")
                     break
@@ -561,11 +860,19 @@ class MenuAgente:
                 elif opcion == "5":
                     self.procesar(incluir_mayoristas=False, incluir_canjes=False)
                 elif opcion == "6":
-                    self.ver_historial()
+                    self.cargar_pedido_fabrica()
                 elif opcion == "7":
-                    self.restaurar_para_pruebas()
+                    self.ver_historial()
                 elif opcion == "8":
+                    self.restaurar_para_pruebas()
+                elif opcion == "9":
                     self.agregar_producto_admin()
+                elif opcion == "10":
+                    self.generar_pedido_fabrica_cli()
+                elif opcion == "11":
+                    self.descontar_mercado_full_cli()
+                elif opcion == "12":
+                    self.hacer_stock_fisico_cli()
                 elif opcion == "0":
                     print("\n[SALIR] Hasta luego. ¡Mision finalizada!\n")
                     break

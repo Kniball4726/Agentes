@@ -19,12 +19,13 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - [Notas operativas](#notas-operativas)
 
 ## Funciones
+
 ### Nuevas funcionalidades
+
 - **PDF optimizado:** columnas alineadas, texto ajustado y todo en una sola hoja A4.
 - **Ejecutable actualizado:** el archivo `dist/StockAgent.exe` generado con PyInstaller incluye la última lógica y se ejecuta directamente en Windows.
 - **Asistente invisible en login:** el asistente virtual no se muestra en la pantalla de ingreso y desaparece al cerrar la sesión del usuario.
 - **Botón flotante mejorado:** el botón flotante está siempre disponible en la esquina inferior derecha y brinda acceso rápido a consultas y comandos sin interferir con la UI.
-
 - Lee remitos mayoristas en PDF, planillas de canje `.xlsx` y pedidos de Mercado Libre en `.docx`.
 - Consolida productos repetidos por código y suma sus cantidades.
 - Compara el total de unidades extraídas de un remito con el total declarado y muestra discrepancias.
@@ -39,6 +40,10 @@ Aplicación para controlar el stock a partir de remitos mayoristas en PDF, solic
 - Permite restaurar documentos archivados seleccionando la fecha de descuento registrada en los informes.
 - Incluye un CRUD de productos para administradores: consulta y búsqueda, altas, edición de código/nombre/stock, y bajas lógicas con opción de reactivación. Las ediciones se sincronizan con SQLite y `Productos.xlsx`; los productos inactivos se conservan, pero se omiten en futuros informes.
 - **Asistente Virtual Flotante (Bot Local):** Botón flotante siempre disponible en la esquina inferior derecha (`FloatingActionButton`) que despliega una ventana emergente sobrepuesta. Consulta inventario en tiempo real, alerta sobre stock crítico, realiza diagnóstico de bandejas de entrada, resume informes y permite simular descuentos mediante lenguaje natural y comandos rápidos sin servicios externos.
+- **Ajuste de Stock y Carga de Pedidos de Fábrica:** Permite restablecer y ajustar el stock tanto sumando unidades recibidas (reabastecimiento) como sobrescribiendo cantidades (ajuste directo). Funciona mediante carga manual en la interfaz y por procesamiento de planillas Excel (.xlsx, .xls) o remitos PDF en la bandeja `Descuentos/Fabrica`, sincronizando de forma inmediata y atómica tanto la base de datos SQLite como la planilla `Productos.xlsx`.
+- **Descuento de Envíos Mercado Full (Excel) [Solo Admin]:** Función exclusiva para el rol administrador que lee planillas `.xlsx` o `.xls` desde `Descuentos/MercadoFull`, consolida por código/SKU, previsualiza el impacto antes de aplicar, advierte sobre quiebres o stock negativo, descuenta las unidades de forma atómica en SQLite/Excel y archiva los documentos en `Descuentos/descontados/MercadoFull`.
+- **Notificaciones de Descuento de Operarios para Administrador:** Cada vez que un usuario con rol operador descuenta stock de remitos o pedidos, el sistema registra la trazabilidad del operario responsable en SQLite y genera una notificación con contador en tiempo real para el administrador (ícono de campana con badge en el encabezado), detallando qué operario realizó el descuento, fecha, archivo y total de unidades procesadas, con opción de marcarlas como leídas.
+- **Relevamiento de Stock Físico y Comparativa Unificada (Operario -> Admin):** Permite al operario cargar planillas Excel (`.xlsx` o `.xls`) desde `Descuentos/StockFisico`, actualiza el stock físico en SQLite, lo compara contra el stock digital mostrando las diferencias (`COINCIDE`, `FALTANTE`, `SOBRANTE`), genera automáticamente un documento Excel unificado (`Comparativa_Stock_Fisico_*.xlsx`) con las diferencias y el catálogo completo para el administrador, y le envía una notificación inmediata indicando qué operario realizó el inventario físico.
 
 ## Requisitos e instaladores
 
@@ -136,6 +141,7 @@ Flet carga el archivo `.env` si existe, pero no lo necesita para iniciar sesión
 El sistema integra un asistente interactivo local embebido en la aplicación como un **botón flotante circular** (`FloatingActionButton`) en la esquina inferior derecha. Al hacer clic en el botón, se despliega una ventana flotante superpuesta sobre el panel sin bloquear ni achicar los paneles de informes ni actividad.
 
 ### Características del Bot:
+
 1. **100% Local y Privado:** No requiere claves de API, conexión a internet ni envía información a servidores externos.
 2. **Chips Rápidos (1 Clic):** Botones en el encabezado de la ventana para ejecutar acciones frecuentes al instante:
    - `[📦 Críticos]`
@@ -148,17 +154,17 @@ El sistema integra un asistente interactivo local embebido en la aplicación com
 
 ### Comandos y Lenguaje Natural Soportados:
 
-| Comando | Consulta en lenguaje natural | Función |
-| :--- | :--- | :--- |
-| `/stock <código o nombre>` | `stock 1002`, `cuánto stock queda de filtro` | Consulta unidades disponibles, descripción, estado activo y nivel de stock en tiempo real. |
-| `/criticos` | `productos sin stock`, `hay stock bajo?` | Lista productos con $\le 5$ unidades o agotados para reabastecimiento. |
-| `/diagnostico` | `revisar archivos`, `diagnosticar pendientes` | Analiza el estado y cantidad de PDFs, Excels y Word pendientes en las carpetas. |
-| `/ultimo` | `último informe`, `qué se generó hoy?` | Detalla nombre, formato (PDF o XLS) y tamaño del último reporte generado. |
-| `/estado` | `archivos pendientes`, `estado del sistema` | Resumen cuantitativo de pendientes, archivados e informes. |
-| `/informes` | `mostrar informes`, `reportes disponibles` | Lista los informes generados disponibles para abrir. |
-| `/simular` | `quiero hacer una simulación`, `simular remitos` | Ejecuta una simulación completa de solo lectura sin descontar stock. |
-| `/limpiar` | `limpiar chat`, `borrar conversación` | Reinicia los mensajes de la ventana de chat. |
-| `/ayuda` | `qué puedes hacer?`, `comandos` | Despliega el resumen de comandos disponibles. |
+| Comando                       | Consulta en lenguaje natural                          | Función                                                                                    |
+| :---------------------------- | :---------------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| `/stock <código o nombre>` | `stock 1002`, `cuánto stock queda de filtro`     | Consulta unidades disponibles, descripción, estado activo y nivel de stock en tiempo real. |
+| `/criticos`                 | `productos sin stock`, `hay stock bajo?`          | Lista productos con $\le 5$ unidades o agotados para reabastecimiento.                    |
+| `/diagnostico`              | `revisar archivos`, `diagnosticar pendientes`     | Analiza el estado y cantidad de PDFs, Excels y Word pendientes en las carpetas.             |
+| `/ultimo`                   | `último informe`, `qué se generó hoy?`         | Detalla nombre, formato (PDF o XLS) y tamaño del último reporte generado.                 |
+| `/estado`                   | `archivos pendientes`, `estado del sistema`       | Resumen cuantitativo de pendientes, archivados e informes.                                  |
+| `/informes`                 | `mostrar informes`, `reportes disponibles`        | Lista los informes generados disponibles para abrir.                                        |
+| `/simular`                  | `quiero hacer una simulación`, `simular remitos` | Ejecuta una simulación completa de solo lectura sin descontar stock.                       |
+| `/limpiar`                  | `limpiar chat`, `borrar conversación`            | Reinicia los mensajes de la ventana de chat.                                                |
+| `/ayuda`                    | `qué puedes hacer?`, `comandos`                  | Despliega el resumen de comandos disponibles.                                               |
 
 ---
 

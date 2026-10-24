@@ -38,6 +38,8 @@ class UserStore:
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
             connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA busy_timeout = 10000")
             yield connection
 
     def _initialize(self) -> None:

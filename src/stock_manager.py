@@ -206,7 +206,13 @@ class StockManager:
         return self.product_store.list_products()
 
     def actualizar_producto(
-        self, codigo_actual: str, codigo_nuevo: str, nombre: str, stock: int
+        self,
+        codigo_actual: str,
+        codigo_nuevo: str,
+        nombre: str,
+        stock: int,
+        stock_minimo: Optional[int] = None,
+        stock_maximo: Optional[int] = None,
     ) -> None:
         codigo_actual = normalizar_codigo(codigo_actual)
         codigo_nuevo = normalizar_codigo(codigo_nuevo)
@@ -346,6 +352,8 @@ class StockManager:
             stock=stock,
             synchronize_template=sincronizar_plantilla,
             restore_template=restaurar_plantilla,
+            stock_minimo=stock_minimo,
+            stock_maximo=stock_maximo,
         )
         self._cargar_catalogo()
 
@@ -1685,8 +1693,208 @@ class StockManager:
         )
         documento.build(elementos, onFirstPage=pie_pagina, onLaterPages=pie_pagina)
 
-    def actualizar_stock_base(self, descuentos: List[RegistroDescuento]) -> int:
-        """Persiste en SQLite los saldos nuevos de cada producto descontado."""
+    def sincronizar_stocks(self, stocks: Dict[str, int]) -> int:
+        """Actualiza el stock en la base SQLite y sincroniza Productos.xlsx."""
+        if not stocks:
+            return 0
+
+        stocks_normalizados = {
+            normalizar_codigo(k): int(v) for k, v in stocks.items()
+        }
+
+        contenido_original = self.ruta_excel_base.read_bytes()
+        respaldo = self.ruta_excel_base.with_name(
+            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
+        )
+        plantilla_actualizada = False
+
+        def sincronizar_plantilla() -> list[int]:
+            nonlocal plantilla_actualizada
+            shutil.copy2(self.ruta_excel_base, respaldo)
+            libro = openpyxl.load_workbook(str(self.ruta_excel_base))
+            try:
+                hoja = (
+                    libro[self.nombre_hoja]
+                    if self.nombre_hoja in libro.sheetnames
+                    else libro.active
+                )
+                if hoja is None:
+                    raise ValueError("No se encontró una hoja para actualizar.")
+
+                for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
+                    val_cod = hoja.cell(fila, self._col_codigo).value
+                    if val_cod is None:
+                        continue
+                    cod = normalizar_codigo(str(val_cod))
+                    if cod in stocks_normalizados:
+                        nuevo_stock = stocks_normalizados[cod]
+                        if self._col_stock_final is not None:
+                            columna_inicial = (
+                                self._col_stock_inicial or self._col_stock
+                            )
+                            hoja.cell(fila, columna_inicial, nuevo_stock)
+                            if self._col_descuento is not None:
+                                hoja.cell(fila, self._col_descuento, None)
+                            hoja.cell(fila, self._col_stock_final, nuevo_stock)
+                        else:
+                            hoja.cell(fila, self._col_stock, nuevo_stock)
+
+                with tempfile.NamedTemporaryFile(
+                    suffix=self.ruta_excel_base.suffix,
+                    dir=self.ruta_excel_base.parent,
+                    delete=False,
+                ) as temporal:
+                    ruta_temporal = Path(temporal.name)
+                try:
+                    libro.save(ruta_temporal)
+                finally:
+                    libro.close()
+                try:
+                    os.replace(ruta_temporal, self.ruta_excel_base)
+                    plantilla_actualizada = True
+                finally:
+                    if ruta_temporal.exists():
+                        ruta_temporal.unlink()
+
+            except Exception:
+                libro.close()
+                raise
+
+            libro_verificacion = openpyxl.load_workbook(
+                str(self.ruta_excel_base), data_only=True, read_only=True
+            )
+            try:
+                hoja_verificacion = (
+                    libro_verificacion[self.nombre_hoja]
+                    if self.nombre_hoja in libro_verificacion.sheetnames
+                    else libro_verificacion.active
+                )
+                if hoja_verificacion is None:
+                    raise ValueError(
+                        "No se pudo verificar la plantilla después de la actualización de stock."
+                    )
+                return [
+                    fila
+                    for fila in range(
+                        self._fila_inicio_datos,
+                        hoja_verificacion.max_row + 1,
+                    )
+                    if hoja_verificacion.cell(
+                        fila, self._col_codigo
+                    ).value is not None
+                    and str(
+                        hoja_verificacion.cell(fila, self._col_nombre).value or ""
+                    ).strip()
+                ]
+            finally:
+                libro_verificacion.close()
+
+        def restaurar_plantilla() -> None:
+            if not plantilla_actualizada:
+                return
+            with tempfile.NamedTemporaryFile(
+                suffix=self.ruta_excel_base.suffix,
+                dir=self.ruta_excel_base.parent,
+                delete=False,
+            ) as temporal:
+                temporal.write(contenido_original)
+                ruta_temporal = Path(temporal.name)
+            try:
+                os.replace(ruta_temporal, self.ruta_excel_base)
+            finally:
+                if ruta_temporal.exists():
+                    ruta_temporal.unlink()
+
+        filas_actualizadas = self.product_store.update_stocks(
+            stocks=stocks_normalizados,
+            synchronize_template=sincronizar_plantilla,
+            restore_template=restaurar_plantilla,
+        )
+        self._cargar_catalogo()
+        return filas_actualizadas
+
+    def registrar_movimientos_historial(
+        self,
+        stocks_delta: Dict[str, int],
+        tipo: str,
+    ) -> None:
+        """Persiste movimientos en stock_movements para estadísticas.
+
+        stocks_delta: {codigo: cantidad} — positivo=ingreso, negativo=descuento.
+        tipo: 'descuento' | 'ingreso_fabrica' | 'ajuste_manual'
+        """
+        movimientos = []
+        for cod, delta in stocks_delta.items():
+            nombre = self.catalogo.get(cod, (0, cod, 0))[1]
+            movimientos.append((cod, nombre, delta, tipo))
+        self.product_store.register_movements(movimientos)
+
+    def consultar_movimientos(
+        self,
+        fecha_desde: str,
+        fecha_hasta: str,
+        tipo: Optional[str] = None,
+        top_n: Optional[int] = None,
+    ) -> List:
+        """Consulta historial agrupado. Retorna lista de sqlite3.Row."""
+        hasta_inclusive = fecha_hasta if "T" in fecha_hasta else fecha_hasta + "T23:59:59"
+        desde_inclusive = fecha_desde if "T" in fecha_desde else fecha_desde + "T00:00:00"
+        return self.product_store.query_movements(
+            date_from=desde_inclusive,
+            date_to=hasta_inclusive,
+            movement_type=tipo,
+            top_n=top_n,
+        )
+
+    def registrar_ingreso_fabrica(
+        self,
+        ingresos: Dict[str, int],
+        sobrescribir: bool = False,
+    ) -> Dict[str, Tuple[int, int]]:
+        """Aplica un ingreso, descuento o restablecimiento de stock.
+
+        - sobrescribir=False (por defecto): suma la cantidad al stock actual.
+          Si la cantidad es negativa descuenta ese monto (el resultado puede quedar negativo).
+        - sobrescribir=True: establece el stock exactamente al valor indicado (mínimo 0).
+
+        Retorna un diccionario {codigo: (stock_anterior, stock_nuevo)}.
+        """
+        if not ingresos:
+            return {}
+
+        resumen: Dict[str, Tuple[int, int]] = {}
+        actualizaciones: Dict[str, int] = {}
+
+        for codigo_raw, cantidad in ingresos.items():
+            cod = normalizar_codigo(codigo_raw)
+            if cod not in self.catalogo:
+                raise ValueError(
+                    f"El código '{cod}' no se encuentra en el catálogo de productos."
+                )
+            _, _, stock_actual = self.catalogo[cod]
+            if sobrescribir:
+                # Ajuste directo: fija el valor indicado (mínimo 0 en modo sobrescribir)
+                nuevo_stock = max(0, int(cantidad))
+            else:
+                # Suma/resta libre: permite negativos para reflejar sobredemanda o descuentos manuales
+                nuevo_stock = int(stock_actual) + int(cantidad)
+            actualizaciones[cod] = nuevo_stock
+            resumen[cod] = (stock_actual, nuevo_stock)
+
+        self.sincronizar_stocks(actualizaciones)
+        return resumen
+
+    def actualizar_stock_base(
+        self,
+        descuentos: List[RegistroDescuento],
+        sincronizar_excel: bool = False,
+        nombre_archivo: str = "Descuento",
+        usuario: str = "sistema",
+    ) -> int:
+        """Persiste en SQLite los saldos nuevos de cada producto descontado.
+        
+        Si sincronizar_excel es True, también sincroniza el stock en Productos.xlsx.
+        """
         existentes = [d for d in descuentos if not d.es_nuevo_agregado]
         if not existentes:
             return 0
@@ -1694,6 +1902,585 @@ class StockManager:
         actualizaciones = {
             descuento.codigo: descuento.stock_nuevo for descuento in existentes
         }
+
+        # Registrar lote en despachos y despacho_detalles
+        total_unidades = sum(d.cantidad_descontada for d in existentes)
+        try:
+            detalles = [
+                (d.codigo, d.cantidad_descontada, d.stock_anterior, d.stock_nuevo)
+                for d in existentes
+            ]
+            self.product_store.record_dispatch(
+                tipo_origen="Descuento",
+                nombre_archivo=nombre_archivo,
+                total_articulos=total_unidades,
+                detalles=detalles,
+                usuario=usuario,
+            )
+        except Exception as e:
+            print(f"[AVISO] No se pudo registrar detalle de despacho: {e}")
+
+        # Si el descuento lo realiza un operario (o usuario no admin/sistema), notificar al administrador
+        if usuario and usuario.lower() not in ("sistema", "administrador", "admin"):
+            try:
+                self.product_store.create_admin_notification(
+                    title=f"Descuento procesado por operario '{usuario}'",
+                    message=(
+                        f"El operario '{usuario}' ejecutó un descuento de stock de {total_unidades} unidades "
+                        f"en {len(existentes)} producto(s) desde {nombre_archivo}."
+                    ),
+                    operator_username=usuario,
+                    notification_type="descuento",
+                    details=f"Archivo: {nombre_archivo} | Unidades: {total_unidades} | Productos: {len(existentes)}",
+                )
+            except Exception as notif_err:
+                print(f"[AVISO] No se pudo generar notificación para administrador: {notif_err}")
+
+        if sincronizar_excel:
+            return self.sincronizar_stocks(actualizaciones)
+
         filas_actualizadas = self.product_store.update_stocks(actualizaciones)
         self._cargar_catalogo()
         return filas_actualizadas
+
+    def obtener_notificaciones_admin(self, solo_no_leidas: bool = False) -> list:
+        return self.product_store.list_admin_notifications(unread_only=solo_no_leidas)
+
+    def contar_notificaciones_no_leidas(self) -> int:
+        return self.product_store.get_unread_notifications_count()
+
+    def marcar_notificaciones_leidas(self, notificacion_id: int | None = None) -> None:
+        if notificacion_id is not None:
+            self.product_store.mark_notification_as_read(notificacion_id)
+        else:
+            self.product_store.mark_all_notifications_as_read()
+
+    def descontar_mercado_full(
+        self,
+        descuentos: Dict[str, int],
+        nombre_archivo: str = "MercadoFull",
+        sincronizar_excel: bool = True,
+    ) -> Dict[str, Tuple[int, int]]:
+        """Descuenta las unidades enviadas a Mercado Envíos Full del stock actual.
+
+        descuentos: Dict[codigo, cantidad_a_descontar]
+        Retorna: Dict[codigo, (stock_anterior, stock_nuevo)]
+        """
+        if not descuentos:
+            return {}
+
+        resumen: Dict[str, Tuple[int, int]] = {}
+        actualizaciones: Dict[str, int] = {}
+        detalles_despacho = []
+
+        for codigo_raw, cant_descontar in descuentos.items():
+            cod = normalizar_codigo(codigo_raw)
+            if cod not in self.catalogo:
+                raise ValueError(
+                    f"El código '{cod}' no se encuentra en el catálogo de productos."
+                )
+            cant = int(cant_descontar)
+            if cant <= 0:
+                continue
+
+            _, _, stock_actual = self.catalogo[cod]
+            nuevo_stock = int(stock_actual) - cant
+            actualizaciones[cod] = nuevo_stock
+            resumen[cod] = (stock_actual, nuevo_stock)
+            detalles_despacho.append((cod, cant, stock_actual, nuevo_stock))
+
+        if not actualizaciones:
+            return {}
+
+        try:
+            self.product_store.record_dispatch(
+                tipo_origen="MercadoFull",
+                nombre_archivo=nombre_archivo,
+                total_articulos=sum(cant for _, cant, _, _ in detalles_despacho),
+                detalles=detalles_despacho,
+            )
+        except Exception as e:
+            print(f"[AVISO] No se pudo registrar despacho de Mercado Full: {e}")
+
+        if sincronizar_excel:
+            self.sincronizar_stocks(actualizaciones)
+        else:
+            self.product_store.update_stocks(actualizaciones)
+            self._cargar_catalogo()
+
+        return resumen
+
+    def obtener_analisis_reposicion(self, solo_criticos: bool = True) -> List:
+        """Consulta la vista de la base de datos v_analisis_reposicion."""
+        return self.product_store.get_replenishment_analysis(only_critical=solo_criticos)
+
+    def generar_pedido_sugerido_fabrica(
+        self,
+        ruta_salida: Path | str | None = None,
+        solo_criticos: bool = True,
+    ) -> Path:
+        """Genera un archivo Excel con el pedido sugerido a fábrica.
+
+        Calcula la cantidad sugerida como (stock_maximo - stock) para los productos
+        que requieran reposición según sus umbrales configurados.
+        """
+        analisis = self.obtener_analisis_reposicion(solo_criticos=solo_criticos)
+        items_a_pedir = [p for p in analisis if int(p["cantidad_sugerida_pedir"]) > 0]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Pedido a Fabrica"
+
+        fill_titulo = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        font_titulo = Font(name="Segoe UI", size=14, bold=True, color="FFFFFF")
+        fill_header = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+        font_header = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        font_datos = Font(name="Segoe UI", size=10)
+        font_destacado = Font(name="Segoe UI", size=10, bold=True, color="0F766E")
+        font_agotado = Font(name="Segoe UI", size=10, bold=True, color="DC2626")
+        font_quiebre = Font(name="Segoe UI", size=10, bold=True, color="D97706")
+
+        borde_fino = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1"),
+        )
+        borde_totales = Border(
+            top=Side(style="thin", color="000000"),
+            bottom=Side(style="double", color="000000"),
+        )
+
+        align_center = Alignment(horizontal="center", vertical="center")
+        align_left = Alignment(horizontal="left", vertical="center")
+        align_right = Alignment(horizontal="right", vertical="center")
+
+        ws.merge_cells("A1:G1")
+        celda_titulo = ws["A1"]
+        celda_titulo.value = "SUGERENCIA DE PEDIDO A FÁBRICA"
+        celda_titulo.fill = fill_titulo
+        celda_titulo.font = font_titulo
+        celda_titulo.alignment = align_center
+        ws.row_dimensions[1].height = 36
+
+        fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        ws.merge_cells("A2:G2")
+        celda_meta = ws["A2"]
+        celda_meta.value = f"Generado el: {fecha_str} | Productos sugeridos: {len(items_a_pedir)}"
+        celda_meta.font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+        celda_meta.alignment = align_center
+        ws.row_dimensions[2].height = 20
+
+        encabezados = [
+            ("CÓDIGO", align_center),
+            ("PRODUCTO", align_left),
+            ("STOCK ACTUAL", align_center),
+            ("STOCK MÍNIMO", align_center),
+            ("STOCK MÁXIMO", align_center),
+            ("CANTIDAD SUGERIDA A PEDIR", align_center),
+            ("ESTADO", align_center),
+        ]
+        ws.row_dimensions[4].height = 24
+        for col_idx, (enc, align) in enumerate(encabezados, start=1):
+            cell = ws.cell(row=4, column=col_idx, value=enc)
+            cell.fill = fill_header
+            cell.font = font_header
+            cell.alignment = align
+            cell.border = borde_fino
+
+        fila_actual = 5
+        total_unidades = 0
+        for item in items_a_pedir:
+            cod = str(item["code"])
+            nom = str(item["name"])
+            stk = int(item["stock"])
+            s_min = int(item["stock_minimo"])
+            s_max = int(item["stock_maximo"])
+            pedir = int(item["cantidad_sugerida_pedir"])
+            estado = str(item["estado_inventario"])
+            total_unidades += pedir
+
+            ws.cell(row=fila_actual, column=1, value=cod).alignment = align_center
+            ws.cell(row=fila_actual, column=2, value=nom).alignment = align_left
+            ws.cell(row=fila_actual, column=3, value=stk).alignment = align_center
+            ws.cell(row=fila_actual, column=4, value=s_min).alignment = align_center
+            ws.cell(row=fila_actual, column=5, value=s_max).alignment = align_center
+
+            c_pedir = ws.cell(row=fila_actual, column=6, value=pedir)
+            c_pedir.alignment = align_center
+            c_pedir.font = font_destacado
+
+            c_est = ws.cell(row=fila_actual, column=7, value=estado)
+            c_est.alignment = align_center
+            c_est.font = font_agotado if estado == "AGOTADO" else font_quiebre
+
+            for col_idx in range(1, 8):
+                c = ws.cell(row=fila_actual, column=col_idx)
+                if col_idx not in (6, 7):
+                    c.font = font_datos
+                c.border = borde_fino
+
+            ws.row_dimensions[fila_actual].height = 20
+            fila_actual += 1
+
+        if items_a_pedir:
+            ws.row_dimensions[fila_actual].height = 24
+            ws.cell(row=fila_actual, column=1, value="").border = borde_totales
+            cell_lbl = ws.cell(row=fila_actual, column=2, value="TOTAL UNIDADES A PEDIR:")
+            cell_lbl.font = Font(name="Segoe UI", size=10, bold=True)
+            cell_lbl.alignment = align_right
+            cell_lbl.border = borde_totales
+            for col_idx in range(3, 6):
+                ws.cell(row=fila_actual, column=col_idx, value="").border = borde_totales
+            cell_tot = ws.cell(row=fila_actual, column=6, value=total_unidades)
+            cell_tot.font = Font(name="Segoe UI", size=11, bold=True, color="0F766E")
+            cell_tot.alignment = align_center
+            cell_tot.border = borde_totales
+            ws.cell(row=fila_actual, column=7, value="").border = borde_totales
+        else:
+            ws.merge_cells("A5:G5")
+            c_vacio = ws["A5"]
+            c_vacio.value = "No hay productos que requieran reposición actualmente."
+            c_vacio.font = font_datos
+            c_vacio.alignment = align_center
+            ws.row_dimensions[5].height = 26
+
+        anchos = {1: 14, 2: 45, 3: 16, 4: 16, 5: 16, 6: 28, 7: 20}
+        for col_idx, ancho in anchos.items():
+            letra = get_column_letter(col_idx)
+            ws.column_dimensions[letra].width = ancho
+
+        if ruta_salida is None:
+            carpeta = self.ruta_excel_base.parent / "Fabrica" / "Pedidos_Sugeridos"
+            carpeta.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ruta_final = carpeta / f"Pedido_Fabrica_{timestamp}.xlsx"
+        else:
+            ruta_final = Path(ruta_salida)
+            ruta_final.parent.mkdir(parents=True, exist_ok=True)
+
+        wb.save(str(ruta_final))
+        wb.close()
+        return ruta_final
+
+    def comparar_stock_fisico(self, conteo_fisico: Dict[str, int]) -> List[Dict]:
+        """Compara un diccionario {codigo: stock_fisico} con el stock digital actual.
+
+        Retorna una lista de diccionarios con:
+            code, name, stock_digital, stock_fisico, diferencia, estado, en_catalogo
+        """
+        resultado: List[Dict] = []
+        for codigo_raw, cant_fisica in conteo_fisico.items():
+            cod = normalizar_codigo(codigo_raw)
+            stk_fis = int(cant_fisica)
+            if cod in self.catalogo:
+                _, nom, stk_dig = self.catalogo[cod]
+                stk_dig = int(stk_dig)
+                dif = stk_fis - stk_dig
+                if dif == 0:
+                    estado = "COINCIDE"
+                elif dif < 0:
+                    estado = "FALTANTE"
+                else:
+                    estado = "SOBRANTE"
+                en_catalogo = True
+            else:
+                nom = "No registrado en catálogo"
+                stk_dig = 0
+                dif = stk_fis
+                estado = "NO_CATALOGADO"
+                en_catalogo = False
+
+            resultado.append(
+                {
+                    "code": cod,
+                    "name": nom,
+                    "stock_digital": stk_dig,
+                    "stock_fisico": stk_fis,
+                    "diferencia": dif,
+                    "estado": estado,
+                    "en_catalogo": en_catalogo,
+                }
+            )
+        return resultado
+
+    def procesar_stock_fisico(
+        self,
+        conteo_fisico: Dict[str, int],
+        usuario: str = "operador",
+        nombre_archivo: str = "StockFisico.xlsx",
+        ruta_salida: Path | str | None = None,
+    ) -> Tuple[Path, List[Dict]]:
+        """Actualiza el stock físico en SQLite, compara con el stock digital,
+        genera el documento Excel unificado de comparativa y diferencias para el administrador,
+        y crea la notificación correspondiente indicando el operario responsable.
+        """
+        comparativa = self.comparar_stock_fisico(conteo_fisico)
+        ruta_doc = self.generar_documento_comparativo_stock_fisico(
+            comparativa=comparativa,
+            usuario=usuario,
+            nombre_archivo_origen=nombre_archivo,
+            ruta_salida=ruta_salida,
+        )
+
+        detalles_db = [
+            (
+                str(item["code"]),
+                str(item["name"]),
+                int(item["stock_digital"]),
+                int(item["stock_fisico"]),
+                int(item["diferencia"]),
+                str(item["estado"]),
+            )
+            for item in comparativa
+        ]
+        self.product_store.record_physical_inventory(
+            usuario=usuario,
+            nombre_archivo=nombre_archivo,
+            reporte_unificado=str(ruta_doc),
+            detalles=detalles_db,
+        )
+
+        total_relevados = len(comparativa)
+        total_coinciden = sum(1 for i in comparativa if i["diferencia"] == 0 and i["en_catalogo"])
+        total_faltantes = sum(1 for i in comparativa if i["diferencia"] < 0 and i["en_catalogo"])
+        total_sobrantes = sum(1 for i in comparativa if i["diferencia"] > 0 and i["en_catalogo"])
+        total_diferencias = total_faltantes + total_sobrantes
+
+        try:
+            self.product_store.create_admin_notification(
+                title=f"Inventario físico cargado por operario '{usuario}'",
+                message=(
+                    f"El operario '{usuario}' cargó un inventario físico desde '{nombre_archivo}' "
+                    f"({total_relevados} productos relevados: {total_coinciden} coinciden, "
+                    f"{total_faltantes} con faltante, {total_sobrantes} con sobrante). "
+                    f"Documento unificado: {ruta_doc.name}."
+                ),
+                operator_username=usuario,
+                notification_type="stock_fisico",
+                details=f"Archivo: {ruta_doc.name} | Relevados: {total_relevados} | Diferencias: {total_diferencias}",
+            )
+        except Exception as notif_err:
+            print(f"[AVISO] No se pudo crear notificación de stock físico: {notif_err}")
+
+        return ruta_doc, comparativa
+
+    def generar_documento_comparativo_stock_fisico(
+        self,
+        comparativa: List[Dict],
+        usuario: str = "operador",
+        nombre_archivo_origen: str = "",
+        ruta_salida: Path | str | None = None,
+    ) -> Path:
+        """Genera un archivo Excel unificado con la comparativa entre Stock Digital y Stock Físico
+        y el detalle de diferencias para el administrador.
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.title = "Comparativa y Diferencias"
+
+        fill_titulo = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        font_titulo = Font(name="Segoe UI", size=14, bold=True, color="FFFFFF")
+        fill_header = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+        font_header = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        font_datos = Font(name="Segoe UI", size=10)
+        font_coincide = Font(name="Segoe UI", size=10, bold=True, color="15803D")
+        font_faltante = Font(name="Segoe UI", size=10, bold=True, color="DC2626")
+        font_sobrante = Font(name="Segoe UI", size=10, bold=True, color="D97706")
+
+        borde_fino = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1"),
+        )
+        borde_totales = Border(
+            top=Side(style="thin", color="000000"),
+            bottom=Side(style="double", color="000000"),
+        )
+
+        align_center = Alignment(horizontal="center", vertical="center")
+        align_left = Alignment(horizontal="left", vertical="center")
+
+        ws.merge_cells("A1:H1")
+        celda_titulo = ws["A1"]
+        celda_titulo.value = "COMPARATIVA UNIFICADA: STOCK DIGITAL VS. STOCK FÍSICO"
+        celda_titulo.fill = fill_titulo
+        celda_titulo.font = font_titulo
+        celda_titulo.alignment = align_center
+        ws.row_dimensions[1].height = 36
+
+        fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        con_dif = sum(1 for i in comparativa if i["diferencia"] != 0)
+        ws.merge_cells("A2:H2")
+        celda_meta = ws["A2"]
+        celda_meta.value = (
+            f"Fecha: {fecha_str} | Operario: {usuario} | Origen: {nombre_archivo_origen} | "
+            f"Relevados: {len(comparativa)} | Con diferencias: {con_dif}"
+        )
+        celda_meta.font = Font(name="Segoe UI", size=9, italic=True, color="475569")
+        celda_meta.alignment = align_center
+        ws.row_dimensions[2].height = 20
+
+        encabezados = [
+            ("CÓDIGO", align_center),
+            ("PRODUCTO", align_left),
+            ("STOCK DIGITAL", align_center),
+            ("STOCK FÍSICO", align_center),
+            ("DIFERENCIA", align_center),
+            ("ESTADO", align_center),
+            ("OPERARIO", align_center),
+            ("FECHA", align_center),
+        ]
+        ws.row_dimensions[4].height = 24
+        for col_idx, (enc, align) in enumerate(encabezados, start=1):
+            cell = ws.cell(row=4, column=col_idx, value=enc)
+            cell.fill = fill_header
+            cell.font = font_header
+            cell.alignment = align
+            cell.border = borde_fino
+
+        fila_actual = 5
+        for item in comparativa:
+            cod = str(item["code"])
+            nom = str(item["name"])
+            stk_dig = int(item["stock_digital"])
+            stk_fis = int(item["stock_fisico"])
+            dif = int(item["diferencia"])
+            estado = str(item["estado"])
+            dif_str = f"+{dif}" if dif > 0 else str(dif)
+
+            ws.cell(row=fila_actual, column=1, value=cod).alignment = align_center
+            ws.cell(row=fila_actual, column=2, value=nom).alignment = align_left
+            ws.cell(row=fila_actual, column=3, value=stk_dig).alignment = align_center
+            ws.cell(row=fila_actual, column=4, value=stk_fis).alignment = align_center
+
+            c_dif = ws.cell(row=fila_actual, column=5, value=dif_str)
+            c_dif.alignment = align_center
+
+            c_est = ws.cell(row=fila_actual, column=6, value=estado)
+            c_est.alignment = align_center
+
+            ws.cell(row=fila_actual, column=7, value=usuario).alignment = align_center
+            ws.cell(row=fila_actual, column=8, value=fecha_str).alignment = align_center
+
+            font_estado = (
+                font_coincide
+                if dif == 0
+                else (font_faltante if dif < 0 else font_sobrante)
+            )
+            c_dif.font = font_estado
+            c_est.font = font_estado
+
+            for col_idx in range(1, 9):
+                c = ws.cell(row=fila_actual, column=col_idx)
+                if col_idx not in (5, 6):
+                    c.font = font_datos
+                c.border = borde_fino
+
+            ws.row_dimensions[fila_actual].height = 20
+            fila_actual += 1
+
+        if comparativa:
+            ws.row_dimensions[fila_actual].height = 24
+            for col_idx in range(1, 9):
+                ws.cell(row=fila_actual, column=col_idx).border = borde_totales
+            c_res = ws.cell(
+                row=fila_actual,
+                column=2,
+                value=f"RESUMEN: {len(comparativa)} relevados ({con_dif} con diferencia)",
+            )
+            c_res.font = Font(name="Segoe UI", size=10, bold=True)
+
+        anchos = {1: 14, 2: 44, 3: 16, 4: 16, 5: 16, 6: 18, 7: 18, 8: 22}
+        for col_idx, ancho in anchos.items():
+            ws.column_dimensions[get_column_letter(col_idx)].width = ancho
+
+        # Segunda hoja: Catálogo Unificado Completo (Digital + Físico)
+        ws_unif = wb.create_sheet(title="Catálogo Unificado")
+        ws_unif.merge_cells("A1:F1")
+        c_tit2 = ws_unif["A1"]
+        c_tit2.value = "INVENTARIO UNIFICADO (CATÁLOGO COMPLETO)"
+        c_tit2.fill = fill_titulo
+        c_tit2.font = font_titulo
+        c_tit2.alignment = align_center
+        ws_unif.row_dimensions[1].height = 32
+
+        enc_unif = [
+            ("CÓDIGO", align_center),
+            ("PRODUCTO", align_left),
+            ("STOCK DIGITAL", align_center),
+            ("STOCK FÍSICO", align_center),
+            ("DIFERENCIA", align_center),
+            ("ESTADO", align_center),
+        ]
+        ws_unif.row_dimensions[3].height = 22
+        for col_idx, (enc, align) in enumerate(enc_unif, start=1):
+            c = ws_unif.cell(row=3, column=col_idx, value=enc)
+            c.fill = fill_header
+            c.font = font_header
+            c.alignment = align
+            c.border = borde_fino
+
+        mapa_relevados = {str(i["code"]): i for i in comparativa}
+        productos_db = self.product_store.list_products()
+        r_idx = 4
+        for p in productos_db:
+            if not p["active"]:
+                continue
+            cod = str(p["code"])
+            nom = str(p["name"])
+            stk_dig = int(p["stock"])
+            if cod in mapa_relevados:
+                stk_fis_val = int(mapa_relevados[cod]["stock_fisico"])
+            elif p["stock_fisico"] is not None:
+                stk_fis_val = int(p["stock_fisico"])
+            else:
+                stk_fis_val = None
+
+            ws_unif.cell(row=r_idx, column=1, value=cod).alignment = align_center
+            ws_unif.cell(row=r_idx, column=2, value=nom).alignment = align_left
+            ws_unif.cell(row=r_idx, column=3, value=stk_dig).alignment = align_center
+
+            if stk_fis_val is not None:
+                dif = stk_fis_val - stk_dig
+                est = "COINCIDE" if dif == 0 else ("FALTANTE" if dif < 0 else "SOBRANTE")
+                ws_unif.cell(row=r_idx, column=4, value=stk_fis_val).alignment = align_center
+                ws_unif.cell(row=r_idx, column=5, value=dif).alignment = align_center
+                ws_unif.cell(row=r_idx, column=6, value=est).alignment = align_center
+            else:
+                ws_unif.cell(row=r_idx, column=4, value="-").alignment = align_center
+                ws_unif.cell(row=r_idx, column=5, value="-").alignment = align_center
+                ws_unif.cell(row=r_idx, column=6, value="SIN RELEVAR").alignment = align_center
+
+            for col_idx in range(1, 7):
+                cell_u = ws_unif.cell(row=r_idx, column=col_idx)
+                cell_u.font = font_datos
+                cell_u.border = borde_fino
+            r_idx += 1
+
+        for col_idx, ancho in {1: 14, 2: 44, 3: 16, 4: 16, 5: 16, 6: 18}.items():
+            ws_unif.column_dimensions[get_column_letter(col_idx)].width = ancho
+
+        if ruta_salida is None:
+            carpeta = self.ruta_excel_base.parent / "StockFisico" / "Comparativas"
+            carpeta.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ruta_final = carpeta / f"Comparativa_Stock_Fisico_{timestamp}.xlsx"
+        else:
+            ruta_final = Path(ruta_salida)
+            ruta_final.parent.mkdir(parents=True, exist_ok=True)
+
+        wb.save(str(ruta_final))
+        wb.close()
+        return ruta_final
+
+    def obtener_ultima_comparativa_fisica(self):
+        return self.product_store.get_latest_physical_inventory()
+
+    def listar_inventarios_fisicos(self, limit: int = 20):
+        return self.product_store.list_physical_inventories(limit=limit)
+
+    def obtener_detalle_inventario_fisico(self, inventario_id: int):
+        return self.product_store.get_physical_inventory_details(inventario_id)

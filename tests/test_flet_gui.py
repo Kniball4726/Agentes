@@ -1,4 +1,6 @@
 import asyncio
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,9 @@ from src.user_store import User, UserRole
 
 class FakeMenu:
     ruta_excel_base = "Productos.xlsx"
+    base_dir = Path(".")
+    carpeta_mercado_full = Path("Descuentos/MercadoFull")
+    carpeta_stock_fisico = Path("Descuentos/StockFisico")
 
     def __init__(self):
         self.procesamientos = []
@@ -20,6 +25,15 @@ class FakeMenu:
 
     def _obtener_pendientes(self):
         return [], [], []
+
+    def _obtener_pendientes_fabrica(self):
+        return []
+
+    def _obtener_pendientes_mercado_full(self):
+        return []
+
+    def _obtener_pendientes_stock_fisico(self):
+        return []
 
     def _obtener_archivados(self):
         return [], [], []
@@ -94,7 +108,7 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        self.assertEqual(len(interfaz.controles_tarea), 9)
+        self.assertEqual(len(interfaz.controles_tarea), 12)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -111,7 +125,7 @@ class FletGuiTests(unittest.TestCase):
         self.assertTrue(cast(bytes, logo.src).startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_simulation_calls_agent_in_read_only_mode(self):
-        interfaz, menu, _ = self.crear_interfaz()
+        interfaz, menu, _ = self.crear_interfaz(role="operador")
 
         asyncio.run(interfaz.procesar(simulacion=True))
 
@@ -123,6 +137,7 @@ class FletGuiTests(unittest.TestCase):
                     "incluir_canjes": True,
                     "incluir_mercado_libre": True,
                     "simulacion": True,
+                    "usuario": "test-user",
                 }
             ],
         )
@@ -234,6 +249,60 @@ class FletGuiTests(unittest.TestCase):
         self.assertEqual(len(page.dialogos), 1)
         self.assertEqual(len(interfaz.controles_tarea), 4)
 
+    def test_admin_cannot_process_or_simulate(self):
+        interfaz, menu, page = self.crear_interfaz(role="administrador")
+
+        asyncio.run(interfaz.procesar(simulacion=True))
+
+        self.assertEqual(menu.procesamientos, [])
+        self.assertEqual(len(page.dialogos), 1)
+        self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
+
+    def test_admin_can_open_mercado_full_discount(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(catalogo={})):
+            interfaz.mostrar_descuento_mercado_full()
+        self.assertEqual(len(page.dialogos), 1)
+
+    def test_non_admin_cannot_open_mercado_full_discount(self):
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        interfaz.mostrar_descuento_mercado_full()
+        self.assertEqual(len(page.dialogos), 1)
+        self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
+
+    def test_admin_can_open_notifications_dialog(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(
+            obtener_notificaciones_admin=lambda solo_no_leidas=False: [],
+            marcar_notificaciones_leidas=lambda nid=None: None,
+        )):
+            interfaz.mostrar_notificaciones_admin()
+        self.assertEqual(len(page.dialogos), 1)
+
+    def test_non_admin_cannot_open_notifications_dialog(self):
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        interfaz.mostrar_notificaciones_admin()
+        self.assertEqual(len(page.dialogos), 1)
+        self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
+
+    def test_operator_can_open_physical_stock_dialog(self):
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(
+            catalogo={},
+            comparar_stock_fisico=lambda totales: [],
+        )):
+            interfaz.mostrar_stock_fisico_operario()
+        self.assertEqual(len(page.dialogos), 1)
+
+    def test_admin_can_open_physical_stock_comparison(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(
+            listar_inventarios_fisicos=lambda limit=25: [],
+            obtener_detalle_inventario_fisico=lambda inv_id: [],
+        )):
+            interfaz.mostrar_comparativa_stock_fisico_admin()
+        self.assertEqual(len(page.dialogos), 1)
+
 
     def test_floating_action_button_and_chat_toggle(self):
         interfaz, _, page = self.crear_interfaz()
@@ -271,6 +340,117 @@ class FletGuiTests(unittest.TestCase):
             texto = cast(ft.Text, columna.controls[1]).value
             self.assertIn("Bujía", texto)
             self.assertIn("20 unidades", texto)
+
+
+    def test_admin_can_open_statistics_dashboard(self):
+        interfaz, _, page = self.crear_interfaz()
+        with patch("src.flet_gui.StockManager") as mock_sm:
+            mock_inst = mock_sm.return_value
+            mock_inst.consultar_movimientos.return_value = [
+                {"product_code": "100", "product_name": "Prod A", "total_quantity": 25},
+                {"product_code": "200", "product_name": "Prod B", "total_quantity": 10},
+            ]
+            interfaz.mostrar_estadisticas()
+
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertEqual(
+            cast(ft.Text, dialogo.title).value,
+            "Estadísticas de movimiento de stock",
+        )
+
+    def test_non_admin_cannot_open_statistics(self):
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        interfaz.mostrar_estadisticas()
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertEqual(cast(ft.Text, dialogo.title).value, "Aviso")
+        self.assertIn("no tiene permiso", cast(ft.Text, dialogo.content).value)
+
+    def test_admin_alerta_quiebre_visible_when_critical_stock(self):
+        interfaz, _, _ = self.crear_interfaz(role="administrador")
+        criticos = [
+            {"code": "P1", "name": "Producto A", "stock": 0, "stock_minimo": 5, "estado": "AGOTADO", "cantidad_sugerida_pedir": 100},
+            {"code": "P2", "name": "Producto B", "stock": 2, "stock_minimo": 5, "estado": "QUIEBRE_INMINENTE", "cantidad_sugerida_pedir": 98},
+        ]
+        interfaz.actualizar_alerta_quiebre(criticos)
+        self.assertTrue(interfaz.banner_alerta_quiebre.visible)
+
+    def test_admin_alerta_quiebre_hidden_when_no_critical_stock(self):
+        interfaz, _, _ = self.crear_interfaz(role="administrador")
+        interfaz.actualizar_alerta_quiebre([])
+        self.assertFalse(interfaz.banner_alerta_quiebre.visible)
+
+    def test_non_admin_alerta_quiebre_always_hidden(self):
+        interfaz, _, _ = self.crear_interfaz(role="operador")
+        criticos = [
+            {"code": "P1", "name": "Producto A", "stock": 0, "stock_minimo": 5, "estado": "AGOTADO", "cantidad_sugerida_pedir": 100},
+        ]
+        interfaz.actualizar_alerta_quiebre(criticos)
+        self.assertFalse(interfaz.banner_alerta_quiebre.visible)
+
+    def test_mostrar_detalle_quiebre_opens_dialog(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        criticos = [
+            {"code": "P1", "name": "Producto A", "stock": -2, "stock_minimo": 5, "estado": "AGOTADO", "cantidad_sugerida_pedir": 102},
+        ]
+        interfaz.mostrar_detalle_quiebre(criticos)
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertIn("quiebre de stock", cast(ft.Text, dialogo.title.controls[1]).value)
+
+    def test_generar_pedido_fabrica_forbidden_for_operator(self):
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        interfaz.generar_pedido_fabrica()
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertEqual(cast(ft.Text, dialogo.title).value, "Aviso")
+        self.assertIn("no tiene permiso", cast(ft.Text, dialogo.content).value)
+
+    def test_generar_pedido_fabrica_allowed_for_admin(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        mock_analisis = [
+            {"code": "P1", "name": "Item A", "stock": 2, "stock_minimo": 5, "stock_maximo": 100, "estado_inventario": "QUIEBRE_INMINENTE", "cantidad_sugerida_pedir": 98}
+        ]
+        with patch("src.flet_gui.StockManager") as mock_sm_cls:
+            mock_inst = mock_sm_cls.return_value
+            mock_inst.obtener_analisis_reposicion.return_value = mock_analisis
+            mock_inst.generar_pedido_sugerido_fabrica.return_value = Path("Descuentos/Fabrica/Pedidos_Sugeridos/Pedido_Fabrica_Test.xlsx")
+            interfaz.generar_pedido_fabrica()
+
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+        self.assertIn("Sugerencia de Pedido a Fábrica", cast(ft.Text, dialogo.title.controls[1]).value)
+
+    def test_reports_list_displays_newest_first(self):
+        interfaz, menu, _ = self.crear_interfaz()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_old = Path(temp_dir) / "Descuento_Viejo.xlsx"
+            file_new = Path(temp_dir) / "Descuento_Nuevo.xlsx"
+            file_old.write_text("old")
+            file_new.write_text("new")
+            os.utime(file_old, (1000, 1000))
+            os.utime(file_new, (2000, 2000))
+            # _obtener_generados returns already sorted by mtime asc; actualizar_estado re-sorts desc
+            menu._obtener_generados = lambda: [file_old, file_new]
+
+            interfaz.actualizar_estado()
+            self.assertEqual(len(interfaz.lista_informes.controls), 2)
+            first_tile = cast(ft.ListTile, interfaz.lista_informes.controls[0])
+            self.assertEqual(cast(ft.Text, first_tile.title).value, "Descuento_Nuevo.xlsx")
+            second_tile = cast(ft.ListTile, interfaz.lista_informes.controls[1])
+            self.assertEqual(cast(ft.Text, second_tile.title).value, "Descuento_Viejo.xlsx")
+
+    def test_iniciar_runs_web_browser_mode_by_default(self):
+        from src import flet_gui
+
+        with patch("src.flet_gui.ft.run") as mock_run:
+            flet_gui.iniciar(modo_web=True, host="0.0.0.0", port=8550)
+            mock_run.assert_called_once()
+            _, kwargs = mock_run.call_args
+            self.assertEqual(kwargs["view"], ft.AppView.WEB_BROWSER)
+            self.assertEqual(kwargs["host"], "0.0.0.0")
+            self.assertEqual(kwargs["port"], 8550)
 
 
 if __name__ == "__main__":
