@@ -451,6 +451,41 @@ class FletGuiTests(unittest.TestCase):
             self.assertEqual(kwargs["view"], ft.AppView.WEB_BROWSER)
             self.assertEqual(kwargs["host"], "0.0.0.0")
             self.assertEqual(kwargs["port"], 8550)
+            self.assertFalse(kwargs["no_cdn"])
+            self.assertEqual(kwargs["web_renderer"], ft.WebRenderer.AUTO)
+
+    def test_web_upload_and_download_helpers(self):
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dest_dir = Path(temp_dir) / "MercadoFull"
+            fake_file = SimpleNamespace(name="full_envio.xlsx", bytes=b"DATA123", path=None)
+
+            async def fake_pick_files(**_kwargs):
+                return [fake_file]
+
+            saved_calls = []
+
+            async def fake_save_file(**kwargs):
+                saved_calls.append(kwargs)
+                return kwargs["file_name"]
+
+            interfaz.file_picker.pick_files = fake_pick_files
+            interfaz.file_picker.save_file = fake_save_file
+
+            guardados = asyncio.run(
+                interfaz.subir_archivos_desde_pc(
+                    carpeta_destino=dest_dir,
+                    extensiones=["xlsx"],
+                    titulo="Subir",
+                )
+            )
+            self.assertEqual(len(guardados), 1)
+            self.assertEqual(guardados[0].read_bytes(), b"DATA123")
+
+            asyncio.run(interfaz._descargar_archivo_navegador(guardados[0]))
+            self.assertEqual(len(saved_calls), 1)
+            self.assertEqual(saved_calls[0]["file_name"], "full_envio.xlsx")
+            self.assertEqual(saved_calls[0]["src_bytes"], b"DATA123")
 
 
 if __name__ == "__main__":

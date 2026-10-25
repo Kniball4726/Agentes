@@ -3,9 +3,11 @@ chcp 65001 > nul
 setlocal
 cd /d "%~dp0"
 
+taskkill /F /IM StockAgent.exe >nul 2>&1
+
 if not exist "Descuentos\Productos.xlsx" (
-    echo No se encontró Descuentos\Productos.xlsx.
-    echo Coloque el catálogo obligatorio en esa ubicación antes de compilar.
+    echo No se encontro Descuentos\Productos.xlsx.
+    echo Coloque el catalogo obligatorio en esa ubicacion antes de compilar.
     exit /b 1
 )
 
@@ -19,7 +21,7 @@ if exist "ttech\Scripts\python.exe" (
 )
 
 if not defined FLET_EXE (
-    echo No se encontró Flet. Instale las dependencias de compilación en .venv.
+    echo No se encontro Flet. Instale las dependencias de compilacion en .venv.
     exit /b 1
 )
 
@@ -29,8 +31,10 @@ if not defined FLET_EXE (
     --product-name "Stock Agent" ^
     --file-description "Agente de control de stock" ^
     --add-data "src/img:src/img" ^
+    --add-data "assets:assets" ^
     --distpath dist ^
-    --yes
+    --yes ^
+    -- --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets
 if errorlevel 1 (
     echo Error al crear el ejecutable.
     exit /b 1
@@ -41,6 +45,10 @@ copy /Y "Descuentos\Productos.xlsx" "dist\Descuentos\Productos.xlsx" > nul
 if errorlevel 1 (
     echo No se pudo copiar el catalogo a la carpeta de distribucion.
     exit /b 1
+)
+if exist "assets" (
+    if not exist "dist\assets" mkdir "dist\assets"
+    xcopy /E /I /Y "assets" "dist\assets" > nul
 )
 if exist "iniciar_servidor_web.bat" copy /Y "iniciar_servidor_web.bat" "dist\iniciar_servidor_web.bat" > nul
 if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul

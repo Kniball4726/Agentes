@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Generator, Literal
 
 
-UserRole = Literal["administrador", "operador", "consulta"]
-USER_ROLES: tuple[UserRole, ...] = ("administrador", "operador", "consulta")
+UserRole = Literal["master", "administrador", "operador", "consulta"]
+USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta")
+DEFAULT_MASTER_USERNAME = "Desarrollo"
+DEFAULT_MASTER_PASSWORD = "master1713"
 PASSWORD_ITERATIONS = 600_000
 PASSWORD_MIN_LENGTH = 10
 
@@ -44,6 +46,7 @@ class UserStore:
 
     def _initialize(self) -> None:
         with self._connect() as connection, connection:
+            self._migrar_esquema(connection)
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -51,13 +54,66 @@ class UserStore:
                     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL CHECK (
-                        role IN ('administrador', 'operador', 'consulta')
+                        role IN ('master', 'administrador', 'operador', 'consulta')
                     ),
                     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            self._asegurar_usuario_master(connection)
+
+    @staticmethod
+    def _migrar_esquema(connection: sqlite3.Connection) -> None:
+        row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+        ).fetchone()
+        if row and row[0] and "'master'" not in row[0]:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute(
+                """
+                CREATE TABLE users_migracion (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (
+                        role IN ('master', 'administrador', 'operador', 'consulta')
+                    ),
+                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO users_migracion (id, username, password_hash, role, active, created_at)
+                SELECT id, username, password_hash, role, active, created_at FROM users
+                """
+            )
+            connection.execute("DROP TABLE users")
+            connection.execute("ALTER TABLE users_migracion RENAME TO users")
+            connection.execute("PRAGMA foreign_keys = ON")
+
+    def _asegurar_usuario_master(self, connection: sqlite3.Connection) -> None:
+        master_row = connection.execute(
+            "SELECT id, role, active FROM users WHERE username = ? COLLATE NOCASE",
+            (DEFAULT_MASTER_USERNAME,),
+        ).fetchone()
+        if master_row is None:
+            pwd_hash = self._hash_clave(DEFAULT_MASTER_PASSWORD)
+            connection.execute(
+                """
+                INSERT INTO users (username, password_hash, role, active)
+                VALUES (?, ?, 'master', 1)
+                """,
+                (DEFAULT_MASTER_USERNAME, pwd_hash),
+            )
+        else:
+            if master_row["role"] != "master" or not master_row["active"]:
+                connection.execute(
+                    "UPDATE users SET role = 'master', active = 1 WHERE id = ?",
+                    (master_row["id"],),
+                )
 
     @staticmethod
     def _normalizar_usuario(username: str) -> str:
@@ -77,8 +133,8 @@ class UserStore:
 
     @staticmethod
     def _validar_rol(role: str) -> UserRole:
-        if role == "administrador" or role == "operador" or role == "consulta":
-            return role
+        if role in ("master", "administrador", "operador", "consulta"):
+            return role  # type: ignore[return-value]
         raise ValueError("El rol seleccionado no es válido.")
 
     @staticmethod
@@ -120,7 +176,7 @@ class UserStore:
         try:
             with self._connect() as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
-                if connection.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+                if connection.execute("SELECT 1 FROM users WHERE role = 'administrador' LIMIT 1").fetchone():
                     raise UserStoreError(
                         "La configuración inicial ya fue completada."
                     )
@@ -139,10 +195,14 @@ class UserStore:
             raise ValueError("Ese nombre de usuario ya existe.") from error
         return self._row_to_user(row)
 
-    def create_user(self, username: str, password: str, role: str) -> User:
+    def create_user(
+        self, username: str, password: str, role: str, creator_role: str | None = None
+    ) -> User:
         username = self._normalizar_usuario(username)
         self._validar_clave(password)
         validated_role = self._validar_rol(role)
+        if validated_role in ("master", "administrador") and creator_role is not None and creator_role != "master":
+            raise UserStoreError("Solo un usuario con rol master puede crear administradores.")
         password_hash = self._hash_clave(password)
         try:
             with self._connect() as connection, connection:
@@ -179,11 +239,16 @@ class UserStore:
             return None
         return self._row_to_user(row)
 
-    def list_users(self) -> list[User]:
+    def list_users(self, include_master: bool = True) -> list[User]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT id, username, role, active FROM users ORDER BY username COLLATE NOCASE"
-            ).fetchall()
+            if include_master:
+                rows = connection.execute(
+                    "SELECT id, username, role, active FROM users ORDER BY username COLLATE NOCASE"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT id, username, role, active FROM users WHERE role != 'master' ORDER BY username COLLATE NOCASE"
+                ).fetchall()
         return [self._row_to_user(row) for row in rows]
 
     def get_user(self, user_id: int) -> User | None:
@@ -194,15 +259,34 @@ class UserStore:
             ).fetchone()
         return self._row_to_user(row) if row is not None else None
 
-    def update_role(self, user_id: int, role: str) -> None:
+    def update_role(
+        self, user_id: int, role: str, updater_role: str | None = None
+    ) -> None:
         validated_role = self._validar_rol(role)
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                "SELECT role, active FROM users WHERE id = ?", (user_id,)
+                "SELECT username, role, active FROM users WHERE id = ?", (user_id,)
             ).fetchone()
             if current is None:
                 raise UserStoreError("No se encontró el usuario.")
+            if current["role"] == "master" and validated_role != "master":
+                raise UserStoreError("No se puede cambiar el rol del usuario master.")
+            if validated_role == "master" and updater_role != "master":
+                raise UserStoreError("Solo el rol master puede asignar el rol master.")
+            if (
+                validated_role == "administrador"
+                and current["role"] != "administrador"
+                and updater_role is not None
+                and updater_role != "master"
+            ):
+                raise UserStoreError("Solo el usuario master puede promover a administrador.")
+            if (
+                current["role"] == "administrador"
+                and updater_role is not None
+                and updater_role != "master"
+            ):
+                raise UserStoreError("Solo el usuario master puede modificar el rol de un administrador.")
             if (
                 current["role"] == "administrador"
                 and current["active"]
@@ -214,14 +298,24 @@ class UserStore:
                 (validated_role, user_id),
             )
 
-    def set_active(self, user_id: int, active: bool) -> None:
+    def set_active(
+        self, user_id: int, active: bool, updater_role: str | None = None
+    ) -> None:
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                "SELECT role, active FROM users WHERE id = ?", (user_id,)
+                "SELECT username, role, active FROM users WHERE id = ?", (user_id,)
             ).fetchone()
             if current is None:
                 raise UserStoreError("No se encontró el usuario.")
+            if current["role"] == "master" and not active:
+                raise UserStoreError("El usuario master no puede ser desactivado.")
+            if (
+                current["role"] == "administrador"
+                and updater_role is not None
+                and updater_role != "master"
+            ):
+                raise UserStoreError("Solo el usuario master puede desactivar o activar a un administrador.")
             if (
                 current["role"] == "administrador"
                 and current["active"]

@@ -13,6 +13,23 @@ También soporta:
 import os
 import sys
 
+# Asegurar que stdout/stderr existan cuando se ejecuta como .exe sin consola (--noconsole)
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+# Importaciones explícitas para que PyInstaller empaquete el servidor web de Flet
+try:
+    import fastapi  # noqa: F401
+    import flet_web  # noqa: F401
+    import flet_web.fastapi.serve_fastapi_web_app  # noqa: F401
+    import starlette  # noqa: F401
+    import uvicorn  # noqa: F401
+    import websockets  # noqa: F401
+except ImportError:
+    pass
+
 
 def _obtener_parametro(flag: str, valor_por_defecto: str) -> str:
     if flag in sys.argv:

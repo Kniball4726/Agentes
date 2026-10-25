@@ -49,6 +49,16 @@ class ReporteStock:
     archivo_guardado: str
     archivo_pdf: Optional[str] = None
 
+    @property
+    def articulos_quiebre(self) -> List[RegistroDescuento]:
+        """Artículos cuyo stock quedó en 0 o negativo tras el descuento."""
+        return [r for r in self.descuentos_aplicados if r.stock_nuevo <= 0]
+
+    @property
+    def articulos_criticos(self) -> List[RegistroDescuento]:
+        """Artículos con stock bajo (entre 1 y 5 unidades) tras el descuento."""
+        return [r for r in self.descuentos_aplicados if 0 < r.stock_nuevo <= 5]
+
 
 class StockManager:
     def __init__(
@@ -562,13 +572,14 @@ class StockManager:
         items_consolidados: Dict[str, ItemConsolidado],
         carpeta_destino: str | Path,
         pedidos_procesados: Optional[List[ResultadoRemito]] = None,
-        guardar_archivo: bool = True
+        guardar_archivo: bool = True,
+        prefijo_archivo: str = "Descuento",
     ) -> ReporteStock:
         """Genera un informe con el diseño del catálogo, sin modificarlo."""
         carpeta_destino = Path(carpeta_destino)
         fecha_generacion = datetime.now()
         fecha_hora_str = fecha_generacion.strftime("%d-%m-%Y_%H-%M-%S")
-        nombre_archivo = f"Descuento{fecha_hora_str}.xls"
+        nombre_archivo = f"{prefijo_archivo}_{fecha_hora_str}.xls" if prefijo_archivo != "Descuento" else f"Descuento{fecha_hora_str}.xls"
         ruta_guardado = carpeta_destino / nombre_archivo
         ruta_pdf = ruta_guardado.with_suffix(".pdf")
 

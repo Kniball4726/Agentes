@@ -82,6 +82,55 @@ class UserStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.create_user("owner", "Another-Strong-Password", "consulta")
 
+    def test_master_user_hierarchy_and_permissions(self):
+        master = self.store.authenticate("Desarrollo", "master1713")
+        self.assertIsNotNone(master)
+        assert master is not None
+        self.assertEqual(master.role, "master")
+
+        # Master puede crear administradores
+        admin1 = self.store.create_user(
+            "AdminUno", "ClaveSegura123", "administrador", creator_role="master"
+        )
+        admin2 = self.store.create_user(
+            "AdminDos", "ClaveSegura123", "administrador", creator_role="master"
+        )
+        self.assertEqual(admin1.role, "administrador")
+        self.assertEqual(admin2.role, "administrador")
+
+        # Administrador no puede crear otro administrador
+        with self.assertRaises(UserStoreError):
+            self.store.create_user(
+                "AdminTres", "ClaveSegura123", "administrador", creator_role="administrador"
+            )
+
+        # Administrador sí puede crear operador
+        op = self.store.create_user(
+            "OpNuevo", "ClaveSegura123", "operador", creator_role="administrador"
+        )
+        self.assertEqual(op.role, "operador")
+
+        # Administrador no puede degradar a otro administrador
+        with self.assertRaises(UserStoreError):
+            self.store.update_role(admin2.id, "operador", updater_role="administrador")
+
+        # Administrador no puede desactivar a otro administrador
+        with self.assertRaises(UserStoreError):
+            self.store.set_active(admin2.id, False, updater_role="administrador")
+
+        # Master sí puede modificar o desactivar administradores cuando hay otro activo
+        self.store.set_active(admin2.id, False, updater_role="master")
+        admin_desactivado = self.store.get_user(admin2.id)
+        self.assertIsNotNone(admin_desactivado)
+        assert admin_desactivado is not None
+        self.assertFalse(admin_desactivado.active)
+
+        # Nadie puede desactivar ni degradar al master
+        with self.assertRaises(UserStoreError):
+            self.store.set_active(master.id, False, updater_role="master")
+        with self.assertRaises(UserStoreError):
+            self.store.update_role(master.id, "administrador", updater_role="master")
+
 
 if __name__ == "__main__":
     unittest.main()

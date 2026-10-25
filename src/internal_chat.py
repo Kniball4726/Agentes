@@ -123,6 +123,43 @@ def detectar_intencion(mensaje: str) -> str:
     if any(palabra in palabras for palabra in ("informe", "informes", "reporte", "reportes")):
         return "informes"
 
+    # 11. Reposición para fábrica
+    if (
+        normalizado in ("reposicion", "reponer", "compras", "pedir a fabrica", "fabricacion")
+        or any(frase in normalizado for frase in ("sugerido pedir", "cuanto pedir", "pedir fabrica", "comprar a fabrica"))
+    ):
+        return "reposicion"
+
+    # 12. Pedidos y armado
+    if (
+        normalizado in ("pedidos", "pedido", "historial", "mis pedidos")
+        or any(
+            frase in normalizado
+            for frase in ("pedidos de hoy", "ver pedidos", "armar pedido", "pedidos armados", "pedidos pendientes")
+        )
+    ):
+        return "pedidos"
+
+    # 13. Cierre de jornada y descuentos
+    if (
+        normalizado in ("cierre", "cierres", "descuento", "descuentos", "cierre de jornada")
+        or any(
+            frase in normalizado
+            for frase in ("imprimir descuento", "hacer cierre", "cierre diario", "descuentos del dia")
+        )
+    ):
+        return "cierre"
+
+    # 14. Mercado Libre
+    if (
+        normalizado in ("mercadolibre", "mercado libre", "ml")
+        or any(
+            frase in normalizado
+            for frase in ("remito mercadolibre", "remito ml", "descontar ml", "archivo docx", "descontar mercado libre")
+        )
+    ):
+        return "mercadolibre"
+
     return "desconocido"
 
 
@@ -332,3 +369,108 @@ def formatear_ultimo_informe(informes: Sequence[Path]) -> str:
         f"• Formato: {tipo} ({tamano_kb} KB)\n"
         f"• Selecciónalo en la lista para abrirlo o compartirlo."
     )
+
+
+def obtener_mensaje_bienvenida(rol: str, nombre_usuario: str = "") -> str:
+    """Genera un mensaje de bienvenida contextualizado al rol del usuario."""
+    nombre = f" {nombre_usuario}" if nombre_usuario else ""
+    if rol == "operador":
+        return (
+            f"¡Hola{nombre}! 👋 Soy tu asistente de depósito.\n"
+            "Puedo ayudarte a consultar stock y existencias en tiempo real (/stock <código>), "
+            "ver el estado de pedidos del día (/pedidos), guiarte con remitos DOCX (/mercadolibre) "
+            "o consultar el cierre de jornada (/cierre).\n"
+            "Escribe /ayuda para ver todos tus comandos."
+        )
+    elif rol in ("administrador", "master"):
+        return (
+            f"¡Hola{nombre}! 👋 Asistente de Gestión Activo.\n"
+            "Puedes supervisar stock crítico (/criticos), calcular reposición para fábrica (/reposicion), "
+            "verificar archivos pendientes (/diagnostico), simular remitos (/simular) y auditar inventario (/stock).\n"
+            "Escribe /ayuda para ver el listado de comandos."
+        )
+    else:  # consulta o por defecto
+        return (
+            f"¡Hola{nombre}! 👋 Asistente de Consulta y Auditoría.\n"
+            "Puedes consultar existencias en tiempo real (/stock <código>), verificar productos críticos (/criticos) "
+            "o revisar informes (/informes).\n"
+            "Escribe /ayuda para más información."
+        )
+
+
+def obtener_comandos_ayuda(rol: str) -> str:
+    """Retorna la lista de comandos permitidos según el rol."""
+    if rol == "operador":
+        return (
+            "📋 Comandos disponibles para Operador:\n"
+            "• /stock <código o nombre>: Consulta existencias y ubicación en tiempo real.\n"
+            "• /pedidos: Resumen de pedidos cargados y armados durante la jornada.\n"
+            "• /cierre: Información sobre descuentos y estado del cierre de jornada.\n"
+            "• /mercadolibre: Guía para descontar remitos de Mercado Libre (DOCX).\n"
+            "• /limpiar: Limpia la pantalla del chat."
+        )
+    elif rol in ("administrador", "master"):
+        return (
+            "📋 Comandos disponibles para Administrador / Master:\n"
+            "• /stock <código o nombre>: Consulta stock y estado en tiempo real.\n"
+            "• /criticos: Lista productos con stock bajo o agotados.\n"
+            "• /reposicion: Sugiere cantidades a pedir a fábrica para evitar quiebres.\n"
+            "• /diagnostico: Analiza remitos, canjes, ML, fábrica y full pendientes.\n"
+            "• /estado: Muestra resumen de pendientes y archivados.\n"
+            "• /informes: Lista todos los informes generados.\n"
+            "• /ultimo: Muestra información del informe más reciente.\n"
+            "• /simular: Ejecuta una simulación de prueba sin alterar stock.\n"
+            "• /pedidos: Resumen de pedidos del sistema.\n"
+            "• /cierre: Resumen de cierres y descuentos acumulados.\n"
+            "• /limpiar: Limpia la pantalla del chat."
+        )
+    else:  # consulta
+        return (
+            "📋 Comandos disponibles (Modo Consulta):\n"
+            "• /stock <código o nombre>: Consulta stock y estado en tiempo real.\n"
+            "• /criticos: Lista productos con stock bajo o agotados.\n"
+            "• /informes: Lista los informes generados.\n"
+            "• /ultimo: Muestra el informe más reciente.\n"
+            "• /limpiar: Limpia la pantalla del chat."
+        )
+
+
+def obtener_chips_configuracion(rol: str) -> list[tuple[str, str]]:
+    """Devuelve pares (etiqueta, comando) para los botones rápidos según el rol."""
+    if rol == "operador":
+        return [
+            ("🔍 Stock", "/stock"),
+            ("📦 Pedidos", "/pedidos"),
+            ("🖨️ Cierre", "/cierre"),
+            ("🟡 Mercado Libre", "/mercadolibre"),
+            ("❓ Ayuda", "/ayuda"),
+        ]
+    elif rol in ("administrador", "master"):
+        return [
+            ("📦 Críticos", "/criticos"),
+            ("🏭 Reposición", "/reposicion"),
+            ("📋 Diagnóstico", "/diagnostico"),
+            ("📄 Último", "/ultimo"),
+            ("📊 Estado", "/estado"),
+            ("🧪 Simular", "/simular"),
+            ("🔍 Stock", "/stock"),
+        ]
+    else:  # consulta
+        return [
+            ("🔍 Stock", "/stock"),
+            ("📦 Críticos", "/criticos"),
+            ("📊 Informes", "/informes"),
+            ("📄 Último", "/ultimo"),
+            ("❓ Ayuda", "/ayuda"),
+        ]
+
+
+def obtener_pie_ayuda(rol: str) -> str:
+    """Texto de ayuda en el pie de la ventana de chat según el rol."""
+    if rol == "operador":
+        return "Usa /stock <cód>, /pedidos, /cierre, /mercadolibre o /ayuda"
+    elif rol in ("administrador", "master"):
+        return "Usa /stock <cód>, /criticos, /reposicion, /diagnostico, /estado o /ayuda"
+    else:
+        return "Usa /stock <cód>, /criticos, /informes o /ayuda"
+
