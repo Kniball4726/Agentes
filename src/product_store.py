@@ -89,10 +89,24 @@ class ProductStore:
                     product_name TEXT NOT NULL DEFAULT '',
                     quantity INTEGER NOT NULL,
                     movement_type TEXT NOT NULL,
+                    usuario TEXT NOT NULL DEFAULT 'sistema',
+                    detalle TEXT NOT NULL DEFAULT '',
                     registered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
                 )
                 """
             )
+            cols_mov = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(stock_movements)")
+            }
+            if "usuario" not in cols_mov:
+                connection.execute(
+                    "ALTER TABLE stock_movements ADD COLUMN usuario TEXT NOT NULL DEFAULT 'sistema'"
+                )
+            if "detalle" not in cols_mov:
+                connection.execute(
+                    "ALTER TABLE stock_movements ADD COLUMN detalle TEXT NOT NULL DEFAULT ''"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_stock_movements_code
@@ -651,6 +665,20 @@ class ProductStore:
                         for cod, cant, ant, nvo in detalles
                     ],
                 )
+                detalle_txt = f"{tipo_origen}: {nombre_archivo}"[:120]
+                for cod, _, _, _ in detalles:
+                    connection.execute(
+                        """
+                        UPDATE stock_movements
+                        SET usuario = ?, detalle = ?
+                        WHERE id = (
+                            SELECT id FROM stock_movements
+                            WHERE product_code = ?
+                            ORDER BY id DESC LIMIT 1
+                        ) AND (usuario = 'sistema' OR detalle = '')
+                        """,
+                        (usuario or "sistema", detalle_txt, cod),
+                    )
             return despacho_id or 0
 
     def create_admin_notification(
@@ -807,6 +835,8 @@ class ProductStore:
     def register_movements(
         self,
         movements: list[tuple[str, str, int, str]],
+        usuario: str = "sistema",
+        detalle: str = "",
     ) -> None:
         """Registra movimientos de stock en el historial.
 
@@ -819,11 +849,89 @@ class ProductStore:
         with closing(self._connect()) as connection, connection:
             connection.executemany(
                 """
-                INSERT INTO stock_movements (product_code, product_name, quantity, movement_type)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO stock_movements (product_code, product_name, quantity, movement_type, usuario, detalle)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                movements,
+                [(cod, nom, qty, mtype, usuario, detalle) for cod, nom, qty, mtype in movements],
             )
+
+    def enrich_latest_movements(
+        self,
+        product_codes: Iterable[str],
+        usuario: str = "sistema",
+        detalle: str = "",
+        movement_type: str | None = None,
+    ) -> None:
+        """Asocia usuario y detalle al último movimiento registrado por el trigger para los códigos dados."""
+        codigos = list(product_codes)
+        if not codigos:
+            return
+        with closing(self._connect()) as connection, connection:
+            for cod in codigos:
+                if movement_type:
+                    connection.execute(
+                        """
+                        UPDATE stock_movements
+                        SET usuario = ?, detalle = ?, movement_type = ?
+                        WHERE id = (
+                            SELECT id FROM stock_movements
+                            WHERE product_code = ?
+                            ORDER BY id DESC LIMIT 1
+                        )
+                        """,
+                        (usuario or "sistema", detalle, movement_type, cod),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE stock_movements
+                        SET usuario = ?, detalle = ?
+                        WHERE id = (
+                            SELECT id FROM stock_movements
+                            WHERE product_code = ?
+                            ORDER BY id DESC LIMIT 1
+                        )
+                        """,
+                        (usuario or "sistema", detalle, cod),
+                    )
+
+    def list_recent_movements(
+        self,
+        product_code: str = "",
+        movement_type: str = "",
+        limit: int = 150,
+    ) -> list[sqlite3.Row]:
+        """Devuelve el historial detallado de movimientos de stock más recientes."""
+        condiciones: list[str] = []
+        params: list = []
+        if product_code.strip():
+            condiciones.append("(product_code LIKE ? OR product_name LIKE ?)")
+            patron = f"%{product_code.strip()}%"
+            params.extend([patron, patron])
+        if movement_type.strip():
+            condiciones.append("movement_type = ?")
+            params.append(movement_type.strip())
+        where_sql = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+        params.append(int(limit))
+        with closing(self._connect()) as connection:
+            return connection.execute(
+                f"""
+                SELECT
+                    id,
+                    product_code,
+                    product_name,
+                    quantity,
+                    movement_type,
+                    usuario,
+                    detalle,
+                    registered_at
+                FROM stock_movements
+                {where_sql}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
 
     def query_movements(
         self,

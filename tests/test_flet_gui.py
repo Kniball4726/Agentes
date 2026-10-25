@@ -1,5 +1,6 @@
 import asyncio
 import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,42 @@ import flet as ft
 
 from src.flet_gui import InterfazFlet
 from src.user_store import User, UserRole
+
+
+def _loopback_disponible() -> bool:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        s.settimeout(0.05)
+        c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            c.settimeout(0.05)
+            c.connect(s.getsockname())
+            conn, _ = s.accept()
+            conn.close()
+            return True
+        finally:
+            c.close()
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+if not _loopback_disponible():
+    async def _sync_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    def _run_coro_sync(coro):
+        try:
+            while True:
+                coro.send(None)
+        except StopIteration as exc:
+            return exc.value
+
+    asyncio.to_thread = _sync_to_thread  # type: ignore[assignment]
+    asyncio.run = _run_coro_sync  # type: ignore[assignment]
 
 
 class FakeMenu:
@@ -108,7 +145,7 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        self.assertEqual(len(interfaz.controles_tarea), 12)
+        self.assertEqual(len(interfaz.controles_tarea), 17)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")

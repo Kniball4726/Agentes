@@ -4,7 +4,9 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -18,8 +20,11 @@ from pathlib import Path
 from typing import Callable
 
 import flet as ft
+import openpyxl
 
+from .alertas_programadas import enviar_resumen_ahora, iniciar_planificador
 from .factory_parser import parsear_archivo_fabrica
+from .logger_config import configurar_logging
 from .mercado_full_parser import parsear_archivo_mercado_full
 from .mercado_libre_parser import parsear_pedido_mercado_libre
 from .physical_stock_parser import parsear_excel_stock_fisico
@@ -37,16 +42,41 @@ from .internal_chat import (
 )
 from .menu import MenuAgente
 from .agent import AgenteRemitosStock
-from .backup_manager import crear_backup_sistema
+from .backup_manager import (
+    crear_backup_sistema,
+    guardar_config_backup,
+    listar_backups_disponibles,
+    obtener_config_backup,
+    restaurar_backup_sistema,
+)
 from .canjes_parser import parsear_canje_excel
 from .consolidator import ItemConsolidado
 from .dispatch_manifest import generar_hoja_ruta_pdf
+from .email_sender import (
+    despachar_correo,
+    guardar_config_email,
+    obtener_config_email,
+    probar_conexion_smtp,
+)
 from .label_generator import generar_etiquetas_bultos_pdf
-from .orders_store import CierreJornada, LOGISTICA_OPCIONES, OrderStore, RegistroAuditoria, calcular_hash_archivo
+from .orders_store import (
+    CierreJornada,
+    ESTADOS_DESPACHO,
+    LOGISTICA_OPCIONES,
+    MensajeChat,
+    OrderStore,
+    Pedido,
+    RegistroAuditoria,
+    calcular_hash_archivo,
+)
 from .remito_parser import ResultadoRemito, normalizar_codigo, parsear_remito
 from .paths import application_root
+from .ssl_manager import asegurar_certificado_ssl
 from .stock_manager import StockManager
 from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
+
+logger = configurar_logging()
+INACTIVIDAD_MAX_MINUTOS = 30
 
 
 ROJO = ft.Colors.RED_700
@@ -156,6 +186,30 @@ class InterfazFlet:
             max_lines=3,
             on_submit=self.enviar_chat,
         )
+        self.modo_chat_activo: str = "bot"
+        self.conversacion_equipo = ft.ListView(expand=True, spacing=8, auto_scroll=True)
+        self.entrada_chat_equipo = ft.TextField(
+            hint_text="Escribe un mensaje para el equipo...",
+            expand=True,
+            dense=True,
+            on_submit=self.enviar_mensaje_equipo,
+        )
+        self.selector_destinatario_equipo = ft.Dropdown(
+            label="Destinatario",
+            options=[ft.dropdown.Option("Todos", "📢 Todos (Canal General)")],
+            value="Todos",
+            dense=True,
+            expand=True,
+        )
+        self.texto_badge_chat = ft.Text("", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
+        self.badge_chat_container = ft.Container(
+            content=self.texto_badge_chat,
+            bgcolor=ft.Colors.RED_600,
+            border_radius=10,
+            padding=ft.Padding.symmetric(horizontal=5, vertical=1),
+            visible=False,
+        )
+        self.texto_badge_tab = ft.Text("", size=10, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD)
         self.contadores: dict[str, ft.Text] = {}
         self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
         self.banner_alerta_quiebre = ft.Container(visible=False)
@@ -164,15 +218,24 @@ class InterfazFlet:
         self.chat_visible = False
         self.ventana_chat_flotante: ft.Container | None = None
         self.boton_chat_flotante: ft.FloatingActionButton | None = None
-        if not hasattr(self.page, "overlay") or self.page.overlay is None:
-            self.page.overlay = []
-        if self.file_picker not in self.page.overlay:
-            self.page.overlay.append(self.file_picker)
+        self.ultima_actividad: datetime = datetime.now()
+        self._asegurar_file_picker()
         self._configurar_ventana()
         if self.user_store.has_users:
             self.mostrar_inicio_sesion()
         else:
             self.mostrar_configuracion_inicial()
+
+    def _asegurar_file_picker(self) -> None:
+        """Asegura que FilePicker esté registrado como servicio (Flet 1.0) sin corromper el overlay visual."""
+        if hasattr(self.page, "services"):
+            if self.file_picker not in self.page.services:
+                self.page.services.append(self.file_picker)
+        elif hasattr(self.page, "overlay"):
+            if self.page.overlay is None:
+                self.page.overlay = []
+            if self.file_picker not in self.page.overlay:
+                self.page.overlay.append(self.file_picker)
 
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
         self.modo_oscuro = not self.modo_oscuro
@@ -207,19 +270,43 @@ class InterfazFlet:
 
     def mostrar_inicio_sesion(self, error: str = "") -> None:
         usuario = ft.TextField(label="Usuario", autofocus=True)
-        clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
-        mensaje = ft.Text(error, color=ft.Colors.RED_400)
+        clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, on_submit=lambda e: iniciar(e))
+        mensaje = ft.Text(error, color=ft.Colors.RED_400, size=12)
 
         def iniciar(_evento: ft.Event) -> None:
-            autenticado = self.user_store.authenticate(
+            nom_intento = (usuario.value or "").strip() or "desconocido"
+            res = self.user_store.authenticate_detailed(
                 usuario.value or "", clave.value or ""
             )
-            if autenticado is None:
-                mensaje.value = "Usuario o contraseña incorrectos, o cuenta inactiva."
+            if res.user is None:
+                mensaje.value = res.error or "Usuario o contraseña incorrectos, o cuenta inactiva."
+                try:
+                    self.order_store.registrar_auditoria(
+                        usuario=nom_intento,
+                        accion="CUENTA_BLOQUEADA" if res.locked else "LOGIN_FALLIDO",
+                        detalle=res.error or "Intento de acceso fallido",
+                    )
+                except Exception:
+                    pass
+                logger.warning("Intento de login fallido para '%s': %s", nom_intento, res.error)
                 self.page.update()
                 return
-            self.usuario_actual = autenticado
-            self.construir()
+
+            self.usuario_actual = res.user
+            self.ultima_actividad = datetime.now()
+            try:
+                self.order_store.registrar_auditoria(
+                    usuario=res.user.username,
+                    accion="LOGIN_EXITOSO",
+                    detalle=f"Inicio de sesión exitoso (rol: {res.user.role})",
+                )
+            except Exception:
+                pass
+            logger.info("Inicio de sesión exitoso: %s (%s)", res.user.username, res.user.role)
+            if getattr(res.user, "must_change_password", False):
+                self.mostrar_cambio_clave_obligatorio()
+            else:
+                self.construir()
 
         self.chat_visible = False
         self.page.floating_action_button = None
@@ -268,6 +355,173 @@ class InterfazFlet:
             )
         )
         self.page.update()
+
+    def mostrar_cambio_clave_obligatorio(self) -> None:
+        """Exige cambiar la contraseña por defecto o temporal antes de ingresar al sistema."""
+        if self.usuario_actual is None:
+            self.mostrar_inicio_sesion()
+            return
+        actual_input = ft.TextField(
+            label="Contraseña actual",
+            password=True,
+            can_reveal_password=True,
+            autofocus=True,
+        )
+        nueva_input = ft.TextField(
+            label="Nueva contraseña (mínimo 10 caracteres)",
+            password=True,
+            can_reveal_password=True,
+        )
+        confirmar_input = ft.TextField(
+            label="Confirmar nueva contraseña",
+            password=True,
+            can_reveal_password=True,
+        )
+        msg_error = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+        def confirmar_cambio(_e: ft.Event) -> None:
+            if not self.usuario_actual:
+                return
+            if (nueva_input.value or "") != (confirmar_input.value or ""):
+                msg_error.value = "La nueva contraseña y su confirmación no coinciden."
+                self.page.update()
+                return
+            try:
+                self.user_store.change_password(
+                    self.usuario_actual.id,
+                    actual_input.value or "",
+                    nueva_input.value or "",
+                )
+                self.usuario_actual = self.user_store.get_user(self.usuario_actual.id)
+                self.order_store.registrar_auditoria(
+                    usuario=self.usuario_actual.username if self.usuario_actual else "Usuario",
+                    accion="CAMBIO_CLAVE",
+                    detalle="Cambio de contraseña obligatorio completado al iniciar sesión",
+                )
+                self.construir()
+                self.notificar("Contraseña actualizada con éxito. ¡Bienvenido!")
+            except (ValueError, UserStoreError) as err:
+                msg_error.value = str(err)
+                self.page.update()
+
+        self.page.controls.clear()
+        self.page.add(
+            ft.Container(
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+                bgcolor=self.fondo,
+                content=ft.Container(
+                    width=450,
+                    padding=28,
+                    bgcolor=self.superficie,
+                    border=ft.Border.all(1, self.borde),
+                    border_radius=16,
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.SECURITY, color=ROJO, size=26),
+                                    ft.Text(
+                                        "Cambio de contraseña requerido",
+                                        size=20,
+                                        weight=ft.FontWeight.BOLD,
+                                        color=self.texto,
+                                    ),
+                                ],
+                                spacing=8,
+                            ),
+                            ft.Text(
+                                f"Hola {self.usuario_actual.username}. Por seguridad, debes definir una nueva contraseña personal antes de continuar.",
+                                color=self.secundario,
+                                size=12,
+                            ),
+                            actual_input,
+                            nueva_input,
+                            confirmar_input,
+                            msg_error,
+                            ft.Button(
+                                "Actualizar contraseña y continuar",
+                                icon=ft.Icons.LOCK_RESET,
+                                bgcolor=ROJO,
+                                color=ft.Colors.WHITE,
+                                width=390,
+                                on_click=confirmar_cambio,
+                            ),
+                            ft.TextButton(
+                                "Cancelar y volver al inicio",
+                                on_click=self.cerrar_sesion,
+                            ),
+                        ],
+                        tight=True,
+                        spacing=12,
+                    ),
+                ),
+            )
+        )
+        self.page.update()
+
+    def mostrar_cambiar_mi_clave(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
+        actual_input = ft.TextField(
+            label="Contraseña actual",
+            password=True,
+            can_reveal_password=True,
+            autofocus=True,
+        )
+        nueva_input = ft.TextField(
+            label="Nueva contraseña (mínimo 10 caracteres)",
+            password=True,
+            can_reveal_password=True,
+        )
+        confirmar_input = ft.TextField(
+            label="Confirmar nueva contraseña",
+            password=True,
+            can_reveal_password=True,
+        )
+        msg_error = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+        def guardar_clave(_e: ft.Event) -> None:
+            if not self.usuario_actual:
+                return
+            if (nueva_input.value or "") != (confirmar_input.value or ""):
+                msg_error.value = "Las contraseñas nuevas no coinciden."
+                self.page.update()
+                return
+            try:
+                self.user_store.change_password(
+                    self.usuario_actual.id,
+                    actual_input.value or "",
+                    nueva_input.value or "",
+                )
+                self.order_store.registrar_auditoria(
+                    usuario=self.usuario_actual.username,
+                    accion="CAMBIO_CLAVE",
+                    detalle="El usuario actualizó su propia contraseña",
+                )
+                self.page.pop_dialog()
+                self.notificar("Tu contraseña ha sido actualizada correctamente.")
+            except (ValueError, UserStoreError) as err:
+                msg_error.value = str(err)
+                self.page.update()
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([ft.Icon(ft.Icons.KEY, color=ROJO), ft.Text("Cambiar mi contraseña", weight=ft.FontWeight.BOLD)]),
+            content=ft.Container(
+                width=400,
+                content=ft.Column(
+                    [actual_input, nueva_input, confirmar_input, msg_error],
+                    tight=True,
+                    spacing=10,
+                ),
+            ),
+            actions=[
+                ft.Button("Guardar nueva clave", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_clave),
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        self.page.show_dialog(dialogo)
 
     def mostrar_configuracion_inicial(self, error: str = "") -> None:
         usuario = ft.TextField(label="Usuario administrador", autofocus=True)
@@ -347,7 +601,17 @@ class InterfazFlet:
         )
         self.page.update()
 
-    def cerrar_sesion(self, _evento: ft.Event) -> None:
+    def cerrar_sesion(self, _evento: ft.Event | None = None) -> None:
+        if self.usuario_actual is not None:
+            try:
+                self.order_store.registrar_auditoria(
+                    usuario=self.usuario_actual.username,
+                    accion="LOGOUT",
+                    detalle="Cierre de sesión manual",
+                )
+            except Exception:
+                pass
+            logger.info("Sesión cerrada manualmente por %s", self.usuario_actual.username)
         self.usuario_actual = None
         self.controles_tarea.clear()
         self.conversacion.controls.clear()
@@ -358,6 +622,25 @@ class InterfazFlet:
         if self.usuario_actual is None:
             self.mostrar_inicio_sesion()
             return False
+        ahora = datetime.now()
+        if (ahora - self.ultima_actividad).total_seconds() > INACTIVIDAD_MAX_MINUTOS * 60:
+            nom_exp = self.usuario_actual.username
+            self.usuario_actual = None
+            try:
+                self.order_store.registrar_auditoria(
+                    usuario=nom_exp,
+                    accion="LOGOUT_INACTIVIDAD",
+                    detalle=f"Sesión cerrada automáticamente tras {INACTIVIDAD_MAX_MINUTOS} min de inactividad",
+                )
+            except Exception:
+                pass
+            logger.info("Sesión de '%s' expirada por inactividad", nom_exp)
+            self.mostrar_inicio_sesion(
+                f"Tu sesión se cerró por inactividad ({INACTIVIDAD_MAX_MINUTOS} min). vuelve a ingresar."
+            )
+            return False
+        self.ultima_actividad = ahora
+
         usuario = self.user_store.get_user(self.usuario_actual.id)
         if usuario is None or not usuario.active:
             self.usuario_actual = None
@@ -365,8 +648,6 @@ class InterfazFlet:
             return False
         self.usuario_actual = usuario
         if usuario.role == "master":
-            return True
-        if "operador" in roles and usuario.role == "administrador":
             return True
         if usuario.role not in roles:
             self.notificar("Tu rol no tiene permiso para realizar esta acción.")
@@ -557,28 +838,29 @@ class InterfazFlet:
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
-        if hasattr(self.page, "overlay"):
-            if self.page.overlay is None:
-                self.page.overlay = []
-            else:
-                self.page.overlay.clear()
-            self.page.overlay.append(self.file_picker)
-            self.page.overlay.append(self.crear_ventana_chat_flotante())
+        self._asegurar_file_picker()
+        ventana_chat = self.crear_ventana_chat_flotante()
+        if not hasattr(self.page, "overlay") or self.page.overlay is None:
+            self.page.overlay = []
+        else:
+            self.page.overlay.clear()
+        self.page.overlay.append(ventana_chat)
 
         self.boton_chat_flotante = ft.FloatingActionButton(
             content=ft.Row(
                 [
                     ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=20),
                     ft.Text("Asistente", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD, size=13),
+                    self.badge_chat_container,
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
-                spacing=6,
+                spacing=5,
             ),
             bgcolor=ROJO,
-            tooltip="Abrir Asistente Virtual",
+            tooltip="Asistente Virtual y Chat de Equipo",
             on_click=self.alternar_chat_flotante,
             shape=ft.RoundedRectangleBorder(radius=16),
-            width=130,
+            width=140,
         )
         self.page.floating_action_button = self.boton_chat_flotante
         if not self.conversacion.controls:
@@ -589,6 +871,9 @@ class InterfazFlet:
                 obtener_mensaje_bienvenida(rol_actual, nom_actual),
             )
         self.actualizar_estado()
+        self.refrescar_usuarios_chat_equipo()
+        self.cargar_mensajes_equipo()
+        self.actualizar_badge_chat()
 
     def boton(
         self,
@@ -646,15 +931,184 @@ class InterfazFlet:
                 on_click=self.mostrar_notificaciones_admin,
             )
 
-    def sincronizar_sesiones(self) -> None:
-        """Actualiza en tiempo real otras sesiones abiertas en el navegador (Opción 2)."""
+    def _enriquecer_mensaje_con_pedidos(self, texto: str) -> str:
+        """Si el mensaje menciona #remito o #nota, adjunta automáticamente el resumen del pedido."""
+        referencias = re.findall(r"#([A-Za-z0-9_-]{2,40})", texto)
+        if not referencias:
+            return texto
+        resumenes: list[str] = []
+        vistos: set[str] = set()
+        for ref in referencias:
+            ref_norm = ref.upper()
+            if ref_norm in vistos:
+                continue
+            vistos.add(ref_norm)
+            res = self.order_store.obtener_pedido_resumen_chat(ref)
+            if res:
+                resumenes.append(res)
+        if resumenes:
+            return texto + "\n" + "\n".join(resumenes)
+        return texto
+
+    def sincronizar_sesiones(
+        self,
+        notificar_chat: tuple[str, str, str] | None = None,
+    ) -> None:
+        """Actualiza en tiempo real otras sesiones abiertas en el navegador y el chat de equipo."""
         for sesion in list(SESIONES_ACTIVAS):
             if sesion is self or sesion.usuario_actual is None:
                 continue
             try:
                 sesion.actualizar_estado()
+                sesion.actualizar_badge_chat()
+                if sesion.modo_chat_activo == "equipo":
+                    sesion.cargar_mensajes_equipo()
+                if notificar_chat is not None:
+                    emisor, dest, msg_corto = notificar_chat
+                    usr_dest = sesion.usuario_actual.username
+                    if dest == "Todos" or dest.lower() == usr_dest.lower():
+                        aviso = f"💬 Nuevo mensaje de @{emisor}: {msg_corto[:65]}"
+                        snack = ft.SnackBar(
+                            content=ft.Text(aviso, color=ft.Colors.WHITE, size=12),
+                            bgcolor=ROJO,
+                            duration=4000,
+                        )
+                        sesion.page.show_dialog(snack)
+                        sesion.page.update()
             except Exception:
                 pass
+
+    def actualizar_badge_chat(self) -> None:
+        if not self.usuario_actual:
+            return
+        try:
+            no_leidos = self.order_store.contar_mensajes_no_leidos(self.usuario_actual.username)
+            if hasattr(self, "badge_chat_container") and hasattr(self, "texto_badge_chat"):
+                if no_leidos > 0:
+                    self.texto_badge_chat.value = str(no_leidos)
+                    self.badge_chat_container.visible = True
+                else:
+                    self.badge_chat_container.visible = False
+            if hasattr(self, "texto_badge_tab"):
+                self.texto_badge_tab.value = f" ({no_leidos})" if no_leidos > 0 else ""
+            self.page.update()
+        except Exception:
+            pass
+
+    def refrescar_usuarios_chat_equipo(self) -> None:
+        opciones = [ft.dropdown.Option("Todos", "📢 Todos (Canal General)")]
+        try:
+            usuarios = self.user_store.list_users(include_master=True)
+            for u in usuarios:
+                if self.usuario_actual and u.username != self.usuario_actual.username and u.active:
+                    opciones.append(ft.dropdown.Option(u.username, f"👤 @{u.username} ({u.role.capitalize()})"))
+        except Exception:
+            pass
+        self.selector_destinatario_equipo.options = opciones
+        if not self.selector_destinatario_equipo.value:
+            self.selector_destinatario_equipo.value = "Todos"
+
+    def cargar_mensajes_equipo(self) -> None:
+        if not self.usuario_actual:
+            return
+        mensajes = self.order_store.listar_mensajes_chat(usuario=self.usuario_actual.username, limite=60)
+        self.conversacion_equipo.controls.clear()
+
+        if not mensajes:
+            self.conversacion_equipo.controls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.FORUM_OUTLINED, size=36, color=self.secundario),
+                            ft.Text(
+                                "No hay mensajes en el canal de equipo.\nEscribe para comunicarte con tus compañeros.",
+                                size=12,
+                                color=self.secundario,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=6,
+                    ),
+                    padding=25,
+                    alignment=ft.Alignment.CENTER,
+                )
+            )
+        else:
+            for m in mensajes:
+                es_mio = m.emisor == self.usuario_actual.username
+                bg_burbuja = (
+                    ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50
+                ) if es_mio else (
+                    ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_100
+                )
+                borde_burbuja = ft.Border.all(
+                    1,
+                    ft.Colors.RED_300 if es_mio else self.borde,
+                )
+
+                if m.destinatario == "Todos":
+                    tag_dest = "📢 Para: Todos"
+                    color_tag = ft.Colors.BLUE_400 if self.modo_oscuro else ft.Colors.BLUE_700
+                else:
+                    tag_dest = f"🔒 {'Para ti' if not es_mio else f'Para @{m.destinatario}'}"
+                    color_tag = ft.Colors.AMBER_400 if self.modo_oscuro else ft.Colors.AMBER_800
+
+                titulo_emisor = "Tú" if es_mio else f"@{m.emisor}"
+                color_emisor = ROJO if es_mio else (ft.Colors.BLUE_300 if self.modo_oscuro else ft.Colors.BLUE_GREY_900)
+
+                burbuja = ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(titulo_emisor, size=11, weight=ft.FontWeight.BOLD, color=color_emisor),
+                                    ft.Text(tag_dest, size=9, weight=ft.FontWeight.W_500, color=color_tag),
+                                    ft.Text(m.created_at[11:16], size=9, color=self.secundario),
+                                ],
+                                spacing=8,
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Text(m.mensaje, size=12, color=self.texto, selectable=True),
+                        ],
+                        spacing=3,
+                        tight=True,
+                    ),
+                    bgcolor=bg_burbuja,
+                    border=borde_burbuja,
+                    border_radius=10,
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=7),
+                    margin=ft.Margin.only(
+                        left=35 if es_mio else 0,
+                        right=0 if es_mio else 35,
+                    ),
+                )
+                self.conversacion_equipo.controls.append(burbuja)
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def enviar_mensaje_equipo(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
+        texto = (self.entrada_chat_equipo.value or "").strip()
+        if not texto:
+            return
+        self.entrada_chat_equipo.value = ""
+        emisor = self.usuario_actual.username if self.usuario_actual else "Operador"
+        destinatario = self.selector_destinatario_equipo.value or "Todos"
+        texto_enriquecido = self._enriquecer_mensaje_con_pedidos(texto)
+
+        self.order_store.enviar_mensaje_chat(
+            emisor=emisor,
+            mensaje=texto_enriquecido,
+            destinatario=destinatario,
+        )
+        self.cargar_mensajes_equipo()
+        self.sincronizar_sesiones(notificar_chat=(emisor, destinatario, texto))
 
     def encabezado(self) -> ft.Control:
         assert self.usuario_actual is not None
@@ -673,6 +1127,12 @@ class InterfazFlet:
         fila_acciones.extend(
             [
                 boton_tema,
+                ft.IconButton(
+                    icon=ft.Icons.KEY,
+                    tooltip="Cambiar mi contraseña",
+                    icon_color=self.secundario,
+                    on_click=self.mostrar_cambiar_mi_clave,
+                ),
                 ft.TextButton(
                     f"{self.usuario_actual.username} · Cerrar sesión",
                     icon=ft.Icons.LOGOUT,
@@ -686,6 +1146,7 @@ class InterfazFlet:
 
         ip_red = obtener_ip_local()
         puerto_red = os.environ.get("STOCKAGENT_PORT", str(PUERTO_WEB_DEFAULT))
+        esquema_red = os.environ.get("STOCKAGENT_SCHEME", "http")
 
         return ft.Row(
             [
@@ -698,7 +1159,7 @@ class InterfazFlet:
                             color=self.texto,
                         ),
                         ft.Text(
-                            f"Gestiona tus documentos, inventario y actividad · Red local: http://{ip_red}:{puerto_red}",
+                            f"Gestiona tus documentos, inventario y actividad · Red local: {esquema_red}://{ip_red}:{puerto_red}",
                             size=14,
                             color=self.secundario,
                         ),
@@ -829,8 +1290,23 @@ class InterfazFlet:
         self.entrada_chat.value = comando
         asyncio.create_task(self.enviar_chat(None))
 
+    def cambiar_pestaña_chat(self, modo: str) -> None:
+        self.modo_chat_activo = modo
+        if self.ventana_chat_flotante is not None:
+            self.ventana_chat_flotante.visible = True
+            self.chat_visible = True
+        if hasattr(self, "_cambiar_tab_fn") and self._cambiar_tab_fn is not None:
+            self._cambiar_tab_fn(modo)
+        else:
+            self.page.update()
+
     def crear_ventana_chat_flotante(self) -> ft.Container:
         rol_actual = self.usuario_actual.role if self.usuario_actual else "operador"
+        ico_encabezado = ft.Icon(
+            ft.Icons.FORUM if self.modo_chat_activo == "equipo" else ft.Icons.SMART_TOY,
+            color=ft.Colors.WHITE if self.modo_oscuro else ROJO,
+            size=18,
+        )
         encabezado_chat = ft.Row(
             [
                 ft.Row(
@@ -841,24 +1317,20 @@ class InterfazFlet:
                             border_radius=10,
                             bgcolor=ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50,
                             alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(
-                                ft.Icons.SMART_TOY,
-                                color=ft.Colors.WHITE if self.modo_oscuro else ROJO,
-                                size=18,
-                            ),
+                            content=ico_encabezado,
                         ),
                         ft.Column(
                             [
                                 ft.Text(
-                                    "Asistente StockAgent",
-                                    size=14,
+                                    "StockAgent · Chat y Asistente",
+                                    size=13,
                                     weight=ft.FontWeight.BOLD,
                                     color=self.texto,
                                 ),
                                 ft.Row(
                                     [
                                         ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_400, size=8),
-                                        ft.Text(f"Rol: {rol_actual.capitalize()} · Listo", size=10, color=self.secundario),
+                                        ft.Text(f"Rol: {rol_actual.capitalize()} · En línea", size=10, color=self.secundario),
                                     ],
                                     spacing=4,
                                 ),
@@ -874,7 +1346,7 @@ class InterfazFlet:
                             icon=ft.Icons.DELETE_SWEEP_OUTLINED,
                             icon_color=self.secundario,
                             icon_size=18,
-                            tooltip="Limpiar conversación",
+                            tooltip="Limpiar conversación del bot",
                             on_click=self.limpiar_chat,
                         ),
                         ft.IconButton(
@@ -898,16 +1370,57 @@ class InterfazFlet:
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
 
+        def mapear_icono(nombre: str) -> str:
+            iconos = {
+                "SEARCH": ft.Icons.SEARCH,
+                "WARNING_AMBER_ROUNDED": ft.Icons.WARNING_AMBER_ROUNDED,
+                "PRECISION_MANUFACTURING": ft.Icons.PRECISION_MANUFACTURING,
+                "ANALYTICS": ft.Icons.ANALYTICS,
+                "HISTORY": ft.Icons.HISTORY,
+                "BACKUP": ft.Icons.BACKUP,
+                "FACT_CHECK": ft.Icons.FACT_CHECK,
+                "DASHBOARD": ft.Icons.DASHBOARD,
+                "DESCRIPTION": ft.Icons.DESCRIPTION,
+                "SCIENCE": ft.Icons.SCIENCE,
+                "INVENTORY_2": ft.Icons.INVENTORY_2,
+                "POINT_OF_SALE": ft.Icons.POINT_OF_SALE,
+                "LOCAL_SHIPPING": ft.Icons.LOCAL_SHIPPING,
+                "FOLDER_OPEN": ft.Icons.FOLDER_OPEN,
+                "HELP_OUTLINE": ft.Icons.HELP_OUTLINE,
+                "CHAT": ft.Icons.CHAT,
+            }
+            return iconos.get(nombre, ft.Icons.SMART_TOY)
+
         chips_def = obtener_chips_configuracion(rol_actual)
+        chips_controles = []
+        for item in chips_def:
+            if len(item) == 3:
+                etiqueta, comando, ico_nombre = item
+            else:
+                etiqueta, comando = item
+                ico_nombre = "SMART_TOY"
+            icono = mapear_icono(ico_nombre)
+            boton_func = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(icono, size=13, color=ft.Colors.WHITE if self.modo_oscuro else ROJO),
+                        ft.Text(etiqueta, size=11, weight=ft.FontWeight.W_600, color=self.texto, no_wrap=True),
+                    ],
+                    spacing=5,
+                    tight=True,
+                ),
+                bgcolor=ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_200,
+                border=ft.Border.all(1, self.borde),
+                border_radius=14,
+                padding=ft.Padding.symmetric(horizontal=10, vertical=5),
+                ink=True,
+                tooltip=f"Comando {comando} - Clic para ejecutar",
+                on_click=lambda _e, cmd=comando: self.ejecutar_comando_rapido(cmd),
+            )
+            chips_controles.append(boton_func)
+
         chips_fila = ft.Row(
-            [
-                ft.Chip(
-                    label=ft.Text(etiqueta, size=11, color=self.texto),
-                    bgcolor=self.fondo,
-                    on_click=lambda _e, cmd=comando: self.ejecutar_comando_rapido(cmd),
-                )
-                for etiqueta, comando in chips_def
-            ],
+            chips_controles,
             scroll=ft.ScrollMode.AUTO,
             spacing=6,
         )
@@ -919,7 +1432,7 @@ class InterfazFlet:
                     icon=ft.Icons.SEND,
                     icon_color=ft.Colors.WHITE,
                     bgcolor=ROJO,
-                    tooltip="Enviar mensaje",
+                    tooltip="Enviar mensaje al bot",
                     on_click=self.enviar_chat,
                 ),
             ],
@@ -933,9 +1446,140 @@ class InterfazFlet:
             color=self.secundario,
         )
 
+        # Controles para la pestaña Bot
+        es_bot = self.modo_chat_activo == "bot"
+        cuerpo_bot = ft.Column(
+            [
+                chips_fila,
+                ft.Divider(height=6, color=self.borde),
+                self.conversacion,
+                input_fila,
+                pie_texto,
+            ],
+            expand=True,
+            spacing=6,
+            visible=es_bot,
+        )
+
+        # Controles para la pestaña Chat de Equipo
+        barra_equipo = ft.Row(
+            [
+                self.selector_destinatario_equipo,
+                ft.IconButton(
+                    icon=ft.Icons.REFRESH,
+                    icon_size=18,
+                    tooltip="Actualizar mensajes",
+                    on_click=lambda _e: (
+                        self.refrescar_usuarios_chat_equipo(),
+                        self.cargar_mensajes_equipo(),
+                    ),
+                ),
+            ],
+            spacing=6,
+        )
+
+        input_fila_equipo = ft.Row(
+            [
+                self.entrada_chat_equipo,
+                ft.IconButton(
+                    icon=ft.Icons.SEND,
+                    icon_color=ft.Colors.WHITE,
+                    bgcolor=ROJO,
+                    tooltip="Enviar al equipo",
+                    on_click=self.enviar_mensaje_equipo,
+                ),
+            ],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+        cuerpo_equipo = ft.Column(
+            [
+                barra_equipo,
+                ft.Divider(height=6, color=self.borde),
+                self.conversacion_equipo,
+                input_fila_equipo,
+            ],
+            expand=True,
+            spacing=6,
+            visible=not es_bot,
+        )
+
+        def cambiar_tab(modo: str) -> None:
+            self.modo_chat_activo = modo
+            es_bot_nuevo = (modo == "bot")
+            cuerpo_bot.visible = es_bot_nuevo
+            cuerpo_equipo.visible = not es_bot_nuevo
+
+            btn_tab_bot.bgcolor = ROJO if es_bot_nuevo else (ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_200)
+            txt_tab_bot.color = ft.Colors.WHITE if es_bot_nuevo else self.texto
+            ico_tab_bot.color = ft.Colors.WHITE if es_bot_nuevo else self.texto
+
+            btn_tab_equipo.bgcolor = ROJO if not es_bot_nuevo else (ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_200)
+            txt_tab_equipo.color = ft.Colors.WHITE if not es_bot_nuevo else self.texto
+            ico_tab_equipo.color = ft.Colors.WHITE if not es_bot_nuevo else self.texto
+
+            ico_encabezado.icon = ft.Icons.SMART_TOY if es_bot_nuevo else ft.Icons.FORUM
+
+            if modo == "equipo":
+                self.refrescar_usuarios_chat_equipo()
+                self.cargar_mensajes_equipo()
+                if self.usuario_actual:
+                    self.order_store.marcar_mensajes_leidos(self.usuario_actual.username)
+                    self.actualizar_badge_chat()
+
+            self.page.update()
+
+        self._cambiar_tab_fn = cambiar_tab
+
+        ico_tab_bot = ft.Icon(ft.Icons.SMART_TOY_OUTLINED, size=15, color=ft.Colors.WHITE if es_bot else self.texto)
+        txt_tab_bot = ft.Text("Asistente Bot", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE if es_bot else self.texto)
+        btn_tab_bot = ft.Container(
+            content=ft.Row(
+                [
+                    ico_tab_bot,
+                    txt_tab_bot,
+                ],
+                spacing=5,
+                tight=True,
+            ),
+            bgcolor=ROJO if es_bot else (ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_200),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+            border_radius=12,
+            ink=True,
+            on_click=lambda _e: cambiar_tab("bot"),
+        )
+
+        ico_tab_equipo = ft.Icon(ft.Icons.FORUM_OUTLINED, size=15, color=self.texto if es_bot else ft.Colors.WHITE)
+        txt_tab_equipo = ft.Text("Chat Equipo", size=11, weight=ft.FontWeight.BOLD, color=self.texto if es_bot else ft.Colors.WHITE)
+        btn_tab_equipo = ft.Container(
+            content=ft.Row(
+                [
+                    ico_tab_equipo,
+                    txt_tab_equipo,
+                    self.texto_badge_tab,
+                ],
+                spacing=5,
+                tight=True,
+            ),
+            bgcolor=(ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_200) if es_bot else ROJO,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+            border_radius=12,
+            ink=True,
+            on_click=lambda _e: cambiar_tab("equipo"),
+        )
+
+        barra_tabs = ft.Row(
+            [
+                btn_tab_bot,
+                btn_tab_equipo,
+            ],
+            spacing=8,
+        )
+
         self.ventana_chat_flotante = ft.Container(
-            width=390,
-            height=530,
+            width=420,
+            height=550,
             right=24,
             bottom=90,
             bgcolor=self.superficie,
@@ -952,16 +1596,15 @@ class InterfazFlet:
             content=ft.Column(
                 [
                     encabezado_chat,
-                    chips_fila,
-                    ft.Divider(height=10, color=self.borde),
-                    self.conversacion,
-                    input_fila,
-                    pie_texto,
+                    barra_tabs,
+                    cuerpo_bot,
+                    cuerpo_equipo,
                 ],
                 expand=True,
                 spacing=8,
             ),
         )
+        return self.ventana_chat_flotante
         return self.ventana_chat_flotante
 
     def panel_chat(self) -> ft.Control:
@@ -978,6 +1621,10 @@ class InterfazFlet:
             padding=16,
             content=contenido,
         )
+
+    def actualizar_listas(self, _evento: ft.Event | None = None) -> None:
+        """Alias de compatibilidad para actualizar el estado e informes."""
+        self.actualizar_estado(_evento)
 
     def actualizar_estado(self, _evento: ft.Event | None = None) -> None:
         if not self.exigir_roles(*USER_ROLES):
@@ -1067,6 +1714,7 @@ class InterfazFlet:
                         on_click=lambda _e, archivo=ruta: self.seleccionar_informe(archivo),
                     )
                 )
+        self.actualizar_badge_chat()
         if self.page.controls:
             self.page.update()
 
@@ -1320,27 +1968,27 @@ class InterfazFlet:
         elif intencion == "ayuda":
             respuesta = obtener_comandos_ayuda(rol)
         elif intencion == "pedidos":
-            pendientes = self.orders_store.listar_pedidos_pendientes_cierre()
-            recientes = self.orders_store.listar_pedidos(limit=5)
+            pendientes = self.order_store.listar_pedidos_pendientes_cierre()
+            recientes = self.order_store.listar_pedidos(limit=5)
             lineas = [
                 "📦 Resumen de Pedidos del Sistema:\n",
                 f"• Pendientes de cierre de jornada: {len(pendientes)} pedido(s) acumulados.",
             ]
             if pendientes:
-                total_items = sum(len(p.items) for p in pendientes)
-                lineas.append(f"• Total renglones a descontar en cierre: {total_items} ítem(s).")
+                total_items = sum(p.articulos_descontados for p in pendientes)
+                lineas.append(f"• Total unidades en pedidos pendientes: {total_items} ítem(s).")
             if recientes:
                 lineas.append("\nÚltimos pedidos registrados:")
                 for p in recientes[:4]:
-                    cli = p.cliente_nombre or "Consumidor Final"
+                    cli = p.cliente or "Consumidor Final"
                     nota = f" [NP: {p.nota_pedido}]" if p.nota_pedido else ""
-                    est = "🟡 Pendiente" if p.estado == "pendiente" else "🟢 Cerrado"
-                    lineas.append(f"• {est} {p.fecha} {p.hora} - {cli}{nota} ({len(p.items)} items)")
+                    est = "🟡 Pendiente" if p.cierre_id is None else "🟢 Cerrado"
+                    lineas.append(f"• {est} {p.created_at[:16]} - {cli}{nota} ({p.articulos_descontados} un., {p.estado_despacho})")
             lineas.append("\nPuedes cargar nuevos pedidos desde el menú 'Cargar / Armar Pedido'.")
             respuesta = "\n".join(lineas)
         elif intencion == "cierre":
-            pendientes = self.orders_store.listar_pedidos_pendientes_cierre()
-            ultimos_cierres = self.orders_store.listar_cierres(limit=1)
+            pendientes = self.order_store.listar_pedidos_pendientes_cierre()
+            ultimos_cierres = self.order_store.listar_cierres(limit=1)
             lineas = ["🖨️ Estado de Cierre de Jornada y Descuentos:\n"]
             lineas.append(f"• Pedidos acumulados para el próximo cierre: {len(pendientes)}")
             if pendientes:
@@ -1350,9 +1998,9 @@ class InterfazFlet:
             if ultimos_cierres:
                 uc = ultimos_cierres[0]
                 lineas.append("\nÚltimo cierre realizado:")
-                lineas.append(f"• Fecha: {uc.fecha} {uc.hora}")
+                lineas.append(f"• Fecha: {uc.created_at[:16]}")
                 lineas.append(f"• Responsable: {uc.usuario}")
-                lineas.append(f"• Pedidos consolidados: {uc.total_pedidos} ({uc.total_articulos} artículos)")
+                lineas.append(f"• Pedidos consolidados: {uc.cantidad_pedidos} ({uc.articulos_totales} artículos)")
             lineas.append("\nPara generar un cierre formal, presiona 'Cierre de Jornada' en el menú lateral.")
             respuesta = "\n".join(lineas)
         elif intencion == "mercadolibre":
@@ -1363,6 +2011,39 @@ class InterfazFlet:
                 "• Se actualiza el stock en la base SQLite y en el Excel, registrando además el pedido y generando un informe PDF.\n\n"
                 "👉 Para utilizarlo, presiona el botón 'Descontar Mercado Libre' en el menú lateral."
             )
+        elif intencion == "metricas":
+            m = self.order_store.obtener_metricas_dashboard()
+            prom = (m["total_bultos"] / m["total_pedidos"]) if m["total_pedidos"] > 0 else 0
+            respuesta = (
+                f"📊 **Métricas del Depósito:**\n"
+                f"• Total Pedidos: {m['total_pedidos']}\n"
+                f"• Total Bultos: {m['total_bultos']} (promedio: {prom:.1f} bultos/pedido)\n"
+                f"• Pedidos cerrados: {m['pedidos_cerrados']} | Pendientes: {m['pedidos_pendientes']}\n"
+                f"• Cierres de jornada: {m['total_cierres']}\n\n"
+                f"💡 Presiona 'Métricas y Rendimiento' en el menú de Administración para ver el panel interactivo completo."
+            )
+        elif intencion == "auditoria":
+            logs = self.order_store.listar_auditoria(limit=5)
+            lineas = ["🛡️ **Últimos 5 Eventos de Auditoría:**\n"]
+            for l in logs:
+                lineas.append(f"• [{l.created_at[11:16]}] {l.usuario} ({l.accion}): {l.detalle}")
+            lineas.append("\n💡 Accede a 'Registro de Auditoría' en el menú lateral para buscar y filtrar todos los eventos.")
+            respuesta = "\n".join(lineas)
+        elif intencion == "backup":
+            carpeta_bks = application_root() / "data" / "backups"
+            bks = sorted(carpeta_bks.glob("Backup_Deposito_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True) if carpeta_bks.exists() else []
+            if bks:
+                ultimo = bks[0]
+                t_str = datetime.fromtimestamp(ultimo.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+                respuesta = (
+                    f"💾 **Copia de Seguridad:**\n"
+                    f"• Último respaldo: {ultimo.name}\n"
+                    f"• Fecha: {t_str}\n"
+                    f"• Respaldos en disco: {len(bks)} archivos en data/backups/\n\n"
+                    f"💡 Puedes generar un respaldo manual en cualquier momento desde 'Copia de Seguridad' en el menú lateral."
+                )
+            else:
+                respuesta = "💾 Aún no se han generado copias de seguridad. Se generará una automáticamente en el próximo Cierre de Jornada o puedes presionar 'Copia de Seguridad' en el menú lateral."
         elif intencion == "criticos":
             stock_mgr = StockManager(self.menu.ruta_excel_base)
             productos = stock_mgr.listar_productos()
@@ -1411,13 +2092,53 @@ class InterfazFlet:
             else:
                 respuesta = "Simulación de solo lectura iniciada."
                 await self.simular(None)
+        elif intencion == "chat_equipo":
+            cuerpo_msg = ""
+            destinatario = "Todos"
+            texto_limpio = mensaje.strip()
+
+            if texto_limpio.lower().startswith(("/msg", "/mensaje", "/avisar", "msg ", "mensaje ")):
+                partes = texto_limpio.split(maxsplit=2)
+                if len(partes) > 1:
+                    if partes[1].startswith("@") and len(partes) > 2:
+                        destinatario = partes[1].lstrip("@")
+                        cuerpo_msg = partes[2]
+                    elif not partes[1].startswith("@"):
+                        cuerpo_msg = texto_limpio.split(maxsplit=1)[1]
+            elif texto_limpio.startswith("@"):
+                partes = texto_limpio.split(maxsplit=1)
+                destinatario = partes[0].lstrip("@")
+                if len(partes) > 1:
+                    cuerpo_msg = partes[1]
+
+            if cuerpo_msg:
+                emisor_nom = self.usuario_actual.username if self.usuario_actual else "Operador"
+                cuerpo_enriq = self._enriquecer_mensaje_con_pedidos(cuerpo_msg)
+                self.order_store.enviar_mensaje_chat(
+                    emisor=emisor_nom,
+                    mensaje=cuerpo_enriq,
+                    destinatario=destinatario,
+                )
+                self.sincronizar_sesiones(notificar_chat=(emisor_nom, destinatario, cuerpo_msg))
+                self.cargar_mensajes_equipo()
+                tag_dest_txt = f"@{destinatario}" if destinatario != "Todos" else "📢 Todos los usuarios"
+                respuesta = (
+                    f"💬 **Mensaje enviado al equipo:**\n"
+                    f"• Para: {tag_dest_txt}\n"
+                    f"• Mensaje: \"{cuerpo_msg}\"\n\n"
+                    f"💡 Puedes cambiar a la pestaña 'Chat Equipo' para ver la conversación completa."
+                )
+            else:
+                self.cambiar_pestaña_chat("equipo")
+                respuesta = (
+                    "👥 Cambiado al canal de **Chat de Equipo**.\n"
+                    "Aquí puedes escribir directamente a tus compañeros o al canal general."
+                )
         else:
             respuesta = (
                 f"No reconocí la consulta.\n"
                 f"{obtener_pie_ayuda(rol)}"
             )
-        self.escribir_chat("Agente", respuesta)
-        self.page.update()
         self.escribir_chat("Agente", respuesta)
         self.page.update()
 
@@ -1585,6 +2306,7 @@ class InterfazFlet:
 
     async def _descargar_archivo_navegador(self, ruta: Path) -> None:
         try:
+            self._asegurar_file_picker()
             contenido_bytes = ruta.read_bytes()
             await self.file_picker.save_file(
                 dialog_title=f"Guardar {ruta.name}",
@@ -1602,12 +2324,7 @@ class InterfazFlet:
         al_terminar: Callable[[list[Path]], None] | None = None,
     ) -> list[Path]:
         try:
-            if hasattr(self.page, "overlay"):
-                if self.page.overlay is None:
-                    self.page.overlay = []
-                if self.file_picker not in self.page.overlay:
-                    self.page.overlay.append(self.file_picker)
-                    self.page.update()
+            self._asegurar_file_picker()
             ext_limpias: list[str] = []
             for ext in extensiones:
                 e = ext.lstrip(".").lower()
@@ -1675,23 +2392,8 @@ class InterfazFlet:
     def compartir_correo(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
         if not self.exigir_roles(*USER_ROLES):
             return
-        ruta = ruta_especifica or self.ruta_informe()
-        if ruta is None:
-            return
-        es_pedido = ruta.name.startswith("Pedido_Fabrica")
-        asunto_txt = f"Pedido a fábrica: {ruta.name}" if es_pedido else f"Informe de descuentos: {ruta.name}"
-        cuerpo_txt = (
-            f"Adjunto la sugerencia de pedido a fábrica {ruta.name}."
-            if es_pedido
-            else f"Adjunto el informe de descuentos {ruta.name}."
-        )
-        asunto = urllib.parse.quote(asunto_txt)
-        cuerpo = urllib.parse.quote(cuerpo_txt)
-        try:
-            self.abrir_carpeta_informe(ruta)
-            os.startfile(f"mailto:?subject={asunto}&body={cuerpo}")  # type: ignore[attr-defined]
-        except OSError as error:
-            self.notificar(f"No se pudo abrir el correo o el archivo:\n{error}")
+        archivos_init = [ruta_especifica] if ruta_especifica and ruta_especifica.exists() else None
+        self.mostrar_dialogo_enviar_correo(archivos_iniciales=archivos_init)
 
     def compartir_whatsapp(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
         if not self.exigir_roles(*USER_ROLES):
@@ -1731,35 +2433,36 @@ class InterfazFlet:
             f"• Responsable: {usuario}",
             f"• Resumen consolidado: {resumen_pedidos}",
             "",
-            "Archivos oficiales generados:",
+            "Archivos oficiales adjuntos generados:",
         ]
-        if archivo_pdf and archivo_pdf.exists():
-            lineas_cuerpo.append(f"• PDF Cierre de Descuentos: {archivo_pdf.name}")
-        if archivo_excel and archivo_excel.exists():
-            lineas_cuerpo.append(f"• Excel Descuentos: {archivo_excel.name}")
-        if archivo_hoja_ruta and archivo_hoja_ruta.exists():
-            lineas_cuerpo.append(f"• Manifiesto / Hoja de Ruta de Despacho: {archivo_hoja_ruta.name}")
+        adjuntos_validos: list[Path] = []
+        for arch, desc in [
+            (archivo_pdf, "PDF Cierre de Descuentos"),
+            (archivo_excel, "Excel Descuentos"),
+            (archivo_hoja_ruta, "Manifiesto / Hoja de Ruta de Despacho"),
+        ]:
+            if arch and arch.exists():
+                lineas_cuerpo.append(f"• {desc}: {arch.name}")
+                adjuntos_validos.append(arch)
+
         if alerta_stock:
             lineas_cuerpo.append("\n⚠️ ALERTAS DE INVENTARIO POST-CIERRE:")
             lineas_cuerpo.append(alerta_stock)
-        lineas_cuerpo.append("\nLos archivos se encuentran guardados en el servidor de depósito.")
+        lineas_cuerpo.append("\nLos archivos se encuentran guardados y respaldados en el servidor.")
 
         cuerpo_txt = "\n".join(lineas_cuerpo)
-        asunto = urllib.parse.quote(asunto_txt)
-        cuerpo = urllib.parse.quote(cuerpo_txt)
-        dest = urllib.parse.quote(dest_limpio.replace(";", ","))
+        dest_lista = [d.strip() for d in dest_limpio.replace(";", ",").split(",") if d.strip()]
 
-        if archivo_pdf and archivo_pdf.exists():
-            self.abrir_carpeta_informe(archivo_pdf)
-        elif archivo_hoja_ruta and archivo_hoja_ruta.exists():
-            self.abrir_carpeta_informe(archivo_hoja_ruta)
-        elif archivo_excel and archivo_excel.exists():
-            self.abrir_carpeta_informe(archivo_excel)
-
-        try:
-            os.startfile(f"mailto:{dest}?subject={asunto}&body={cuerpo}")  # type: ignore[attr-defined]
-        except Exception as error:
-            self.notificar(f"No se pudo abrir el cliente de correo:\n{error}")
+        ok, msg = despachar_correo(
+            destinatarios=dest_lista,
+            asunto=asunto_txt,
+            cuerpo=cuerpo_txt,
+            adjuntos=adjuntos_validos,
+        )
+        if ok:
+            self.notificar(f"✅ {msg}")
+        else:
+            self.notificar(f"⚠️ {msg}")
 
     def mostrar_dialogo_compartir_cierre(
         self,
@@ -1770,58 +2473,463 @@ class InterfazFlet:
         usuario: str,
         archivo_hoja_ruta: Path | None = None,
     ) -> None:
-        correo_input = ft.TextField(
-            label="Destinatarios de correo",
-            value=obtener_correo_cierre_guardado(),
-            hint_text="ej: gerencia@empresa.com, deposito@empresa.com",
-            prefix_icon=ft.Icons.EMAIL,
-            autofocus=True,
-            expand=True,
+        fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+        asunto = f"Cierre de Jornada #{cierre_id} - {fecha_str} ({resumen_pedidos})"
+        lineas_cuerpo = [
+            "Estimados,",
+            "",
+            f"Se ha completado el Cierre de Jornada #{cierre_id} en el sistema de depósito.",
+            f"• Fecha y Hora: {fecha_str}",
+            f"• Responsable: {usuario}",
+            f"• Resumen consolidado: {resumen_pedidos}",
+            "",
+            "Archivos adjuntos para control y archivo contable.",
+        ]
+        archivos = [p for p in [archivo_pdf, archivo_excel, archivo_hoja_ruta] if p and p.exists()]
+        self.mostrar_dialogo_enviar_correo(
+            archivos_iniciales=archivos,
+            asunto_inicial=asunto,
+            cuerpo_inicial="\n".join(lineas_cuerpo),
+            titulo_dialogo=f"Enviar Cierre #{cierre_id} por Correo",
         )
+
+    def mostrar_dialogo_enviar_correo(
+        self,
+        archivos_iniciales: list[Path] | None = None,
+        asunto_inicial: str = "",
+        cuerpo_inicial: str = "",
+        destinatarios_iniciales: str = "",
+        titulo_dialogo: str = "Enviar por Correo",
+    ) -> None:
+        if not self.exigir_roles(*USER_ROLES):
+            return
+
+        adjuntos_lista: list[Path] = []
+        if archivos_iniciales:
+            for p in archivos_iniciales:
+                if p and p.exists() and p not in adjuntos_lista:
+                    adjuntos_lista.append(p)
+        elif self.informe_seleccionado and self.informe_seleccionado.exists():
+            adjuntos_lista.append(self.informe_seleccionado)
+        elif self.informes:
+            adjuntos_lista.append(self.informes[0])
+
+        cfg_email = obtener_config_email()
+        correo_guardado = (
+            destinatarios_iniciales
+            or obtener_correo_cierre_guardado()
+            or cfg_email.get("destinatarios_guardados", "")
+        )
+
+        destinatarios_input = ft.TextField(
+            label="Destinatarios (separar con comas)",
+            value=correo_guardado,
+            hint_text="ej: gerencia@empresa.com, compras@empresa.com",
+            prefix_icon=ft.Icons.EMAIL,
+            expand=True,
+            dense=True,
+        )
+
+        if not asunto_inicial:
+            if adjuntos_lista:
+                primero = adjuntos_lista[0].name
+                asunto_inicial = (
+                    f"Pedido a Fábrica: {primero}"
+                    if primero.startswith("Pedido_Fabrica")
+                    else f"Informe de Depósito: {primero}"
+                )
+            else:
+                asunto_inicial = f"Informe de Depósito - {datetime.now().strftime('%d/%m/%Y')}"
+
+        asunto_input = ft.TextField(
+            label="Asunto",
+            value=asunto_inicial,
+            prefix_icon=ft.Icons.SUBJECT,
+            expand=True,
+            dense=True,
+        )
+
+        if not cuerpo_inicial:
+            lineas = [
+                "Estimados,",
+                "",
+                "Adjunto los documentos e informes solicitados del sistema de depósito.",
+            ]
+            usuario_str = self.usuario_actual.username if self.usuario_actual else "Operador"
+            lineas.extend(["", f"Saludos cordiales,\n{usuario_str}"])
+            cuerpo_inicial = "\n".join(lineas)
+
+        cuerpo_input = ft.TextField(
+            label="Mensaje",
+            value=cuerpo_inicial,
+            multiline=True,
+            min_lines=3,
+            max_lines=6,
+            dense=True,
+        )
+
         msg_error = ft.Text("", size=11, color=ft.Colors.RED_400)
+        contenedor_adjuntos = ft.Column(spacing=4)
+        dropdown_informes = ft.Dropdown(
+            label="Informes recientes del sistema",
+            options=[],
+            expand=True,
+            dense=True,
+        )
+
+        try:
+            self.actualizar_listas()
+        except Exception:
+            pass
+        opciones_inf = []
+        for inf in self.informes[:25]:
+            if inf.exists():
+                opciones_inf.append(ft.dropdown.Option(key=str(inf), text=inf.name))
+        dropdown_informes.options = opciones_inf
+        if opciones_inf:
+            dropdown_informes.value = opciones_inf[0].key
+
+        def render_adjuntos() -> None:
+            contenedor_adjuntos.controls.clear()
+            if not adjuntos_lista:
+                contenedor_adjuntos.controls.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Icon(ft.Icons.ATTACH_FILE, color=ft.Colors.AMBER_700, size=18),
+                                ft.Text(
+                                    "No hay archivos adjuntos. Selecciona uno abajo o examina tu PC.",
+                                    size=12,
+                                    color=ft.Colors.AMBER_900,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        bgcolor=ft.Colors.AMBER_50,
+                        padding=ft.Padding.symmetric(vertical=6, horizontal=8),
+                        border_radius=6,
+                    )
+                )
+            else:
+                for p in adjuntos_lista:
+                    ext = p.suffix.lower()
+                    icono = ft.Icons.PICTURE_AS_PDF if ext == ".pdf" else (
+                        ft.Icons.TABLE_CHART if ext in (".xlsx", ".xls") else ft.Icons.ATTACH_FILE
+                    )
+                    color_ico = ft.Colors.RED_600 if ext == ".pdf" else (
+                        ft.Colors.GREEN_700 if ext in (".xlsx", ".xls") else ft.Colors.BLUE_GREY_600
+                    )
+                    try:
+                        tamano_kb = round(p.stat().st_size / 1024, 1)
+                        tamano_txt = f"{tamano_kb} KB"
+                    except Exception:
+                        tamano_txt = ""
+
+                    def quitar_archivo(_e: ft.Event, arch_quitar=p) -> None:
+                        if arch_quitar in adjuntos_lista:
+                            adjuntos_lista.remove(arch_quitar)
+                            render_adjuntos()
+                            self.page.update()
+
+                    contenedor_adjuntos.controls.append(
+                        ft.Container(
+                            content=ft.Row(
+                                [
+                                    ft.Icon(icono, color=color_ico, size=18),
+                                    ft.Text(p.name, size=12, weight=ft.FontWeight.BOLD, expand=True, no_wrap=True),
+                                    ft.Text(tamano_txt, size=11, color=ft.Colors.GREY_600),
+                                    ft.IconButton(
+                                        icon=ft.Icons.CLOSE,
+                                        icon_size=16,
+                                        icon_color=ft.Colors.RED_400,
+                                        tooltip="Quitar archivo adjunto",
+                                        on_click=quitar_archivo,
+                                    ),
+                                ],
+                                spacing=6,
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            bgcolor=ft.Colors.GREY_100,
+                            padding=ft.Padding.symmetric(horizontal=8, vertical=2),
+                            border_radius=6,
+                        )
+                    )
+
+        render_adjuntos()
+
+        def agregar_desde_dropdown(_e: ft.Event) -> None:
+            if dropdown_informes.value:
+                ruta_elegida = Path(dropdown_informes.value)
+                if ruta_elegida.exists() and ruta_elegida not in adjuntos_lista:
+                    adjuntos_lista.append(ruta_elegida)
+                    render_adjuntos()
+                    self.page.update()
+
+        async def examinar_pc(_e: ft.Event) -> None:
+            try:
+                carpeta_adjuntos = application_root() / "data" / "adjuntos_correo"
+                subidos = await self.subir_archivos_desde_pc(
+                    carpeta_destino=carpeta_adjuntos,
+                    extensiones=["pdf", "xlsx", "xls", "docx", "doc", "zip", "txt", "png", "jpg"],
+                    titulo="Seleccionar archivo(s) para adjuntar al correo",
+                )
+                if subidos:
+                    for s in subidos:
+                        if s not in adjuntos_lista:
+                            adjuntos_lista.append(s)
+                    render_adjuntos()
+                    self.page.update()
+            except Exception as err:
+                msg_error.value = f"Error al seleccionar archivo: {err}"
+                self.page.update()
 
         def enviar(_e: ft.Event) -> None:
-            dest = (correo_input.value or "").strip()
-            if not dest:
-                msg_error.value = "Ingresa al menos una dirección de correo."
+            dest_raw = (destinatarios_input.value or "").strip()
+            if not dest_raw:
+                msg_error.value = "Por favor ingresa al menos una dirección de correo."
                 self.page.update()
                 return
-            guardar_correo_cierre(dest)
+
+            dest_limpios = [d.strip() for d in dest_raw.replace(";", ",").split(",") if d.strip()]
+            asunto_final = (asunto_input.value or "").strip() or "Informe de Depósito"
+            cuerpo_final = cuerpo_input.value or ""
+
+            guardar_correo_cierre(dest_raw)
+            cfg = obtener_config_email()
+            cfg["destinatarios_guardados"] = dest_raw
+            guardar_config_email(cfg)
+
             self.page.pop_dialog()
-            self.enviar_correo_cierre(
-                destinatarios=dest,
-                cierre_id=cierre_id,
-                archivo_pdf=archivo_pdf,
-                archivo_excel=archivo_excel,
-                resumen_pedidos=resumen_pedidos,
-                usuario=usuario,
-                archivo_hoja_ruta=archivo_hoja_ruta,
+
+            ok, mensaje = despachar_correo(
+                destinatarios=dest_limpios,
+                asunto=asunto_final,
+                cuerpo=cuerpo_final,
+                adjuntos=adjuntos_lista,
             )
+            if ok:
+                self.notificar(f"✅ {mensaje}")
+            else:
+                self.notificar(f"⚠️ {mensaje}")
 
         dialogo = ft.AlertDialog(
             title=ft.Row(
                 [
-                    ft.Icon(ft.Icons.EMAIL, color=ft.Colors.BLUE_400, size=20),
-                    ft.Text(f"Enviar Cierre #{cierre_id} por Correo", weight=ft.FontWeight.BOLD, size=15),
+                    ft.Icon(ft.Icons.EMAIL, color=ft.Colors.BLUE_400, size=22),
+                    ft.Text(titulo_dialogo, weight=ft.FontWeight.BOLD, size=16),
                 ],
                 spacing=8,
             ),
             content=ft.Container(
-                width=480,
+                width=550,
                 content=ft.Column(
                     [
-                        ft.Text(f"Resumen: {resumen_pedidos}", size=12, color=self.secundario),
-                        ft.Text(f"Responsable: {usuario}", size=11, color=self.secundario),
+                        ft.Text("Archivos Adjuntos:", size=12, weight=ft.FontWeight.BOLD, color=self.secundario),
+                        contenedor_adjuntos,
                         ft.Divider(height=10),
-                        correo_input,
+                        ft.Text("Agregar más archivos:", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                        ft.Row(
+                            [
+                                dropdown_informes,
+                                ft.Button("Adjuntar", icon=ft.Icons.ADD, on_click=agregar_desde_dropdown),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Button(
+                                    "Examinar en mi PC...",
+                                    icon=ft.Icons.FOLDER_OPEN,
+                                    on_click=examinar_pc,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.END,
+                        ),
+                        ft.Divider(height=10),
+                        destinatarios_input,
+                        asunto_input,
+                        cuerpo_input,
                         msg_error,
                     ],
                     tight=True,
                     spacing=8,
+                    scroll=ft.ScrollMode.AUTO,
                 ),
             ),
             actions=[
+                ft.IconButton(
+                    icon=ft.Icons.SETTINGS,
+                    tooltip="Configurar servidor SMTP (Gmail / Outlook / Servidor propio)",
+                    on_click=lambda _e: self.mostrar_configuracion_smtp(),
+                ),
                 ft.Button("Enviar Correo", icon=ft.Icons.SEND, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=enviar),
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    def mostrar_configuracion_smtp(self, _evento: ft.Event | None = None) -> None:
+        """Modal para configurar el servidor SMTP (cifrado) y las alertas automáticas programadas."""
+        if not self.exigir_roles("administrador"):
+            return
+
+        cfg = obtener_config_email()
+        cfg_alertas = cfg.get("alertas", {}) if isinstance(cfg.get("alertas"), dict) else {}
+
+        servidor_input = ft.TextField(
+            label="Servidor SMTP",
+            value=cfg.get("smtp_servidor", ""),
+            hint_text="ej: smtp.gmail.com, smtp.office365.com",
+            prefix_icon=ft.Icons.DNS,
+            expand=True,
+            dense=True,
+        )
+        puerto_input = ft.TextField(
+            label="Puerto",
+            value=str(cfg.get("smtp_puerto", 587)),
+            hint_text="587 o 465",
+            width=100,
+            dense=True,
+        )
+        usuario_input = ft.TextField(
+            label="Usuario / Correo remitente",
+            value=cfg.get("smtp_usuario", ""),
+            hint_text="ej: tu_cuenta@gmail.com",
+            prefix_icon=ft.Icons.ACCOUNT_CIRCLE,
+            dense=True,
+        )
+        pass_input = ft.TextField(
+            label="Contraseña o Token de Aplicación (se guarda cifrada con DPAPI)",
+            value=cfg.get("smtp_password", ""),
+            password=True,
+            can_reveal_password=True,
+            prefix_icon=ft.Icons.LOCK,
+            dense=True,
+        )
+        tls_check = ft.Checkbox(label="Usar STARTTLS (Puerto 587)", value=cfg.get("smtp_usar_tls", True))
+        ssl_check = ft.Checkbox(label="Usar SSL directo (Puerto 465)", value=cfg.get("smtp_usar_ssl", False))
+
+        alerta_activo_check = ft.Checkbox(
+            label="Activar envío diario automático de alertas (stock crítico y resumen de despachos)",
+            value=bool(cfg_alertas.get("activo", False)),
+        )
+        alerta_hora_input = ft.TextField(
+            label="Hora de envío (HH:MM)",
+            value=str(cfg_alertas.get("hora", "18:00") or "18:00"),
+            width=150,
+            dense=True,
+            prefix_icon=ft.Icons.SCHEDULE,
+        )
+        alerta_dest_input = ft.TextField(
+            label="Destinatarios de alertas automáticas",
+            value=str(cfg_alertas.get("destinatarios", "") or cfg.get("destinatarios_guardados", "")),
+            hint_text="gerencia@empresa.com, compras@empresa.com",
+            expand=True,
+            dense=True,
+            prefix_icon=ft.Icons.NOTIFICATIONS_ACTIVE,
+        )
+
+        resultado_txt = ft.Text("", size=11)
+
+        def probar_conexion(_e: ft.Event) -> None:
+            cfg_prueba = {
+                "smtp_servidor": servidor_input.value,
+                "smtp_puerto": puerto_input.value,
+                "smtp_usuario": usuario_input.value,
+                "smtp_password": pass_input.value,
+                "smtp_usar_tls": tls_check.value,
+                "smtp_usar_ssl": ssl_check.value,
+            }
+            resultado_txt.value = "Probando conexión con el servidor..."
+            resultado_txt.color = ft.Colors.BLUE_600
+            self.page.update()
+
+            ok, res_msg = probar_conexion_smtp(cfg_prueba)
+            if ok:
+                resultado_txt.value = f"✅ {res_msg}"
+                resultado_txt.color = ft.Colors.GREEN_700
+            else:
+                resultado_txt.value = f"❌ {res_msg}"
+                resultado_txt.color = ft.Colors.RED_600
+            self.page.update()
+
+        def enviar_resumen_manual(_e: ft.Event) -> None:
+            dest_str = (alerta_dest_input.value or "").strip() or (usuario_input.value or "").strip()
+            dest_list = [d.strip() for d in dest_str.replace(";", ",").split(",") if d.strip()]
+            ok, msg = enviar_resumen_ahora(destinatarios=dest_list or None)
+            resultado_txt.value = f"{'✅' if ok else '❌'} {msg}"
+            resultado_txt.color = ft.Colors.GREEN_700 if ok else ft.Colors.RED_600
+            self.page.update()
+
+        def guardar(_e: ft.Event) -> None:
+            cfg_actualizada = {
+                **cfg,
+                "smtp_servidor": (servidor_input.value or "").strip(),
+                "smtp_puerto": int((puerto_input.value or "587").strip() or "587"),
+                "smtp_usuario": (usuario_input.value or "").strip(),
+                "smtp_password": pass_input.value or "",
+                "smtp_usar_tls": bool(tls_check.value),
+                "smtp_usar_ssl": bool(ssl_check.value),
+                "alertas": {
+                    **cfg_alertas,
+                    "activo": bool(alerta_activo_check.value),
+                    "hora": (alerta_hora_input.value or "18:00").strip() or "18:00",
+                    "destinatarios": (alerta_dest_input.value or "").strip(),
+                    "incluir_stock_critico": True,
+                    "incluir_resumen_diario": True,
+                },
+            }
+            guardar_config_email(cfg_actualizada)
+            self.page.pop_dialog()
+            self.notificar("Configuración SMTP (con clave cifrada) y alertas programadas guardadas correctamente.")
+
+        dialogo = ft.AlertDialog(
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.SETTINGS, color=ft.Colors.BLUE_GREY_700, size=20),
+                    ft.Text("Servidor de Correo (SMTP) y Alertas Programadas", weight=ft.FontWeight.BOLD, size=15),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=540,
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            "Las credenciales SMTP se almacenan cifradas localmente (Windows DPAPI / Fernet) "
+                            "o mediante la variable de entorno STOCKAGENT_SMTP_PASSWORD.",
+                            size=11,
+                            color=self.secundario,
+                        ),
+                        ft.Divider(height=8),
+                        ft.Row([servidor_input, puerto_input], spacing=8),
+                        usuario_input,
+                        pass_input,
+                        ft.Row([tls_check, ssl_check], spacing=8),
+                        ft.Divider(height=10),
+                        ft.Text("Alertas Automáticas por Correo:", size=12, weight=ft.FontWeight.BOLD, color=self.texto),
+                        alerta_activo_check,
+                        ft.Row([alerta_hora_input, alerta_dest_input], spacing=8),
+                        ft.Row(
+                            [
+                                ft.TextButton(
+                                    "Enviar resumen de prueba ahora",
+                                    icon=ft.Icons.SEND_TIME_EXTENSION,
+                                    on_click=enviar_resumen_manual,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.END,
+                        ),
+                        resultado_txt,
+                    ],
+                    tight=True,
+                    spacing=8,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+            ),
+            actions=[
+                ft.Button("Probar Conexión", icon=ft.Icons.NETWORK_CHECK, on_click=probar_conexion),
+                ft.Button("Guardar", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar),
                 self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
             ],
         )
@@ -1940,18 +3048,28 @@ class InterfazFlet:
             usuarios.controls.clear()
             actual = self.usuario_actual
             actual_es_master = bool(actual and actual.role == "master")
+            bloqueados = (
+                self.user_store.list_locked_usernames()
+                if hasattr(self.user_store, "list_locked_usernames")
+                else set()
+            )
             roles_asignables = (
                 ["administrador", "operador", "consulta"]
                 if actual_es_master
                 else ["operador", "consulta"]
             )
-            for usuario in self.user_store.list_users(include_master=actual_es_master):
+            try:
+                lista_usuarios = self.user_store.list_users(include_master=actual_es_master)
+            except TypeError:
+                lista_usuarios = self.user_store.list_users()
+            for usuario in lista_usuarios:
                 if not actual_es_master and usuario.role == "master":
                     continue
                 es_propio = actual is not None and usuario.id == actual.id
                 es_target_master = usuario.role == "master"
                 es_target_admin = usuario.role == "administrador"
                 no_puede_editar = es_propio or es_target_master or (es_target_admin and not actual_es_master)
+                esta_bloqueado = usuario.username in bloqueados
 
                 selector_rol = ft.Dropdown(
                     value=usuario.role,
@@ -1959,7 +3077,7 @@ class InterfazFlet:
                         ft.DropdownOption(key=role, text=role.capitalize())
                         for role in (USER_ROLES if es_target_master else roles_asignables)
                     ],
-                    width=160,
+                    width=145,
                     disabled=no_puede_editar,
                 )
                 boton_estado = ft.TextButton(
@@ -1969,22 +3087,106 @@ class InterfazFlet:
                     ),
                     disabled=no_puede_editar,
                 )
+                boton_reset = ft.IconButton(
+                    icon=ft.Icons.LOCK_RESET,
+                    tooltip="Restablecer contraseña de este usuario",
+                    icon_size=18,
+                    disabled=no_puede_editar,
+                    on_click=lambda _e, u=usuario: abrir_reset_clave(u),
+                )
+                boton_desbloquear = (
+                    ft.IconButton(
+                        icon=ft.Icons.LOCK_OPEN,
+                        tooltip="Desbloquear cuenta bloqueada por intentos fallidos",
+                        icon_color=ft.Colors.AMBER_400,
+                        icon_size=18,
+                        on_click=lambda _e, uname=usuario.username: desbloquear_cuenta(uname),
+                    )
+                    if esta_bloqueado
+                    else ft.Container()
+                )
                 selector_rol.on_select = lambda _e, user_id=usuario.id, dropdown=selector_rol: cambiar_rol(
                     user_id, dropdown.value or ""
                 )
+                etiqueta_usr = f"{usuario.username}{' (inactivo)' if not usuario.active else ''}{' [BLOQUEADO]' if esta_bloqueado else ''}"
                 usuarios.controls.append(
                     ft.Row(
                         [
                             ft.Text(
-                                f"{usuario.username}{' (inactivo)' if not usuario.active else ''}",
+                                etiqueta_usr,
                                 expand=True,
+                                color=ft.Colors.AMBER_400 if esta_bloqueado else self.texto,
                             ),
                             selector_rol,
+                            boton_desbloquear,
+                            boton_reset,
                             boton_estado,
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     )
                 )
+
+        def desbloquear_cuenta(uname: str) -> None:
+            if not self.exigir_roles("administrador"):
+                return
+            self.user_store.unlock_user(uname)
+            try:
+                self.order_store.registrar_auditoria(
+                    usuario=self.usuario_actual.username if self.usuario_actual else "Admin",
+                    accion="DESBLOQUEO_USUARIO",
+                    detalle=f"Cuenta '{uname}' desbloqueada manualmente",
+                )
+            except Exception:
+                pass
+            mensaje.value = f"Cuenta '{uname}' desbloqueada."
+            actualizar_lista()
+            self.page.update()
+
+        def abrir_reset_clave(u_target: User) -> None:
+            clave_temp = ft.TextField(
+                label=f"Nueva contraseña para {u_target.username} (mín. 10 caracteres)",
+                password=True,
+                can_reveal_password=True,
+                autofocus=True,
+            )
+            forzar_check = ft.Checkbox(
+                label="Exigir que el usuario la cambie en su próximo inicio de sesión",
+                value=True,
+            )
+            err_txt = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+            def confirmar_reset(_ev: ft.Event) -> None:
+                try:
+                    self.user_store.reset_password(
+                        u_target.id,
+                        clave_temp.value or "",
+                        updater_role=self.usuario_actual.role if self.usuario_actual else None,
+                        must_change=bool(forzar_check.value),
+                    )
+                    self.order_store.registrar_auditoria(
+                        usuario=self.usuario_actual.username if self.usuario_actual else "Admin",
+                        accion="RESET_CLAVE",
+                        detalle=f"Contraseña restablecida para el usuario '{u_target.username}'",
+                    )
+                    self.page.pop_dialog()
+                    self.notificar(f"Contraseña de '{u_target.username}' restablecida y cuenta desbloqueada.")
+                except (ValueError, UserStoreError) as err:
+                    err_txt.value = str(err)
+                    self.page.update()
+
+            dlg_reset = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Restablecer clave: {u_target.username}"),
+                content=ft.Container(
+                    width=400,
+                    content=ft.Column([clave_temp, forzar_check, err_txt], tight=True, spacing=10),
+                ),
+                actions=[
+                    ft.Button("Restablecer", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=confirmar_reset),
+                    self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                ],
+            )
+            self.page.show_dialog(dlg_reset)
 
         def cambiar_rol(user_id: int, role: str) -> None:
             if not self.exigir_roles("administrador"):
@@ -2557,8 +3759,56 @@ class InterfazFlet:
                         if getattr(p, "estado", "") == "anulado"
                         else ft.Container()
                     )
+                    est_desp = (getattr(p, "estado_despacho", "armado") or "armado").lower()
+                    if est_desp == "entregado":
+                        col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.GREEN_700, ft.Colors.WHITE, "✔ ENTREGADO"
+                        sig_estado = "armado"
+                        tip_estado = "Estado actual: Entregado (clic para volver a Armado)"
+                    elif est_desp == "despachado":
+                        col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.AMBER_700, ft.Colors.WHITE, "🚚 DESPACHADO"
+                        sig_estado = "entregado"
+                        tip_estado = "Marcar como ENTREGADO"
+                    else:
+                        col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.BLUE_700, ft.Colors.WHITE, "📦 ARMADO"
+                        sig_estado = "despachado"
+                        tip_estado = "Marcar como DESPACHADO"
+
+                    etiqueta_despacho = (
+                        ft.Container(
+                            content=ft.Text(lbl_desp, size=10, weight=ft.FontWeight.BOLD, color=col_desp_txt),
+                            bgcolor=col_desp_bg,
+                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                            border_radius=4,
+                        )
+                        if getattr(p, "estado", "") != "anulado"
+                        else ft.Container()
+                    )
                     hora_txt = p.created_at[11:16] if len(p.created_at) >= 16 else p.created_at
 
+                    def cambiar_estado_ped(ped_obj: Pedido, nuevo_est: str) -> None:
+                        usr = self.usuario_actual.username if self.usuario_actual else "Operador"
+                        try:
+                            self.order_store.actualizar_estado_despacho(
+                                ped_obj.id,
+                                nuevo_est,
+                                usuario=usr,
+                                permitir_retroceso=True,
+                            )
+                            recargar_y_actualizar()
+                            self.sincronizar_sesiones()
+                        except Exception as err:
+                            self.notificar(str(err))
+
+                    boton_avanzar_desp = (
+                        ft.IconButton(
+                            icon=ft.Icons.LOCAL_SHIPPING if est_desp == "armado" else (ft.Icons.VERIFIED if est_desp == "despachado" else ft.Icons.REPLAY),
+                            tooltip=tip_estado,
+                            icon_color=ft.Colors.GREEN_400 if est_desp == "despachado" else ft.Colors.BLUE_400,
+                            on_click=lambda _e, ped=p, st=sig_estado: cambiar_estado_ped(ped, st),
+                        )
+                        if getattr(p, "estado", "") != "anulado"
+                        else ft.Container()
+                    )
                     boton_rotulo_hist = ft.IconButton(
                         icon=ft.Icons.QR_CODE_2,
                         tooltip="Imprimir Rótulos de Bultos con QR",
@@ -2591,6 +3841,7 @@ class InterfazFlet:
                                                     ft.Row(
                                                         [
                                                             ft.Text(num_ped_txt, weight=ft.FontWeight.BOLD, size=14, color=self.texto),
+                                                            etiqueta_despacho,
                                                             etiqueta_agregado,
                                                             etiqueta_anulado,
                                                         ],
@@ -2626,7 +3877,7 @@ class InterfazFlet:
                                         spacing=4,
                                         expand=True,
                                     ),
-                                    ft.Row([boton_rotulo_hist, boton_anular_hist], spacing=2),
+                                    ft.Row([boton_avanzar_desp, boton_rotulo_hist, boton_anular_hist], spacing=2),
                                 ],
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             ),
@@ -2661,6 +3912,13 @@ class InterfazFlet:
                     tooltip="Borrar búsqueda",
                     on_click=limpiar_busqueda,
                 ),
+                ft.Button(
+                    "Escanear QR / Cambiar Estado",
+                    icon=ft.Icons.QR_CODE_SCANNER,
+                    bgcolor=ROJO,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda _e: self.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
+                ),
             ],
             spacing=6,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -2683,8 +3941,8 @@ class InterfazFlet:
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
             content=ft.Container(
-                width=720,
-                height=520,
+                width=780,
+                height=540,
                 content=ft.Column(
                     [
                         barra_busqueda,
@@ -2700,6 +3958,125 @@ class InterfazFlet:
             ],
         )
         self.page.show_dialog(dialogo)
+
+    def mostrar_escaner_qr_despacho(
+        self,
+        al_actualizar: Callable[[], None] | None = None,
+    ) -> None:
+        """Modal para escanear códigos QR de rótulos de bulto o ingresar remito y avanzar estado (armado -> despachado -> entregado)."""
+        if self.usuario_actual is None:
+            return
+        selector_modo = ft.Dropdown(
+            label="Acción al escanear / ingresar",
+            value="auto",
+            options=[
+                ft.DropdownOption(key="auto", text="Avanzar automáticamente (Armado → Despachado → Entregado)"),
+                ft.DropdownOption(key="despachado", text="Marcar siempre como DESPACHADO"),
+                ft.DropdownOption(key="entregado", text="Marcar siempre como ENTREGADO"),
+                ft.DropdownOption(key="armado", text="Volver a ARMADO"),
+            ],
+            dense=True,
+        )
+        input_qr = ft.TextField(
+            label="Escanear código QR del rótulo o escribir N° de Remito / Factura",
+            hint_text="Ej: REMITO:0001-00012345|CLIENTE:...|BULTOS:1/2 o 0001-00012345",
+            prefix_icon=ft.Icons.QR_CODE_SCANNER,
+            autofocus=True,
+        )
+        historial_escaneos = ft.ListView(expand=True, spacing=6, height=220)
+        msg_estado = ft.Text(
+            "Posiciona el lector sobre este campo y escanea la etiqueta del bulto (presiona Enter).",
+            size=12,
+            color=self.secundario,
+        )
+
+        def procesar_escaneo(_e: ft.Event | None = None) -> None:
+            raw = (input_qr.value or "").strip()
+            if not raw:
+                return
+            modo_sel = selector_modo.value or "auto"
+            estado_forzado = None if modo_sel == "auto" else modo_sel
+            usr = self.usuario_actual.username if self.usuario_actual else "Operador"
+            ok, msg, ped = self.order_store.avanzar_estado_por_codigo(
+                codigo_qr_o_remito=raw,
+                usuario=usr,
+                nuevo_estado=estado_forzado,
+            )
+            input_qr.value = ""
+            msg_estado.value = f"{'✅' if ok else '❌'} {msg}"
+            msg_estado.color = ft.Colors.GREEN_400 if ok else ft.Colors.RED_400
+            if ped is not None:
+                historial_escaneos.controls.insert(
+                    0,
+                    ft.Container(
+                        padding=8,
+                        border_radius=6,
+                        bgcolor=ft.Colors.GREEN_900 if (ok and self.modo_oscuro) else (ft.Colors.GREEN_50 if ok else ft.Colors.RED_50),
+                        border=ft.Border.all(1, ft.Colors.GREEN_600 if ok else ft.Colors.RED_400),
+                        content=ft.Row(
+                            [
+                                ft.Icon(ft.Icons.CHECK_CIRCLE if ok else ft.Icons.INFO, color=ft.Colors.GREEN_400 if ok else ft.Colors.RED_400, size=18),
+                                ft.Text(
+                                    f"[{datetime.now().strftime('%H:%M:%S')}] Remito {ped.nota_pedido} ({ped.cliente}) → {ped.estado_despacho.upper()}",
+                                    size=12,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=self.texto,
+                                    expand=True,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                    ),
+                )
+            if al_actualizar is not None:
+                al_actualizar()
+            self.sincronizar_sesiones()
+            input_qr.focus()
+            self.page.update()
+
+        input_qr.on_submit = procesar_escaneo
+
+        dlg_qr = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.QR_CODE_SCANNER, color=ROJO),
+                    ft.Text("Escáner QR de Despacho y Entrega", weight=ft.FontWeight.BOLD),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=560,
+                content=ft.Column(
+                    [
+                        selector_modo,
+                        ft.Row(
+                            [
+                                ft.Container(content=input_qr, expand=True),
+                                ft.Button(
+                                    "Procesar",
+                                    icon=ft.Icons.CHECK,
+                                    bgcolor=ROJO,
+                                    color=ft.Colors.WHITE,
+                                    on_click=procesar_escaneo,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                        msg_estado,
+                        ft.Divider(height=8),
+                        ft.Text("Últimos bultos / pedidos escaneados en esta sesión:", size=11, weight=ft.FontWeight.BOLD, color=self.secundario),
+                        historial_escaneos,
+                    ],
+                    tight=True,
+                    spacing=10,
+                ),
+            ),
+            actions=[
+                self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        self.page.show_dialog(dlg_qr)
 
     def mostrar_imprimir_descuentos(self, _evento: ft.Event | None = None) -> None:
         if self.usuario_actual is None or self.usuario_actual.role != "operador":
@@ -3385,6 +4762,12 @@ class InterfazFlet:
                                         else self.secundario
                                     ),
                                 ),
+                                ft.IconButton(
+                                    icon=ft.Icons.HISTORY,
+                                    tooltip="Ver historial de movimientos de este producto",
+                                    icon_size=18,
+                                    on_click=lambda _e, code=codigo: self.mostrar_historial_movimientos_stock(code),
+                                ),
                                 ft.TextButton(
                                     "Editar",
                                     on_click=lambda _e, item=producto: editar(item),
@@ -3553,13 +4936,19 @@ class InterfazFlet:
                         [
                             busqueda,
                             ft.Button(
+                                "Historial movimientos",
+                                icon=ft.Icons.HISTORY,
+                                on_click=lambda _e: self.mostrar_historial_movimientos_stock(busqueda.value or ""),
+                            ),
+                            ft.Button(
                                 "Agregar producto",
                                 icon=ft.Icons.ADD,
                                 on_click=agregar,
                                 bgcolor=ROJO,
                                 color=ft.Colors.WHITE,
                             ),
-                        ]
+                        ],
+                        spacing=8,
                     ),
                     ft.Row(
                         [
@@ -3589,6 +4978,106 @@ class InterfazFlet:
         busqueda.on_change = actualizar_lista
         actualizar_lista()
         self.page.show_dialog(dialogo)
+
+    def mostrar_historial_movimientos_stock(self, codigo_inicial: str = "") -> None:
+        """Muestra el historial detallado de movimientos de stock registrado en SQLite."""
+        if not self.exigir_roles("administrador"):
+            return
+        stock_manager = StockManager(self.menu.ruta_excel_base)
+        filtro_prod = ft.TextField(
+            label="Filtrar por código o nombre de producto",
+            value=codigo_inicial.strip(),
+            prefix_icon=ft.Icons.SEARCH,
+            dense=True,
+            expand=True,
+        )
+        filtro_tipo = ft.Dropdown(
+            label="Tipo",
+            value="",
+            options=[
+                ft.DropdownOption(key="", text="Todos"),
+                ft.DropdownOption(key="descuento", text="Descuentos (-)"),
+                ft.DropdownOption(key="ingreso_fabrica", text="Ingresos / Ajustes (+)"),
+            ],
+            width=190,
+            dense=True,
+        )
+        lista_movs = ft.ListView(expand=True, spacing=6, height=380)
+        resumen_txt = ft.Text("", size=11, color=self.secundario)
+
+        def recargar_movs(_e: ft.Event | None = None) -> None:
+            lista_movs.controls.clear()
+            filas = stock_manager.product_store.list_recent_movements(
+                product_code=filtro_prod.value or "",
+                movement_type=filtro_tipo.value or "",
+                limit=200,
+            )
+            resumen_txt.value = f"Mostrando {len(filas)} movimiento(s) recientes en SQLite"
+            if not filas:
+                lista_movs.controls.append(
+                    ft.Text("No se encontraron movimientos para el filtro seleccionado.", color=self.secundario, size=12)
+                )
+            else:
+                for r in filas:
+                    qty = int(r["quantity"])
+                    signo = f"+{qty}" if qty > 0 else str(qty)
+                    col_qty = ft.Colors.GREEN_400 if qty > 0 else ft.Colors.RED_400
+                    usr = str(r["usuario"] or "sistema")
+                    det = str(r["detalle"] or r["movement_type"])
+                    fecha_m = str(r["registered_at"]).replace("T", " ")[:19]
+                    lista_movs.controls.append(
+                        ft.Container(
+                            padding=8,
+                            border=ft.Border.all(1, self.borde),
+                            border_radius=6,
+                            bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.GREY_50,
+                            content=ft.Row(
+                                [
+                                    ft.Text(f"[{r['product_code']}]", weight=ft.FontWeight.BOLD, size=12, width=80, color=self.texto),
+                                    ft.Text(str(r["product_name"]), size=12, expand=True, color=self.texto, no_wrap=True),
+                                    ft.Text(f"{signo} un.", weight=ft.FontWeight.BOLD, size=12, color=col_qty, width=75),
+                                    ft.Text(f"Usuario: {usr}", size=11, color=self.secundario, width=110),
+                                    ft.Text(det[:28], size=11, color=self.secundario, width=140, no_wrap=True),
+                                    ft.Text(fecha_m, size=10, color=self.secundario, width=125),
+                                ],
+                                spacing=8,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                        )
+                    )
+            self.page.update()
+
+        filtro_prod.on_change = recargar_movs
+        filtro_tipo.on_change = recargar_movs
+        recargar_movs()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.HISTORY, color=ROJO),
+                    ft.Text("Historial Detallado de Movimientos de Stock (SQLite)", weight=ft.FontWeight.BOLD),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=780,
+                content=ft.Column(
+                    [
+                        ft.Row([filtro_prod, filtro_tipo], spacing=8),
+                        resumen_txt,
+                        ft.Divider(height=6),
+                        lista_movs,
+                    ],
+                    tight=True,
+                    spacing=8,
+                ),
+            ),
+            actions=[
+                self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        self.page.show_dialog(dlg)
 
     def mostrar_formulario_producto(
         self, al_guardar: Callable[[], None] | None = None
@@ -3684,6 +5173,11 @@ class InterfazFlet:
                 content=ft.Column(
                     [
                         ft.Text(f"¿Estás seguro de anular el pedido '{pedido.nota_pedido}' del cliente '{pedido.cliente}'?"),
+                        *(
+                            [ft.Text(f"⚠️ Atención: Este pedido ya formó parte del Cierre #{pedido.cierre_id} (el stock ya fue descontado en el Excel).", size=11, color=ft.Colors.AMBER_800, weight=ft.FontWeight.W_500)]
+                            if getattr(pedido, "cierre_id", None)
+                            else [ft.Text("Al estar pendiente de cierre, sus artículos no se descontarán en el Excel.", size=11, color=ft.Colors.GREEN_700)]
+                        ),
                         ft.Text("Esta acción quedará registrada en el log de auditoría del sistema.", size=11, color=self.secundario),
                         ft.Divider(height=10),
                         motivo_input,
@@ -3703,7 +5197,33 @@ class InterfazFlet:
         if not self.exigir_roles("administrador"):
             return
 
+        cfg_bk = obtener_config_backup()
+        input_carpeta_ext = ft.TextField(
+            label="Carpeta secundaria / externa de backup (opcional, ej: D:\\Backups_Deposito)",
+            value=str(cfg_bk.get("carpeta_externa", "") or ""),
+            dense=True,
+            expand=True,
+            prefix_icon=ft.Icons.FOLDER_SPECIAL,
+        )
+        msg_bk = ft.Text("", size=11, color=self.secundario)
+
+        backups_disp = listar_backups_disponibles()
+        selector_restore = ft.Dropdown(
+            label="Seleccionar respaldo .ZIP para restaurar",
+            options=[ft.DropdownOption(key=str(p), text=p.name) for p in backups_disp],
+            value=str(backups_disp[0]) if backups_disp else None,
+            expand=True,
+            dense=True,
+        )
+
+        def guardar_cfg_ext(_ev: ft.Event) -> None:
+            guardar_config_backup(input_carpeta_ext.value or "")
+            msg_bk.value = "✅ Carpeta secundaria guardada."
+            msg_bk.color = ft.Colors.GREEN_400
+            self.page.update()
+
         def ejecutar_backup(_ev: ft.Event) -> None:
+            guardar_config_backup(input_carpeta_ext.value or "")
             self.page.pop_dialog()
             try:
                 ruta_zip = crear_backup_sistema(
@@ -3713,33 +5233,109 @@ class InterfazFlet:
                 self.order_store.registrar_auditoria(
                     usuario=self.usuario_actual.username if self.usuario_actual else "Sistema",
                     accion="BACKUP_MANUAL",
-                    detalle=f"Respaldo manual generado: {ruta_zip.name}",
+                    detalle=f"Respaldo manual completo generado: {ruta_zip.name}",
                 )
                 self.notificar(f"Copia de seguridad generada con éxito:\n{ruta_zip.name}")
                 self.abrir_carpeta_informe(ruta_zip)
             except Exception as err:
                 self.notificar(f"Error al generar copia de seguridad:\n{err}")
 
+        async def subir_zip_restore(_ev: ft.Event) -> None:
+            carpeta_bks = application_root() / "data" / "backups"
+            subidos = await self.subir_archivos_desde_pc(
+                carpeta_destino=carpeta_bks,
+                extensiones=["zip"],
+                titulo="Seleccionar archivo .ZIP de Backup para restaurar",
+            )
+            if subidos:
+                nuevos = listar_backups_disponibles()
+                selector_restore.options = [ft.DropdownOption(key=str(p), text=p.name) for p in nuevos]
+                selector_restore.value = str(subidos[0])
+                msg_bk.value = f"Archivo cargado: {subidos[0].name}"
+                self.page.update()
+
+        def confirmar_restaurar_zip(_ev: ft.Event) -> None:
+            if not selector_restore.value:
+                msg_bk.value = "Selecciona primero un archivo .ZIP de respaldo."
+                msg_bk.color = ft.Colors.RED_400
+                self.page.update()
+                return
+            ruta_elegida = Path(selector_restore.value)
+            usr = self.usuario_actual.username if self.usuario_actual else "Admin"
+            self.page.pop_dialog()
+            ok, detalle_msg, _ = restaurar_backup_sistema(
+                ruta_zip=ruta_elegida,
+                ruta_excel_base=self.menu.ruta_excel_base,
+                usuario=usr,
+            )
+            if ok:
+                try:
+                    self.order_store.registrar_auditoria(
+                        usuario=usr,
+                        accion="BACKUP_RESTAURADO",
+                        detalle=detalle_msg,
+                    )
+                except Exception:
+                    pass
+                self.actualizar_estado()
+                self.notificar(f"✅ {detalle_msg}")
+            else:
+                self.notificar(f"❌ {detalle_msg}")
+
         dialogo = ft.AlertDialog(
-            title=ft.Row([ft.Icon(ft.Icons.BACKUP, color=ft.Colors.BLUE_600), ft.Text("Copia de Seguridad del Sistema")]),
+            title=ft.Row([ft.Icon(ft.Icons.BACKUP, color=ft.Colors.BLUE_600), ft.Text("Copia de Seguridad y Restauración (.ZIP)")]),
             content=ft.Container(
-                width=460,
+                width=560,
                 content=ft.Column(
                     [
-                        ft.Text("Se generará un archivo comprimido .ZIP con:"),
-                        ft.Text("• Base de datos SQLite (pedidos, clientes, cierres y auditoría)"),
-                        ft.Text("• Archivo de usuarios y credenciales"),
-                        ft.Text("• Configuraciones de notificaciones"),
-                        ft.Text("• Archivo Excel maestro de stock"),
-                        ft.Text("\nLos respaldos se almacenan automáticamente en data/backups/ (rotación de 30 copias).", size=11, color=self.secundario),
+                        ft.Text("El respaldo completo incluye con verificación de integridad:"),
+                        ft.Text("• 3 Bases SQLite: pedidos.sqlite3, productos.sqlite3 y usuarios.sqlite3", size=12),
+                        ft.Text("• Configuraciones (SMTP cifrado, notificaciones) y Excel maestro (Productos.xlsx)", size=12),
+                        ft.Divider(height=8),
+                        ft.Row(
+                            [
+                                input_carpeta_ext,
+                                ft.IconButton(
+                                    icon=ft.Icons.SAVE_AS,
+                                    tooltip="Guardar carpeta secundaria",
+                                    on_click=guardar_cfg_ext,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.Divider(height=10),
+                        ft.Text("Restaurar el sistema desde un Backup (.ZIP):", weight=ft.FontWeight.BOLD, size=12),
+                        ft.Text(
+                            "Verifica automáticamente PRAGMA integrity_check en todas las bases SQLite antes de restaurar.",
+                            size=11,
+                            color=self.secundario,
+                        ),
+                        ft.Row(
+                            [
+                                selector_restore,
+                                ft.Button("Subir .ZIP", icon=ft.Icons.UPLOAD_FILE, on_click=subir_zip_restore),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Button(
+                                    "Verificar y Restaurar Backup Seleccionado",
+                                    icon=ft.Icons.SETTINGS_BACKUP_RESTORE,
+                                    on_click=confirmar_restaurar_zip,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.END,
+                        ),
+                        msg_bk,
                     ],
                     tight=True,
-                    spacing=4,
+                    spacing=6,
                 ),
             ),
             actions=[
-                ft.Button("Generar Respaldo Ahora", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_backup),
-                self.boton_dialogo("Cancelar", lambda _ev: self.page.pop_dialog()),
+                ft.Button("Generar Nuevo Respaldo Ahora", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_backup),
+                self.boton_dialogo("Cerrar", lambda _ev: self.page.pop_dialog()),
             ],
         )
         self.page.show_dialog(dialogo)
@@ -3748,125 +5344,264 @@ class InterfazFlet:
         if not self.exigir_roles("administrador"):
             return
 
-        m = self.order_store.obtener_metricas_dashboard()
-        promedio_bultos = (m["total_bultos"] / m["total_pedidos"]) if m["total_pedidos"] > 0 else 0
+        hoy_dt = datetime.now()
+        hace_30_dt = hoy_dt - timedelta(days=30)
+
+        input_desde = ft.TextField(
+            label="Desde (DD/MM/AAAA)",
+            value=hace_30_dt.strftime("%d/%m/%Y"),
+            width=155,
+            dense=True,
+        )
+        input_hasta = ft.TextField(
+            label="Hasta (DD/MM/AAAA)",
+            value=hoy_dt.strftime("%d/%m/%Y"),
+            width=155,
+            dense=True,
+        )
+        contenedor_cuerpo = ft.Column(spacing=10, tight=True)
+        metricas_actuales: list[dict] = [{}]
+
+        def _parse_f(txt: str) -> str | None:
+            t = (txt or "").strip()
+            if not t:
+                return None
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(t, fmt).strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
+            return None
 
         def tarjeta_kpi(titulo: str, valor: str, icono: str, color_ico: str) -> ft.Container:
             return ft.Container(
                 bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
                 border=ft.Border.all(1, self.borde),
                 border_radius=8,
-                padding=12,
+                padding=10,
                 expand=True,
                 content=ft.Column(
                     [
-                        ft.Row([ft.Icon(icono, color=color_ico, size=20), ft.Text(titulo, size=11, color=self.secundario, weight=ft.FontWeight.W_500)], spacing=6),
-                        ft.Text(valor, size=20, weight=ft.FontWeight.BOLD, color=self.texto),
+                        ft.Row([ft.Icon(icono, color=color_ico, size=18), ft.Text(titulo, size=11, color=self.secundario, weight=ft.FontWeight.W_500)], spacing=6),
+                        ft.Text(valor, size=18, weight=ft.FontWeight.BOLD, color=self.texto),
+                    ],
+                    spacing=3,
+                ),
+            )
+
+        def render_dashboard(usar_rango: bool = False) -> None:
+            f_d = _parse_f(input_desde.value or "") if usar_rango else None
+            f_h = _parse_f(input_hasta.value or "") if usar_rango else None
+            m = self.order_store.obtener_metricas_dashboard(fecha_desde=f_d, fecha_hasta=f_h)
+            metricas_actuales[0] = m
+            promedio_bultos = (m["total_bultos"] / m["total_pedidos"]) if m["total_pedidos"] > 0 else 0
+            est_desp = m.get("estados_despacho", {})
+
+            kpis = ft.Row(
+                [
+                    tarjeta_kpi("Total Pedidos", str(m["total_pedidos"]), ft.Icons.INVENTORY, ft.Colors.BLUE_500),
+                    tarjeta_kpi("Total Bultos", str(m["total_bultos"]), ft.Icons.LOCAL_SHIPPING, ft.Colors.AMBER_600),
+                    tarjeta_kpi("Prom. Bultos", f"{promedio_bultos:.1f}", ft.Icons.CALCULATE, ft.Colors.TEAL_500),
+                    tarjeta_kpi("📦 Armados", str(est_desp.get("armado", 0)), ft.Icons.INVENTORY_2, ft.Colors.BLUE_400),
+                    tarjeta_kpi("🚚 Despachados", str(est_desp.get("despachado", 0)), ft.Icons.LOCAL_SHIPPING, ft.Colors.AMBER_500),
+                    tarjeta_kpi("✔ Entregados", str(est_desp.get("entregado", 0)), ft.Icons.VERIFIED, ft.Colors.GREEN_500),
+                ],
+                spacing=8,
+            )
+
+            filas_logistica = ft.Column(spacing=4)
+            for log, cant, bultos in m["distribucion_logistica"]:
+                porc = (cant / m["total_pedidos"] * 100) if m["total_pedidos"] > 0 else 0
+                filas_logistica.controls.append(
+                    ft.Row(
+                        [
+                            ft.Text(log, size=12, weight=ft.FontWeight.W_500, expand=True, color=self.texto),
+                            ft.Text(f"{cant} ped. ({porc:.0f}%)", size=11, color=self.secundario),
+                            ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    )
+                )
+
+            filas_armadores = ft.Column(spacing=4)
+            for arm, cant, bultos in m["rendimiento_armadores"]:
+                filas_armadores.controls.append(
+                    ft.Row(
+                        [
+                            ft.Text(arm, size=12, weight=ft.FontWeight.W_500, expand=True, color=self.texto),
+                            ft.Text(f"{cant} ped.", size=11, color=self.secundario),
+                            ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    )
+                )
+
+            filas_top = ft.Column(spacing=4)
+            for idx, (cod, desc, cant) in enumerate(m["top_articulos"], start=1):
+                filas_top.controls.append(
+                    ft.Row(
+                        [
+                            ft.Text(f"{idx}. {cod}", size=11, weight=ft.FontWeight.BOLD, color=self.texto),
+                            ft.Text(desc[:26] + ("..." if len(desc) > 26 else ""), size=11, color=self.secundario, expand=True),
+                            ft.Text(f"{cant} un.", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_600),
+                        ],
+                        spacing=6,
+                    )
+                )
+
+            filas_dias = ft.Column(spacing=4)
+            por_dia = m.get("pedidos_por_dia", [])
+            max_ped_dia = max((c for _, c, _ in por_dia), default=1) or 1
+            for dia_str, cant_d, bultos_d in por_dia[:10]:
+                ancho = max(10, int((cant_d / max_ped_dia) * 160))
+                filas_dias.controls.append(
+                    ft.Row(
+                        [
+                            ft.Text(dia_str, size=11, width=85, color=self.texto),
+                            ft.Container(width=ancho, height=14, bgcolor=ROJO, border_radius=4),
+                            ft.Text(f"{cant_d} ped. ({bultos_d} bultos)", size=11, color=self.secundario),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    )
+                )
+
+            seccion_tablas = ft.Row(
+                [
+                    ft.Container(
+                        bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
+                        border=ft.Border.all(1, self.borde),
+                        border_radius=8,
+                        padding=10,
+                        expand=True,
+                        content=ft.Column(
+                            [
+                                ft.Text("Despacho por Logística", size=12, weight=ft.FontWeight.BOLD, color=self.texto),
+                                ft.Divider(height=4),
+                                filas_logistica if filas_logistica.controls else ft.Text("Sin datos", size=11, color=self.secundario),
+                            ],
+                            spacing=4,
+                        ),
+                    ),
+                    ft.Container(
+                        bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
+                        border=ft.Border.all(1, self.borde),
+                        border_radius=8,
+                        padding=10,
+                        expand=True,
+                        content=ft.Column(
+                            [
+                                ft.Text("Rendimiento de Armadores", size=12, weight=ft.FontWeight.BOLD, color=self.texto),
+                                ft.Divider(height=4),
+                                filas_armadores if filas_armadores.controls else ft.Text("Sin datos", size=11, color=self.secundario),
+                            ],
+                            spacing=4,
+                        ),
+                    ),
+                    ft.Container(
+                        bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
+                        border=ft.Border.all(1, self.borde),
+                        border_radius=8,
+                        padding=10,
+                        expand=True,
+                        content=ft.Column(
+                            [
+                                ft.Text("Top 10 Productos Rotados", size=12, weight=ft.FontWeight.BOLD, color=self.texto),
+                                ft.Divider(height=4),
+                                filas_top if filas_top.controls else ft.Text("Sin datos", size=11, color=self.secundario),
+                            ],
+                            spacing=4,
+                        ),
+                    ),
+                ],
+                spacing=8,
+                alignment=ft.MainAxisAlignment.START,
+            )
+
+            bloque_dias = ft.Container(
+                bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
+                border=ft.Border.all(1, self.borde),
+                border_radius=8,
+                padding=10,
+                content=ft.Column(
+                    [
+                        ft.Text("Evolución Diaria de Pedidos y Bultos", size=12, weight=ft.FontWeight.BOLD, color=self.texto),
+                        ft.Divider(height=4),
+                        filas_dias if filas_dias.controls else ft.Text("Sin registros en este período", size=11, color=self.secundario),
                     ],
                     spacing=4,
                 ),
             )
 
-        kpis = ft.Row(
+            contenedor_cuerpo.controls.clear()
+            contenedor_cuerpo.controls.extend([kpis, seccion_tablas, bloque_dias])
+            self.page.update()
+
+        def exportar_dashboard_excel(_ev: ft.Event) -> None:
+            m = metricas_actuales[0] or self.order_store.obtener_metricas_dashboard()
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Dashboard Depósito"
+            ws.append(["REPORTE DE MÉTRICAS Y RENDIMIENTO DEL DEPÓSITO"])
+            ws.append(["Fecha de generación", datetime.now().strftime("%d/%m/%Y %H:%M")])
+            ws.append(["Período filtrado", f"{m.get('fecha_desde') or 'Inicio'} a {m.get('fecha_hasta') or 'Hoy'}"])
+            ws.append([])
+            ws.append(["INDICADOR", "VALOR"])
+            ws.append(["Total Pedidos Activos", m["total_pedidos"]])
+            ws.append(["Total Bultos", m["total_bultos"]])
+            est = m.get("estados_despacho", {})
+            ws.append(["Pedidos Armados", est.get("armado", 0)])
+            ws.append(["Pedidos Despachados", est.get("despachado", 0)])
+            ws.append(["Pedidos Entregados", est.get("entregado", 0)])
+            ws.append(["Cierres de Jornada", m["total_cierres"]])
+            ws.append([])
+            ws.append(["LOGÍSTICA", "PEDIDOS", "BULTOS"])
+            for log, cant, bultos in m["distribucion_logistica"]:
+                ws.append([log, cant, bultos])
+            ws.append([])
+            ws.append(["ARMADOR", "PEDIDOS", "BULTOS"])
+            for arm, cant, bultos in m["rendimiento_armadores"]:
+                ws.append([arm, cant, bultos])
+            ws.append([])
+            ws.append(["CÓDIGO", "PRODUCTO", "UNIDADES ROTADAS"])
+            for cod, desc, cant in m["top_articulos"]:
+                ws.append([cod, desc, cant])
+
+            carpeta_out = self.menu.carpeta_descuentos
+            carpeta_out.mkdir(parents=True, exist_ok=True)
+            ruta_out = carpeta_out / f"Dashboard_Metricas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            wb.save(ruta_out)
+            wb.close()
+            self.actualizar_estado()
+            self.abrir_informe(ruta_especifica=ruta_out)
+
+        render_dashboard(usar_rango=False)
+
+        barra_filtros = ft.Row(
             [
-                tarjeta_kpi("Total Pedidos", str(m["total_pedidos"]), ft.Icons.INVENTORY, ft.Colors.BLUE_500),
-                tarjeta_kpi("Total Bultos", str(m["total_bultos"]), ft.Icons.LOCAL_SHIPPING, ft.Colors.AMBER_600),
-                tarjeta_kpi("Promedio Bultos/Ped.", f"{promedio_bultos:.1f}", ft.Icons.CALCULATE, ft.Colors.TEAL_500),
-                tarjeta_kpi("Cierres de Jornada", str(m["total_cierres"]), ft.Icons.TASK_ALT, ft.Colors.GREEN_600),
-            ],
-            spacing=10,
-        )
-
-        filas_logistica = ft.Column(spacing=4)
-        for log, cant, bultos in m["distribucion_logistica"]:
-            porc = (cant / m["total_pedidos"] * 100) if m["total_pedidos"] > 0 else 0
-            filas_logistica.controls.append(
-                ft.Row(
-                    [
-                        ft.Text(log, size=12, weight=ft.FontWeight.W_500, expand=True, color=self.texto),
-                        ft.Text(f"{cant} pedidos ({porc:.0f}%)", size=11, color=self.secundario),
-                        ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                )
-            )
-
-        filas_armadores = ft.Column(spacing=4)
-        for arm, cant, bultos in m["rendimiento_armadores"]:
-            filas_armadores.controls.append(
-                ft.Row(
-                    [
-                        ft.Text(arm, size=12, weight=ft.FontWeight.W_500, expand=True, color=self.texto),
-                        ft.Text(f"{cant} pedidos", size=11, color=self.secundario),
-                        ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                )
-            )
-
-        filas_top = ft.Column(spacing=4)
-        for idx, (cod, desc, cant) in enumerate(m["top_articulos"], start=1):
-            filas_top.controls.append(
-                ft.Row(
-                    [
-                        ft.Text(f"{idx}. {cod}", size=11, weight=ft.FontWeight.BOLD, color=self.texto),
-                        ft.Text(desc[:28] + ("..." if len(desc) > 28 else ""), size=11, color=self.secundario, expand=True),
-                        ft.Text(f"{cant} un.", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_600),
-                    ],
-                    spacing=8,
-                )
-            )
-
-        seccion_tablas = ft.Row(
-            [
-                ft.Container(
-                    bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
-                    border=ft.Border.all(1, self.borde),
-                    border_radius=8,
-                    padding=12,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text("Despacho por Logística", size=13, weight=ft.FontWeight.BOLD, color=self.texto),
-                            ft.Divider(height=6),
-                            filas_logistica if filas_logistica.controls else ft.Text("Sin datos", size=11, color=self.secundario),
-                        ],
-                        spacing=6,
-                    ),
+                input_desde,
+                input_hasta,
+                ft.Button(
+                    "Filtrar rango",
+                    icon=ft.Icons.FILTER_ALT,
+                    bgcolor=ROJO,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda _ev: render_dashboard(usar_rango=True),
                 ),
-                ft.Container(
-                    bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
-                    border=ft.Border.all(1, self.borde),
-                    border_radius=8,
-                    padding=12,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text("Rendimiento de Armadores", size=13, weight=ft.FontWeight.BOLD, color=self.texto),
-                            ft.Divider(height=6),
-                            filas_armadores if filas_armadores.controls else ft.Text("Sin datos", size=11, color=self.secundario),
-                        ],
-                        spacing=6,
-                    ),
+                ft.TextButton(
+                    "Ver histórico completo",
+                    icon=ft.Icons.ALL_INCLUSIVE,
+                    on_click=lambda _ev: render_dashboard(usar_rango=False),
                 ),
-                ft.Container(
-                    bgcolor=self.fondo_acento if self.modo_oscuro else ft.Colors.WHITE,
-                    border=ft.Border.all(1, self.borde),
-                    border_radius=8,
-                    padding=12,
-                    expand=True,
-                    content=ft.Column(
-                        [
-                            ft.Text("Top 10 Productos Más Rotados", size=13, weight=ft.FontWeight.BOLD, color=self.texto),
-                            ft.Divider(height=6),
-                            filas_top if filas_top.controls else ft.Text("Sin datos", size=11, color=self.secundario),
-                        ],
-                        spacing=6,
-                    ),
+                ft.Container(expand=True),
+                ft.Button(
+                    "Exportar Excel",
+                    icon=ft.Icons.DOWNLOAD,
+                    on_click=exportar_dashboard_excel,
                 ),
             ],
-            spacing=10,
-            alignment=ft.MainAxisAlignment.START,
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
         dialogo = ft.AlertDialog(
@@ -3878,12 +5613,13 @@ class InterfazFlet:
                 spacing=8,
             ),
             content=ft.Container(
-                width=850,
+                width=900,
+                height=540,
                 content=ft.Column(
                     [
-                        kpis,
-                        ft.Container(height=8),
-                        seccion_tablas,
+                        barra_filtros,
+                        ft.Divider(height=6),
+                        contenedor_cuerpo,
                     ],
                     tight=True,
                     spacing=8,
@@ -4664,7 +6400,7 @@ class InterfazFlet:
 
                 lista_previsualizacion.controls.append(
                     ft.Container(
-                        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                         border_radius=6,
                         bgcolor=ft.Colors.WHITE_10 if self.modo_oscuro else ft.Colors.GREY_100,
                         content=ft.Row(
@@ -5199,7 +6935,7 @@ class InterfazFlet:
                         badge_leida = ft.Container(
                             content=ft.Text("NUEVA", size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                             bgcolor=ROJO,
-                            padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                             border_radius=4,
                         )
 
@@ -5254,7 +6990,7 @@ class InterfazFlet:
                             padding=10,
                             border_radius=8,
                             bgcolor=ft.Colors.RED_50 if (not leida and not self.modo_oscuro) else (ft.Colors.WHITE_10 if not leida else ft.Colors.TRANSPARENT),
-                            border=ft.border.all(1, ft.Colors.RED_200 if (not leida and not self.modo_oscuro) else self.borde),
+                            border=ft.Border.all(1, ft.Colors.RED_200 if (not leida and not self.modo_oscuro) else self.borde),
                             content=ft.Column(card_content, spacing=4),
                         )
                     )
@@ -5384,7 +7120,7 @@ class InterfazFlet:
 
                 lista_comparativa.controls.append(
                     ft.Container(
-                        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                         border_radius=6,
                         bgcolor=ft.Colors.WHITE_10 if self.modo_oscuro else ft.Colors.GREY_100,
                         content=ft.Row(
@@ -5612,7 +7348,7 @@ class InterfazFlet:
 
                 lista_detalles.controls.append(
                     ft.Container(
-                        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                         border_radius=6,
                         bgcolor=ft.Colors.WHITE_10 if self.modo_oscuro else ft.Colors.GREY_100,
                         content=ft.Row(
@@ -5725,6 +7461,9 @@ def iniciar(
     modo_web: bool = True,
     host: str = "0.0.0.0",
     port: int = PUERTO_WEB_DEFAULT,
+    https: bool = True,
+    ssl_certfile: str | None = None,
+    ssl_keyfile: str | None = None,
 ) -> None:
     import logging
     import sys
@@ -5735,12 +7474,36 @@ def iniciar(
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
+    configurar_logging()
+    try:
+        iniciar_planificador()
+    except Exception:
+        pass
+
+    esquema = "https" if https else "http"
     os.environ["STOCKAGENT_PORT"] = str(port)
+    os.environ["STOCKAGENT_SCHEME"] = esquema
+
+    cert_path_final: Path | None = None
+    key_path_final: Path | None = None
+    if modo_web and https:
+        try:
+            cert_path_final, key_path_final = asegurar_certificado_ssl(
+                Path(ssl_certfile) if ssl_certfile else None,
+                Path(ssl_keyfile) if ssl_keyfile else None,
+            )
+            logger.info("Certificado SSL preparado para HTTPS: %s", cert_path_final)
+        except Exception as exc_ssl:
+            logger.warning("No se pudo preparar certificado SSL, continuando en HTTP: %s", exc_ssl)
+            https = False
+            esquema = "http"
+            os.environ["STOCKAGENT_SCHEME"] = "http"
+
     if modo_web:
         # Si ya hay una instancia de StockAgent escuchando en este puerto,
         # abrir directamente el navegador hacia la instancia activa.
         if not hasattr(ft.run, "_mock_name") and _puerto_local_activo(port):
-            url_activa = f"http://127.0.0.1:{port}"
+            url_activa = f"{esquema}://127.0.0.1:{port}"
             print(f"[INFO] Servidor activo detectado en {url_activa}. Abriendo navegador...")
             webbrowser.open(url_activa)
             return
@@ -5761,7 +7524,10 @@ def iniciar(
             setattr(_flet_app, "_orig_open_in_browser", _orig_open)
 
             def _open_local_browser(url: str) -> None:
-                _orig_open(url.replace("://0.0.0.0:", "://127.0.0.1:"))
+                url_local = url.replace("://0.0.0.0:", "://127.0.0.1:")
+                if https and url_local.startswith("http://"):
+                    url_local = "https://" + url_local[len("http://"):]
+                _orig_open(url_local)
 
             _flet_app.open_in_browser = _open_local_browser
         except Exception:
@@ -5771,7 +7537,19 @@ def iniciar(
             import flet_web
             import flet_web.fastapi
             import flet_web.fastapi.serve_fastapi_web_app as _sfa
+            import uvicorn
             from starlette.responses import FileResponse
+
+            if https and cert_path_final and key_path_final:
+                _orig_uv_init = getattr(uvicorn.Config, "_orig_init", uvicorn.Config.__init__)
+                setattr(uvicorn.Config, "_orig_init", _orig_uv_init)
+
+                def _https_uv_init(self_cfg, *u_args, **u_kwargs):
+                    u_kwargs.setdefault("ssl_certfile", str(cert_path_final))
+                    u_kwargs.setdefault("ssl_keyfile", str(key_path_final))
+                    _orig_uv_init(self_cfg, *u_args, **u_kwargs)
+
+                uvicorn.Config.__init__ = _https_uv_init
 
             _orig_serve = getattr(
                 _sfa, "_orig_serve_fastapi_web_app", _sfa.serve_fastapi_web_app
@@ -5826,10 +7604,12 @@ def iniciar(
 
         ip_local = obtener_ip_local()
         print("=" * 66)
-        print("  STOCK AGENT - SERVIDOR WEB MULTI-EQUIPO (OPCIÓN 2)")
+        print(f"  STOCK AGENT - SERVIDOR WEB MULTI-EQUIPO ({esquema.upper()})")
         print("=" * 66)
-        print(f"  -> En esta PC (Principal):   http://127.0.0.1:{port}")
-        print(f"  -> Desde la 2da PC (Red):    http://{ip_local}:{port}")
+        print(f"  -> En esta PC (Principal):   {esquema}://127.0.0.1:{port}")
+        print(f"  -> Desde la 2da PC (Red):    {esquema}://{ip_local}:{port}")
+        if https and cert_path_final:
+            print(f"  -> Certificado SSL activo:   {cert_path_final}")
         print("  Mantén esta aplicación ejecutándose para que ambas máquinas")
         print("  puedan operar sobre el inventario en tiempo real.")
         print("=" * 66)

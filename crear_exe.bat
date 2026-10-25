@@ -34,7 +34,7 @@ if not defined FLET_EXE (
     --add-data "assets:assets" ^
     --distpath dist ^
     --yes ^
-    -- --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets
+    -- --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets --collect-all reportlab
 if errorlevel 1 (
     echo Error al crear el ejecutable.
     exit /b 1

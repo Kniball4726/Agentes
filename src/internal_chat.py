@@ -34,6 +34,14 @@ def detectar_intencion(mensaje: str) -> str:
     if normalizado in ("limpiar", "clear", "limpiar chat", "borrar chat", "limpiar conversacion"):
         return "limpiar"
 
+    # 2b. Mensajería de equipo entre usuarios
+    if (
+        mensaje.strip().lower().startswith(("/msg", "/mensaje", "/avisar", "msg ", "mensaje ", "@"))
+        or normalizado in ("mensajes", "chat equipo", "mensajes equipo", "mensajeria", "equipo", "/equipo")
+        or any(frase in normalizado for frase in ("mensaje a", "aviso a", "escribir a", "chat de equipo"))
+    ):
+        return "chat_equipo"
+
     # 3. Ayuda específica
     if any(frase in normalizado for frase in _PALABRAS_AYUDA):
         return "ayuda"
@@ -159,6 +167,27 @@ def detectar_intencion(mensaje: str) -> str:
         )
     ):
         return "mercadolibre"
+
+    # 15. Métricas y KPIs
+    if (
+        normalizado in ("metricas", "kpi", "dashboard", "estadisticas")
+        or any(frase in normalizado for frase in ("metricas del deposito", "rendimiento", "estadistica"))
+    ):
+        return "metricas"
+
+    # 16. Auditoría y logs
+    if (
+        normalizado in ("auditoria", "logs", "trazabilidad", "eventos")
+        or any(frase in normalizado for frase in ("registro de auditoria", "log de cambios", "quien anulo"))
+    ):
+        return "auditoria"
+
+    # 17. Copia de seguridad / Backup
+    if (
+        normalizado in ("backup", "respaldo", "copia de seguridad")
+        or any(frase in normalizado for frase in ("hacer backup", "crear respaldo", "guardar copia"))
+    ):
+        return "backup"
 
     return "desconocido"
 
@@ -407,6 +436,8 @@ def obtener_comandos_ayuda(rol: str) -> str:
             "• /pedidos: Resumen de pedidos cargados y armados durante la jornada.\n"
             "• /cierre: Información sobre descuentos y estado del cierre de jornada.\n"
             "• /mercadolibre: Guía para descontar remitos de Mercado Libre (DOCX).\n"
+            "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un compañero o a todo el equipo.\n"
+            "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
             "• /limpiar: Limpia la pantalla del chat."
         )
     elif rol in ("administrador", "master"):
@@ -422,6 +453,11 @@ def obtener_comandos_ayuda(rol: str) -> str:
             "• /simular: Ejecuta una simulación de prueba sin alterar stock.\n"
             "• /pedidos: Resumen de pedidos del sistema.\n"
             "• /cierre: Resumen de cierres y descuentos acumulados.\n"
+            "• /metricas: Panel de rendimiento, bultos y estadísticas de despacho.\n"
+            "• /auditoria: Consulta los últimos eventos registrados en auditoría.\n"
+            "• /backup: Estado y ruta del último respaldo del sistema.\n"
+            "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un compañero o a todo el equipo.\n"
+            "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
             "• /limpiar: Limpia la pantalla del chat."
         )
     else:  # consulta
@@ -431,37 +467,46 @@ def obtener_comandos_ayuda(rol: str) -> str:
             "• /criticos: Lista productos con stock bajo o agotados.\n"
             "• /informes: Lista los informes generados.\n"
             "• /ultimo: Muestra el informe más reciente.\n"
+            "• /msg [@usuario] <mensaje>: Envía un mensaje interno al equipo.\n"
+            "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
             "• /limpiar: Limpia la pantalla del chat."
         )
 
 
-def obtener_chips_configuracion(rol: str) -> list[tuple[str, str]]:
-    """Devuelve pares (etiqueta, comando) para los botones rápidos según el rol."""
+def obtener_chips_configuracion(rol: str) -> list[tuple[str, str, str]]:
+    """Devuelve tuplas (nombre_funcionalidad, comando, icono) para los botones rápidos del asistente."""
     if rol == "operador":
         return [
-            ("🔍 Stock", "/stock"),
-            ("📦 Pedidos", "/pedidos"),
-            ("🖨️ Cierre", "/cierre"),
-            ("🟡 Mercado Libre", "/mercadolibre"),
-            ("❓ Ayuda", "/ayuda"),
+            ("Chat Equipo", "/equipo", "CHAT"),
+            ("Consultar Stock", "/stock", "SEARCH"),
+            ("Historial Pedidos", "/pedidos", "INVENTORY_2"),
+            ("Cierre de Jornada", "/cierre", "POINT_OF_SALE"),
+            ("Mercado Libre", "/mercadolibre", "LOCAL_SHIPPING"),
+            ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
         ]
     elif rol in ("administrador", "master"):
         return [
-            ("📦 Críticos", "/criticos"),
-            ("🏭 Reposición", "/reposicion"),
-            ("📋 Diagnóstico", "/diagnostico"),
-            ("📄 Último", "/ultimo"),
-            ("📊 Estado", "/estado"),
-            ("🧪 Simular", "/simular"),
-            ("🔍 Stock", "/stock"),
+            ("Chat Equipo", "/equipo", "CHAT"),
+            ("Consultar Stock", "/stock", "SEARCH"),
+            ("Stock Crítico", "/criticos", "WARNING_AMBER_ROUNDED"),
+            ("Pedido Reposición", "/reposicion", "PRECISION_MANUFACTURING"),
+            ("Métricas Depósito", "/metricas", "ANALYTICS"),
+            ("Registro Auditoría", "/auditoria", "HISTORY"),
+            ("Copia Backup", "/backup", "BACKUP"),
+            ("Diagnóstico Archivos", "/diagnostico", "FACT_CHECK"),
+            ("Estado General", "/estado", "DASHBOARD"),
+            ("Último Informe", "/ultimo", "DESCRIPTION"),
+            ("Simular Descuentos", "/simular", "SCIENCE"),
+            ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
         ]
     else:  # consulta
         return [
-            ("🔍 Stock", "/stock"),
-            ("📦 Críticos", "/criticos"),
-            ("📊 Informes", "/informes"),
-            ("📄 Último", "/ultimo"),
-            ("❓ Ayuda", "/ayuda"),
+            ("Chat Equipo", "/equipo", "CHAT"),
+            ("Consultar Stock", "/stock", "SEARCH"),
+            ("Stock Crítico", "/criticos", "WARNING_AMBER_ROUNDED"),
+            ("Ver Informes", "/informes", "FOLDER_OPEN"),
+            ("Último Informe", "/ultimo", "DESCRIPTION"),
+            ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
         ]
 
 

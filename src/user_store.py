@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import sqlite3
+import time
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,9 @@ DEFAULT_MASTER_USERNAME = "Desarrollo"
 DEFAULT_MASTER_PASSWORD = "master1713"
 PASSWORD_ITERATIONS = 600_000
 PASSWORD_MIN_LENGTH = 10
+MAX_FAILED_ATTEMPTS = 5
+FAILED_WINDOW_SECONDS = 15 * 60
+LOCKOUT_SECONDS = 15 * 60
 
 
 class UserStoreError(Exception):
@@ -28,6 +32,38 @@ class User:
     username: str
     role: UserRole
     active: bool
+    must_change_password: bool = False
+
+
+@dataclass(frozen=True)
+class AuthResult:
+    """Resultado detallado de un intento de inicio de sesión."""
+
+    user: User | None
+    status: str  # "ok" | "invalid" | "inactive" | "locked"
+    retry_after: int = 0  # segundos restantes de bloqueo (solo si status == "locked")
+    attempts_left: int | None = None
+
+    @property
+    def locked(self) -> bool:
+        return self.status == "locked"
+
+    @property
+    def remaining_attempts(self) -> int | None:
+        return self.attempts_left
+
+    @property
+    def error(self) -> str:
+        if self.status == "ok":
+            return ""
+        if self.status == "locked":
+            mins = max(1, (self.retry_after + 59) // 60)
+            return f"Cuenta bloqueada temporalmente por seguridad. Intentá de nuevo en {mins} min."
+        if self.status == "inactive":
+            return "Esta cuenta se encuentra deshabilitada. Contactá a un administrador."
+        if self.attempts_left is not None:
+            return f"Usuario o contraseña incorrectos ({self.attempts_left} intento(s) restante(s))."
+        return "Usuario o contraseña incorrectos."
 
 
 class UserStore:
@@ -61,7 +97,37 @@ class UserStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    username TEXT PRIMARY KEY COLLATE NOCASE,
+                    failed_count INTEGER NOT NULL DEFAULT 0,
+                    first_failed_at REAL NOT NULL DEFAULT 0,
+                    locked_until REAL NOT NULL DEFAULT 0
+                )
+                """
+            )
+            self._migrar_columna_cambio_clave(connection)
             self._asegurar_usuario_master(connection)
+
+    def _migrar_columna_cambio_clave(self, connection: sqlite3.Connection) -> None:
+        columnas = {r["name"] for r in connection.execute("PRAGMA table_info(users)")}
+        if "must_change_password" in columnas:
+            return
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
+        )
+        # Si el Master todavía usa la clave por defecto publicada, obligar a cambiarla.
+        master = connection.execute(
+            "SELECT id, password_hash FROM users WHERE username = ? COLLATE NOCASE",
+            (DEFAULT_MASTER_USERNAME,),
+        ).fetchone()
+        if master is not None and self._verificar_clave(
+            DEFAULT_MASTER_PASSWORD, master["password_hash"]
+        ):
+            connection.execute(
+                "UPDATE users SET must_change_password = 1 WHERE id = ?", (master["id"],)
+            )
 
     @staticmethod
     def _migrar_esquema(connection: sqlite3.Connection) -> None:
@@ -103,8 +169,8 @@ class UserStore:
             pwd_hash = self._hash_clave(DEFAULT_MASTER_PASSWORD)
             connection.execute(
                 """
-                INSERT INTO users (username, password_hash, role, active)
-                VALUES (?, ?, 'master', 1)
+                INSERT INTO users (username, password_hash, role, active, must_change_password)
+                VALUES (?, ?, 'master', 1, 1)
                 """,
                 (DEFAULT_MASTER_USERNAME, pwd_hash),
             )
@@ -222,40 +288,168 @@ class UserStore:
         return self._row_to_user(row)
 
     def authenticate(self, username: str, password: str) -> User | None:
+        return self.authenticate_detailed(username, password).user
+
+    def authenticate_detailed(self, username: str, password: str) -> AuthResult:
+        """Autentica aplicando bloqueo temporal tras varios intentos fallidos."""
         username = username.strip()
+        ahora = time.time()
+        restante = self.segundos_bloqueo_restantes(username, ahora)
+        if restante > 0:
+            return AuthResult(None, "locked", retry_after=restante)
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, username, password_hash, role, active
+                SELECT id, username, password_hash, role, active, must_change_password
                 FROM users WHERE username = ?
                 """,
                 (username,),
             ).fetchone()
         if row is None:
             self._verificar_clave(password, self._hash_clave("invalid-user-password"))
-            return None
+            return self._registrar_fallo(username, ahora)
         password_valid = self._verificar_clave(password, row["password_hash"])
-        if not password_valid or not row["active"]:
-            return None
-        return self._row_to_user(row)
+        if not password_valid:
+            return self._registrar_fallo(username, ahora)
+        if not row["active"]:
+            return AuthResult(None, "inactive")
+        self._limpiar_intentos(username)
+        return AuthResult(self._row_to_user(row), "ok")
+
+    def segundos_bloqueo_restantes(self, username: str, ahora: float | None = None) -> int:
+        ahora = time.time() if ahora is None else ahora
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT locked_until FROM login_attempts WHERE username = ?",
+                (username.strip(),),
+            ).fetchone()
+        if row is None or row["locked_until"] <= ahora:
+            return 0
+        return int(row["locked_until"] - ahora) + 1
+
+    def _registrar_fallo(self, username: str, ahora: float) -> AuthResult:
+        if not username:
+            return AuthResult(None, "invalid")
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT failed_count, first_failed_at FROM login_attempts WHERE username = ?",
+                (username,),
+            ).fetchone()
+            if row is None or ahora - row["first_failed_at"] > FAILED_WINDOW_SECONDS:
+                cantidad, primero = 1, ahora
+            else:
+                cantidad, primero = row["failed_count"] + 1, row["first_failed_at"]
+            if cantidad >= MAX_FAILED_ATTEMPTS:
+                connection.execute(
+                    """
+                    INSERT INTO login_attempts (username, failed_count, first_failed_at, locked_until)
+                    VALUES (?, 0, 0, ?)
+                    ON CONFLICT(username) DO UPDATE SET
+                        failed_count = 0, first_failed_at = 0, locked_until = excluded.locked_until
+                    """,
+                    (username, ahora + LOCKOUT_SECONDS),
+                )
+                return AuthResult(None, "locked", retry_after=LOCKOUT_SECONDS)
+            connection.execute(
+                """
+                INSERT INTO login_attempts (username, failed_count, first_failed_at, locked_until)
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(username) DO UPDATE SET
+                    failed_count = excluded.failed_count,
+                    first_failed_at = excluded.first_failed_at
+                """,
+                (username, cantidad, primero),
+            )
+        return AuthResult(None, "invalid", attempts_left=MAX_FAILED_ATTEMPTS - cantidad)
+
+    def _limpiar_intentos(self, username: str) -> None:
+        with self._connect() as connection, connection:
+            connection.execute("DELETE FROM login_attempts WHERE username = ?", (username,))
+
+    def unlock_user(self, username: str) -> None:
+        """Desbloquea manualmente una cuenta (acción de administración)."""
+        self._limpiar_intentos(username.strip())
+
+    def list_locked_usernames(self) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT username FROM login_attempts WHERE locked_until > ?", (time.time(),)
+            ).fetchall()
+        return [r["username"] for r in rows]
+
+    def change_password(self, user_id: int, current_password: str, new_password: str) -> None:
+        """Cambia la clave del propio usuario verificando la actual."""
+        self._validar_clave(new_password)
+        if new_password == DEFAULT_MASTER_PASSWORD:
+            raise ValueError("La nueva contraseña no puede ser la contraseña por defecto del sistema.")
+        if new_password == current_password:
+            raise ValueError("La nueva contraseña debe ser distinta de la actual.")
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+            if row is None:
+                raise UserStoreError("No se encontró el usuario.")
+            if not self._verificar_clave(current_password, row["password_hash"]):
+                raise UserStoreError("La contraseña actual no es correcta.")
+            connection.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                (self._hash_clave(new_password), user_id),
+            )
+
+    def reset_password(
+        self,
+        user_id: int,
+        new_password: str,
+        updater_role: str | None = None,
+        must_change: bool = True,
+    ) -> None:
+        """Restablece la clave de otro usuario; el afectado deberá cambiarla al ingresar."""
+        self._validar_clave(new_password)
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT username, role FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+            if row is None:
+                raise UserStoreError("No se encontró el usuario.")
+            if updater_role != "master" and row["role"] in ("master", "administrador"):
+                raise UserStoreError(
+                    "Solo el usuario master puede restablecer la clave de un administrador."
+                )
+            connection.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?",
+                (self._hash_clave(new_password), 1 if must_change else 0, user_id),
+            )
+            connection.execute("DELETE FROM login_attempts WHERE username = ?", (row["username"],))
 
     def list_users(self, include_master: bool = True) -> list[User]:
         with self._connect() as connection:
             if include_master:
                 rows = connection.execute(
-                    "SELECT id, username, role, active FROM users ORDER BY username COLLATE NOCASE"
+                    "SELECT id, username, role, active, must_change_password FROM users ORDER BY username COLLATE NOCASE"
                 ).fetchall()
             else:
                 rows = connection.execute(
-                    "SELECT id, username, role, active FROM users WHERE role != 'master' ORDER BY username COLLATE NOCASE"
+                    "SELECT id, username, role, active, must_change_password FROM users WHERE role != 'master' ORDER BY username COLLATE NOCASE"
                 ).fetchall()
         return [self._row_to_user(row) for row in rows]
 
     def get_user(self, user_id: int) -> User | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT id, username, role, active FROM users WHERE id = ?",
+                "SELECT id, username, role, active, must_change_password FROM users WHERE id = ?",
                 (user_id,),
+            ).fetchone()
+        return self._row_to_user(row) if row is not None else None
+
+    def get_user_by_username(self, username: str) -> User | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT id, username, role, active, must_change_password FROM users WHERE username = ? COLLATE NOCASE",
+                (username.strip(),),
             ).fetchone()
         return self._row_to_user(row) if row is not None else None
 
@@ -351,4 +545,9 @@ class UserStore:
             username=row["username"],
             role=UserStore._validar_rol(row["role"]),
             active=bool(row["active"]),
+            must_change_password=(
+                bool(row["must_change_password"])
+                if "must_change_password" in row.keys()
+                else False
+            ),
         )

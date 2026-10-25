@@ -1,6 +1,7 @@
 """Persistencia SQLite para clientes y pedidos en tiempo real."""
 
 import hashlib
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -35,6 +36,10 @@ def calcular_hash_archivo(ruta_o_bytes: Path | bytes | str) -> str:
     else:
         return ""
     return hasher.hexdigest()
+
+
+ESTADOS_DESPACHO: tuple[str, ...] = ("armado", "despachado", "entregado")
+_COLUMNAS_DESPACHO = "estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por"
 
 
 class OrderStoreError(Exception):
@@ -91,6 +96,32 @@ class Pedido:
     archivo_descuento: str = ""
     cierre_id: int | None = None
     archivo_hash: str = ""
+    estado_despacho: str = "armado"
+    despachado_at: str = ""
+    despachado_por: str = ""
+    entregado_at: str = ""
+    entregado_por: str = ""
+
+
+@dataclass(frozen=True)
+class MensajeChat:
+    id: int
+    emisor: str
+    destinatario: str
+    mensaje: str
+    leido: bool
+    created_at: str
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> MensajeChat:
+        return cls(
+            id=int(row["id"]),
+            emisor=str(row["emisor"]),
+            destinatario=str(row["destinatario"]),
+            mensaje=str(row["mensaje"]),
+            leido=bool(row["leido"]),
+            created_at=str(row["created_at"]),
+        )
 
 
 class OrderStore:
@@ -190,6 +221,21 @@ class OrderStore:
             )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs_auditoria(created_at DESC)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_logs_usuario ON logs_auditoria(usuario)")
+
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS mensajes_chat (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    emisor TEXT NOT NULL,
+                    destinatario TEXT NOT NULL DEFAULT 'Todos',
+                    mensaje TEXT NOT NULL,
+                    leido INTEGER NOT NULL DEFAULT 0 CHECK (leido IN (0, 1)),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON mensajes_chat(created_at DESC)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_destinatario ON mensajes_chat(destinatario, leido)")
             # Migración de columnas por si la tabla ya existía
             columnas_existentes = {
                 r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()
@@ -262,6 +308,25 @@ class OrderStore:
                 connection.execute("DROP TABLE pedidos")
                 connection.execute("ALTER TABLE pedidos_temp RENAME TO pedidos")
                 connection.execute("PRAGMA foreign_keys = ON")
+
+            # Estados de despacho (armado -> despachado -> entregado)
+            columnas_actuales = {
+                r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()
+            }
+            if "archivo_hash" not in columnas_actuales:
+                connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
+            for columna, definicion in (
+                ("estado_despacho", "TEXT NOT NULL DEFAULT 'armado'"),
+                ("despachado_at", "TEXT NOT NULL DEFAULT ''"),
+                ("despachado_por", "TEXT NOT NULL DEFAULT ''"),
+                ("entregado_at", "TEXT NOT NULL DEFAULT ''"),
+                ("entregado_por", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if columna not in columnas_actuales:
+                    connection.execute(f"ALTER TABLE pedidos ADD COLUMN {columna} {definicion}")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)"
+            )
 
     # ==========================
     # GESTIÓN DE CLIENTES
@@ -408,7 +473,8 @@ class OrderStore:
                     """
                     SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                            tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                           resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash
+                           resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                     FROM pedidos WHERE id = ?
                     """,
                     (nuevo_id,),
@@ -426,7 +492,8 @@ class OrderStore:
 
     @staticmethod
     def _map_pedido(row: sqlite3.Row) -> Pedido:
-        c_id = row["cierre_id"] if "cierre_id" in row.keys() else None
+        claves = row.keys()
+        c_id = row["cierre_id"] if "cierre_id" in claves else None
         hash_val = row["archivo_hash"] if "archivo_hash" in row.keys() and row["archivo_hash"] else ""
         return Pedido(
             id=row["id"],
@@ -447,6 +514,11 @@ class OrderStore:
             archivo_descuento=row["archivo_descuento"] or "",
             cierre_id=c_id,
             archivo_hash=hash_val,
+            estado_despacho=(row["estado_despacho"] if "estado_despacho" in claves else "armado") or "armado",
+            despachado_at=(row["despachado_at"] if "despachado_at" in claves else "") or "",
+            despachado_por=(row["despachado_por"] if "despachado_por" in claves else "") or "",
+            entregado_at=(row["entregado_at"] if "entregado_at" in claves else "") or "",
+            entregado_por=(row["entregado_por"] if "entregado_por" in claves else "") or "",
         )
 
     def buscar_pedido_por_hash(self, archivo_hash: str) -> Pedido | None:
@@ -459,7 +531,8 @@ class OrderStore:
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                        resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash
+                       cierre_id, archivo_hash,
+                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE archivo_hash = ? AND estado != 'anulado'
                 LIMIT 1
@@ -476,7 +549,8 @@ class OrderStore:
                 """
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 ORDER BY id DESC
                 LIMIT ?
@@ -491,13 +565,13 @@ class OrderStore:
                 """
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id IS NULL AND estado = 'descontado'
                 ORDER BY id ASC
                 """
             ).fetchall()
-        return [self._map_pedido(r) for r in rows]
         return [self._map_pedido(r) for r in rows]
 
     def obtener_items_pendientes_cierre(self) -> list[tuple[str, str, int, list[str]]]:
@@ -601,7 +675,8 @@ class OrderStore:
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica,
                        armador, tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                        resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash
+                       cierre_id, archivo_hash,
+                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id = ?
                 ORDER BY logistica ASC, id ASC
@@ -630,11 +705,143 @@ class OrderStore:
                 "UPDATE pedidos SET estado = 'anulado' WHERE id = ?",
                 (pedido_id,),
             )
-            self.registrar_auditoria(
-                usuario=usuario,
-                accion="ANULAR_PEDIDO",
-                detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
+        # La auditoría usa otra conexión: debe ejecutarse una vez liberada la transacción.
+        self.registrar_auditoria(
+            usuario=usuario,
+            accion="ANULAR_PEDIDO",
+            detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
+        )
+
+    # ==========================
+    # ESTADOS DE DESPACHO
+    # ==========================
+
+    @staticmethod
+    def extraer_remito_de_codigo(texto: str) -> str:
+        """Obtiene el número de remito desde el QR del rótulo ('REMITO:123|CLIENTE:...') o texto plano."""
+        limpio = (texto or "").strip()
+        coincidencia = re.search(r"REMITO:\s*([^|]+)", limpio, re.IGNORECASE)
+        return coincidencia.group(1).strip() if coincidencia else limpio
+
+    def buscar_pedido_por_nota(self, nota_pedido: str) -> Pedido | None:
+        nota = (nota_pedido or "").strip()
+        if not nota:
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
+                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
+                       cierre_id, archivo_hash, {_COLUMNAS_DESPACHO}
+                FROM pedidos WHERE nota_pedido = ? COLLATE NOCASE LIMIT 1
+                """,
+                (nota,),
+            ).fetchone()
+        return self._map_pedido(row) if row is not None else None
+
+    def actualizar_estado_despacho(
+        self,
+        pedido_id: int,
+        nuevo_estado: str,
+        usuario: str = "Sistema",
+        permitir_retroceso: bool = False,
+    ) -> Pedido:
+        """Avanza (o retrocede, si se permite) el estado logístico de un pedido."""
+        if nuevo_estado not in ESTADOS_DESPACHO:
+            raise ValueError(f"Estado de despacho inválido: {nuevo_estado}")
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT nota_pedido, estado, estado_despacho FROM pedidos WHERE id = ?",
+                (pedido_id,),
+            ).fetchone()
+            if row is None:
+                raise OrderStoreError("No se encontró el pedido.")
+            if row["estado"] == "anulado":
+                raise OrderStoreError("El pedido está anulado y no admite cambios de estado.")
+            actual = row["estado_despacho"] or "armado"
+            idx_actual = ESTADOS_DESPACHO.index(actual)
+            idx_nuevo = ESTADOS_DESPACHO.index(nuevo_estado)
+            if idx_nuevo == idx_actual:
+                raise OrderStoreError(f"El pedido ya figura como '{actual}'.")
+            if idx_nuevo < idx_actual and not permitir_retroceso:
+                raise OrderStoreError("Solo un administrador puede retroceder el estado de un pedido.")
+            if idx_nuevo > idx_actual + 1:
+                raise OrderStoreError(
+                    f"Primero debe marcarse como '{ESTADOS_DESPACHO[idx_actual + 1]}'."
+                )
+            ahora = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
+            if nuevo_estado == "despachado":
+                connection.execute(
+                    f"UPDATE pedidos SET estado_despacho = ?, despachado_at = {ahora}, despachado_por = ?, "
+                    "entregado_at = '', entregado_por = '' WHERE id = ?",
+                    (nuevo_estado, usuario, pedido_id),
+                )
+            elif nuevo_estado == "entregado":
+                connection.execute(
+                    f"UPDATE pedidos SET estado_despacho = ?, entregado_at = {ahora}, entregado_por = ? WHERE id = ?",
+                    (nuevo_estado, usuario, pedido_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE pedidos SET estado_despacho = ?, despachado_at = '', despachado_por = '', "
+                    "entregado_at = '', entregado_por = '' WHERE id = ?",
+                    (nuevo_estado, pedido_id),
+                )
+            remito = row["nota_pedido"]
+        self.registrar_auditoria(
+            usuario=usuario,
+            accion="ESTADO_DESPACHO",
+            detalle=f"Remito {remito}: {actual} → {nuevo_estado}",
+        )
+        with self._connect() as connection:
+            fila = connection.execute(
+                f"""
+                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
+                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
+                       cierre_id, archivo_hash, {_COLUMNAS_DESPACHO}
+                FROM pedidos WHERE id = ?
+                """,
+                (pedido_id,),
+            ).fetchone()
+        return self._map_pedido(fila)
+
+    def avanzar_estado_por_codigo(
+        self,
+        codigo: str = "",
+        usuario: str = "Sistema",
+        *,
+        codigo_qr_o_remito: str = "",
+        nuevo_estado: str | None = None,
+    ) -> tuple[bool, str, Pedido | None]:
+        """Avanza al siguiente estado (o fija nuevo_estado) el pedido identificado por QR o remito."""
+        raw = codigo or codigo_qr_o_remito
+        remito = self.extraer_remito_de_codigo(raw)
+        pedido = self.buscar_pedido_por_nota(remito)
+        if pedido is None:
+            return False, f"No se encontró ningún pedido con el remito '{remito}'.", None
+        if pedido.estado == "anulado":
+            return False, f"El pedido {pedido.nota_pedido} se encuentra ANULADO.", pedido
+        if nuevo_estado:
+            destino = nuevo_estado.strip().lower()
+        else:
+            idx = ESTADOS_DESPACHO.index(pedido.estado_despacho)
+            if idx >= len(ESTADOS_DESPACHO) - 1:
+                return False, f"El pedido {pedido.nota_pedido} ya figura como ENTREGADO.", pedido
+            destino = ESTADOS_DESPACHO[idx + 1]
+        try:
+            actualizado = self.actualizar_estado_despacho(
+                pedido.id, destino, usuario=usuario, permitir_retroceso=True
             )
+            return (
+                True,
+                f"Remito #{actualizado.nota_pedido} ({actualizado.cliente}) → {actualizado.estado_despacho.upper()}",
+                actualizado,
+            )
+        except Exception as e:
+            return False, str(e), pedido
 
     def registrar_auditoria(self, usuario: str, accion: str, detalle: str) -> None:
         with self._connect() as connection, connection:
@@ -649,7 +856,9 @@ class OrderStore:
         filtro_usuario: str = "",
         filtro_accion: str = "",
         filtro_texto: str = "",
+        filtro: str = "",
     ) -> list[RegistroAuditoria]:
+        texto_busqueda = filtro_texto or filtro
         query = "SELECT id, usuario, accion, detalle, created_at FROM logs_auditoria WHERE 1=1"
         params: list = []
         if filtro_usuario:
@@ -658,11 +867,11 @@ class OrderStore:
         if filtro_accion:
             query += " AND accion = ?"
             params.append(filtro_accion)
-        if filtro_texto:
+        if texto_busqueda:
             query += " AND (detalle LIKE ? OR accion LIKE ? OR usuario LIKE ?)"
-            params.append(f"%{filtro_texto}%")
-            params.append(f"%{filtro_texto}%")
-            params.append(f"%{filtro_texto}%")
+            params.append(f"%{texto_busqueda}%")
+            params.append(f"%{texto_busqueda}%")
+            params.append(f"%{texto_busqueda}%")
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
 
@@ -679,60 +888,120 @@ class OrderStore:
             for r in rows
         ]
 
-    def obtener_metricas_dashboard(self) -> dict:
+    @staticmethod
+    def _filtro_fechas(
+        columna: str, fecha_desde: str | None, fecha_hasta: str | None
+    ) -> tuple[str, list[str]]:
+        """Construye el fragmento SQL para filtrar por rango de fechas (formato AAAA-MM-DD)."""
+        condiciones: list[str] = []
+        params: list[str] = []
+        if fecha_desde:
+            condiciones.append(f"date({columna}) >= date(?)")
+            params.append(fecha_desde)
+        if fecha_hasta:
+            condiciones.append(f"date({columna}) <= date(?)")
+            params.append(fecha_hasta)
+        return ("".join(f" AND {c}" for c in condiciones), params)
+
+    def obtener_metricas_dashboard(
+        self,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict:
+        """Métricas del panel de rendimiento, opcionalmente acotadas a un rango (AAAA-MM-DD)."""
+        extra_p, params_p = self._filtro_fechas("created_at", fecha_desde, fecha_hasta)
+        extra_pp, params_pp = self._filtro_fechas("p.created_at", fecha_desde, fecha_hasta)
         with self._connect() as connection:
             res_totales = connection.execute(
-                """
+                f"""
                 SELECT COUNT(*) as total_pedidos,
                        COALESCE(SUM(bultos), 0) as total_bultos,
                        COUNT(CASE WHEN cierre_id IS NOT NULL THEN 1 END) as pedidos_cerrados,
                        COUNT(CASE WHEN cierre_id IS NULL AND estado = 'descontado' THEN 1 END) as pedidos_pendientes,
                        COUNT(CASE WHEN estado = 'anulado' THEN 1 END) as pedidos_anulados
-                FROM pedidos
-                """
+                FROM pedidos WHERE 1=1 {extra_p}
+                """,
+                params_p,
             ).fetchone()
 
             rows_logistica = connection.execute(
-                """
+                f"""
                 SELECT logistica, COUNT(*) as cant, COALESCE(SUM(bultos), 0) as bultos
                 FROM pedidos
-                WHERE estado = 'descontado'
+                WHERE estado = 'descontado' {extra_p}
                 GROUP BY logistica
                 ORDER BY cant DESC
-                """
+                """,
+                params_p,
             ).fetchall()
 
             rows_armador = connection.execute(
-                """
+                f"""
                 SELECT armador, COUNT(*) as cant, COALESCE(SUM(bultos), 0) as bultos
                 FROM pedidos
-                WHERE estado = 'descontado'
+                WHERE estado = 'descontado' {extra_p}
                 GROUP BY armador
                 ORDER BY cant DESC
-                """
+                """,
+                params_p,
             ).fetchall()
 
             rows_top_items = connection.execute(
-                """
+                f"""
                 SELECT pi.codigo, pi.descripcion, SUM(pi.cantidad) as total_cant
                 FROM pedido_items pi
                 JOIN pedidos p ON p.id = pi.pedido_id
-                WHERE p.estado = 'descontado'
+                WHERE p.estado = 'descontado' {extra_pp}
                 GROUP BY pi.codigo, pi.descripcion
                 ORDER BY total_cant DESC
                 LIMIT 10
-                """
+                """,
+                params_pp,
             ).fetchall()
 
-            cant_cierres = connection.execute("SELECT COUNT(*) FROM cierres_jornada").fetchone()[0]
+            rows_por_dia = connection.execute(
+                f"""
+                SELECT date(created_at) as dia, COUNT(*) as cant, COALESCE(SUM(bultos), 0) as bultos
+                FROM pedidos
+                WHERE estado = 'descontado' {extra_p}
+                GROUP BY date(created_at)
+                ORDER BY dia ASC
+                """,
+                params_p,
+            ).fetchall()
+
+            rows_despacho = connection.execute(
+                f"""
+                SELECT estado_despacho, COUNT(*) as cant
+                FROM pedidos
+                WHERE estado = 'descontado' {extra_p}
+                GROUP BY estado_despacho
+                """,
+                params_p,
+            ).fetchall()
+
+            extra_c, params_c = self._filtro_fechas("created_at", fecha_desde, fecha_hasta)
+            cant_cierres = connection.execute(
+                f"SELECT COUNT(*) FROM cierres_jornada WHERE 1=1 {extra_c}", params_c
+            ).fetchone()[0]
+
+            estados_despacho = {e: 0 for e in ESTADOS_DESPACHO}
+            for r in rows_despacho:
+                estados_despacho[r["estado_despacho"] or "armado"] = int(r["cant"])
 
             return {
+                "fecha_desde": fecha_desde or "",
+                "fecha_hasta": fecha_hasta or "",
                 "total_pedidos": int(res_totales["total_pedidos"] or 0),
                 "total_bultos": int(res_totales["total_bultos"] or 0),
                 "pedidos_cerrados": int(res_totales["pedidos_cerrados"] or 0),
                 "pedidos_pendientes": int(res_totales["pedidos_pendientes"] or 0),
                 "pedidos_anulados": int(res_totales["pedidos_anulados"] or 0),
                 "total_cierres": int(cant_cierres or 0),
+                "estados_despacho": estados_despacho,
+                "pedidos_por_dia": [
+                    (r["dia"], int(r["cant"]), int(r["bultos"])) for r in rows_por_dia
+                ],
                 "distribucion_logistica": [
                     (r["logistica"], int(r["cant"]), int(r["bultos"]))
                     for r in rows_logistica
@@ -746,3 +1015,89 @@ class OrderStore:
                     for r in rows_top_items
                 ],
             }
+
+    def obtener_pedido_resumen_chat(self, nota_pedido: str) -> str:
+        """Resumen de una línea de un pedido, para enlazarlo desde el chat de equipo."""
+        pedido = self.buscar_pedido_por_nota(nota_pedido)
+        if pedido is None:
+            return ""
+        return (
+            f"Pedido #{pedido.nota_pedido} · {pedido.cliente} · {pedido.bultos} bulto(s) · "
+            f"{pedido.logistica} · {pedido.estado_despacho.upper()}"
+            + (" · ANULADO" if pedido.estado == "anulado" else "")
+        )
+
+    def enviar_mensaje_chat(
+        self,
+        emisor: str,
+        mensaje: str,
+        destinatario: str = "Todos",
+    ) -> MensajeChat:
+        msg_limpio = mensaje.strip()
+        if not msg_limpio:
+            raise ValueError("El mensaje no puede estar vacío.")
+        dest_limpio = (destinatario or "Todos").strip()
+        with self._connect() as connection, connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO mensajes_chat (emisor, destinatario, mensaje, leido)
+                VALUES (?, ?, ?, 0)
+                """,
+                (emisor.strip(), dest_limpio, msg_limpio),
+            )
+            nuevo_id = int(cursor.lastrowid)
+            row = connection.execute(
+                "SELECT id, emisor, destinatario, mensaje, leido, created_at FROM mensajes_chat WHERE id = ?",
+                (nuevo_id,),
+            ).fetchone()
+            return MensajeChat.from_row(row)
+
+    def listar_mensajes_chat(
+        self,
+        usuario: str,
+        limite: int = 60,
+    ) -> list[MensajeChat]:
+        usr_limpio = usuario.strip()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, emisor, destinatario, mensaje, leido, created_at
+                FROM mensajes_chat
+                WHERE destinatario = 'Todos' OR destinatario = ? OR emisor = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (usr_limpio, usr_limpio, limite),
+            ).fetchall()
+            mensajes = [MensajeChat.from_row(r) for r in rows]
+            mensajes.reverse()
+            return mensajes
+
+    def contar_mensajes_no_leidos(self, usuario: str) -> int:
+        usr_limpio = usuario.strip()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) as total
+                FROM mensajes_chat
+                WHERE (destinatario = 'Todos' OR destinatario = ?)
+                  AND leido = 0
+                  AND emisor != ?
+                """,
+                (usr_limpio, usr_limpio),
+            ).fetchone()
+            return int(row["total"]) if row else 0
+
+    def marcar_mensajes_leidos(self, usuario: str) -> None:
+        usr_limpio = usuario.strip()
+        with self._connect() as connection, connection:
+            connection.execute(
+                """
+                UPDATE mensajes_chat
+                SET leido = 1
+                WHERE (destinatario = 'Todos' OR destinatario = ?)
+                  AND leido = 0
+                  AND emisor != ?
+                """,
+                (usr_limpio, usr_limpio),
+            )
