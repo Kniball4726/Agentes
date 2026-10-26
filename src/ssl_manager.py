@@ -53,7 +53,7 @@ def asegurar_certificado_ssl(
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import NameOID
+    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
     private_key = rsa.generate_private_key(
         public_exponent=65537,
@@ -95,6 +95,29 @@ def asegurar_certificado_ssl(
         .add_extension(
             x509.BasicConstraints(ca=True, path_length=0),
             critical=True,
+        )
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=True,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.ExtendedKeyUsage(
+                [
+                    ExtendedKeyUsageOID.SERVER_AUTH,
+                    ExtendedKeyUsageOID.CLIENT_AUTH,
+                ]
+            ),
+            critical=False,
         )
         .sign(private_key, hashes.SHA256())
     )

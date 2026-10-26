@@ -4,33 +4,44 @@ setlocal
 cd /d "%~dp0"
 
 echo ==================================================================
-echo   STOCK AGENT - MODO SERVIDOR WEB SEGURO HTTPS (OPCION 2)
+echo   STOCK AGENT - SERVIDOR WEB HTTPS - PUERTO 8550
 echo ==================================================================
 echo.
 
-taskkill /F /IM StockAgent.exe >nul 2>&1
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R /C:":8550 " ^| findstr LISTENING 2^>nul') do (
-    taskkill /F /PID %%a >nul 2>&1
+if exist "StockAgent.exe" (
+    echo Iniciando desde StockAgent.exe
+    "StockAgent.exe" --web --https --port 8550
+    goto :FIN
 )
 
-if exist "StockAgent.exe" (
-    echo Iniciando servidor HTTPS desde StockAgent.exe en el puerto 8550...
-    echo Se abrira automaticamente tu navegador web en https://127.0.0.1:8550
-    echo Para conectar la 2da maquina, mira la direccion "Red local: https://..."
-    echo en el encabezado del Panel de Control.
-    echo.
-    start "" "StockAgent.exe" --web --https --port 8550
-) else if exist "ttech\Scripts\python.exe" (
-    echo Iniciando servidor HTTPS con Python (ttech) en el puerto 8550...
+if exist "ttech\Scripts\python.exe" (
+    echo Iniciando con Python ttech
     "ttech\Scripts\python.exe" main.py --web --https --port 8550
-) else if exist ".venv\Scripts\python.exe" (
-    echo Iniciando servidor HTTPS con Python (.venv) en el puerto 8550...
+    goto :FIN
+)
+
+if exist ".venv\Scripts\python.exe" (
+    echo Iniciando con Python venv
     ".venv\Scripts\python.exe" main.py --web --https --port 8550
-) else if exist "dist\StockAgent.exe" (
-    echo Iniciando servidor HTTPS desde dist\StockAgent.exe en el puerto 8550...
-    echo Se abrira automaticamente tu navegador web en https://127.0.0.1:8550
+    goto :FIN
+)
+
+if exist "dist\StockAgent.exe" (
+    echo Iniciando desde dist StockAgent.exe
+    "dist\StockAgent.exe" --web --https --port 8550
+    goto :FIN
+)
+
+echo Iniciando con Python del sistema
+python main.py --web --https --port 8550
+
+:FIN
+if errorlevel 1 (
     echo.
-    start "" "dist\StockAgent.exe" --web --https --port 8550
-) else (
-    python main.py --web --https --port 8550
+    echo ==================================================================
+    echo [ERROR] La aplicacion se cerro con error.
+    echo Revisa el archivo de log en data\logs\stockagent.log
+    echo ==================================================================
+    echo.
+    pause
 )

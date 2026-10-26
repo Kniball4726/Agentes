@@ -7615,6 +7615,20 @@ def iniciar(
         print("=" * 66)
         assets_dir = obtener_directorio_assets()
         os.environ["FLET_ASSETS_DIR"] = assets_dir
+
+        import threading
+        import time
+        import webbrowser
+
+        def _abrir_navegador_al_iniciar():
+            time.sleep(1.5)
+            try:
+                webbrowser.open(f"{esquema}://127.0.0.1:{port}")
+            except Exception:
+                pass
+
+        threading.Thread(target=_abrir_navegador_al_iniciar, daemon=True).start()
+
         ft.run(
             main,
             view=ft.AppView.WEB_BROWSER,

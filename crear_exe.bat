@@ -3,7 +3,7 @@ chcp 65001 > nul
 setlocal
 cd /d "%~dp0"
 
-taskkill /F /IM StockAgent.exe >nul 2>&1
+powershell -NoProfile -Command "Get-Process -Name StockAgent -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
 if not exist "Descuentos\Productos.xlsx" (
     echo No se encontro Descuentos\Productos.xlsx.
@@ -52,6 +52,8 @@ if exist "assets" (
 )
 if exist "iniciar_servidor_web.bat" copy /Y "iniciar_servidor_web.bat" "dist\iniciar_servidor_web.bat" > nul
 if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
+if exist "configurar_inicio_automatico.bat" copy /Y "configurar_inicio_automatico.bat" "dist\configurar_inicio_automatico.bat" > nul
+if exist "desactivar_inicio_automatico.bat" copy /Y "desactivar_inicio_automatico.bat" "dist\desactivar_inicio_automatico.bat" > nul
 
 echo.
 echo Ejecutable creado: dist\StockAgent.exe
