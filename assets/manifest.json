@@ -1,6 +1,6 @@
 {
-  "name": "Stock Agent",
-  "short_name": "StockAgent",
+  "name": "Control de Inventario Depósito Pasteur",
+  "short_name": "Depósito Pasteur",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#121212",

@@ -256,7 +256,7 @@ class InterfazFlet:
         self.construir()
 
     def _configurar_ventana(self) -> None:
-        self.page.title = "StockAgent"
+        self.page.title = "Control de Inventario Depósito Pasteur"
         self.page.window.icon = str(
             Path(__file__).resolve().parent / "img" / "ultratech.ico"
         )
@@ -7599,6 +7599,42 @@ def iniciar(
                 return handle
 
             _sfa.serve_fastapi_web_app = _serve_local_url
+
+            import flet_web.fastapi.flet_app as _ffa
+
+            if hasattr(_ffa, "FletApp"):
+                if not hasattr(_ffa.FletApp, "_orig_send_loop"):
+                    _orig_send_loop = getattr(_ffa.FletApp, "_FletApp__send_loop", None)
+                    if _orig_send_loop:
+                        setattr(_ffa.FletApp, "_orig_send_loop", _orig_send_loop)
+
+                        async def _clean_send_loop(self):
+                            try:
+                                await _orig_send_loop(self)
+                            except Exception as e:
+                                c_name = e.__class__.__name__
+                                if any(k in c_name for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")):
+                                    pass
+                                else:
+                                    raise
+
+                        setattr(_ffa.FletApp, "_FletApp__send_loop", _clean_send_loop)
+
+                if not hasattr(_ffa.FletApp, "_orig_handle"):
+                    _orig_handle = _ffa.FletApp.handle
+                    setattr(_ffa.FletApp, "_orig_handle", _orig_handle)
+
+                    async def _clean_handle(self, websocket):
+                        try:
+                            await _orig_handle(self, websocket)
+                        except Exception as e:
+                            c_name = e.__class__.__name__
+                            if any(k in c_name for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")):
+                                pass
+                            else:
+                                raise
+
+                    _ffa.FletApp.handle = _clean_handle
         except Exception:
             pass
 
@@ -7644,7 +7680,7 @@ def iniciar(
         ft.run(
             main,
             view=ft.AppView.FLET_APP,
-            name="StockAgent",
+            name="Control de Inventario Depósito Pasteur",
             assets_dir=assets_dir,
             no_cdn=False,
             web_renderer=ft.WebRenderer.AUTO,
