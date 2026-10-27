@@ -39,7 +39,8 @@ class AgenteRemitosStock:
         rutas_canjes: Optional[List[str | Path]] = None,
         carpeta_descuentos: Optional[str | Path] = None,
         simulacion: bool = False,
-        rutas_mercado_libre: Optional[List[str | Path]] = None
+        rutas_mercado_libre: Optional[List[str | Path]] = None,
+        guardar_archivo: bool = True,
     ) -> ReporteMisionAgente:
         rutas_pdf = rutas_pdf or []
         rutas_canjes = rutas_canjes or []
@@ -128,19 +129,27 @@ class AgenteRemitosStock:
             print("   [INFO] No se detectaron codigos repetidos.")
 
         # 3. ACCIÓN: Generar el informe desde SQLite y usar Productos.xlsx como plantilla visual.
-        print("\n[3. Accion] Generando planilla de descuentos desde el catálogo SQLite...")
+        debe_guardar = guardar_archivo and not simulacion
+        if debe_guardar:
+            print("\n[3. Accion] Generando planilla de descuentos desde el catálogo SQLite...")
+        else:
+            print("\n[3. Accion] Calculando descuentos de stock (sin generación de documento individual)...")
+
         reporte_stock = self.stock_manager.aplicar_descuentos(
             items_consolidados=consolidados,
             carpeta_destino=carpeta_descuentos,
             pedidos_procesados=documentos_resultados,
-            guardar_archivo=not simulacion
+            guardar_archivo=debe_guardar,
         )
 
         nuevos = [d for d in reporte_stock.descuentos_aplicados if d.es_nuevo_agregado]
 
-        print(f"   [OK] Planilla generada con {len(reporte_stock.descuentos_aplicados)} productos descontados.")
-        if reporte_stock.archivo_pdf:
-            print(f"   [OK] Informe PDF generado: {reporte_stock.archivo_pdf}")
+        if debe_guardar:
+            print(f"   [OK] Planilla generada con {len(reporte_stock.descuentos_aplicados)} productos descontados.")
+            if reporte_stock.archivo_pdf:
+                print(f"   [OK] Informe PDF generado: {reporte_stock.archivo_pdf}")
+        else:
+            print(f"   [OK] {len(reporte_stock.descuentos_aplicados)} productos procesados (el informe se generará en el Cierre de Jornada).")
         if nuevos:
             print(f"   [INFO] Se incluyeron {len(nuevos)} productos no encontrados en el informe.")
         print("   [INFO] El catálogo y el orden provienen de SQLite; Productos.xlsx aporta el formato.")

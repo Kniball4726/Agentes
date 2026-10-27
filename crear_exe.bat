@@ -11,6 +11,15 @@ if not exist "Descuentos\Productos.xlsx" (
     exit /b 1
 )
 
+set "PYINSTALLER_EXE="
+if exist "ttech\Scripts\pyinstaller.exe" (
+    set "PYINSTALLER_EXE=%~dp0ttech\Scripts\pyinstaller.exe"
+) else if exist ".venv\Scripts\pyinstaller.exe" (
+    set "PYINSTALLER_EXE=%~dp0.venv\Scripts\pyinstaller.exe"
+) else (
+    for /f "delims=" %%P in ('where pyinstaller 2^>nul') do if not defined PYINSTALLER_EXE set "PYINSTALLER_EXE=%%P"
+)
+
 set "FLET_EXE="
 if exist "ttech\Scripts\python.exe" (
     set "FLET_EXE=%~dp0ttech\Scripts\flet.exe"
@@ -20,21 +29,28 @@ if exist "ttech\Scripts\python.exe" (
     for /f "delims=" %%P in ('where flet 2^>nul') do if not defined FLET_EXE set "FLET_EXE=%%P"
 )
 
-if not defined FLET_EXE (
-    echo No se encontro Flet. Instale las dependencias de compilacion en .venv.
+if not defined PYINSTALLER_EXE if not defined FLET_EXE (
+    echo No se encontro PyInstaller ni Flet. Instale las dependencias de compilacion en .venv.
     exit /b 1
 )
 
-"%FLET_EXE%" pack main.py ^
-    --name StockAgent ^
-    --icon src/img/ultratech.ico ^
-    --product-name "Stock Agent" ^
-    --file-description "Agente de control de stock" ^
-    --add-data "src/img:src/img" ^
-    --add-data "assets:assets" ^
-    --distpath dist ^
-    --yes ^
-    -- --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets --collect-all reportlab
+if defined PYINSTALLER_EXE (
+    echo Compilando con PyInstaller (StockAgent.spec)...
+    "%PYINSTALLER_EXE%" StockAgent.spec --distpath dist -y
+) else (
+    echo Compilando con Flet pack...
+    "%FLET_EXE%" pack main.py ^
+        --name StockAgent ^
+        --icon src/img/ultratech.ico ^
+        --product-name "Stock Agent" ^
+        --file-description "Agente de control de stock" ^
+        --add-data "src/img:src/img" ^
+        --add-data "assets:assets" ^
+        --distpath dist ^
+        --debug-console True ^
+        --yes ^
+        -- --console --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets --collect-all reportlab
+)
 if errorlevel 1 (
     echo Error al crear el ejecutable.
     exit /b 1
@@ -51,6 +67,9 @@ if exist "assets" (
     xcopy /E /I /Y "assets" "dist\assets" > nul
 )
 if exist "iniciar_servidor_web.bat" copy /Y "iniciar_servidor_web.bat" "dist\iniciar_servidor_web.bat" > nul
+if exist "detener_servidor.bat" copy /Y "detener_servidor.bat" "dist\detener_servidor.bat" > nul
+if exist "iniciar_en_segundo_plano.vbs" copy /Y "iniciar_en_segundo_plano.vbs" "dist\iniciar_en_segundo_plano.vbs" > nul
+if exist "instalar_certificado.bat" copy /Y "instalar_certificado.bat" "dist\instalar_certificado.bat" > nul
 if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
 if exist "configurar_inicio_automatico.bat" copy /Y "configurar_inicio_automatico.bat" "dist\configurar_inicio_automatico.bat" > nul
 if exist "desactivar_inicio_automatico.bat" copy /Y "desactivar_inicio_automatico.bat" "dist\desactivar_inicio_automatico.bat" > nul

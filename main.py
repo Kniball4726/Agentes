@@ -32,6 +32,8 @@ try:
     import websockets  # noqa: F401
     import reportlab  # noqa: F401
     import reportlab.graphics.barcode.qr  # noqa: F401
+    import pystray  # noqa: F401
+    import PIL  # noqa: F401
 except ImportError:
     pass
 
@@ -86,6 +88,21 @@ def main():
         ) or ("--https" in sys.argv)
         ssl_cert = _obtener_parametro("--ssl-cert", os.environ.get("STOCKAGENT_SSL_CERT", ""))
         ssl_key = _obtener_parametro("--ssl-key", os.environ.get("STOCKAGENT_SSL_KEY", ""))
+        ocultar_consola = (
+            any(flag in sys.argv for flag in ("--hide-console", "--ocultar-consola", "--silent"))
+            or os.environ.get("STOCKAGENT_HIDE_CONSOLE", "0").strip().lower() in ("1", "true", "si", "yes")
+        )
+        abrir_navegador = (
+            "--no-browser" not in sys.argv
+            and "--sin-navegador" not in sys.argv
+            and "--silent" not in sys.argv
+            and os.environ.get("STOCKAGENT_NO_BROWSER", "0").strip().lower() not in ("1", "true", "si", "yes")
+        )
+        con_tray = (
+            "--no-tray" not in sys.argv
+            and "--sin-tray" not in sys.argv
+            and os.environ.get("STOCKAGENT_NO_TRAY", "0").strip().lower() not in ("1", "true", "si", "yes")
+        )
 
         iniciar(
             modo_web=modo_web,
@@ -94,6 +111,9 @@ def main():
             https=usar_https,
             ssl_certfile=ssl_cert or None,
             ssl_keyfile=ssl_key or None,
+            ocultar_consola=ocultar_consola,
+            abrir_navegador=abrir_navegador,
+            con_tray=con_tray,
         )
 
 

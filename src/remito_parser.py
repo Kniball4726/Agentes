@@ -30,6 +30,7 @@ class ResultadoRemito:
     verificacion_ok: bool
     items: List[ItemRemito] = field(default_factory=list)
     descripciones_sin_coincidencia: List[Tuple[str, str]] = field(default_factory=list)
+    discrepancia: bool = False
 
 
 def normalizar_codigo(codigo_raw: str) -> str:

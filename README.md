@@ -1,6 +1,6 @@
 # StockAgent · Manual de Operación y Guía de Arquitectura
 
-**StockAgent** es una plataforma integral para el control, auditoría y descuento de inventario en tiempo real a partir de comprobantes PDF (remitos mayoristas), planillas Excel (canjes) y documentos de Mercado Libre. Funciona tanto en modo escritorio nativo como en **Servidor Web Multi-Equipo (LAN)**, permitiendo que múltiples puestos de trabajo operen coordinadamente sobre el mismo stock sin inconsistencias.
+**StockAgent** es una plataforma integral para el control, auditoría y descuento de inventario en tiempo real a partir de comprobantes PDF (remitos mayoristas), planillas Excel (canjes) y documentos de Mercado Libre. Funciona tanto en modo escritorio nativo como en **Servidor Web Multi-Equipo (LAN)**, permitiendo que múltiples puestos de trabajo operen coordinadamente sobre el mismo stock sin inconsistencias y sin requerir transferencias manuales en carpetas compartidas.
 
 ---
 
@@ -12,8 +12,11 @@
    - [Rol Administrador](#rol-administrador)
    - [Rol Operador](#rol-operador)
    - [Rol Consulta](#rol-consulta)
-3. [Nuevo Módulo: Carga y Armado de Pedidos en Tiempo Real](#3-nuevo-módulo-carga-y-armado-de-pedidos-en-tiempo-real)
-4. [Control de Concurrencia y Pestañas en Navegador](#4-control-de-concurrencia-y-pestañas-en-navegador)
+3. [Módulo de Carga Directa y Panel de Control de la Jornada](#3-módulo-de-carga-directa-y-panel-de-control-de-la-jornada)
+   - [Métricas en Tiempo Real de la Jornada](#métricas-en-tiempo-real-de-la-jornada)
+   - [Formulario de Carga y Descuento Individual](#formulario-de-carga-y-descuento-individual)
+   - [Ciclo de Cierre de Jornada y Reseteo de Contadores](#ciclo-de-cierre-de-jornada-y-reseteo-de-contadores)
+4. [Control de Concurrencia y Navegación Web](#4-control-de-concurrencia-y-navegación-web)
 5. [Manual del Programador y Mantenimiento](#5-manual-del-programador-y-mantenimiento)
    - [Estructura del Proyecto](#estructura-del-proyecto)
    - [Esquema de Bases de Datos SQLite](#esquema-de-bases-de-datos-sqlite)
@@ -28,29 +31,41 @@
 
 StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
 
-* **Motor Web ASGI / Flet:** Servidor web FastAPI / Starlette en el puerto por defecto `8550`.
+* **Motor Web ASGI / Flet:** Servidor web FastAPI / Starlette en el puerto seguro por defecto `8550`.
 * **Identidad Visual Web (Favicon):** La aplicación incluye en `assets/` el isotipo y favicon oficial (`ultratech.png` y `ultratech.ico`), visible en la pestaña del navegador, pantalla de carga y accesos directos PWA.
-* **Bases de Datos SQLite (WAL Mode):** Persistencia transaccional concurrente para usuarios, clientes y pedidos en `data/`.
+* **Bases de Datos SQLite (WAL Mode):** Persistencia transaccional concurrente para usuarios, clientes, pedidos y auditoría en `data/`.
 * **Plantilla Excel Maestra:** Archivo `Descuentos/Productos.xlsx` sincronizado atómicamente con los registros SQLite.
 
-### Formas de Inicio
+### Formas de Inicio y Detención
 
-1. **Servidor Web Seguro en Red sobre HTTPS (Activo por defecto — Recomendado para depósito y administración):**
-   * Doble clic en `iniciar_servidor_web.bat` o:
+1. **Servidor Web Seguro en Red sobre HTTPS (Activo por defecto — Recomendado):**
+   * Doble clic en `iniciar_servidor_web.bat` o desde terminal:
      ```powershell
      python main.py --host 0.0.0.0 --port 8550
      ```
-   * En la PC principal se accede desde `https://127.0.0.1:8550`.
+   * En la PC principal se abre automáticamente **una única pestaña** en `https://127.0.0.1:8550`.
    * En las terminales secundarias de la red local se accede mediante la IP local cifrada (ej. `https://192.168.1.50:8550`).
    * Si en algún entorno aislado se requiere desactivar HTTPS y correr en HTTP plano:
      ```powershell
      python main.py --http --host 0.0.0.0 --port 8550
      ```
-2. **Modo Escritorio Monopuesto:**
+
+2. **Ejecución Silenciosa en Segundo Plano:**
+   * Doble clic en `iniciar_en_segundo_plano.vbs`: arranca el servidor sin abrir ventana de comandos ni consola en pantalla.
+
+3. **Inicio Automático con Windows:**
+   * `configurar_inicio_automatico.bat`: registra StockAgent para que el servidor inicie automáticamente en segundo plano cada vez que se enciende o reinicia la PC.
+   * `desactivar_inicio_automatico.bat`: remueve el inicio automático cuando ya no se requiera.
+
+4. **Detención Rápida del Servidor:**
+   * Doble clic en `detener_servidor.bat` para liberar el puerto 8550 y detener de inmediato cualquier instancia activa de StockAgent.
+
+5. **Modo Escritorio Monopuesto:**
    ```powershell
    python main.py --desktop
    ```
-3. **Modo Automático por Consola (Headless):**
+
+6. **Modo Automático por Consola (Headless):**
    ```powershell
    python main.py --auto
    ```
@@ -89,7 +104,7 @@ El usuario **Master** es la máxima autoridad del sistema. Está precargado por 
 
 ### Rol Administrador
 
-Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito. A continuación se detallan todas sus funcionalidades, explicando **qué hace** cada una y **cómo se hace** paso a paso:
+Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito:
 
 #### 1. Gestión de Usuarios Operativos
 * **Qué hace:** Permite crear, modificar contraseñas y activar o desactivar cuentas con roles `Operador` y `Consulta`. Protege la jerarquía del sistema ocultando la cuenta `Master`.
@@ -98,8 +113,8 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   2. Para crear una cuenta, completar el nombre de usuario, contraseña y seleccionar el rol (`Operador` o `Consulta`), luego presionar **"Crear Usuario"**.
   3. Para modificar o dar de baja, ubicar al usuario en la tabla y utilizar el botón de cambio de contraseña o el interruptor para activar/desactivar el acceso.
 
-#### 2. Panel de Métricas y Rendimiento (Dashboard en Tiempo Real)
-* **Qué hace:** Proporciona visibilidad ejecutiva y en tiempo real del depósito mediante tarjetas KPI (total pedidos, bultos procesados, promedio de bultos/pedido y cierres realizados), porcentajes de distribución de envíos por empresa de transporte, productividad por operario/armador y ranking Top 10 de productos con mayor salida.
+#### 2. Panel de Métricas y Rendimiento (Dashboard Ejecutivo)
+* **Qué hace:** Proporciona visibilidad ejecutiva del depósito mediante tarjetas KPI (total pedidos, bultos procesados, promedio de bultos/pedido y cierres realizados), porcentajes de distribución de envíos por empresa de transporte, productividad por operario/armador y ranking Top 10 de productos con mayor salida.
 * **Cómo se hace:**
   1. Hacer clic en la pestaña o botón **"Métricas y Rendimiento"** (Dashboard).
   2. Los indicadores se calculan automáticamente a partir de los datos consolidados en SQLite.
@@ -112,16 +127,20 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   2. Utilizar el cuadro de texto de búsqueda rápida para filtrar al instante por usuario, tipo de acción (`CREAR_PEDIDO`, `CIERRE_JORNADA`, `ANULACION_PEDIDO`, etc.) o palabra clave en el detalle.
   3. Los resultados se actualizan en tiempo real conforme se escribe.
 
-#### 4. Historial de Pedidos y Anulación de Pedidos
-* **Qué hace:** Permite buscar y supervisar el detalle de todos los pedidos cargados por los armadores (remito, cliente, transporte, bultos, estado). Faculta al Administrador para anular pedidos erróneos, advirtiendo de forma contextual si el pedido estaba pendiente o si ya formó parte de un cierre, y exigiendo un motivo que queda asentado en la auditoría.
+#### 4. Historial de Pedidos: Modificación, Desarmado con Restitución de Stock y Anulación
+* **Qué hace:** Permite buscar, supervisar y gestionar en detalle todos los pedidos cargados en el sistema (remito, N° de pedido, cliente, logística, bultos, armador y estado de despacho). Faculta a los usuarios para:
+  1. **Modificar Pedido:** Corregir o actualizar datos de cabecera de pedidos activos (cliente, N° de pedido, cantidad de bultos, logística y fecha de retiro programada) sin necesidad de recargar comprobantes. Si el nombre del cliente es nuevo, se incorpora automáticamente a la base de datos de clientes para futuras búsquedas.
+  2. **Desarmar Pedido y Restituir Stock:** En caso de cancelaciones o pedidos desarmados antes o después del despacho, esta opción anula el pedido y reincorpora automáticamente todas las unidades y códigos descontados sumándolos de vuelta al inventario físico tanto en SQLite (`productos.sqlite3`) como en la planilla maestra (`Productos.xlsx`).
+  3. **Anular Pedido:** Cancela el comprobante registrando el motivo en auditoría (sin mover stock físico si se requiere anulación administrativa pura).
 * **Cómo se hace:**
   1. Ingresar a la sección **"Historial de Pedidos"**.
-  2. Filtrar por cliente, número de remito/factura, fecha (`DD/MM/AAAA`), logística o armador mediante la barra de búsqueda.
-  3. Para anular un pedido, presionar el botón rojo **"Anular"** (icono de papelera) en la fila correspondiente.
-  4. Leer la advertencia modal, escribir obligatoriamente el **motivo de anulación** y presionar **"Confirmar Anulación"**.
+  2. Filtrar por cliente, número de remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador mediante la barra de búsqueda en tiempo real.
+  3. **Para Modificar un Pedido:** Presionar el botón azul **"Modificar pedido"** (icono de lápiz) en la fila correspondiente, editar los campos en la ventana emergente y presionar **"Guardar Cambios"**.
+  4. **Para Desarmar un Pedido:** Presionar el botón ámbar **"Desarmar pedido"** (icono de carrito retirado / reposición), verificar la lista detallada de artículos y cantidades que se devolverán al depósito, ingresar el motivo opcional y presionar **"Desarmar y Devolver Stock"**. El sistema actualizará el stock al instante.
+  5. **Para Anular un Pedido:** Presionar el botón rojo **"Anular"** (icono de cancelar), ingresar el motivo y confirmar.
 
 #### 5. Copias de Seguridad (Backup Manual)
-* **Qué hace:** Genera un respaldo íntegro comprimido `.zip` en la carpeta `data/backups/`, resguardando la base de datos SQLite (`pedidos_internos.db`), usuarios, notificaciones y el catálogo maestro `Productos.xlsx`. Mantiene automáticamente una rotación de las últimas 30 copias.
+* **Qué hace:** Genera un respaldo íntegro comprimido `.zip` en la carpeta `data/backups/`, resguardando las bases SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`), usuarios, notificaciones y el catálogo maestro `Productos.xlsx`. Mantiene automáticamente una rotación de las últimas 30 copias.
 * **Cómo se hace:**
   1. Presionar el botón **"Copia de Seguridad"** en la barra superior de herramientas (o escribir `/backup` en el Asistente Virtual).
   2. El sistema notificará la generación exitosa del respaldo indicando el nombre del archivo y la fecha/hora exacta.
@@ -142,10 +161,10 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   4. Revisar la previsualización del impacto y presionar **"Confirmar Entrada / Ajuste"**.
 
 #### 8. Descuento Mercado Libre Full y Mercado Libre (DOCX)
-* **Qué hace:** Procesa masivamente lotes de remitos o etiquetas de Mercado Libre (formato Full o documentos `.docx`), emparejando descripciones con los códigos del catálogo y descontando las unidades del stock general con validación antiduplicados (SHA-256).
+* **Qué hace:** Procesa comprobantes de Mercado Libre (formato Full o documentos `.docx`), emparejando descripciones con los códigos del catálogo y descontando las unidades del stock general con validación antiduplicados (SHA-256).
 * **Cómo se hace:**
   1. Ingresar a **"Descontar Mercado Libre Full"** o **"Descontar Mercado Libre (DOCX)"**.
-  2. Hacer clic en **"Seleccionar Archivo(s)"** y elegir los comprobantes a procesar.
+  2. Seleccionar el comprobante a procesar mediante el selector de archivos.
   3. Revisar el reporte previo en pantalla: el sistema marcará en verde las coincidencias exactas y alertará si hay artículos sin stock suficiente o descripciones no identificadas.
   4. Hacer clic en **"Confirmar Descuento"** para aplicar la rebaja en el catálogo y generar el comprobante PDF.
 
@@ -155,7 +174,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   1. Abrir la herramienta **"Comparativa de Stock Físico"**.
   2. Subir el archivo Excel con el conteo (`Código` y `Cantidad contada`) mediante el botón de carga.
   3. Presionar **"Comparar Inventario"**.
-  4. Inspeccionar la tabla comparativa con las diferencias cuantitativas y exportar el reporte a Excel o PDF para toma de decisiones.
+  4. Inspeccionar la tabla comparativa con las diferencias cuantitativas y exportar el reporte a Excel o PDF.
 
 #### 10. Generar Pedido a Fábrica (Excel de Reposición)
 * **Qué hace:** Analiza los artículos cuyo stock actual está por debajo del stock mínimo configurado y genera una planilla formal de pedido a proveedores calculando la cantidad sugerida para alcanzar el nivel óptimo.
@@ -166,14 +185,14 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   4. Presionar **"Generar Pedido a Fábrica"** para exportar la planilla Excel oficial de compra.
 
 #### 11. Estadísticas de Salida y Rotación
-* **Qué hace:** Procesa el histórico de movimientos para entregar curvas de rotación ABC, promedios de consumo diario/semanal y detección de artículos de baja demanda (huesos) o alta demanda.
+* **Qué hace:** Procesa el histórico de movimientos para entregar curvas de rotación ABC, promedios de consumo diario/semanal y detección de artículos de baja demanda o alta demanda.
 * **Cómo se hace:**
   1. Navegar a **"Estadísticas y Rotación"**.
   2. Definir el período de análisis (últimos 7 días, mes actual, rango personalizado).
   3. Presionar **"Calcular Estadísticas"** para visualizar los gráficos y tablas de rotación.
 
 #### 12. Restauración de Documentos (Rollback de Lotes)
-* **Qué hace:** Permite deshacer un lote de descuento completo o una carga masiva previa, recalculando el stock y regresando el catálogo `Productos.xlsx` al estado exacto anterior a dicha operación sin pérdida de datos.
+* **Qué hace:** Permite deshacer un lote de descuento completo o una carga previa, recalculando el stock y regresando el catálogo `Productos.xlsx` al estado exacto anterior a dicha operación sin pérdida de datos.
 * **Cómo se hace:**
   1. Ingresar a **"Restaurar Documentos"**.
   2. Identificar el lote en la lista histórica por número de operación, fecha y comprobante.
@@ -205,11 +224,11 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
      * O desde la pestaña del **Bot**, escribir directamente: `/msg @usuario tu mensaje aquí` o `/msg aviso para todos` y el asistente registrará y enviará el mensaje inmediatamente.
 
 #### 15. Supervisión y Reimpresión de Rótulos de Bulto con Código QR
-* **Qué hace:** Permite supervisar y reimprimir en cualquier momento las etiquetas normalizadas de despacho (10x15 cm) generadas para cada bulto de cualquier pedido del depósito (`Bulto 1 de N`), incluyendo su código QR para trazabilidad en expedición.
+* **Qué hace:** Permite supervisar y reimprimir en cualquier momento las etiquetas normalizadas de despacho en formato **A4 (6 etiquetas por hoja en cuadrícula 2x3)** generadas para cada bulto de cualquier pedido del depósito (`Bulto 1 de N`), con el **nombre del cliente destacado en gran tamaño** (igual de visible que el número de bulto), compactas, optimizadas para corte y con código QR para trazabilidad en expedición.
 * **Cómo se hace:**
   1. Ir a **"Historial de Pedidos"** y localizar el pedido deseado.
   2. Presionar el botón **"Imprimir Rótulos"** en la fila del pedido.
-  3. El sistema generará y abrirá inmediatamente el documento PDF con todas las etiquetas listas para ser enviadas a la impresora térmica o estándar.
+  3. El sistema generará y abrirá inmediatamente el documento PDF con todas las etiquetas (6 por hoja A4) listas para ser enviadas a la impresora térmica o estándar.
 
 ---
 
@@ -219,27 +238,31 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 
 * **Carga y Armado de Pedidos en Tiempo Real:**
   * Formulario rápido para procesar comprobantes individuales (PDF de remito o Excel de canje).
-  * Validación de unicidad de **Remito / Factura** y selector con alta rápida de cliente (`[+]`).
-  * Asignación de cantidad de bultos, logística estandarizada y fecha de retiro programada (con calendario).
+  * **Campo de Cliente con Buscador y Alta Automática:** Actúa como buscador interactivo en vivo al escribir un nombre; muestra sugerencias coincidentes y si el cliente no aparece, se da de alta automáticamente en el sistema sin interrumpir la carga.
+  * Selector de **Logística Estandarizada** (`Domicilio`, `Centro de distribución`, `Transporte`, `Comisionista`, `Mabel`, `Canje`).
+  * Asignación de cantidad de bultos y fecha de retiro programada (con calendario).
+  * **Descuento Ágil sin Generación de Documentos Individuales:** Cada descuento impacta en el stock y queda registrado en la jornada sin generar archivos PDF o Excel individuales en disco. El documento formal se genera únicamente en el Cierre como un consolidado general.
   * **Protección Antiduplicados (SHA-256):** Bloquea automáticamente la carga si el archivo binario ya fue procesado con anterioridad.
-* **Generación de Rótulos de Bulto con Código QR:**
-  * Botón directo en cada pedido para imprimir etiquetas de despacho en formato estándar (10x15 cm).
+* **Generación de Rótulos de Bulto Compactos (6 por Hoja A4):**
+  * Botón directo en cada pedido para imprimir etiquetas de despacho en formato estándar A4 (6 por página, disposición 2x3).
+  * **Nombre del Cliente Extra Grande y en Negrita:** Resaltado en tipografía grande (`13.5pt bold`) para máxima legibilidad en el depósito, concatenado automáticamente con el número de pedido (ej: `Gregory Rodriguez Nro 3`), con el mismo o mayor impacto visual que el recuadro de `BULTO X DE Y`.
   * Genera una etiqueta por cada bulto (`Bulto 1 de N`, `Bulto 2 de N`) con datos del remito, cliente, transporte, armador y código QR escaneable por celular o lector.
 * **Descuento Mercado Libre (DOCX):**
-  * Carga y descuento de remitos de Mercado Libre en formato `.docx`, con previsualización del impacto y protección contra archivos duplicados.
+  * Carga y descuento de remitos de Mercado Libre en formato `.docx`, con previsualización del impacto y protección contra archivos duplicados (sin generación de documentos individuales innecesarios).
 * **Historial de Pedidos:**
-  * Buscador en tiempo real por cliente, remito/factura, fecha (`DD/MM/AAAA`), logística o armador.
-  * Visualización de estados, bultos y acceso directo a reimprimir rótulos de bulto.
-* **Imprimir Descuento:**
-  * Acceso directo al último comprobante PDF generado y lista de pedidos descontados con botón de impresión individual y etiquetas.
+  * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
+  * **Modificación de Pedido:** Edición directa de cliente, N° de pedido, bultos, logística y fecha de entrega.
+  * **Desarmar Pedido:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock disponible.
+  * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
 * **Cierre de Jornada Consolidado:**
-  * Agrupa todos los pedidos armados pendientes.
+  * Agrupa y suma todos los pedidos y descuentos realizados durante el turno de trabajo.
   * Descuenta de forma atómica y definitiva las unidades en el archivo maestro `Productos.xlsx`.
-  * Genera el **Informe Oficial de Cierre (PDF y Excel)**.
+  * Genera el **Informe Oficial Consolidado de Cierre (PDF y Excel)** donde se suman todos los descuentos de la jornada (`Cierre_Descuento_*.pdf` y `Cierre_Descuento_*.xls`).
   * Genera la **Hoja de Ruta de Despacho por Transporte (PDF)** con casilleros de firma para los choferes y transportistas.
   * Dispara la **Copia de Seguridad Automática** en `data/backups/`.
   * Detecta y alerta sobre productos en **quiebre ($\le 0$)** o **stock crítico ($1$ a $5$ un.)**.
   * Prepara el borrador de correo electrónico automático para notificar a la administración.
+  * **Resetea los contadores del panel principal a 0** para dejar el sistema listo para el próximo turno.
 * **Asistente Virtual y Chat de Comunicación de Equipo:**
   * Botones rápidos y comandos contextuales: `/stock <código>`, `/pedidos`, `/cierre`, `/mercadolibre`, `/ayuda`.
   * Canal de comunicación interno directo con compañeros y administración (`/equipo` y `/msg @usuario`). Permite enviar avisos operativos (faltantes de bultos, mercadería recibida o prioridades de despacho) con avisos de mensajes no leídos.
@@ -258,9 +281,9 @@ Perfil restringido de solo lectura para auditoría externa, vendedores o supervi
 
 ---
 
-## 3. Nuevo Módulo: Carga y Armado de Pedidos en Tiempo Real
+## 3. Módulo de Carga Directa y Panel de Control de la Jornada
 
-Este módulo elimina la necesidad de transferir archivos manualmente entre carpetas compartidas de red, permitiendo que cualquier operario conectado al sistema web procese un comprobante de inmediato.
+El sistema funciona con un flujo de trabajo **100% interactivo y en tiempo real**: **no se utilizan cargas por lotes desde carpetas del disco**, sino que los operarios cargan y descuentan cada pedido directamente desde la interfaz web o de escritorio.
 
 ```mermaid
 sequenceDiagram
@@ -269,55 +292,84 @@ sequenceDiagram
     participant UI as Formulario Pedido
     participant DB as SQLite (pedidos.sqlite3)
     participant Core as Motor AgenteRemitosStock
-    participant XL as Productos.xlsx
+    participant Dash as Panel de Control
 
-    Op->>UI: Abre "Cargar / Armar Pedido"
-    Op->>UI: Ingresa Remito / Factura, Logística, Bultos y Fecha Retiro
-    alt Cliente Nuevo
-        Op->>UI: Clic en [+] -> Crea Cliente
-        UI->>DB: Guarda en tabla 'clientes'
-    else Cliente Existente
-        Op->>UI: Selecciona Cliente de la lista
-    end
-    Op->>UI: Adjunta Comprobante (PDF o Excel)
-    Op->>UI: Clic en "Confirmar y Descontar"
-    UI->>DB: Valida hash SHA-256 anti-duplicados y unicidad de remito
-    UI->>Core: Procesa comprobante y extrae artículos
-    UI->>DB: Registra Pedido, Ítems y Auditoría
-    UI-->>Op: Confirmación con resumen de unidades preparadas
-    Op->>UI: Genera e imprime Rótulos con QR por bulto
+    Op->>UI: Carga comprobante (Remito PDF, Canje Excel o Mercado Libre)
+    UI->>DB: Valida hash SHA-256 anti-duplicados y unicidad de comprobante
+    UI->>Core: Procesa documento y descuenta stock del artículo
+    UI->>DB: Registra pedido con estado 'descontado' (cierre_id = NULL)
+    UI->>Dash: Incrementa contadores de la jornada en vivo
+    Op->>UI: Imprime rótulos con QR por bulto
+    Note over Op,Dash: Durante el turno se procesan múltiples pedidos
+    Op->>UI: Clic en "Cierre de Jornada"
+    UI->>DB: Asigna cierre_id a todos los pedidos del turno
+    UI->>Core: Genera Informe Oficial y Hoja de Ruta de Despacho (PDF)
+    UI->>Dash: Resetea contadores del panel a 0 para el próximo turno
 ```
 
-### Campos del Formulario
+### Métricas en Tiempo Real de la Jornada
+
+En la parte superior del panel de control se encuentran las tarjetas de métricas en vivo:
+
+| Tarjeta | Descripción | Fuente de Datos |
+| :--- | :--- | :--- |
+| **Pedidos descontados** | Cantidad de remitos y facturas en formato PDF procesados en la jornada activa. | SQLite `pedidos` (`tipo_archivo = 'pdf'` y `cierre_id IS NULL`) |
+| **Canjes** | Cantidad de planillas de canje en formato Excel procesadas en la jornada activa. | SQLite `pedidos` (`tipo_archivo = 'excel'` y `cierre_id IS NULL`) |
+| **Mercado Libre** | Cantidad de pedidos de Mercado Libre (.docx) procesados en la jornada activa. | SQLite `pedidos` (`tipo_archivo = 'docx'` y `cierre_id IS NULL`) |
+| **Total jornada** | Total consolidado de pedidos procesados que aguardan el Cierre de Jornada. | Suma acumulada de pedidos pendientes de cierre |
+| **Informes** | Total de reportes oficiales disponibles para descarga o visualización. | Archivos generados en `Descuentos/` |
+| **Quiebres de stock** *(Admin)* | Artículos que han alcanzado stock cero o negativo, requiriendo reposición urgente. | Análisis de stock en `Productos.xlsx` |
+
+### Formulario de Carga y Descuento Individual
 
 1. **Remito / Factura:** Identificador único del comprobante. Si se intenta ingresar un remito ya registrado, el sistema lo rechaza para evitar duplicaciones.
-2. **Cliente (Selector + Alta Rápida `[+]`):**
-   * Desplegable con todos los clientes registrados.
-   * Si es un cliente nuevo, se pulsa el botón `+`, se escribe el nombre y se guarda en el acto, quedando seleccionado de inmediato.
-3. **Bultos:** Cantidad de bultos empaquetados (numérico, mínimo 1).
-4. **Logística (Selector Estandarizado Enum):**
+2. **Cliente (Buscador Dinámico + Alta Automática):**
+   * El campo actúa como un buscador interactivo en vivo a medida que se escribe el nombre del cliente, mostrando las opciones existentes para seleccionarlas con un solo clic.
+   * Si el cliente ingresado no aparece en la base de datos, el sistema muestra una opción directa para crearlo en el acto o **lo agrega automáticamente al confirmar el pedido**, eliminando fricciones operativas.
+   * También se mantiene el botón `+` para alta manual si se prefiere.
+3. **Número de Pedido (Opcional, Numérico):**
+   * Campo numérico ubicado debajo del cliente. Si se indica un número de pedido (ej: `3`), se concatena automáticamente con el cliente en los rótulos (ej: `Gregory Rodriguez Nro 3`).
+4. **Bultos:** Cantidad de bultos empaquetados (numérico, mínimo 1).
+5. **Logística (Selector Estandarizado Enum):**
    * `Domicilio`
    * `Centro de distribución`
    * `Transporte`
    * `Comisionista`
    * `Mabel`
-5. **Fecha de Retiro / Despacho (Opcional):** Permite programar la fecha de retiro mediante un calendario interactivo.
-6. **Armador:** Campo automático y bloqueado que toma el nombre de usuario de la sesión activa (ej. `Operario`, `Desarrollo`).
-7. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo no haya sido procesado previamente.
+   * `Canje`
+6. **Fecha de Retiro / Despacho (Opcional):** Permite programar la fecha de retiro mediante un calendario interactivo.
+7. **Armador:** Campo automático y bloqueado que toma el nombre de usuario de la sesión activa (ej. `Operario`, `Desarrollo`).
+8. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo binario no haya sido procesado previamente.
+9. **Sin Generación de Documento Individual:** Cada pedido descuenta su stock en la base transaccional sin generar archivos Excel o PDF individuales en disco, manteniendo el espacio de trabajo limpio.
 
-Al confirmar, el pedido se registra con sus ítems en la base de datos central, queda disponible en el **Historial de Pedidos**, permite imprimir sus **Rótulos con QR** por bulto y se acumula automáticamente para el impacto consolidado en `Productos.xlsx` al realizar el **Cierre de Jornada**.
+### Ciclo de Cierre de Jornada y Reseteo de Contadores
+
+Cuando finaliza el turno de despacho:
+1. El operador ingresa a **"Cierre de Jornada"**.
+2. El sistema presenta dos pestañas de trabajo:
+   * **Pendientes:** Muestra la lista de todos los pedidos acumulados en la jornada con el total de artículos y bultos pendientes de cierre.
+   * **Historial de Cierres:** Permite consultar todos los cierres previos con su ID, cantidad de pedidos, fecha y responsable, incluyendo accesos directos para reimprimir el PDF de descuentos, abrir o regenerar la Hoja de Ruta de Despacho y reenviar los comprobantes por correo electrónico.
+3. Al presionar **"Cerrar Jornada e Imprimir"**:
+   * Se consolidan y suman **todos los descuentos de todos los pedidos de la jornada**.
+   * Se genera el **Informe Oficial Consolidado de Cierre (PDF y Excel)**: `Cierre_Descuento_*.pdf` y `Cierre_Descuento_*.xls` con la suma detallada de productos y remitos de origen.
+   * Se sincronizan de forma definitiva las existencias en el catálogo maestro `Productos.xlsx`.
+   * Se asigna formalmente un número único de cierre (`cierre_id`) a todos los pedidos del turno en SQLite.
+   * Se genera la **Hoja de Ruta de Despacho por Transporte (PDF)** con casilleros de firma para transportistas y se persiste su vinculación en el cierre.
+   * Se dispara automáticamente una copia de seguridad en `data/backups/`.
+   * Toda la interacción con el usuario (notificaciones de pantalla, envío de correo y descarga/apertura de documentos en el navegador) opera de forma asíncrona segura (`page.run_task`).
+   * **Los contadores de la jornada en el panel vuelven a 0**, quedando limpios y listos para el siguiente turno.
 
 ---
 
-## 4. Control de Concurrencia y Pestañas en Navegador
+## 4. Control de Concurrencia y Navegación Web
 
-Para garantizar la integridad transaccional del inventario en entornos multi-usuario web:
+Para garantizar una experiencia ágil y sin inconsistencias en entornos multi-usuario:
 
+* **Apertura Limpia en Navegador:** Al ejecutar `iniciar_servidor_web.bat`, el sistema inicia el servidor HTTPS en el puerto 8550 y abre **una única pestaña limpia** en el navegador predeterminado.
 * **Libre navegación en múltiples pestañas:** Los usuarios pueden tener abiertas varias pestañas para consultar stock, revisar el catálogo o ver el historial de forma simultánea.
-* **Bloqueo atómico al procesar (Opción D):** Cuando una pestaña dispara un descuento o procesamiento, el sistema activa un bloqueo global (`PROCESAMIENTO_GLOBAL_ACTIVO`). Si otra pestaña o terminal intenta procesar en ese mismo instante, se le notifica amablemente:
+* **Bloqueo atómico al procesar:** Cuando una pestaña dispara un descuento o procesamiento, el sistema activa un bloqueo global transitorio (`PROCESAMIENTO_GLOBAL_ACTIVO`). Si otra pestaña o terminal intenta procesar en ese mismo instante, se le notifica amablemente:
   > *"Hay una operación de procesamiento de stock en curso desde otra sesión o pestaña. Por seguridad en los archivos, espera a que finalice."*
-  >
-* **Single Instance en Servidor:** Al iniciar el servidor web, si ya hay una instancia escuchando en el puerto, no abre pestañas duplicadas innecesarias.
+* **Single Instance en Servidor:** Al iniciar el servidor web, si ya hay una instancia escuchando en el puerto 8550, se conecta directamente a ella sin generar procesos duplicados.
 
 ---
 
@@ -338,7 +390,7 @@ StockAgent/
 │   ├── productos.sqlite3         # Catálogo sincronizado
 │   ├── pedidos_archivos/         # Backups de comprobantes procesados
 │   └── backups/                  # Copias de seguridad automáticas y manuales (.zip)
-├── Descuentos/                   # Plantillas y lotes tradicionales
+├── Descuentos/                   # Plantillas y reportes generados
 │   ├── Productos.xlsx            # Planilla maestra de inventario
 │   ├── Mayoristas/
 │   ├── Canjes/
@@ -354,7 +406,7 @@ StockAgent/
 │   ├── mercado_libre_parser.py   # Parser de pedidos DOCX
 │   ├── dispatch_manifest.py      # Generador de Hoja de Ruta por Transporte (PDF)
 │   ├── label_generator.py        # Generador de Rótulos de Bultos con QR (PDF)
-│   ├── backup_manager.py         # Motor de respaldos comprimidos, carpeta secundaria y restauración verificada
+│   ├── backup_manager.py         # Motor de respaldos comprimidos y restauración verificada
 │   ├── email_sender.py           # Envío directo SMTP con adjuntos y credenciales cifradas
 │   ├── secretos.py               # Cifrado local de credenciales (Windows DPAPI / Fernet)
 │   ├── alertas_programadas.py    # Planificador en segundo plano de alertas diarias por correo
@@ -362,7 +414,12 @@ StockAgent/
 │   ├── logger_config.py          # Configuración de logs rotativos en data/logs/stockagent.log
 │   └── internal_chat.py          # Bot y Asistente Virtual con chips por rol
 ├── crear_exe.bat                 # Script de compilación a .exe independiente
-├── iniciar_servidor_web.bat      # Lanzador del servidor web en LAN
+├── iniciar_servidor_web.bat      # Lanzador del servidor web HTTPS en LAN
+├── iniciar_en_segundo_plano.vbs  # Ejecución silenciosa sin ventana de consola
+├── detener_servidor.bat          # Detención rápida del servidor y liberación de puerto
+├── configurar_inicio_automatico.bat   # Alta de inicio automático con Windows
+├── desactivar_inicio_automatico.bat   # Baja de inicio automático con Windows
+├── instalar_certificado.bat      # Instalador con 1 clic del certificado SSL en Windows
 ├── configurar_firewall_red.bat   # Apertura de puerto 8550 en Firewall de Windows
 ├── main.py                       # Punto de entrada de la aplicación (--https, --port, --host, --desktop)
 ├── StockAgent.spec               # Especificación PyInstaller
@@ -409,7 +466,7 @@ CREATE TABLE pedidos (
     cliente TEXT NOT NULL,
     bultos INTEGER NOT NULL DEFAULT 1 CHECK (bultos >= 1),
     logistica TEXT NOT NULL CHECK (
-        logistica IN ('Domicilio', 'Centro de distribución', 'Transporte', 'Comisionista', 'Mabel')
+        logistica IN ('Domicilio', 'Centro de distribución', 'Transporte', 'Comisionista', 'Mabel', 'Canje')
     ),
     armador TEXT NOT NULL,
     tipo_archivo TEXT NOT NULL CHECK (tipo_archivo IN ('pdf', 'excel', 'docx')),
@@ -470,39 +527,6 @@ CREATE TABLE mensajes_chat (
 );
 ```
 
-### Características Operativas Avanzadas y Mejoras Integradas
-
-1. **Protección de Credenciales y Cambio Obligatorio de Clave Inicial (`src/secretos.py`, `src/user_store.py`):**
-   - La contraseña o token de aplicación SMTP en `data/email_config.json` se cifra automáticamente en reposo mediante **Windows DPAPI (`CryptProtectData`)** o clave simétrica Fernet local (prefijo `enc:`), y también soporta la variable de entorno `STOCKAGENT_SMTP_PASSWORD`.
-   - La cuenta `Desarrollo` (rol `master`) exige obligatoriamente cambiar la contraseña por defecto en su primer inicio de sesión (`must_change_password`), y todos los usuarios cuentan con el botón **"Cambiar mi contraseña"** en el encabezado.
-2. **Control de Acceso, Bloqueo por Intentos Fallidos e Inactividad:**
-   - Bloqueo temporal automático de cuenta por **15 minutos** tras **5 intentos fallidos consecutivos** de inicio de sesión (`login_attempts`).
-   - En **Gestionar usuarios**, los administradores pueden **Desbloquear cuentas** al instante y **Restablecer contraseñas** (con opción de exigir cambio en el próximo ingreso).
-   - Cierre automático de sesión tras **30 minutos de inactividad** (`LOGOUT_INACTIVIDAD`), registrando en auditoría todos los eventos `LOGIN_EXITOSO`, `LOGIN_FALLIDO`, `CUENTA_BLOQUEADA`, `LOGOUT`, `CAMBIO_CLAVE` y `RESET_CLAVE`.
-3. **Servidor Web Seguro sobre HTTPS Activo por Defecto (`src/ssl_manager.py`):**
-   - El servidor web inicia **por defecto en modo HTTPS** (`https://127.0.0.1:8550` y `https://<IP_LAN>:8550`). Si se desea forzar HTTP sin cifrado, puede usarse `--http` o `STOCKAGENT_HTTPS=0`.
-   - Si no se especifican certificados propios (`--ssl-cert` y `--ssl-key`), genera automáticamente en el primer arranque un certificado X.509 autofirmado (válido por 10 años con SAN para `localhost`, nombre de host, `127.0.0.1` y la IP LAN detectada) en `data/certs/stockagent.crt` y `data/certs/stockagent.key`.
-4. **Trazabilidad Completa de Movimientos de Stock en SQLite (`src/product_store.py`):**
-   - Cada variación de stock registra en `stock_movements` el código, producto, diferencia (`+` / `-`), tipo de movimiento, **usuario responsable** y **detalle/origen**.
-   - Desde **Gestionar productos**, el botón **"Historial movimientos"** (o el ícono de reloj en cada artículo) abre el visor interactivo de movimientos filtrable por producto y tipo.
-5. **Estados de Despacho (`armado` → `despachado` → `entregado`) con Escáner QR:**
-   - Cada pedido muestra su insignia de estado logístico (`📦 ARMADO`, `🚚 DESPACHADO`, `✔ ENTREGADO`) en el **Historial de Pedidos** y permite avanzar de estado con un clic.
-   - Incluye el modal **"Escanear QR / Cambiar Estado"**, donde al escanear con lector USB/cámara la etiqueta QR del bulto (`REMITO:...|CLIENTE:...`) o ingresar el número de remito, el pedido avanza automáticamente al siguiente estado y registra quién y cuándo lo despachó o entregó.
-6. **Chat de Equipo en Tiempo Real + Vínculos Automáticos a Pedidos (`#remito`):**
-   - Notificación instantánea emergente (*Toast / SnackBar*) en las sesiones activas de los destinatarios apenas se envía un mensaje en el **Chat Equipo**.
-   - Al escribir `#<numero_remito>` en cualquier mensaje (ej. `#0001-00012345`), el sistema busca el pedido en SQLite y adjunta automáticamente su tarjeta de resumen (cliente, bultos, logística y estado de despacho).
-7. **Alertas Automáticas Programadas por Correo (`src/alertas_programadas.py`):**
-   - Hilo planificador en segundo plano que envía diariamente a la hora configurada un reporte consolidado de **productos en quiebre / stock crítico** y el **resumen de pedidos y cierres del día**.
-   - Configurable desde **Configuración SMTP** (activar/desactivar, hora `HH:MM`, destinatarios y botón *"Enviar resumen de prueba ahora"*).
-8. **Copias de Seguridad Integrales y Restauración Verificada (`src/backup_manager.py`):**
-   - Respalda de forma transaccional las **3 bases SQLite** (`pedidos.sqlite3`, `productos.sqlite3`, `usuarios.sqlite3`), configuraciones y `Productos.xlsx`.
-   - Permite configurar una **carpeta secundaria/externa** (ej. unidad de red o disco externo) para duplicar cada backup automáticamente.
-   - Incluye **Restaurar Backup (`.ZIP`)** desde la interfaz, verificando previamente `PRAGMA integrity_check` en todas las bases SQLite antes de aplicar la restauración.
-9. **Dashboard Mejorado con Filtro por Fechas, Estados y Exportación a Excel:**
-   - Filtro por rango de fechas (`Desde` / `Hasta`), indicadores de pedidos `Armados`, `Despachados` y `Entregados`, gráfico de barras de evolución diaria de pedidos/bultos y botón **"Exportar Excel"** para descargar el reporte ejecutivo completo.
-10. **Logs Persistentes con Rotación Automática (`src/logger_config.py`):**
-    - Todos los eventos operativos, advertencias y errores se registran en `data/logs/stockagent.log` mediante `RotatingFileHandler` (hasta 2 MB por archivo y 5 copias históricas).
-
 ### Compilación del Ejecutable (`.exe`)
 
 Para empaquetar la aplicación en un `.exe` independiente para Windows:
@@ -520,20 +544,14 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
 
 ### Despliegue e Implementación en Red Local (Servidor LAN sobre HTTPS)
 
-#### Paso 1: Instalar o actualizar dependencias (si se ejecuta desde código fuente)
-```powershell
-.\ttech\Scripts\python.exe -m pip install -r requirements.txt
-```
-*(Si utilizas el ejecutable compilado `StockAgent.exe`, vuelve a ejecutar `.\crear_exe.bat` para empaquetar los nuevos módulos y el soporte criptográfico).*
-
-#### Paso 2: Habilitar el puerto en el Firewall de Windows (en la PC Servidor)
+#### Paso 1: Habilitar el puerto en el Firewall de Windows (en la PC Servidor)
 1. En la máquina principal (servidor), ejecuta por única vez como **Administrador**:
    ```powershell
    .\configurar_firewall_red.bat
    ```
    Esto habilita el tráfico entrante TCP en el puerto `8550`.
 
-#### Paso 3: Iniciar el Servidor HTTPS
+#### Paso 2: Iniciar el Servidor HTTPS
 1. Ejecuta `iniciar_servidor_web.bat` (o `python main.py`).
 2. Al iniciar por primera vez, el sistema creará automáticamente la carpeta `data/certs/` con:
    - `data/certs/stockagent.crt` (Certificado público X.509 autofirmado con las IPs de la PC)
@@ -542,7 +560,7 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
    - En la misma PC servidor: `https://127.0.0.1:8550`
    - Desde otras PCs, notebooks, tablets o celulares en la red WiFi/LAN: `https://192.168.X.X:8550`
 
-#### Paso 4: Primer ingreso desde los navegadores (Certificado Autofirmado)
+#### Paso 3: Primer ingreso desde los navegadores (Certificado Autofirmado)
 Dado que el certificado es generado localmente por la propia empresa (sin depender de un dominio público en internet), la primera vez que ingreses desde un navegador verás el aviso estándar *"La conexión no es privada"* (`NET::ERR_CERT_AUTHORITY_INVALID`):
 - **Acceso Rápido (Bypass temporal en Chrome / Edge / Brave / Opera):**
   1. Haz clic en **"Configuración avanzada"** (o *"Advanced"*).
@@ -550,7 +568,7 @@ Dado que el certificado es generado localmente por la propia empresa (sin depend
   3. El navegador recordará la excepción y toda la sesión viajará cifrada de forma segura con TLS/HTTPS.
 - **Solución Definitiva (Candado seguro sin advertencias):** Ver la sección siguiente [Instalación del Certificado SSL para Eliminar "No es Seguro"](#instalación-del-certificado-ssl-para-eliminar-no-es-seguro).
 
-#### Paso 5: Primer inicio de sesión y configuración de seguridad
+#### Paso 4: Primer inicio de sesión y configuración de seguridad
 1. Ingresa con el usuario Master precargado (`Desarrollo` / `master1713`).
 2. El sistema te solicitará por única vez **definir tu nueva contraseña segura** (mínimo 6 caracteres) debido a la política de cambio obligatorio de clave inicial.
 3. *(Opcional)* Desde **Compartir por correo → Configurar SMTP (⚙️)**, guarda la contraseña de aplicación SMTP (quedará cifrada en disco con prefijo `enc:`) y activa las **Alertas Automáticas Diarias**.
@@ -562,7 +580,16 @@ Dado que el certificado es generado localmente por la propia empresa (sin depend
 
 Para que Google Chrome, Microsoft Edge y Mozilla Firefox muestren el **candado de seguridad verde/activo** sin mostrar la pantalla de *"La conexión no es privada"*:
 
-#### En Windows (Google Chrome, Microsoft Edge, Brave)
+#### Opción 1: Instalación Automática con 1 Clic (Recomendado en Windows)
+1. En la máquina (servidor o cliente donde se acceda), haz clic derecho sobre el archivo:
+   ```text
+   instalar_certificado.bat
+   ```
+2. Selecciona **"Ejecutar como administrador"**.
+3. El script importará automáticamente `data\certs\stockagent.crt` al almacén de **Entidades de certificación raíz de confianza** de Windows mediante `certutil`.
+4. Reinicia tu navegador y navega a `https://127.0.0.1:8550` (o la IP local `https://192.168.X.X:8550`). El sitio cargará de inmediato con el **candado seguro**.
+
+#### Opción 2: Instalación Manual en Windows (Google Chrome, Microsoft Edge, Brave)
 1. Localiza el certificado público generado en la máquina servidor:
    ```text
    data\certs\stockagent.crt
@@ -580,7 +607,7 @@ Para que Google Chrome, Microsoft Edge y Mozilla Firefox muestren el **candado d
 5. Presiona **Finalizar**. Si Windows solicita confirmación de seguridad para confiar en la raíz, pulsa **"Sí"**.
 6. **Cierra todas las ventanas de Chrome / Edge** y vuelve a abrirlo navegando a `https://127.0.0.1:8550` (o la IP local `https://192.168.X.X:8550`). El sitio cargará de inmediato con el **candado seguro**.
 
-#### En Mozilla Firefox
+#### Opción 3: En Mozilla Firefox
 Firefox posee su propio almacén de certificados independiente del sistema operativo:
 1. En Firefox, ingresa a **Ajustes** (Configuración) → **Privacidad y seguridad**.
 2. Desplázate hacia abajo hasta la sección **Seguridad / Certificados** y haz clic en **"Ver certificados..."**.
@@ -594,11 +621,22 @@ Firefox posee su propio almacén de certificados independiente del sistema opera
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 98 pruebas unitarias automatizadas distribuidas en 13 módulos.
-* **Tasa de éxito:** 100% aprobadas (`Ran 98 tests in 16.89s - OK`).
+* **Total de pruebas:** 108 pruebas unitarias automatizadas distribuidas en 14 módulos.
+* **Tasa de éxito:** 100% aprobadas (`108 passed in 17.41s - OK`).
 
 #### Módulos de Prueba
-1. `tests/test_nuevas_funcionalidades.py`:
+1. `tests/test_flet_gui.py`:
+   - Conteo en tiempo real de pedidos descontados por tipo en el panel (PDF, Canjes, Mercado Libre, Total jornada).
+   - Reseteo automático a 0 al registrar el Cierre de Jornada.
+   - Permisos por rol, pantalla de login, paneles de administración, chat flotante y endpoints web.
+2. `tests/test_nuevas_modificaciones.py`:
+   - Opción `Canje` en logística disponible y persistente en SQLite.
+   - Descuentos ágiles sin documento individual (acumulados para el cierre).
+   - Rótulos y etiquetas compactas A4 para bultos con códigos de barra y QR.
+   - Búsqueda y alta automática de clientes al cargar pedidos.
+   - Desarmar pedidos y restitución automática de stock a inventario.
+   - Flujo de Cierre de Jornada, generación de Hoja de Ruta de Despacho en PDF y persistencia de su vinculación en `OrderStore` sin bloqueos transaccionales.
+3. `tests/test_nuevas_funcionalidades.py`:
    - Cifrado DPAPI / Fernet de credenciales sensibles.
    - Bloqueo preventivo tras 5 intentos fallidos y reseteo administrativo de clave.
    - Generación de certificados SSL autofirmados con SAN multipropósito.
@@ -608,15 +646,14 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
    - Respaldos `.zip` íntegros de las 3 bases SQLite, copia secundaria y restauración verificada con `PRAGMA integrity_check`.
    - Hilo planificador de alertas diarias por correo electrónico.
    - Detección de inactividad de sesión (30 min) y enriquecimiento de menciones `#remito` en chat.
-2. `tests/test_flet_gui.py`: Permisos por rol, pantalla de login, paneles de administración, chat flotante y endpoints web.
-3. `tests/test_internal_chat.py`: Reconocimiento semántico de intenciones del bot y chat entre operarios y administración.
-4. `tests/test_product_store.py`: Persistencia en SQLite, movimientos y cálculo de reposición.
-5. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
-6. `tests/test_user_store.py`: Jerarquía de usuarios, roles protegidos e inviolabilidad del Master.
-7. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
+4. `tests/test_internal_chat.py`: Reconocimiento semántico de intenciones del bot y chat entre operarios y administración.
+5. `tests/test_product_store.py`: Persistencia en SQLite, movimientos y cálculo de reposición.
+6. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
+7. `tests/test_user_store.py`: Jerarquía de usuarios, roles protegidos e inviolabilidad del Master.
+8. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
 
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:
 ```powershell
-.\ttech\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pytest -o pythonpath=.
 ```

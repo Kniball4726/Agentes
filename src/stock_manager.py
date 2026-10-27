@@ -612,7 +612,8 @@ class StockManager:
         pedidos_descontados = [
             documento
             for documento in (pedidos_procesados or [])
-            if any(
+            if not documento.items
+            or any(
                 normalizar_codigo(item.codigo) in codigos_descontados
                 for item in documento.items
             )
@@ -654,7 +655,7 @@ class StockManager:
             archivo_final = str(ruta_guardado)
             archivo_pdf = str(ruta_pdf)
         else:
-            archivo_final = f"[SIMULACIÓN - NO GUARDADO] {ruta_guardado.name}"
+            archivo_final = ""
             archivo_pdf = None
 
         return ReporteStock(

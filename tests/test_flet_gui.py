@@ -524,6 +524,40 @@ class FletGuiTests(unittest.TestCase):
             self.assertEqual(saved_calls[0]["file_name"], "full_envio.xlsx")
             self.assertEqual(saved_calls[0]["src_bytes"], b"DATA123")
 
+    def test_actualizar_estado_refleja_pedidos_descontados_de_la_jornada(self):
+        from src.orders_store import OrderStore
+
+        interfaz, _, _ = self.crear_interfaz()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test_pedidos.sqlite3"
+            store = OrderStore(db_path)
+            interfaz.order_store = store
+
+            # 1 PDF remito
+            store.registrar_pedido("R-001", "1", "Cliente A", 1, "Transporte", "Armador", "pdf", "r1.pdf", False, 5, items=[("C1", "P1", 5)])
+            # 1 Canje (excel)
+            store.registrar_pedido("C-001", "2", "Cliente B", 1, "Transporte", "Armador", "excel", "c1.xlsx", False, 3, items=[("C2", "P2", 3)])
+            # 1 Mercado Libre (docx)
+            store.registrar_pedido("ML-001", "3", "Cliente ML", 1, "Transporte", "Armador", "docx", "ml1.docx", False, 2, items=[("C3", "P3", 2)])
+
+            interfaz.actualizar_estado()
+            self.assertEqual(interfaz.contadores["pdf"].value, "1")
+            self.assertEqual(interfaz.contadores["canjes"].value, "1")
+            self.assertEqual(interfaz.contadores["ml"].value, "1")
+            self.assertEqual(interfaz.contadores["total"].value, "3")
+            self.assertIn("Jornada en curso: 3 pedido(s) descontado(s)", interfaz.pendientes_texto.value)
+
+            # Al hacer cierre de jornada, los pedidos quedan cerrados y los contadores se reinician a 0
+            peds = store.listar_pedidos_pendientes_cierre()
+            store.registrar_cierre("Operario", [p.id for p in peds], 10, "3 pedidos", "cierre.pdf", "cierre.xlsx")
+
+            interfaz.actualizar_estado()
+            self.assertEqual(interfaz.contadores["pdf"].value, "0")
+            self.assertEqual(interfaz.contadores["canjes"].value, "0")
+            self.assertEqual(interfaz.contadores["ml"].value, "0")
+            self.assertEqual(interfaz.contadores["total"].value, "0")
+            self.assertIn("Jornada en curso: 0 pedido(s) descontado(s)", interfaz.pendientes_texto.value)
+
 
 if __name__ == "__main__":
     unittest.main()

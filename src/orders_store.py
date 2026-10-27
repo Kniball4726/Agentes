@@ -1,5 +1,7 @@
 """Persistencia SQLite para clientes y pedidos en tiempo real."""
 
+from __future__ import annotations
+
 import hashlib
 import re
 import sqlite3
@@ -15,6 +17,7 @@ LOGISTICA_OPCIONES: tuple[str, ...] = (
     "Transporte",
     "Comisionista",
     "Mabel",
+    "Canje",
 )
 
 
@@ -164,7 +167,8 @@ class OrderStore:
                             'Centro de distribución',
                             'Transporte',
                             'Comisionista',
-                            'Mabel'
+                            'Mabel',
+                            'Canje'
                         )
                     ),
                     armador TEXT NOT NULL,
@@ -260,16 +264,16 @@ class OrderStore:
             if "archivo_hoja_ruta" not in columnas_cierres:
                 connection.execute("ALTER TABLE cierres_jornada ADD COLUMN archivo_hoja_ruta TEXT NOT NULL DEFAULT ''")
 
-            # Migración de check constraint de tipo_archivo para admitir 'docx'
+            # Migración de check constraints para admitir 'docx' y logística 'Canje'
             try:
-                connection.execute("SAVEPOINT test_docx")
+                connection.execute("SAVEPOINT test_check_constraints")
                 connection.execute(
                     "INSERT INTO pedidos (nota_pedido, cliente, logistica, armador, tipo_archivo, nombre_archivo) "
-                    "VALUES ('__test_ml__', '__test__', 'Transporte', 'Operario', 'docx', '__test__')"
+                    "VALUES ('__test_ml_canje__', '__test__', 'Canje', 'Operario', 'docx', '__test__')"
                 )
-                connection.execute("ROLLBACK TO test_docx")
+                connection.execute("ROLLBACK TO test_check_constraints")
             except sqlite3.IntegrityError:
-                connection.execute("ROLLBACK TO test_docx")
+                connection.execute("ROLLBACK TO test_check_constraints")
                 connection.execute("PRAGMA foreign_keys = OFF")
                 connection.execute("""
                     CREATE TABLE pedidos_temp (
@@ -284,7 +288,8 @@ class OrderStore:
                                 'Centro de distribución',
                                 'Transporte',
                                 'Comisionista',
-                                'Mabel'
+                                'Mabel',
+                                'Canje'
                             )
                         ),
                         armador TEXT NOT NULL,
@@ -300,10 +305,16 @@ class OrderStore:
                         cierre_id INTEGER DEFAULT NULL
                     )
                 """)
+                columnas_ped = [
+                    r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()
+                ]
+                temp_ped = [
+                    r["name"] for r in connection.execute("PRAGMA table_info(pedidos_temp)").fetchall()
+                ]
+                comunes = [c for c in columnas_ped if c in temp_ped]
+                comunes_str = ", ".join(comunes)
                 connection.execute(
-                    "INSERT INTO pedidos_temp SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, "
-                    "armador, tipo_archivo, nombre_archivo, agregado, articulos_descontados, resumen_items, "
-                    "created_at, estado, fecha_retiro, archivo_descuento, cierre_id FROM pedidos"
+                    f"INSERT INTO pedidos_temp ({comunes_str}) SELECT {comunes_str} FROM pedidos"
                 )
                 connection.execute("DROP TABLE pedidos")
                 connection.execute("ALTER TABLE pedidos_temp RENAME TO pedidos")
@@ -574,6 +585,25 @@ class OrderStore:
             ).fetchall()
         return [self._map_pedido(r) for r in rows]
 
+    def contar_pedidos_pendientes_cierre_por_tipo(self) -> dict[str, int]:
+        """Devuelve el conteo de pedidos descontados de la jornada actual agrupados por tipo."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT tipo_archivo, COUNT(*) as cantidad
+                FROM pedidos
+                WHERE cierre_id IS NULL AND estado = 'descontado'
+                GROUP BY tipo_archivo
+                """
+            ).fetchall()
+        conteo = {"pdf": 0, "excel": 0, "docx": 0, "total": 0}
+        for r in rows:
+            tipo = str(r["tipo_archivo"] or "").lower()
+            cant = int(r["cantidad"] or 0)
+            conteo[tipo] = conteo.get(tipo, 0) + cant
+            conteo["total"] += cant
+        return conteo
+
     def obtener_items_pendientes_cierre(self) -> list[tuple[str, str, int, list[str]]]:
         """Devuelve productos consolidados pendientes de cierre: (codigo, descripcion, total_cantidad, [notas_pedido])."""
         with self._connect() as connection:
@@ -634,12 +664,12 @@ class OrderStore:
                 f"UPDATE pedidos SET cierre_id = ? WHERE id IN ({placeholders})",
                 (cierre_id, *pedidos_ids),
             )
-            self.registrar_auditoria(
-                usuario=usuario,
-                accion="CIERRE_JORNADA",
-                detalle=f"Cierre #{cierre_id} registrado con éxito ({resumen_pedidos})",
-            )
-            return cierre_id
+        self.registrar_auditoria(
+            usuario=usuario,
+            accion="CIERRE_JORNADA",
+            detalle=f"Cierre #{cierre_id} registrado con éxito ({resumen_pedidos})",
+        )
+        return cierre_id
 
     def listar_cierres(self, limit: int = 50) -> list[CierreJornada]:
         with self._connect() as connection:
@@ -691,11 +721,11 @@ class OrderStore:
                 "UPDATE cierres_jornada SET archivo_hoja_ruta = ? WHERE id = ?",
                 (archivo_hoja_ruta, cierre_id),
             )
-            self.registrar_auditoria(
-                usuario="Sistema",
-                accion="HOJA_RUTA_GENERADA",
-                detalle=f"Hoja de ruta para cierre #{cierre_id}: {archivo_hoja_ruta}",
-            )
+        self.registrar_auditoria(
+            usuario="Sistema",
+            accion="HOJA_RUTA_GENERADA",
+            detalle=f"Hoja de ruta para cierre #{cierre_id}: {archivo_hoja_ruta}",
+        )
 
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
         with self._connect() as connection, connection:
@@ -711,6 +741,114 @@ class OrderStore:
             accion="ANULAR_PEDIDO",
             detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
         )
+
+    def obtener_items_pedido(self, pedido_id: int) -> list[tuple[str, str, int]]:
+        """Devuelve los ítems asociados a un pedido: [(codigo, descripcion, cantidad), ...]."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT codigo, descripcion, cantidad
+                FROM pedido_items
+                WHERE pedido_id = ?
+                ORDER BY id ASC
+                """,
+                (pedido_id,),
+            ).fetchall()
+        return [(r["codigo"], r["descripcion"], int(r["cantidad"])) for r in rows]
+
+    def actualizar_datos_pedido(
+        self,
+        pedido_id: int,
+        cliente: str | None = None,
+        numero_pedido: str | None = None,
+        bultos: int | None = None,
+        logistica: str | None = None,
+        fecha_retiro: str | None = None,
+        usuario: str = "Sistema",
+    ) -> Pedido:
+        """Actualiza la información de cabecera de un pedido y registra auditoría."""
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
+                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id,
+                       archivo_hash, {_COLUMNAS_DESPACHO}
+                FROM pedidos WHERE id = ?
+                """,
+                (pedido_id,),
+            ).fetchone()
+            if row is None:
+                raise OrderStoreError(f"No se encontró el pedido con ID {pedido_id}.")
+            pedido_actual = self._map_pedido(row)
+
+        cambios: list[str] = []
+        nuevo_cliente = pedido_actual.cliente if cliente is None else cliente.strip()
+        if nuevo_cliente != pedido_actual.cliente:
+            if not nuevo_cliente:
+                raise OrderStoreError("El nombre del cliente no puede estar vacío.")
+            cambios.append(f"Cliente: '{pedido_actual.cliente}' → '{nuevo_cliente}'")
+
+        nuevo_num_pedido = pedido_actual.numero_pedido if numero_pedido is None else numero_pedido.strip()
+        if nuevo_num_pedido != pedido_actual.numero_pedido:
+            cambios.append(f"N° Pedido: '{pedido_actual.numero_pedido}' → '{nuevo_num_pedido}'")
+
+        nuevo_bultos = pedido_actual.bultos if bultos is None else int(bultos)
+        if nuevo_bultos < 1:
+            raise OrderStoreError("La cantidad de bultos debe ser al menos 1.")
+        if nuevo_bultos != pedido_actual.bultos:
+            cambios.append(f"Bultos: {pedido_actual.bultos} → {nuevo_bultos}")
+
+        nueva_logistica = pedido_actual.logistica if logistica is None else logistica.strip()
+        if nueva_logistica not in LOGISTICA_OPCIONES:
+            raise OrderStoreError(
+                f"Logística inválida: '{nueva_logistica}'. Debe ser una de: {', '.join(LOGISTICA_OPCIONES)}"
+            )
+        if nueva_logistica != pedido_actual.logistica:
+            cambios.append(f"Logística: '{pedido_actual.logistica}' → '{nueva_logistica}'")
+
+        nueva_fecha_retiro = pedido_actual.fecha_retiro if fecha_retiro is None else fecha_retiro.strip()
+        if nueva_fecha_retiro != pedido_actual.fecha_retiro:
+            cambios.append(f"Fecha Retiro: '{pedido_actual.fecha_retiro}' → '{nueva_fecha_retiro}'")
+
+        if not cambios:
+            return pedido_actual
+
+        with self._connect() as connection, connection:
+            connection.execute(
+                """
+                UPDATE pedidos
+                SET cliente = ?, numero_pedido = ?, bultos = ?, logistica = ?, fecha_retiro = ?
+                WHERE id = ?
+                """,
+                (nuevo_cliente, nuevo_num_pedido, nuevo_bultos, nueva_logistica, nueva_fecha_retiro, pedido_id),
+            )
+
+        if nuevo_cliente:
+            try:
+                self.registrar_cliente(nuevo_cliente)
+            except Exception:
+                pass
+
+        detalle_cambios = f"Pedido #{pedido_actual.nota_pedido} modificado: " + "; ".join(cambios)
+        self.registrar_auditoria(
+            usuario=usuario,
+            accion="MODIFICAR_PEDIDO",
+            detalle=detalle_cambios,
+        )
+
+        with self._connect() as connection:
+            row_act = connection.execute(
+                f"""
+                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
+                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id,
+                       archivo_hash, {_COLUMNAS_DESPACHO}
+                FROM pedidos WHERE id = ?
+                """,
+                (pedido_id,),
+            ).fetchone()
+        return self._map_pedido(row_act)
 
     # ==========================
     # ESTADOS DE DESPACHO
