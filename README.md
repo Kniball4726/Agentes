@@ -7,7 +7,13 @@
 ## Índice
 
 1. [Arquitectura y Modos de Ejecución](#1-arquitectura-y-modos-de-ejecución)
+   - [Formas de Inicio y Detención](#formas-de-inicio-y-detención)
+   - [Icono en la Bandeja del Sistema (System Tray de Windows)](#icono-en-la-bandeja-del-sistema-system-tray-de-windows)
+   - [Parámetros de Línea de Comandos y Variables de Entorno](#parámetros-de-línea-de-comandos-y-variables-de-entorno)
+   - [Progressive Web App (PWA) e Identidad Visual](#progressive-web-app-pwa-e-identidad-visual)
 2. [Manual de Usuario por Roles](#2-manual-de-usuario-por-roles)
+   - [Gestión de Perfil de Usuario ("Mi Perfil")](#gestión-de-perfil-de-usuario-mi-perfil)
+   - [Autenticación, Seguridad y Bloqueo de Cuentas](#autenticación-seguridad-y-bloqueo-de-cuentas)
    - [Rol Master (`Desarrollo`)](#rol-master-desarrollo)
    - [Rol Administrador](#rol-administrador)
    - [Rol Operador](#rol-operador)
@@ -32,9 +38,10 @@
 StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
 
 * **Motor Web ASGI / Flet:** Servidor web FastAPI / Starlette en el puerto seguro por defecto `8550`.
-* **Identidad Visual Web (Favicon):** La aplicación incluye en `assets/` el isotipo y favicon oficial (`ultratech.png` y `ultratech.ico`), visible en la pestaña del navegador, pantalla de carga y accesos directos PWA.
+* **Identidad Visual Web (Favicon y PWA):** La aplicación incluye en `assets/` el isotipo y favicon oficial (`ultratech.png` y `ultratech.ico`), visible en la pestaña del navegador, pantalla de carga y accesos directos instalables PWA.
 * **Bases de Datos SQLite (WAL Mode):** Persistencia transaccional concurrente para usuarios, clientes, pedidos y auditoría en `data/`.
 * **Plantilla Excel Maestra:** Archivo `Descuentos/Productos.xlsx` sincronizado atómicamente con los registros SQLite.
+* **Bandeja del Sistema (System Tray):** Proceso en segundo plano acoplado al área de notificaciones de Windows para control rápido del servidor.
 
 ### Formas de Inicio y Detención
 
@@ -43,7 +50,7 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
      ```powershell
      python main.py --host 0.0.0.0 --port 8550
      ```
-   * En la PC principal se abre automáticamente **una única pestaña** en `https://127.0.0.1:8550`.
+   * En la PC principal se abre automáticamente **una única pestaña limpia** en `https://127.0.0.1:8550`.
    * En las terminales secundarias de la red local se accede mediante la IP local cifrada (ej. `https://192.168.1.50:8550`).
    * Si en algún entorno aislado se requiere desactivar HTTPS y correr en HTTP plano:
      ```powershell
@@ -51,7 +58,7 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
      ```
 
 2. **Ejecución Silenciosa en Segundo Plano:**
-   * Doble clic en `iniciar_en_segundo_plano.vbs`: arranca el servidor sin abrir ventana de comandos ni consola en pantalla.
+   * Doble clic en `iniciar_en_segundo_plano.vbs`: arranca el servidor sin abrir ventana de comandos ni consola en pantalla. El control queda disponible en el icono del System Tray.
 
 3. **Inicio Automático con Windows:**
    * `configurar_inicio_automatico.bat`: registra StockAgent para que el servidor inicie automáticamente en segundo plano cada vez que se enciende o reinicia la PC.
@@ -59,6 +66,7 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
 
 4. **Detención Rápida del Servidor:**
    * Doble clic en `detener_servidor.bat` para liberar el puerto 8550 y detener de inmediato cualquier instancia activa de StockAgent.
+   * O bien, clic derecho en el icono de la bandeja del sistema $\to$ **"Cerrar y detener servidor"**.
 
 5. **Modo Escritorio Monopuesto:**
    ```powershell
@@ -69,6 +77,60 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
    ```powershell
    python main.py --auto
    ```
+
+7. **Modo Simulación (Dry-Run):**
+   ```powershell
+   python main.py --dry-run
+   ```
+
+---
+
+### Icono en la Bandeja del Sistema (System Tray de Windows)
+
+Al arrancar el servidor web, StockAgent incorpora un controlador de bandeja del sistema (`src/tray_icon.py`) ejecutado mediante un hilo desacoplado con la biblioteca `pystray`:
+
+* **Indicador Visual de Estado en Tiempo Real:**
+  * 🟢 **Verde (Online):** Servidor activo y respondiendo peticiones.
+  * 🟡 **Amarillo (Iniciando):** Inicializando dependencias, certificados o bases de datos.
+  * 🔴 **Rojo (Error / Detenido):** Servidor sin conectividad o detenido.
+* **Menú Contextual (Clic Derecho en el Icono):**
+  * **🌐 Abrir StockAgent (Web):** Abre o enfoca la interfaz web en el navegador predeterminado (`https://127.0.0.1:8550`).
+  * **📋 Copiar enlace de red (LAN):** Copia al portapapeles la dirección IP local lista para compartir con las demás terminales del depósito (`https://192.168.X.X:8550`).
+  * **📁 Abrir carpeta del programa:** Abre el explorador de Windows en el directorio raíz de la aplicación.
+  * **📄 Ver registro de eventos (Logs):** Abre de forma directa el archivo `data/logs/stockagent.log`.
+  * **🛑 Cerrar y detener servidor:** Envía una notificación emergente de Windows, detiene el loop web y finaliza limpiamente el proceso liberando el puerto.
+* **Notificaciones Nativas:** Emite notificaciones emergentes (Globos/Toasts de Windows) al iniciar el servidor, al copiar enlaces al portapapeles o al cerrar la aplicación.
+
+---
+
+### Parámetros de Línea de Comandos y Variables de Entorno
+
+StockAgent permite parametrizar su ejecución tanto por flags de consola como mediante variables de entorno del sistema:
+
+| Parámetro CLI | Variable de Entorno | Valor por Defecto | Descripción |
+| :--- | :--- | :--- | :--- |
+| `--host <IP>` | `STOCKAGENT_HOST` | `0.0.0.0` | Dirección IP de escucha del servidor web. |
+| `--port <N>` | `STOCKAGENT_PORT` | `8550` | Puerto TCP de servicio. |
+| `--https` | `STOCKAGENT_HTTPS=1` | Activo | Fuerza el protocolo seguro HTTPS/TLS. |
+| `--http` | `STOCKAGENT_HTTPS=0` | Desactivado | Desactiva HTTPS y ejecuta en HTTP plano. |
+| `--ssl-cert <RUTA>` | `STOCKAGENT_SSL_CERT` | Autogenerado | Ruta personalizada al certificado X.509 (`.crt` / `.pem`). |
+| `--ssl-key <RUTA>` | `STOCKAGENT_SSL_KEY` | Autogenerado | Ruta personalizada a la clave privada (`.key` / `.pem`). |
+| `--desktop` | — | Desactivado | Inicia en ventana nativa de escritorio (Flet App). |
+| `--hide-console` | `STOCKAGENT_HIDE_CONSOLE=1` | Desactivado | Oculta la consola de Windows al arrancar. |
+| `--no-browser` | `STOCKAGENT_NO_BROWSER=1` | Desactivado | Evita abrir automáticamente el navegador al iniciar. |
+| `--no-tray` | `STOCKAGENT_NO_TRAY=1` | Desactivado | Desactiva el icono en la bandeja del sistema. |
+| `--auto` / `--all` | — | Desactivado | Ejecuta el procesamiento de lotes por consola sin interfaz. |
+| `--dry-run` | — | Desactivado | Simula el procesamiento sin modificar archivos ni bases de datos. |
+
+---
+
+### Progressive Web App (PWA) e Identidad Visual
+
+StockAgent está preparado para operar como una **Progressive Web App (PWA)** completa:
+* **Instalación con 1 Clic:** Desde Google Chrome, Microsoft Edge o navegadores móviles, se puede presionar el botón "Instalar aplicación" en la barra de direcciones para tener StockAgent como programa de escritorio independiente con su propia ventana.
+* **Manifiesto Web (`assets/manifest.json`):** Configurado con el tema corporativo Ultratech (`#D32F2F`), modo de visualización `standalone` y orientación horizontal/vertical adaptativa.
+* **Iconografía Multi-Resolución:** Iconos oficiales en 192x192, 512x512 y versiones maskable para Android y Windows en `assets/icons/`.
+* **Pantalla de Carga Personalizada (`assets/index.html`):** Animación de carga con isotipo oficial y pre-conexión de tipografías para eliminar destellos en pantalla.
 
 ---
 
@@ -85,6 +147,42 @@ flowchart TD
     A -->|Crea / Gestiona| C
     A -.->|Bloqueado| M
 ```
+
+---
+
+### Gestión de Perfil de Usuario ("Mi Perfil")
+
+Todos los usuarios autenticados, sin distinción de su rol, tienen acceso a su ventana de perfil personal:
+
+* **Cómo acceder:** Hacer clic en el avatar / chip con el nombre de usuario ubicado en la barra superior derecha y seleccionar **"Mi Perfil"**.
+* **Campos configurables:**
+  * **Nombre y Apellido (Identificador en Documentos):** Define el nombre real de la persona (ej. `Juan Carlos Pérez`). Este nombre sustituye al usuario técnico en todos los documentos operativos emitidos por el sistema (remitos descontados, rótulos de despacho con QR, hojas de ruta de transporte y registros de auditoría). Si no se completa, el sistema recurre al nombre de usuario (`username`) como valor por defecto.
+  * **Correo Electrónico:** Dirección de correo institucional o personal (ej. `usuario@ultratech.com`), validada contra formato estándar RFC y verificada para garantizar su unicidad en la base de datos.
+* **Guardado Inmediato:** Al confirmar, la sesión actual se refresca de inmediato reflejando los nuevos datos tanto en el panel de control como en las operaciones en curso.
+
+---
+
+### Autenticación, Seguridad y Bloqueo de Cuentas
+
+StockAgent incorpora estrictas medidas de seguridad para proteger la integridad de los datos de inventario:
+
+1. **Inicio de Sesión Flexible:**
+   * Los usuarios pueden iniciar sesión ingresando indistintamente su **nombre de usuario** (ej. `Desarrollo`, `operario1`) o su **dirección de correo electrónico** (ej. `admin@ultratech.com`), con comparación insensible a mayúsculas y minúsculas (`COLLATE NOCASE`).
+
+2. **Protección contra Fuerza Bruta y Bloqueo Preventivo:**
+   * El sistema tolera hasta **5 intentos fallidos consecutivos** dentro de una ventana de **15 minutos**.
+   * Al fallar cada intento, el sistema informa con precisión la cantidad de intentos restantes:
+     > *"Usuario o contraseña incorrectos (3 intento(s) restante(s))."*
+   * Al quinto intento fallido, la cuenta se bloquea automáticamente por **15 minutos**:
+     > *"Cuenta bloqueada temporalmente por seguridad. Intentá de nuevo en 15 min."*
+   * El mensaje indica en tiempo real los minutos restantes de espera antes de habilitar nuevos intentos.
+
+3. **Política de Cambio Obligatorio de Contraseña:**
+   * Los usuarios iniciales con contraseña por defecto (`master1713`) o aquellos cuya clave haya sido restablecida por un administrador están obligados a definir una nueva clave segura (mínimo 10 caracteres) antes de acceder a las funciones del sistema.
+   * La nueva contraseña no puede coincidir con la clave por defecto del sistema.
+
+4. **Desbloqueo Administrativo Inmediato:**
+   * Tanto el usuario Master como los Administradores pueden desbloquear manualmente cualquier cuenta bloqueada desde la tabla de **Gestión de Usuarios**, limpiando los contadores e historial de fallos sin necesidad de esperar el transcurso de los 15 minutos.
 
 ---
 
@@ -107,17 +205,17 @@ El usuario **Master** es la máxima autoridad del sistema. Está precargado por 
 Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito:
 
 #### 1. Gestión de Usuarios Operativos
-* **Qué hace:** Permite crear, modificar contraseñas y activar o desactivar cuentas con roles `Operador` y `Consulta`. Protege la jerarquía del sistema ocultando la cuenta `Master`.
+* **Qué hace:** Permite crear, modificar datos de perfil (nombre y email), restablecer contraseñas, desbloquear cuentas y activar o desactivar accesos para roles `Operador` y `Consulta`. Protege la jerarquía del sistema ocultando la cuenta `Master`.
 * **Cómo se hace:** 
   1. En la barra superior, hacer clic en el botón de **Gestión de Usuarios** (icono de usuarios).
-  2. Para crear una cuenta, completar el nombre de usuario, contraseña y seleccionar el rol (`Operador` o `Consulta`), luego presionar **"Crear Usuario"**.
-  3. Para modificar o dar de baja, ubicar al usuario en la tabla y utilizar el botón de cambio de contraseña o el interruptor para activar/desactivar el acceso.
+  2. Para crear una cuenta, completar el nombre de usuario, nombre completo, correo electrónico, contraseña y seleccionar el rol (`Operador` o `Consulta`), luego presionar **"Crear Usuario"**.
+  3. Para modificar o dar de baja, ubicar al usuario en la tabla y utilizar los botones de edición de datos, cambio de contraseña, desbloqueo de cuenta o el interruptor para activar/desactivar el acceso.
 
 #### 2. Panel de Métricas y Rendimiento (Dashboard Ejecutivo)
-* **Qué hace:** Proporciona visibilidad ejecutiva del depósito mediante tarjetas KPI (total pedidos, bultos procesados, promedio de bultos/pedido y cierres realizados), porcentajes de distribución de envíos por empresa de transporte, productividad por operario/armador y ranking Top 10 de productos con mayor salida.
+* **Qué hace:** Proporciona visibilidad ejecutiva del depósito mediante tarjetas KPI (total pedidos, bultos procesados, promedio de bultos/pedido y cierres realizados), porcentajes de distribución de envíos por empresa de transporte, productividad por operario/armador y ranking Top 10 de productos con mayor salida. Incluye selector de rango de fechas (`Desde` y `Hasta`).
 * **Cómo se hace:**
   1. Hacer clic en la pestaña o botón **"Métricas y Rendimiento"** (Dashboard).
-  2. Los indicadores se calculan automáticamente a partir de los datos consolidados en SQLite.
+  2. Los indicadores se calculan automáticamente a partir de los datos consolidados en SQLite en horario local.
   3. Presionar **"Actualizar"** para refrescar los datos en cualquier momento de la jornada.
 
 #### 3. Registro de Auditoría y Trazabilidad
@@ -224,7 +322,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
      * O desde la pestaña del **Bot**, escribir directamente: `/msg @usuario tu mensaje aquí` o `/msg aviso para todos` y el asistente registrará y enviará el mensaje inmediatamente.
 
 #### 15. Supervisión y Reimpresión de Rótulos de Bulto con Código QR
-* **Qué hace:** Permite supervisar y reimprimir en cualquier momento las etiquetas normalizadas de despacho en formato **A4 (6 etiquetas por hoja en cuadrícula 2x3)** generadas para cada bulto de cualquier pedido del depósito (`Bulto 1 de N`), con el **nombre del cliente destacado en gran tamaño** (igual de visible que el número de bulto), compactas, optimizadas para corte y con código QR para trazabilidad en expedición.
+* **Qué hace:** Permite supervisar y reimprimir en cualquier momento las etiquetas normalizadas de despacho en formato **A4 (6 etiquetas por hoja en cuadrícula 2x3)** generadas para cada bulto de cualquier pedido del depósito (`Bulto 1 de N`), con el **nombre del cliente destacado en gran tamaño** (igual de visible que el número de bulto), identificación del armador mediante su nombre real, compactas, optimizadas para corte y con código QR para trazabilidad en expedición.
 * **Cómo se hace:**
   1. Ir a **"Historial de Pedidos"** y localizar el pedido deseado.
   2. Presionar el botón **"Imprimir Rótulos"** en la fila del pedido.
@@ -246,7 +344,7 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 * **Generación de Rótulos de Bulto Compactos (6 por Hoja A4):**
   * Botón directo en cada pedido para imprimir etiquetas de despacho en formato estándar A4 (6 por página, disposición 2x3).
   * **Nombre del Cliente Extra Grande y en Negrita:** Resaltado en tipografía grande (`13.5pt bold`) para máxima legibilidad en el depósito, concatenado automáticamente con el número de pedido (ej: `Gregory Rodriguez Nro 3`), con el mismo o mayor impacto visual que el recuadro de `BULTO X DE Y`.
-  * Genera una etiqueta por cada bulto (`Bulto 1 de N`, `Bulto 2 de N`) con datos del remito, cliente, transporte, armador y código QR escaneable por celular o lector.
+  * Genera una etiqueta por cada bulto (`Bulto 1 de N`, `Bulto 2 de N`) con datos del remito, cliente, transporte, nombre identificador del armador y código QR escaneable por celular o lector.
 * **Descuento Mercado Libre (DOCX):**
   * Carga y descuento de remitos de Mercado Libre en formato `.docx`, con previsualización del impacto y protección contra archivos duplicados (sin generación de documentos individuales innecesarios).
 * **Historial de Pedidos:**
@@ -338,7 +436,7 @@ En la parte superior del panel de control se encuentran las tarjetas de métrica
    * `Mabel`
    * `Canje`
 6. **Fecha de Retiro / Despacho (Opcional):** Permite programar la fecha de retiro mediante un calendario interactivo.
-7. **Armador:** Campo automático y bloqueado que toma el nombre de usuario de la sesión activa (ej. `Operario`, `Desarrollo`).
+7. **Armador:** Campo automático y bloqueado que toma el nombre o identificador de la sesión activa (ej. `Juan Pérez`, `Desarrollo`).
 8. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo binario no haya sido procesado previamente.
 9. **Sin Generación de Documento Individual:** Cada pedido descuenta su stock en la base transaccional sin generar archivos Excel o PDF individuales en disco, manteniendo el espacio de trabajo limpio.
 
@@ -379,51 +477,59 @@ Para garantizar una experiencia ágil y sin inconsistencias en entornos multi-us
 
 ```text
 StockAgent/
-├── assets/                       # Assets web (Favicons, logos, manifest PWA)
+├── assets/                            # Assets web (Favicons, logos, manifest PWA)
 │   ├── favicon.ico
 │   ├── favicon.png
-│   ├── manifest.json
-│   └── icons/                    # Iconos en múltiples resoluciones y loading
-├── data/                         # Bases de datos SQLite y comprobantes
-│   ├── usuarios.sqlite3          # Cuentas, roles y contraseñas
-│   ├── pedidos.sqlite3           # Clientes, pedidos y auditoría en tiempo real
-│   ├── productos.sqlite3         # Catálogo sincronizado
-│   ├── pedidos_archivos/         # Backups de comprobantes procesados
-│   └── backups/                  # Copias de seguridad automáticas y manuales (.zip)
-├── Descuentos/                   # Plantillas y reportes generados
-│   ├── Productos.xlsx            # Planilla maestra de inventario
+│   ├── manifest.json                  # Manifiesto PWA para instalación de escritorio
+│   ├── index.html                     # Splash screen y carga optimizada
+│   └── icons/                         # Iconos en múltiples resoluciones y loading
+├── data/                              # Bases de datos SQLite y comprobantes
+│   ├── usuarios.sqlite3               # Cuentas, perfiles, roles y contraseñas
+│   ├── pedidos.sqlite3                # Clientes, pedidos y auditoría en tiempo real
+│   ├── productos.sqlite3              # Catálogo sincronizado
+│   ├── certs/                         # Certificados SSL X.509 generados (HTTPS)
+│   │   ├── stockagent.crt
+│   │   └── stockagent.key
+│   ├── logs/                          # Registros rotativos de eventos
+│   │   └── stockagent.log
+│   ├── pedidos_archivos/              # Backups de comprobantes procesados
+│   └── backups/                       # Copias de seguridad automáticas y manuales (.zip)
+├── Descuentos/                        # Plantillas y reportes generados
+│   ├── Productos.xlsx                 # Planilla maestra de inventario
 │   ├── Mayoristas/
 │   ├── Canjes/
 │   └── MercadoLibre/
-├── src/                          # Código fuente modular
-│   ├── agent.py                  # Orquestador del Agente de Stock
-│   ├── flet_gui.py               # Interfaz gráfica Flet y endpoints web
-│   ├── orders_store.py           # DAO SQLite para pedidos, clientes y auditoría
-│   ├── user_store.py             # DAO SQLite para usuarios y seguridad
-│   ├── stock_manager.py          # Gestor de stock y manipulación Excel
-│   ├── remito_parser.py          # Parser de remitos PDF
-│   ├── canjes_parser.py          # Parser de canjes Excel
-│   ├── mercado_libre_parser.py   # Parser de pedidos DOCX
-│   ├── dispatch_manifest.py      # Generador de Hoja de Ruta por Transporte (PDF)
-│   ├── label_generator.py        # Generador de Rótulos de Bultos con QR (PDF)
-│   ├── backup_manager.py         # Motor de respaldos comprimidos y restauración verificada
-│   ├── email_sender.py           # Envío directo SMTP con adjuntos y credenciales cifradas
-│   ├── secretos.py               # Cifrado local de credenciales (Windows DPAPI / Fernet)
-│   ├── alertas_programadas.py    # Planificador en segundo plano de alertas diarias por correo
-│   ├── ssl_manager.py            # Generador automático de certificados X.509 autofirmados para HTTPS
-│   ├── logger_config.py          # Configuración de logs rotativos en data/logs/stockagent.log
-│   └── internal_chat.py          # Bot y Asistente Virtual con chips por rol
-├── crear_exe.bat                 # Script de compilación a .exe independiente
-├── iniciar_servidor_web.bat      # Lanzador del servidor web HTTPS en LAN
-├── iniciar_en_segundo_plano.vbs  # Ejecución silenciosa sin ventana de consola
-├── detener_servidor.bat          # Detención rápida del servidor y liberación de puerto
+├── src/                               # Código fuente modular
+│   ├── agent.py                       # Orquestador del Agente de Stock
+│   ├── flet_gui.py                    # Interfaz gráfica Flet, PWA y endpoints web
+│   ├── tray_icon.py                   # Controlador del icono en bandeja de Windows (pystray)
+│   ├── orders_store.py                # DAO SQLite para pedidos, clientes y auditoría
+│   ├── user_store.py                  # DAO SQLite para usuarios, perfiles y seguridad
+│   ├── stock_manager.py               # Gestor de stock y manipulación Excel
+│   ├── remito_parser.py               # Parser de remitos PDF
+│   ├── canjes_parser.py               # Parser de canjes Excel
+│   ├── mercado_libre_parser.py        # Parser de pedidos DOCX
+│   ├── dispatch_manifest.py           # Generador de Hoja de Ruta por Transporte (PDF)
+│   ├── label_generator.py             # Generador de Rótulos de Bultos con QR (PDF)
+│   ├── backup_manager.py              # Motor de respaldos comprimidos y restauración verificada
+│   ├── email_sender.py                # Envío directo SMTP con adjuntos y credenciales cifradas
+│   ├── secretos.py                    # Cifrado local de credenciales (Windows DPAPI / Fernet)
+│   ├── alertas_programadas.py         # Planificador en segundo plano de alertas diarias por correo
+│   ├── ssl_manager.py                 # Generador automático de certificados X.509 autofirmados para HTTPS
+│   ├── logger_config.py               # Configuración de logs rotativos en data/logs/stockagent.log
+│   └── internal_chat.py               # Bot y Asistente Virtual con chips por rol
+├── crear_exe.bat                      # Script de compilación a .exe independiente
+├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
+├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
+├── detener_servidor.bat               # Detención rápida del servidor y liberación de puerto
 ├── configurar_inicio_automatico.bat   # Alta de inicio automático con Windows
 ├── desactivar_inicio_automatico.bat   # Baja de inicio automático con Windows
-├── instalar_certificado.bat      # Instalador con 1 clic del certificado SSL en Windows
-├── configurar_firewall_red.bat   # Apertura de puerto 8550 en Firewall de Windows
-├── main.py                       # Punto de entrada de la aplicación (--https, --port, --host, --desktop)
-├── StockAgent.spec               # Especificación PyInstaller
-└── requirements.txt              # Dependencias de Python
+├── instalar_certificado.bat           # Instalador con 1 clic del certificado SSL en Windows
+├── configurar_firewall_red.bat        # Apertura de puerto 8550 en Firewall de Windows
+├── main.py                            # Punto de entrada de la aplicación (--https, --port, --host, --desktop)
+├── StockAgent.spec                    # Especificación PyInstaller
+├── requirements.txt                   # Dependencias de producción
+└── requirements-build.txt             # Dependencias de compilación
 ```
 
 ### Esquema de Bases de Datos SQLite
@@ -432,20 +538,23 @@ StockAgent/
 
 ```sql
 CREATE TABLE users (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('master', 'administrador', 'operador', 'consulta')),
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    nombre TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE login_attempts (
     username TEXT PRIMARY KEY COLLATE NOCASE,
     failed_count INTEGER NOT NULL DEFAULT 0,
-    locked_until TEXT DEFAULT NULL,
-    last_attempt_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    first_failed_at REAL NOT NULL DEFAULT 0,
+    locked_until REAL NOT NULL DEFAULT 0
 );
 ```
 
@@ -540,7 +649,9 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
    ```powershell
    .\crear_exe.bat
    ```
-3. El resultado se generará en `dist\StockAgent.exe`, acompañado automáticamente de `Descuentos\Productos.xlsx`, la carpeta `assets\` y los scripts de red.
+3. El resultado se generará en `dist\StockAgent.exe`, acompañado automáticamente de `Descuentos\Productos.xlsx`, la carpeta `assets\`, librerías DLL y los scripts de red.
+
+---
 
 ### Despliegue e Implementación en Red Local (Servidor LAN sobre HTTPS)
 
@@ -556,7 +667,7 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
 2. Al iniciar por primera vez, el sistema creará automáticamente la carpeta `data/certs/` con:
    - `data/certs/stockagent.crt` (Certificado público X.509 autofirmado con las IPs de la PC)
    - `data/certs/stockagent.key` (Clave privada RSA 2048 bits)
-3. La consola mostrará las direcciones seguras listas para usar:
+3. La consola y el System Tray mostrarán las direcciones seguras listas para usar:
    - En la misma PC servidor: `https://127.0.0.1:8550`
    - Desde otras PCs, notebooks, tablets o celulares en la red WiFi/LAN: `https://192.168.X.X:8550`
 
@@ -570,9 +681,10 @@ Dado que el certificado es generado localmente por la propia empresa (sin depend
 
 #### Paso 4: Primer inicio de sesión y configuración de seguridad
 1. Ingresa con el usuario Master precargado (`Desarrollo` / `master1713`).
-2. El sistema te solicitará por única vez **definir tu nueva contraseña segura** (mínimo 6 caracteres) debido a la política de cambio obligatorio de clave inicial.
-3. *(Opcional)* Desde **Compartir por correo → Configurar SMTP (⚙️)**, guarda la contraseña de aplicación SMTP (quedará cifrada en disco con prefijo `enc:`) y activa las **Alertas Automáticas Diarias**.
-4. *(Opcional)* Desde **Copia de Seguridad**, configura una carpeta secundaria externa o de red y genera tu primer respaldo `.zip`.
+2. El sistema te solicitará por única vez **definir tu nueva contraseña segura** (mínimo 10 caracteres) debido a la política de cambio obligatorio de clave inicial.
+3. Configura tu perfil personal en **Mi Perfil** (nombre y apellido y correo electrónico).
+4. *(Opcional)* Desde **Compartir por correo → Configurar SMTP (⚙️)**, guarda la contraseña de aplicación SMTP (quedará cifrada en disco con prefijo `enc:`) y activa las **Alertas Automáticas Diarias**.
+5. *(Opcional)* Desde **Copia de Seguridad**, configura una carpeta secundaria externa o de red y genera tu primer respaldo `.zip`.
 
 ---
 
@@ -621,36 +733,47 @@ Firefox posee su propio almacén de certificados independiente del sistema opera
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 108 pruebas unitarias automatizadas distribuidas en 14 módulos.
-* **Tasa de éxito:** 100% aprobadas (`108 passed in 17.41s - OK`).
+* **Total de pruebas:** 118 pruebas unitarias automatizadas distribuidas en 15 módulos.
+* **Tasa de éxito:** 100% aprobadas (`118 passed in 21.80s - OK`).
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:
    - Conteo en tiempo real de pedidos descontados por tipo en el panel (PDF, Canjes, Mercado Libre, Total jornada).
    - Reseteo automático a 0 al registrar el Cierre de Jornada.
-   - Permisos por rol, pantalla de login, paneles de administración, chat flotante y endpoints web.
-2. `tests/test_nuevas_modificaciones.py`:
+   - Permisos por rol, pantalla de login con soporte de username y email, paneles de administración, diálogo de "Mi Perfil", chat flotante y endpoints web.
+2. `tests/test_tray_icon.py`:
+   - Inicialización, ciclo de vida y detención segura del hilo de System Tray.
+   - Generación dinámica de badges de estado con PIL (online, iniciando, error).
+   - Resolución de icono base con fallbacks inteligentes (`ultratech.png`, `favicon.png`, sintético).
+   - Acciones de copiado de URL LAN al portapapeles y ejecución de callbacks.
+3. `tests/test_user_store.py`:
+   - Jerarquía de roles e inviolabilidad del Master.
+   - Persistencia de campos de perfil (`nombre` y `email`).
+   - Validación de formato RFC de correo electrónico y unicidad insensible a mayúsculas/minúsculas.
+   - Inicio de sesión dual mediante `@usuario` o `correo@empresa.com`.
+   - Fallback de `nombre_identificador` hacia el nombre de usuario si no está configurado el nombre real.
+   - Migración automática de bases de datos preexistentes sin pérdida de información ni alteración de registros.
+4. `tests/test_nuevas_funcionalidades.py`:
+   - Cifrado DPAPI / Fernet de credenciales sensibles.
+   - Bloqueo preventivo tras 5 intentos fallidos y reseteo administrativo de clave.
+   - Generación de certificados SSL autofirmados con SAN multipropósito.
+   - Auditoría de movimientos de stock con usuario, origen y detalle.
+   - Máquina de estados de despacho (`armado` → `despachado` → `entregado`) con escáner QR.
+   - Dashboard analítico con filtros por fecha y conversión a hora local.
+   - Respaldos `.zip` íntegros de las 3 bases SQLite, copia secundaria y restauración verificada con `PRAGMA integrity_check`.
+   - Hilo planificador de alertas diarias por correo electrónico.
+   - Detección de inactividad de sesión (30 min) y enriquecimiento de menciones `#remito` en chat.
+5. `tests/test_nuevas_modificaciones.py`:
    - Opción `Canje` en logística disponible y persistente en SQLite.
    - Descuentos ágiles sin documento individual (acumulados para el cierre).
    - Rótulos y etiquetas compactas A4 para bultos con códigos de barra y QR.
    - Búsqueda y alta automática de clientes al cargar pedidos.
    - Desarmar pedidos y restitución automática de stock a inventario.
    - Flujo de Cierre de Jornada, generación de Hoja de Ruta de Despacho en PDF y persistencia de su vinculación en `OrderStore` sin bloqueos transaccionales.
-3. `tests/test_nuevas_funcionalidades.py`:
-   - Cifrado DPAPI / Fernet de credenciales sensibles.
-   - Bloqueo preventivo tras 5 intentos fallidos y reseteo administrativo de clave.
-   - Generación de certificados SSL autofirmados con SAN multipropósito.
-   - Auditoría de movimientos de stock con usuario, origen y detalle.
-   - Máquina de estados de despacho (`armado` → `despachado` → `entregado`) con escáner QR.
-   - Dashboard analítico con filtros por fecha.
-   - Respaldos `.zip` íntegros de las 3 bases SQLite, copia secundaria y restauración verificada con `PRAGMA integrity_check`.
-   - Hilo planificador de alertas diarias por correo electrónico.
-   - Detección de inactividad de sesión (30 min) y enriquecimiento de menciones `#remito` en chat.
-4. `tests/test_internal_chat.py`: Reconocimiento semántico de intenciones del bot y chat entre operarios y administración.
-5. `tests/test_product_store.py`: Persistencia en SQLite, movimientos y cálculo de reposición.
-6. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
-7. `tests/test_user_store.py`: Jerarquía de usuarios, roles protegidos e inviolabilidad del Master.
-8. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
+6. `tests/test_internal_chat.py`: Reconocimiento semántico de intenciones del bot y chat entre operarios y administración.
+7. `tests/test_product_store.py`: Persistencia en SQLite, movimientos y cálculo de reposición.
+8. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
+9. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
 
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:

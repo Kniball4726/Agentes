@@ -523,15 +523,80 @@ class InterfazFlet:
         )
         self.page.show_dialog(dialogo)
 
+    def mostrar_mi_perfil(self, _evento: ft.Event | None = None) -> None:
+        if not self.usuario_actual:
+            return
+        actual = self.usuario_actual
+        nombre_input = ft.TextField(
+            label="Nombre y apellido / Identificador en documentos",
+            value=actual.nombre,
+            hint_text="Ej: Juan Pérez",
+            autofocus=True,
+        )
+        email_input = ft.TextField(
+            label="Correo electrónico",
+            value=actual.email,
+            hint_text="Ej: usuario@ultratech.com",
+        )
+        msg_error = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+        def guardar_perfil(_e: ft.Event) -> None:
+            if not self.usuario_actual:
+                return
+            try:
+                self.user_store.update_user_info(
+                    self.usuario_actual.id,
+                    nombre=nombre_input.value or "",
+                    email=email_input.value or "",
+                )
+                self.usuario_actual = self.user_store.get_user(self.usuario_actual.id)
+                self.page.pop_dialog()
+                self.construir()
+                self.notificar("Tu perfil ha sido actualizado correctamente.")
+            except (ValueError, UserStoreError) as err:
+                msg_error.value = str(err)
+                self.page.update()
+
+        dialogo_perfil = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([ft.Icon(ft.Icons.BADGE_OUTLINED, color=ROJO), ft.Text("Mi Perfil", weight=ft.FontWeight.BOLD)]),
+            content=ft.Container(
+                width=420,
+                content=ft.Column(
+                    [
+                        ft.Text(f"Usuario: @{actual.username} · Rol: {actual.role.capitalize()}", size=12, color=self.secundario),
+                        nombre_input,
+                        email_input,
+                        msg_error,
+                    ],
+                    tight=True,
+                    spacing=12,
+                ),
+            ),
+            actions=[
+                ft.Button("Guardar cambios", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_perfil),
+                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        self.page.show_dialog(dialogo_perfil)
+
     def mostrar_configuracion_inicial(self, error: str = "") -> None:
-        usuario = ft.TextField(label="Usuario administrador", autofocus=True)
+        usuario = ft.TextField(label="Usuario administrador *", autofocus=True)
+        nombre_input = ft.TextField(
+            label="Nombre y apellido (identificador en documentos)",
+            hint_text="Ej: Juan Pérez",
+        )
+        email_input = ft.TextField(
+            label="Correo electrónico (opcional)",
+            hint_text="Ej: admin@ultratech.com",
+        )
         clave = ft.TextField(
-            label="Contraseña (mínimo 10 caracteres)",
+            label="Contraseña (mínimo 10 caracteres) *",
             password=True,
             can_reveal_password=True,
         )
         confirmar = ft.TextField(
-            label="Confirmar contraseña",
+            label="Confirmar contraseña *",
             password=True,
             can_reveal_password=True,
         )
@@ -544,7 +609,10 @@ class InterfazFlet:
                 return
             try:
                 self.usuario_actual = self.user_store.create_initial_admin(
-                    usuario.value or "", clave.value or ""
+                    usuario.value or "",
+                    clave.value or "",
+                    nombre=nombre_input.value or "",
+                    email=email_input.value or "",
                 )
             except (ValueError, UserStoreError) as error:
                 mensaje.value = str(error)
@@ -581,6 +649,8 @@ class InterfazFlet:
                                 color=self.secundario,
                             ),
                             usuario,
+                            nombre_input,
+                            email_input,
                             clave,
                             confirmar,
                             mensaje,
@@ -687,7 +757,7 @@ class InterfazFlet:
                 spacing=10,
             ),
             ft.Text(
-                f"{self.usuario_actual.username} · {self.usuario_actual.role}",
+                f"{self.usuario_actual.nombre_identificador} · {self.usuario_actual.role}",
                 size=11,
                 color=self.secundario,
             ),
@@ -1001,7 +1071,12 @@ class InterfazFlet:
             usuarios = self.user_store.list_users(include_master=True)
             for u in usuarios:
                 if self.usuario_actual and u.username != self.usuario_actual.username and u.active:
-                    opciones.append(ft.dropdown.Option(u.username, f"👤 @{u.username} ({u.role.capitalize()})"))
+                    etiqueta = (
+                        f"👤 {u.nombre} (@{u.username}) ({u.role.capitalize()})"
+                        if u.nombre and u.nombre.strip()
+                        else f"👤 @{u.username} ({u.role.capitalize()})"
+                    )
+                    opciones.append(ft.dropdown.Option(u.username, etiqueta))
         except Exception:
             pass
         self.selector_destinatario_equipo.options = opciones
@@ -1128,13 +1203,19 @@ class InterfazFlet:
             [
                 boton_tema,
                 ft.IconButton(
+                    icon=ft.Icons.BADGE_OUTLINED,
+                    tooltip="Mi perfil (Nombre y Email)",
+                    icon_color=self.secundario,
+                    on_click=self.mostrar_mi_perfil,
+                ),
+                ft.IconButton(
                     icon=ft.Icons.KEY,
                     tooltip="Cambiar mi contraseña",
                     icon_color=self.secundario,
                     on_click=self.mostrar_cambiar_mi_clave,
                 ),
                 ft.TextButton(
-                    f"{self.usuario_actual.username} · Cerrar sesión",
+                    f"{self.usuario_actual.nombre_identificador} · Cerrar sesión",
                     icon=ft.Icons.LOGOUT,
                     on_click=self.cerrar_sesion,
                 ),
@@ -3015,11 +3096,22 @@ class InterfazFlet:
     def mostrar_gestion_usuarios(self, _evento: ft.Event | None = None) -> None:
         if not self.exigir_roles("administrador"):
             return
-        nuevo_usuario = ft.TextField(label="Nombre de usuario")
+        nuevo_usuario = ft.TextField(label="Nombre de usuario *", expand=True)
+        nuevo_nombre = ft.TextField(
+            label="Nombre y apellido (identificador en documentos)",
+            hint_text="Ej: Juan Pérez",
+            expand=True,
+        )
+        nuevo_email = ft.TextField(
+            label="Correo electrónico (opcional)",
+            hint_text="Ej: juan@ultratech.com",
+            expand=True,
+        )
         nueva_clave = ft.TextField(
-            label="Contraseña (mínimo 10 caracteres)",
+            label="Contraseña (mínimo 10 caracteres) *",
             password=True,
             can_reveal_password=True,
+            expand=True,
         )
         es_master = bool(self.usuario_actual and self.usuario_actual.role == "master")
         roles_creables = ["administrador", "operador", "consulta"] if es_master else ["operador", "consulta"]
@@ -3030,10 +3122,10 @@ class InterfazFlet:
                 ft.DropdownOption(key=role, text=role.capitalize())
                 for role in roles_creables
             ],
-            width=220,
+            width=180,
         )
         mensaje = ft.Text(color=ft.Colors.RED_400, size=12)
-        usuarios = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=240)
+        usuarios = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, height=260)
         crear_boton = ft.Button(
             "Crear usuario",
             icon=ft.Icons.PERSON_ADD,
@@ -3042,24 +3134,83 @@ class InterfazFlet:
         )
         dialogo = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Gestión de usuarios"),
-            content=ft.Column(
-                [
-                    nuevo_usuario,
-                    nueva_clave,
-                    nuevo_rol,
-                    mensaje,
-                    crear_boton,
-                    ft.Divider(),
-                    usuarios,
-                ],
-                tight=True,
-                width=520,
+            title=ft.Row([ft.Icon(ft.Icons.MANAGE_ACCOUNTS, color=ROJO), ft.Text("Gestión de usuarios", weight=ft.FontWeight.BOLD)]),
+            content=ft.Container(
+                width=620,
+                content=ft.Column(
+                    [
+                        ft.Text("Registrar nuevo usuario", weight=ft.FontWeight.BOLD, size=13),
+                        ft.Row([nuevo_usuario, nuevo_nombre], spacing=8),
+                        ft.Row([nuevo_email, nueva_clave], spacing=8),
+                        ft.Row([nuevo_rol, crear_boton], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        mensaje,
+                        ft.Divider(),
+                        ft.Text("Usuarios existentes", weight=ft.FontWeight.BOLD, size=13),
+                        usuarios,
+                    ],
+                    tight=True,
+                    spacing=8,
+                ),
             ),
             actions=[
                 self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog())
             ],
         )
+
+        def abrir_editar_usuario(u_target: User) -> None:
+            edit_nombre = ft.TextField(
+                label="Nombre y apellido / Identificador en documentos",
+                value=u_target.nombre,
+                hint_text="Ej: Juan Pérez",
+                autofocus=True,
+            )
+            edit_email = ft.TextField(
+                label="Correo electrónico",
+                value=u_target.email,
+                hint_text="Ej: usuario@ultratech.com",
+            )
+            err_edit = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+            def guardar_edicion(_ev: ft.Event) -> None:
+                try:
+                    self.user_store.update_user_info(
+                        u_target.id,
+                        nombre=edit_nombre.value or "",
+                        email=edit_email.value or "",
+                        updater_role=self.usuario_actual.role if self.usuario_actual else None,
+                    )
+                    if self.usuario_actual and self.usuario_actual.id == u_target.id:
+                        self.usuario_actual = self.user_store.get_user(u_target.id)
+                        self.construir()
+                    self.page.pop_dialog()
+                    self.notificar(f"Datos del usuario '{u_target.username}' actualizados.")
+                    actualizar_lista()
+                except (ValueError, UserStoreError) as err:
+                    err_edit.value = str(err)
+                    self.page.update()
+
+            dlg_edit = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Editar usuario: @{u_target.username}"),
+                content=ft.Container(
+                    width=420,
+                    content=ft.Column(
+                        [
+                            ft.Text(f"Rol: {u_target.role.capitalize()}", size=12, color=self.secundario),
+                            edit_nombre,
+                            edit_email,
+                            err_edit,
+                        ],
+                        tight=True,
+                        spacing=10,
+                    ),
+                ),
+                actions=[
+                    ft.Button("Guardar", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_edicion),
+                    self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
+                ],
+            )
+            self.page.show_dialog(dlg_edit)
 
         def actualizar_lista() -> None:
             usuarios.controls.clear()
@@ -3094,7 +3245,7 @@ class InterfazFlet:
                         ft.DropdownOption(key=role, text=role.capitalize())
                         for role in (USER_ROLES if es_target_master else roles_asignables)
                     ],
-                    width=145,
+                    width=135,
                     disabled=no_puede_editar,
                 )
                 boton_estado = ft.TextButton(
@@ -3103,6 +3254,13 @@ class InterfazFlet:
                         user_id, active
                     ),
                     disabled=no_puede_editar,
+                )
+                boton_editar = ft.IconButton(
+                    icon=ft.Icons.EDIT_OUTLINED,
+                    tooltip="Editar nombre y correo",
+                    icon_size=18,
+                    disabled=es_target_master and not actual_es_master,
+                    on_click=lambda _e, u=usuario: abrir_editar_usuario(u),
                 )
                 boton_reset = ft.IconButton(
                     icon=ft.Icons.LOCK_RESET,
@@ -3125,17 +3283,41 @@ class InterfazFlet:
                 selector_rol.on_select = lambda _e, user_id=usuario.id, dropdown=selector_rol: cambiar_rol(
                     user_id, dropdown.value or ""
                 )
-                etiqueta_usr = f"{usuario.username}{' (inactivo)' if not usuario.active else ''}{' [BLOQUEADO]' if esta_bloqueado else ''}"
+
+                nombre_principal = usuario.nombre_identificador
+                sub_info = f"@{usuario.username}"
+                if usuario.email:
+                    sub_info += f" · {usuario.email}"
+                if not usuario.active:
+                    sub_info += " · (Inactivo)"
+                if esta_bloqueado:
+                    sub_info += " · [BLOQUEADO]"
+
+                info_col = ft.Column(
+                    [
+                        ft.Text(
+                            nombre_principal,
+                            weight=ft.FontWeight.W_500,
+                            size=13,
+                            color=ft.Colors.AMBER_400 if esta_bloqueado else self.texto,
+                        ),
+                        ft.Text(
+                            sub_info,
+                            size=11,
+                            color=ft.Colors.GREY_400 if not esta_bloqueado else ft.Colors.AMBER_300,
+                        ),
+                    ],
+                    spacing=1,
+                    expand=True,
+                )
+
                 usuarios.controls.append(
                     ft.Row(
                         [
-                            ft.Text(
-                                etiqueta_usr,
-                                expand=True,
-                                color=ft.Colors.AMBER_400 if esta_bloqueado else self.texto,
-                            ),
+                            info_col,
                             selector_rol,
                             boton_desbloquear,
+                            boton_editar,
                             boton_reset,
                             boton_estado,
                         ],
@@ -3244,13 +3426,17 @@ class InterfazFlet:
                     nueva_clave.value or "",
                     nuevo_rol.value or "",
                     creator_role=self.usuario_actual.role if self.usuario_actual else None,
+                    nombre=nuevo_nombre.value or "",
+                    email=nuevo_email.value or "",
                 )
             except (ValueError, UserStoreError) as error:
                 mensaje.value = str(error)
             else:
                 nuevo_usuario.value = ""
+                nuevo_nombre.value = ""
+                nuevo_email.value = ""
                 nueva_clave.value = ""
-                mensaje.value = "Usuario creado."
+                mensaje.value = "Usuario creado con éxito."
             actualizar_lista()
             self.page.update()
 
@@ -3396,7 +3582,7 @@ class InterfazFlet:
             spacing=4,
         )
 
-        armador_nom = self.usuario_actual.username if self.usuario_actual else "Operario"
+        armador_nom = self.usuario_actual.nombre_identificador if self.usuario_actual else "Operario"
         armador_input = ft.TextField(
             label="Armador responsable",
             value=armador_nom,
@@ -7120,7 +7306,7 @@ class InterfazFlet:
                     return
 
             res = resultado_parseo[0]
-            armador_nom = self.usuario_actual.username if self.usuario_actual else "Operario"
+            armador_nom = self.usuario_actual.nombre_identificador if self.usuario_actual else "Operario"
             self.page.pop_dialog()
 
             def ejecutar_descuento_ml() -> None:
@@ -7566,7 +7752,7 @@ class InterfazFlet:
                 return
 
             arch = archivo_seleccionado[0]
-            operario_nom = self.usuario_actual.username if self.usuario_actual else "operador"
+            operario_nom = self.usuario_actual.nombre_identificador if self.usuario_actual else "operador"
             self.page.pop_dialog()
             ruta_generada: list[Path | None] = [None]
 

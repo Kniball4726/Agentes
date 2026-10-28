@@ -1034,10 +1034,10 @@ class OrderStore:
         condiciones: list[str] = []
         params: list[str] = []
         if fecha_desde:
-            condiciones.append(f"date({columna}) >= date(?)")
+            condiciones.append(f"date({columna}, 'localtime') >= date(?)")
             params.append(fecha_desde)
         if fecha_hasta:
-            condiciones.append(f"date({columna}) <= date(?)")
+            condiciones.append(f"date({columna}, 'localtime') <= date(?)")
             params.append(fecha_hasta)
         return ("".join(f" AND {c}" for c in condiciones), params)
 
