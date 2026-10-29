@@ -123,37 +123,76 @@ class StockManager:
                 continue
         return 0
 
-    def _cargar_catalogo(self):
-        """Importa el catálogo inicial y después carga productos desde SQLite."""
+    def _asegurar_esquema(self) -> None:
+        """Detecta el esquema del archivo Excel si no fue detectado aún."""
         if not self.ruta_excel_base.exists():
-            raise FileNotFoundError(f"No se encontró el archivo de stock en: {self.ruta_excel_base}")
-
-        self.productos_base.clear()
-        self.filas_catalogo.clear()
-        self.catalogo.clear()
-        self._filas_por_codigo.clear()
-
+            return
         wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
-        sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
-        if sheet is None:
+        try:
+            sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+            if sheet is not None:
+                self._detectar_esquema(sheet)
+        finally:
             wb.close()
-            raise ValueError(
-                f"No se encontró una hoja activa en {self.ruta_excel_base}."
-            )
-        self._detectar_esquema(sheet)
-        productos_plantilla = []
-        for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
-            val_cod = sheet.cell(row=fila, column=self._col_codigo).value
-            if val_cod is not None and str(val_cod).strip() != "":
-                cod = normalizar_codigo(str(val_cod))
-                nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
-                if not nombre:
-                    continue
-                stock_num = self._leer_stock(sheet, fila)
-                productos_plantilla.append((fila, cod, nombre, stock_num))
-        wb.close()
 
-        self.product_store.import_template_once(productos_plantilla)
+    def _cargar_desde_sqlite(self) -> None:
+        """Carga el catálogo directamente desde SQLite utilizando metadatos de esquema cacheados."""
+        meta = self.product_store.get_all_metadata()
+        if "fila_inicio_datos" not in meta:
+            # Para bases de datos existentes sin metadatos de esquema, detectamos una sola vez desde Excel
+            try:
+                self._asegurar_esquema()
+                schema_meta = {
+                    "col_codigo": str(self._col_codigo),
+                    "col_nombre": str(self._col_nombre),
+                    "col_stock": str(self._col_stock),
+                    "col_stock_inicial": str(self._col_stock_inicial) if self._col_stock_inicial is not None else "",
+                    "col_descuento": str(self._col_descuento) if self._col_descuento is not None else "",
+                    "col_stock_final": str(self._col_stock_final) if self._col_stock_final is not None else "",
+                    "fila_inicio_datos": str(self._fila_inicio_datos),
+                }
+                for k, v in schema_meta.items():
+                    self.product_store.set_metadata(k, v)
+                meta = self.product_store.get_all_metadata()
+            except Exception:
+                pass
+
+        if "fila_inicio_datos" in meta:
+            try:
+                self._fila_inicio_datos = int(meta["fila_inicio_datos"])
+            except ValueError:
+                pass
+        if "col_codigo" in meta:
+            try:
+                self._col_codigo = int(meta["col_codigo"])
+            except ValueError:
+                pass
+        if "col_nombre" in meta:
+            try:
+                self._col_nombre = int(meta["col_nombre"])
+            except ValueError:
+                pass
+        if "col_stock" in meta:
+            try:
+                self._col_stock = int(meta["col_stock"])
+            except ValueError:
+                pass
+        if meta.get("col_stock_inicial"):
+            try:
+                self._col_stock_inicial = int(meta["col_stock_inicial"])
+            except ValueError:
+                pass
+        if meta.get("col_descuento"):
+            try:
+                self._col_descuento = int(meta["col_descuento"])
+            except ValueError:
+                pass
+        if meta.get("col_stock_final"):
+            try:
+                self._col_stock_final = int(meta["col_stock_final"])
+            except ValueError:
+                pass
+
         primera_aparicion: set[str] = set()
         for indice, producto in enumerate(self.product_store.list_catalog_rows()):
             cod = str(producto["code"])
@@ -176,6 +215,58 @@ class StockManager:
                 (fila_catalogo, cod, nombre_catalogo, stock_num)
             )
             self.catalogo[cod] = (fila_catalogo, nombre_catalogo, stock_num)
+
+    def _cargar_catalogo(self, forzar_excel: bool = False):
+        """Importa el catálogo inicial y después carga productos desde SQLite.
+
+        Utiliza fast-path directamente desde SQLite si la plantilla ya fue importada,
+        evitando lecturas I/O repetitivas y bloqueantes de Excel.
+        """
+        if not self.ruta_excel_base.exists():
+            raise FileNotFoundError(f"No se encontró el archivo de stock en: {self.ruta_excel_base}")
+
+        self.productos_base.clear()
+        self.filas_catalogo.clear()
+        self.catalogo.clear()
+        self._filas_por_codigo.clear()
+
+        # Fast-Path: Si SQLite ya tiene el catálogo importado, evitamos abrir openpyxl
+        if not forzar_excel and self.product_store.is_template_imported():
+            self._cargar_desde_sqlite()
+            return
+
+        wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
+        try:
+            sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+            if sheet is None:
+                raise ValueError(
+                    f"No se encontró una hoja activa en {self.ruta_excel_base}."
+                )
+            self._detectar_esquema(sheet)
+            productos_plantilla = []
+            for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
+                val_cod = sheet.cell(row=fila, column=self._col_codigo).value
+                if val_cod is not None and str(val_cod).strip() != "":
+                    cod = normalizar_codigo(str(val_cod))
+                    nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
+                    if not nombre:
+                        continue
+                    stock_num = self._leer_stock(sheet, fila)
+                    productos_plantilla.append((fila, cod, nombre, stock_num))
+        finally:
+            wb.close()
+
+        schema_meta = {
+            "col_codigo": str(self._col_codigo),
+            "col_nombre": str(self._col_nombre),
+            "col_stock": str(self._col_stock),
+            "col_stock_inicial": str(self._col_stock_inicial) if self._col_stock_inicial is not None else "",
+            "col_descuento": str(self._col_descuento) if self._col_descuento is not None else "",
+            "col_stock_final": str(self._col_stock_final) if self._col_stock_final is not None else "",
+            "fila_inicio_datos": str(self._fila_inicio_datos),
+        }
+        self.product_store.import_template_once(productos_plantilla, metadata=schema_meta)
+        self._cargar_desde_sqlite()
 
     def listar_productos(self) -> List[sqlite3.Row]:
         """Devuelve todos los productos para la pantalla de administración."""

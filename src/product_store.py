@@ -288,8 +288,50 @@ class ProductStore:
                 """
             )
 
+    def is_template_imported(self) -> bool:
+        """Determina rápidamente si la plantilla inicial ya fue importada a SQLite."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """
+                SELECT value FROM product_catalog_metadata
+                WHERE key = 'template_imported'
+                """
+            ).fetchone()
+            return row is not None
+
+    def get_all_metadata(self) -> dict[str, str]:
+        """Devuelve todos los metadatos almacenados para el catálogo."""
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT key, value FROM product_catalog_metadata"
+            ).fetchall()
+            return {row["key"]: row["value"] for row in rows}
+
+    def get_metadata(self, key: str, default: str = "") -> str:
+        """Devuelve un valor de metadatos o default si no existe."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT value FROM product_catalog_metadata WHERE key = ?",
+                (key,),
+            ).fetchone()
+            return str(row["value"]) if row is not None else default
+
+    def set_metadata(self, key: str, value: str) -> None:
+        """Almacena o actualiza una clave de metadatos del catálogo."""
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                """
+                INSERT INTO product_catalog_metadata (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, str(value)),
+            )
+
     def import_template_once(
-        self, products: Iterable[tuple[int, str, str, int]]
+        self,
+        products: Iterable[tuple[int, str, str, int]],
+        metadata: dict[str, str] | None = None,
     ) -> None:
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -337,6 +379,16 @@ class ProductStore:
                 VALUES ('template_imported', '1')
                 """
             )
+            if metadata:
+                for k, v in metadata.items():
+                    connection.execute(
+                        """
+                        INSERT INTO product_catalog_metadata (key, value)
+                        VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                        """,
+                        (k, str(v)),
+                    )
 
     def list_catalog_rows(
         self, include_inactive: bool = False
@@ -955,7 +1007,7 @@ class ProductStore:
                             SELECT id FROM stock_movements
                             WHERE product_code = ?
                             ORDER BY id DESC LIMIT 1
-                        )
+                        ) AND (usuario = 'sistema' OR detalle = '')
                         """,
                         (usuario or "sistema", detalle, movement_type, cod),
                     )
@@ -968,7 +1020,7 @@ class ProductStore:
                             SELECT id FROM stock_movements
                             WHERE product_code = ?
                             ORDER BY id DESC LIMIT 1
-                        )
+                        ) AND (usuario = 'sistema' OR detalle = '')
                         """,
                         (usuario or "sistema", detalle, cod),
                     )

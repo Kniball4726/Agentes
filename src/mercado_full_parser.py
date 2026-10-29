@@ -82,55 +82,58 @@ def parsear_archivo_mercado_full(ruta_archivo: str | Path) -> Tuple[Dict[str, in
 
     else:
         wb = openpyxl.load_workbook(str(path), data_only=True)
-        hoja = wb.active
-        if hoja is None:
-            return {}, []
+        try:
+            hoja = wb.active
+            if hoja is None:
+                return {}, []
 
-        col_cod = -1
-        col_desc = -1
-        col_cant = -1
-        fila_inicio = 1
-
-        for r in range(1, min(20, hoja.max_row + 1)):
-            fila_vals = [str(hoja.cell(r, c).value or "").strip().upper() for c in range(1, hoja.max_column + 1)]
-            for idx, val in enumerate(fila_vals):
-                c = idx + 1
-                if any(k in val for k in ["SKU", "CODIGO", "CÓDIGO", "COD", "PUBLICACION", "PUBLICACIÓN", "ARTICULO", "ARTÍCULO", "MLC", "MLA"]) and col_cod == -1:
-                    col_cod = c
-                elif any(k in val for k in ["TITULO", "TÍTULO", "DESCRIPCION", "DESCRIPCIÓN", "PRODUCTO", "NOMBRE", "DETALLE"]) and col_desc == -1:
-                    col_desc = c
-                elif any(k in val for k in ["CANTIDAD", "CANT", "UNIDADES", "ENVIADAS", "ENVIAR", "DECLARADA", "DECLARADAS", "PIEZAS", "BULTOS"]) and col_cant == -1:
-                    col_cant = c
-            if col_cod != -1 and col_cant != -1:
-                fila_inicio = r + 1
-                break
-
-        if col_cod == -1 or col_cant == -1:
-            col_cod = 1
-            col_desc = 2 if hoja.max_column > 2 else -1
-            col_cant = 3 if hoja.max_column > 2 else (2 if hoja.max_column > 1 else 1)
+            col_cod = -1
+            col_desc = -1
+            col_cant = -1
             fila_inicio = 1
 
-        for r in range(fila_inicio, hoja.max_row + 1):
-            val_cod = hoja.cell(r, col_cod).value
-            val_cant = hoja.cell(r, col_cant).value
-            val_desc = hoja.cell(r, col_desc).value if col_desc != -1 else ""
+            for r in range(1, min(20, hoja.max_row + 1)):
+                fila_vals = [str(hoja.cell(r, c).value or "").strip().upper() for c in range(1, hoja.max_column + 1)]
+                for idx, val in enumerate(fila_vals):
+                    c = idx + 1
+                    if any(k in val for k in ["SKU", "CODIGO", "CÓDIGO", "COD", "PUBLICACION", "PUBLICACIÓN", "ARTICULO", "ARTÍCULO", "MLC", "MLA"]) and col_cod == -1:
+                        col_cod = c
+                    elif any(k in val for k in ["TITULO", "TÍTULO", "DESCRIPCION", "DESCRIPCIÓN", "PRODUCTO", "NOMBRE", "DETALLE"]) and col_desc == -1:
+                        col_desc = c
+                    elif any(k in val for k in ["CANTIDAD", "CANT", "UNIDADES", "ENVIADAS", "ENVIAR", "DECLARADA", "DECLARADAS", "PIEZAS", "BULTOS"]) and col_cant == -1:
+                        col_cant = c
+                if col_cod != -1 and col_cant != -1:
+                    fila_inicio = r + 1
+                    break
 
-            if val_cod is None or str(val_cod).strip() == "":
-                continue
+            if col_cod == -1 or col_cant == -1:
+                col_cod = 1
+                col_desc = 2 if hoja.max_column > 2 else -1
+                col_cant = 3 if hoja.max_column > 2 else (2 if hoja.max_column > 1 else 1)
+                fila_inicio = 1
 
-            str_cod = str(val_cod).strip()
-            if str_cod.upper() in ("TOTAL", "TOTALES", "SUBTOTAL", "RESUMEN"):
-                continue
+            for r in range(fila_inicio, hoja.max_row + 1):
+                val_cod = hoja.cell(r, col_cod).value
+                val_cant = hoja.cell(r, col_cant).value
+                val_desc = hoja.cell(r, col_desc).value if col_desc != -1 else ""
 
-            cod = normalizar_codigo(str_cod)
-            try:
-                cant = int(float(val_cant))
-            except (ValueError, TypeError):
-                continue
+                if val_cod is None or str(val_cod).strip() == "":
+                    continue
 
-            if cant > 0:
-                items_crudos.append((cod, str(val_desc or "").strip(), cant))
+                str_cod = str(val_cod).strip()
+                if str_cod.upper() in ("TOTAL", "TOTALES", "SUBTOTAL", "RESUMEN"):
+                    continue
+
+                cod = normalizar_codigo(str_cod)
+                try:
+                    cant = int(float(val_cant))
+                except (ValueError, TypeError):
+                    continue
+
+                if cant > 0:
+                    items_crudos.append((cod, str(val_desc or "").strip(), cant))
+        finally:
+            wb.close()
 
     # Consolidar por código sumando cantidades
     items_consolidados: Dict[str, int] = {}

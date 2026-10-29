@@ -624,6 +624,11 @@ Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo,
 4. **Compatibilidad Inversa al 100%:**
    * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
+5. **Optimización Fast-Path (SQLite-First) y Concurrencia Robusta:**
+   * **Carga Inmediata de Catálogo:** `StockManager` comprueba de forma atómica si SQLite ya posee la importación inicial (`is_template_imported()`). De ser así, recupera el catálogo y los metadatos de columnas en `< 2 ms`, sin instanciar `openpyxl` ni bloquear el archivo `Productos.xlsx` en disco.
+   * **Cierre Seguro de Descriptores en Parsers:** Se encapsuló la lectura de libros en `canjes_parser.py`, `mercado_full_parser.py` y `factory_parser.py` bajo bloques `try ... finally: wb.close()` garantizando la liberación inmediata de manejadores de archivo en Windows.
+   * **Protección de Auditoría Concurrente:** `ProductStore.enrich_latest_movements()` incluye guardas atómicas para evitar sobreescrituras accidentales de metadatos cuando múltiples operarios descuentan inventario en paralelo.
+
 ### Esquema de Bases de Datos SQLite
 
 #### `data/productos.sqlite3`
@@ -896,7 +901,8 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
 8. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
 9. `tests/test_barcode_and_live_inventory.py`: Migración de columna `cod_barras`, búsqueda dual por SKU/código de barras, conteo físico en vivo y generación automática de planillas comparativas de discrepancias.
 10. `tests/test_client_code_and_order_fields.py`: Separación automática de código y razón social de cliente al escanear remito, extracción y persistencia de dirección para Google Maps API, auto-poblado de fecha de despacho hacia fecha de retiro, stepper interactivo (+/-) de bultos y validación obligatoria de logística.
-11. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
+11. `tests/test_fast_path_and_parsers.py`: Verificación del mecanismo Fast-Path de `StockManager` (omisión garantizada de `openpyxl.load_workbook` cuando el catálogo ya reside en SQLite) y cierre seguro de descriptores de archivos en todos los parsers Excel.
+12. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
 
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:
