@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Escáner de Código de Barras - Depósito Pasteur</title>
+  <link rel="stylesheet" href="/css/scanner.css">
+  <script src="/js/scanner.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>📷 Escáner de Código de Barras</h1>
+    <span class="badge">Móvil / Web</span>
+  </header>
+
+  <main class="scanner-container">
+    <video id="video" playsinline autoplay muted></video>
+    <div class="scan-guide">
+      <div class="laser-line"></div>
+    </div>
+  </main>
+
+  <section class="controls">
+    <div class="status-card">
+      <div style="font-size: 12px; color: #94a3b8;">Último código detectado:</div>
+      <div id="lastCode" class="last-code">-- En espera de lectura --</div>
+      <div id="detectionInfo" style="font-size: 12px; color: #22c55e;">Apunta la cámara al código de barras o QR</div>
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="toggleFlash()">💡 Linterna</button>
+      <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="switchCamera()">🔄 Cambiar Cámara</button>
+    </div>
+
+    <div class="manual-input">
+      <input type="text" id="inputManual" placeholder="Ingresar código manual..." onkeydown="if(event.key==='Enter') enviarManual()">
+      <button type="button" class="btn" onclick="enviarManual()">Enviar</button>
+    </div>
+
+    <button type="button" class="btn btn-secondary" onclick="window.close()">Volver a StockAgent</button>
+    <p class="hint">Compatible con códigos EAN-13, EAN-8, Code 128, Code 39, QR y UPC.</p>
+  </section>
+</body>
+</html>

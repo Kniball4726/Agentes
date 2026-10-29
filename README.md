@@ -21,6 +21,7 @@
 3. [Módulo de Carga Directa y Panel de Control de la Jornada](#3-módulo-de-carga-directa-y-panel-de-control-de-la-jornada)
    - [Métricas en Tiempo Real de la Jornada](#métricas-en-tiempo-real-de-la-jornada)
    - [Formulario de Carga y Descuento Individual](#formulario-de-carga-y-descuento-individual)
+   - [Módulo de Inventario en Vivo con Escáner Móvil y PC](#módulo-de-inventario-en-vivo-con-escáner-móvil-y-pc)
    - [Ciclo de Cierre de Jornada y Reseteo de Contadores](#ciclo-de-cierre-de-jornada-y-reseteo-de-contadores)
 4. [Control de Concurrencia y Navegación Web](#4-control-de-concurrencia-y-navegación-web)
 5. [Manual del Programador y Mantenimiento](#5-manual-del-programador-y-mantenimiento)
@@ -50,6 +51,9 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
      ```powershell
      python main.py --host 0.0.0.0 --port 8550
      ```
+   * **Detección Automática de Entorno:** `iniciar_servidor_web.bat` prioriza automáticamente el entorno virtual (`.venv`), entornos corporativos (`ttech`), el Python del sistema o el binario compilado `StockAgent.exe`.
+   * **Instancia Única Inteligente (Single-Instance):** Si el servidor ya se encuentra en ejecución en el puerto 8550, el lanzador detecta la sesión activa mediante sondeo directo por socket y abre una nueva pestaña en el navegador predeterminado sin duplicar procesos ni trabarse en pantalla.
+   * **Inmunidad a Estados Residuales (`TIME_WAIT`):** A diferencia de comprobaciones basadas en tablas netstat, el sondeo por socket no se bloquea por conexiones TCP cerradas recientemente, permitiendo reiniciar el servidor al instante.
    * En la PC principal se abre automáticamente **una única pestaña limpia** en `https://127.0.0.1:8550`.
    * En las terminales secundarias de la red local se accede mediante la IP local cifrada (ej. `https://192.168.1.50:8550`).
    * Si en algún entorno aislado se requiere desactivar HTTPS y correr en HTTP plano:
@@ -64,8 +68,8 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
    * `configurar_inicio_automatico.bat`: registra StockAgent para que el servidor inicie automáticamente en segundo plano cada vez que se enciende o reinicia la PC.
    * `desactivar_inicio_automatico.bat`: remueve el inicio automático cuando ya no se requiera.
 
-4. **Detención Rápida del Servidor:**
-   * Doble clic en `detener_servidor.bat` para liberar el puerto 8550 y detener de inmediato cualquier instancia activa de StockAgent.
+4. **Detención Rápida y Limpieza de Procesos:**
+   * Doble clic en `detener_servidor.bat`: libera el puerto 8550 y finaliza de inmediato tanto ejecutables nativos `StockAgent.exe` como procesos Python ejecutando `main.py`, filtrando PIDs de sistema para un apagado limpio en segundos.
    * O bien, clic derecho en el icono de la bandeja del sistema $\to$ **"Cerrar y detener servidor"**.
 
 5. **Modo Escritorio Monopuesto:**
@@ -426,24 +430,43 @@ En la parte superior del panel de control se encuentran las tarjetas de métrica
 ### Formulario de Carga y Descuento Individual
 
 1. **Remito / Factura:** Identificador único del comprobante. Si se intenta ingresar un remito ya registrado, el sistema lo rechaza para evitar duplicaciones.
-2. **Cliente (Buscador Dinámico + Alta Automática):**
-   * El campo actúa como un buscador interactivo en vivo a medida que se escribe el nombre del cliente, mostrando las opciones existentes para seleccionarlas con un solo clic.
-   * Si el cliente ingresado no aparece en la base de datos, el sistema muestra una opción directa para crearlo en el acto o **lo agrega automáticamente al confirmar el pedido**, eliminando fricciones operativas.
-   * También se mantiene el botón `+` para alta manual si se prefiere.
+2. **Cliente (Separación Código/Nombre + Buscador Dinámico + Dirección Geolocalizable):**
+   * Al escanear o adjuntar un comprobante PDF, el sistema analiza la cabecera y **separa automáticamente el código numérico de cliente de la razón social limpia** (ej: `00714 - DIETETICA IDEAS Y SABORES` $\to$ Código `00714`, Cliente `DIETETICA IDEAS Y SABORES`), evitando nombres concatenados con números.
+   * Extrae automáticamente el domicilio, localidad y provincia del cliente persistiendo la **dirección normalizada** en la base de datos SQLite para futuras funcionalidades (como la visualización de rutas y pines consumiendo la **API de Google Maps**).
+   * El buscador en vivo permite filtrar al instante por razón social, código o dirección con autocompletado en un clic. Si el cliente es nuevo, se da de alta automáticamente con su código y dirección al confirmar.
 3. **Número de Pedido (Opcional, Numérico):**
    * Campo numérico ubicado debajo del cliente. Si se indica un número de pedido (ej: `3`), se concatena automáticamente con el cliente en los rótulos (ej: `Gregory Rodriguez Nro 3`).
-4. **Bultos:** Cantidad de bultos empaquetados (numérico, mínimo 1).
-5. **Logística (Selector Estandarizado Enum):**
-   * `Domicilio`
-   * `Centro de distribución`
-   * `Transporte`
-   * `Comisionista`
-   * `Mabel`
-   * `Canje`
-6. **Fecha de Retiro / Despacho (Opcional):** Permite programar la fecha de retiro mediante un calendario interactivo.
+4. **Bultos (Stepper Interactivo `+` / `-`):**
+   * Selector interactivo con botones dedicados `[-]` y `[+]` para incrementar o decrementar rápidamente la cantidad de bultos empaquetados (manteniendo un mínimo estricto de 1 bulto) con campo numérico editable centrado.
+5. **Logística (Selector Obligatorio sin Valor por Defecto):**
+   * El selector inicia deseleccionado (`Seleccionar tipo de logística...`), obligando al operario a elegir deliberadamente la vía de despacho (`Domicilio`, `Centro de distribución`, `Transporte`, `Comisionista`, `Mabel`, `Canje`) antes de confirmar para evitar despachos con logística incorrecta.
+6. **Fecha de Retiro (Auto-completada desde Fecha de Despacho):**
+   * Al seleccionar un remito, el sistema extrae automáticamente la **Fecha de Despacho** indicada en el documento y la asigna de inmediato como Fecha de Retiro, manteniendo el selector de calendario y botón de limpieza para ajustes manuales.
 7. **Armador:** Campo automático y bloqueado que toma el nombre o identificador de la sesión activa (ej. `Juan Pérez`, `Desarrollo`).
 8. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo binario no haya sido procesado previamente.
 9. **Sin Generación de Documento Individual:** Cada pedido descuenta su stock en la base transaccional sin generar archivos Excel o PDF individuales en disco, manteniendo el espacio de trabajo limpio.
+
+### Módulo de Inventario en Vivo con Escáner Móvil y PC
+
+StockAgent incorpora un sistema interactivo de relevamiento físico de stock en tiempo real (`dlg_inventario_vivo.py`) diseñado para agilizar auditorías de depósito y mantener la base de datos limpia de diferencias:
+
+1. **Escaneo Dual Adaptativo y Apertura Multi-Navegador:**
+   * **Cámara de Dispositivos Móviles (PWA / Web):** Mediante la interfaz desacoplada `assets/scanner.html` (con estilos en `assets/css/scanner.css` y controlador en `assets/js/scanner.js`), los operarios pueden recorrer las estanterías escaneando códigos de barra EAN-13, Code 128 o QR con la cámara de su teléfono o tablet vía WebRTC y la API nativa `BarcodeDetector`. Incluye pitido sonoro de confirmación (Web Audio API) y guía visual de enfoque. La apertura del escáner cuenta con compatibilidad multi-versión (Flet `UrlLauncher`, navegación nativa y fallback sin bloqueos de popups).
+   * **Lectores Ópticos USB / Bluetooth en PC:** Soporta pistolas lectoras que emulan teclado en terminales fijas con detección automática de enter/retorno de carro e ingreso manual por teclado con autocompletado.
+2. **Diseño Responsivo Optimizado para Celulares:**
+   * **Entrada de Escaneo en Ancho Completo:** El campo de código de barras / SKU cuenta con renglón propio con autofocus y tamaño legible en pantallas táctiles de cualquier tamaño.
+   * **Controles Táctiles y Stepper de Cantidad:** Fila de acciones con botones `+` y `-` cómodos para dedos, botón prominente "Sumar" y botón directo de activación de cámara.
+   * **Accesos Rápidos de Cantidad:** Chips de selección inmediata (`+1`, `+5`, `+10`, `+24`, `+50`) para agilizar conteos de bultos o cajas cerradas.
+   * **Tarjetas de Producto en 3 Niveles:** Cada producto relevado se visualiza con cabecera de SKU/código de barras y etiqueta de coincidencia, descripción completa en renglón intermedio y comparativa de stock digital vs físico con controles de ajuste táctil en el renglón inferior.
+3. **Reconocimiento por Código de Barras o SKU:**
+   * La tabla de productos en SQLite almacena el campo `cod_barras` con índice rápido `idx_products_cod_barras`.
+   * El sistema busca automáticamente el artículo coincidente; al detectarlo, incrementa el conteo físico, muestra la foto/descripción y compara en pantalla las existencias teóricas del sistema contra el conteo real.
+   * Si se escanea un código de barras no registrado, se despliega una ventana modal interactiva para asociarlo al instante a cualquier producto existente del catálogo.
+4. **Reporte de Discrepancias y Conciliación:**
+   * Presenta una tabla interactiva con indicador visual de diferencias (sobrantes en ámbar, faltantes en rojo y coincidencias en verde).
+   * Genera el informe comparativo Excel (`Inventario_Escaner_*.xlsx`), notifica automáticamente a los administradores y permite compartir los resultados por correo o WhatsApp.
+
+---
 
 ### Ciclo de Cierre de Jornada y Reseteo de Contadores
 
@@ -472,7 +495,7 @@ Para garantizar una experiencia ágil y sin inconsistencias en entornos multi-us
 * **Libre navegación en múltiples pestañas:** Los usuarios pueden tener abiertas varias pestañas para consultar stock, revisar el catálogo o ver el historial de forma simultánea.
 * **Bloqueo atómico al procesar:** Cuando una pestaña dispara un descuento o procesamiento, el sistema activa un bloqueo global transitorio (`PROCESAMIENTO_GLOBAL_ACTIVO`). Si otra pestaña o terminal intenta procesar en ese mismo instante, se le notifica amablemente:
   > *"Hay una operación de procesamiento de stock en curso desde otra sesión o pestaña. Por seguridad en los archivos, espera a que finalice."*
-* **Single Instance en Servidor:** Al iniciar el servidor web, si ya hay una instancia escuchando en el puerto 8550, se conecta directamente a ella sin generar procesos duplicados.
+* **Single Instance Robusto y Libre de Bloqueos:** Tanto `main.py` como `iniciar_servidor_web.bat` verifican el estado del puerto mediante sondeo TCP directo (`socket.create_connection`), descartando falsos positivos provocados por conexiones cerradas en estado `TIME_WAIT` o `CLOSE_WAIT`. Si ya existe una instancia respondiendo en el puerto 8550, abre inmediatamente el navegador predeterminado hacia ella y finaliza el lanzador en menos de 0.05 segundos sin colgar la consola; en caso contrario, inicia el servicio web y el icono del System Tray con enlace local y de red LAN.
 
 ---
 
@@ -487,6 +510,11 @@ StockAgent/
 │   ├── favicon.png
 │   ├── manifest.json                  # Manifiesto PWA para instalación de escritorio
 │   ├── index.html                     # Splash screen y carga optimizada
+│   ├── scanner.html                   # Escáner de código de barras para cámara móvil y web
+│   ├── css/                           # Estilos desacoplados del escáner
+│   │   └── scanner.css                # Layout, guía de escaneo y animaciones
+│   ├── js/                            # Scripts desacoplados del escáner
+│   │   └── scanner.js                 # Lógica de cámara WebRTC, BarcodeDetector y audio
 │   └── icons/                         # Iconos en múltiples resoluciones y loading
 ├── data/                              # Bases de datos SQLite y comprobantes
 │   ├── usuarios.sqlite3               # Cuentas, perfiles, roles y contraseñas
@@ -556,7 +584,8 @@ StockAgent/
 │           ├── dlg_cierre.py          # Cierre de jornada y generación de hoja de ruta
 │           ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
 │           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
-│           └── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
+│           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
+│           └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
@@ -572,7 +601,7 @@ StockAgent/
 ```
 #### Refactorización Modular de la Arquitectura
 
-Para garantizar un código limpio, mantenible y escalable, la base de código fue descompuesta en módulos cohesivos con responsabilidades bien delimitadas:
+Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo, la base de código fue descompuesta en módulos cohesivos con responsabilidades bien delimitadas tanto en backend como en frontend:
 
 1. **Subpaquete de Dominio de Stock (`src/stock/`):**
    * **`models.py`:** Define las estructuras de datos inmutables (`RegistroDescuento`, `ReporteStock`).
@@ -583,12 +612,45 @@ Para garantizar un código limpio, mantenible y escalable, la base de código fu
 2. **Subpaquete de Interfaz de Usuario (`src/ui/`):**
    * **`theme.py`:** Centraliza las constantes cromáticas institucionales (`ROJO`, `FONDO`, `SUPERFICIE`, `TEXTO`, `SECUNDARIO`, `BORDE`).
    * **`components/`:** Desacopla la barra superior adaptable (`header.py`), el drawer de navegación móvil/escritorio (`sidebar.py`), el panel de indicadores y línea de tiempo (`panels.py`) y la ventana flotante de mensajería (`floating_chat.py`).
-   * **`dialogs/`:** Divide las pantallas modales por dominio funcional específico (`dlg_auth.py`, `dlg_clientes.py`, `dlg_usuarios.py`, `dlg_pedidos.py`, `dlg_historial_pedidos.py`, `dlg_productos.py`, `dlg_escaner.py`, `dlg_cierre.py`, `dlg_email.py`, `dlg_analytics.py`, `dlg_stock_ops.py`, `dlg_smtp.py`, `dlg_backup.py`).
+   * **`dialogs/`:** Divide las pantallas modales por dominio funcional específico (`dlg_auth.py`, `dlg_clientes.py`, `dlg_usuarios.py`, `dlg_pedidos.py`, `dlg_historial_pedidos.py`, `dlg_productos.py`, `dlg_escaner.py`, `dlg_cierre.py`, `dlg_email.py`, `dlg_analytics.py`, `dlg_stock_ops.py`, `dlg_smtp.py`, `dlg_backup.py`, `dlg_inventario_vivo.py`).
 
-3. **Compatibilidad Inversa al 100%:**
+3. **Modularización Frontend Web (`assets/`):**
+   * **Separación de Responsabilidades:** Se eliminaron scripts y estilos embebidos en línea.
+   * **Estructura Modular:** El escáner web de inventario se descompuso en tres capas independientes:
+     - `assets/scanner.html`: Marcado semántico HTML5 puro.
+     - `assets/css/scanner.css`: Hoja de estilos con variables CSS, animaciones de escaneo y layout responsive.
+     - `assets/js/scanner.js`: Lógica de cámara WebRTC, detección de códigos de barra (`BarcodeDetector`), sintetizador de audio (Web Audio API) y puente de mensajería con la ventana padre de Flet.
+
+4. **Compatibilidad Inversa al 100%:**
    * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
 ### Esquema de Bases de Datos SQLite
+
+#### `data/productos.sqlite3`
+
+```sql
+CREATE TABLE products (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    stock INTEGER NOT NULL DEFAULT 0,
+    stock_minimo INTEGER NOT NULL DEFAULT 5,
+    stock_maximo INTEGER NOT NULL DEFAULT 100,
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    stock_fisico INTEGER DEFAULT NULL,
+    cod_barras TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_cod_barras ON products(cod_barras);
+
+CREATE TABLE product_catalog_rows (
+    id INTEGER PRIMARY KEY,
+    product_code TEXT NOT NULL REFERENCES products(code),
+    display_name TEXT NOT NULL,
+    display_order INTEGER NOT NULL,
+    template_row INTEGER
+);
+```
 
 #### `data/usuarios.sqlite3`
 
@@ -621,8 +683,11 @@ CREATE TABLE clientes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
     activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    codigo TEXT NOT NULL DEFAULT '',
+    direccion TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_clientes_codigo ON clientes(codigo);
 
 CREATE TABLE pedidos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -789,8 +854,8 @@ Firefox posee su propio almacén de certificados independiente del sistema opera
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 122 pruebas unitarias automatizadas distribuidas en 15 módulos.
-* **Tasa de éxito:** 100% aprobadas (`122 passed in 19.99s - OK`).
+* **Total de pruebas:** 133 pruebas unitarias automatizadas distribuidas en 17 módulos.
+* **Tasa de éxito:** 100% aprobadas (`133 passed in 22.88s - OK`).
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:
@@ -829,7 +894,9 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
 6. `tests/test_internal_chat.py`: Reconocimiento semántico de intenciones del bot y chat entre operarios y administración.
 7. `tests/test_product_store.py`: Persistencia en SQLite, movimientos y cálculo de reposición.
 8. `tests/test_stock_manager.py`: Descuentos atómicos, exportación de reportes PDF/Excel, stock físico y Mercado Libre Full.
-9. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
+9. `tests/test_barcode_and_live_inventory.py`: Migración de columna `cod_barras`, búsqueda dual por SKU/código de barras, conteo físico en vivo y generación automática de planillas comparativas de discrepancias.
+10. `tests/test_client_code_and_order_fields.py`: Separación automática de código y razón social de cliente al escanear remito, extracción y persistencia de dirección para Google Maps API, auto-poblado de fecha de despacho hacia fecha de retiro, stepper interactivo (+/-) de bultos y validación obligatoria de logística.
+11. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
 
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:

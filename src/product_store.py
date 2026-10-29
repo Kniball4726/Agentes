@@ -55,6 +55,16 @@ class ProductStore:
                 connection.execute(
                     "ALTER TABLE products ADD COLUMN stock_fisico INTEGER DEFAULT NULL"
                 )
+            if "cod_barras" not in columns:
+                connection.execute(
+                    "ALTER TABLE products ADD COLUMN cod_barras TEXT DEFAULT ''"
+                )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_cod_barras
+                ON products(cod_barras)
+                """
+            )
 
             connection.execute(
                 """
@@ -361,11 +371,12 @@ class ProductStore:
                     product.stock_minimo AS stock_minimo,
                     product.stock_maximo AS stock_maximo,
                     product.stock_fisico AS stock_fisico,
+                    product.cod_barras AS cod_barras,
                     MIN(catalog_row.display_order) AS display_order
                 FROM products AS product
                 JOIN product_catalog_rows AS catalog_row
                     ON catalog_row.product_code = product.code
-                GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico
+                GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico, product.cod_barras
                 ORDER BY display_order, product.code
                 """
             ).fetchall()
@@ -380,6 +391,7 @@ class ProductStore:
         restore_template: Callable[[], None],
         stock_minimo: int = 5,
         stock_maximo: int = 100,
+        cod_barras: str = "",
     ) -> tuple[int, str]:
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -415,8 +427,8 @@ class ProductStore:
                     (orden,),
                 )
                 connection.execute(
-                    "INSERT INTO products (code, name, stock, stock_minimo, stock_maximo) VALUES (?, ?, ?, ?, ?)",
-                    (code, name, stock, stock_minimo, stock_maximo),
+                    "INSERT INTO products (code, name, stock, stock_minimo, stock_maximo, cod_barras) VALUES (?, ?, ?, ?, ?, ?)",
+                    (code, name, stock, stock_minimo, stock_maximo, cod_barras.strip()),
                 )
                 connection.execute(
                     """
@@ -475,12 +487,13 @@ class ProductStore:
         restore_template: Callable[[], None],
         stock_minimo: int | None = None,
         stock_maximo: int | None = None,
+        cod_barras: str | None = None,
     ) -> None:
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 current = connection.execute(
-                    "SELECT active, stock_minimo, stock_maximo FROM products WHERE code = ?", (old_code,)
+                    "SELECT active, stock_minimo, stock_maximo, cod_barras FROM products WHERE code = ?", (old_code,)
                 ).fetchone()
                 if current is None:
                     raise ValueError(f"No se encontró el producto '{old_code}'.")
@@ -493,15 +506,16 @@ class ProductStore:
 
                 val_min = stock_minimo if stock_minimo is not None else current["stock_minimo"]
                 val_max = stock_maximo if stock_maximo is not None else current["stock_maximo"]
+                val_barras = cod_barras.strip() if cod_barras is not None else (current["cod_barras"] or "")
 
                 if new_code != old_code:
                     connection.execute(
                         """
-                        INSERT INTO products (code, name, stock, active, created_at, stock_minimo, stock_maximo)
-                        SELECT ?, ?, ?, active, created_at, ?, ?
+                        INSERT INTO products (code, name, stock, active, created_at, stock_minimo, stock_maximo, cod_barras)
+                        SELECT ?, ?, ?, active, created_at, ?, ?, ?
                         FROM products WHERE code = ?
                         """,
-                        (new_code, name, stock, val_min, val_max, old_code),
+                        (new_code, name, stock, val_min, val_max, val_barras, old_code),
                     )
                     connection.execute(
                         """
@@ -516,8 +530,8 @@ class ProductStore:
                     )
                 else:
                     connection.execute(
-                        "UPDATE products SET name = ?, stock = ?, stock_minimo = ?, stock_maximo = ? WHERE code = ?",
-                        (name, stock, val_min, val_max, old_code),
+                        "UPDATE products SET name = ?, stock = ?, stock_minimo = ?, stock_maximo = ?, cod_barras = ? WHERE code = ?",
+                        (name, stock, val_min, val_max, val_barras, old_code),
                     )
                     connection.execute(
                         """
@@ -563,6 +577,70 @@ class ProductStore:
                         "Productos_backup.xlsx."
                     ) from error
                 raise
+
+    def get_product(self, code: str) -> sqlite3.Row | None:
+        """Obtiene un producto por su código interno (SKU)."""
+        with closing(self._connect()) as connection:
+            return connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras
+                FROM products
+                WHERE code = ?
+                """,
+                (code.strip(),),
+            ).fetchone()
+
+    def get_product_by_barcode(self, cod_barras: str) -> sqlite3.Row | None:
+        """Obtiene un producto por su código de barras (EAN-13, QR, Code-128, etc.)."""
+        barras = cod_barras.strip()
+        if not barras:
+            return None
+        with closing(self._connect()) as connection:
+            return connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras
+                FROM products
+                WHERE cod_barras = ? AND cod_barras != ''
+                LIMIT 1
+                """,
+                (barras,),
+            ).fetchone()
+
+    def find_product_by_code_or_barcode(self, query: str) -> sqlite3.Row | None:
+        """Busca primero por código interno (SKU), luego por código de barras."""
+        val = query.strip()
+        if not val:
+            return None
+        with closing(self._connect()) as connection:
+            # 1. Búsqueda por SKU exacto
+            prod = connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras
+                FROM products
+                WHERE code = ?
+                """,
+                (val,),
+            ).fetchone()
+            if prod is not None:
+                return prod
+            # 2. Búsqueda por código de barras exacto
+            return connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras
+                FROM products
+                WHERE cod_barras = ? AND cod_barras != ''
+                LIMIT 1
+                """,
+                (val,),
+            ).fetchone()
+
+    def set_product_barcode(self, code: str, cod_barras: str) -> None:
+        """Asigna o actualiza el código de barras de un producto."""
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                "UPDATE products SET cod_barras = ? WHERE code = ?",
+                (cod_barras.strip(), code.strip()),
+            )
 
     def set_product_active(self, code: str, active: bool) -> None:
         with closing(self._connect()) as connection, connection:

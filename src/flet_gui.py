@@ -125,6 +125,7 @@ from .ui.dialogs import (
     mostrar_notificaciones_admin,
     mostrar_registro_auditoria,
     mostrar_stock_fisico_operario,
+    mostrar_dialogo_inventario_vivo,
 )
 
 logger = configurar_logging()
@@ -1905,6 +1906,9 @@ class InterfazFlet:
 
     def mostrar_comparativa_stock_fisico_admin(self, _evento: ft.Event | None = None) -> None:
         mostrar_comparativa_stock_fisico_admin(self, _evento)
+
+    def mostrar_dialogo_inventario_vivo(self, _evento: ft.Event | None = None) -> None:
+        mostrar_dialogo_inventario_vivo(self, _evento)
 
 async def main(page: ft.Page) -> None:
     setattr(page, "_interfaz_flet", InterfazFlet(page))

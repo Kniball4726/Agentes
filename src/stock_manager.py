@@ -189,6 +189,7 @@ class StockManager:
         stock: int,
         stock_minimo: Optional[int] = None,
         stock_maximo: Optional[int] = None,
+        cod_barras: Optional[str] = None,
     ) -> None:
         codigo_actual = normalizar_codigo(codigo_actual)
         codigo_nuevo = normalizar_codigo(codigo_nuevo)
@@ -330,6 +331,7 @@ class StockManager:
             restore_template=restaurar_plantilla,
             stock_minimo=stock_minimo,
             stock_maximo=stock_maximo,
+            cod_barras=cod_barras,
         )
         self._cargar_catalogo()
 
@@ -342,7 +344,8 @@ class StockManager:
         codigo_nuevo: str,
         nombre_nuevo: str,
         codigo_arriba: str,
-        stock_inicial: Optional[int] = None
+        stock_inicial: Optional[int] = None,
+        cod_barras: str = "",
     ) -> Tuple[bool, str, Optional[int]]:
         """
         Inserta un nuevo producto en SQLite inmediatamente debajo del código
@@ -520,6 +523,7 @@ class StockManager:
                 stock=stock_inicial or 0,
                 synchronize_template=sincronizar_plantilla,
                 restore_template=restaurar_plantilla,
+                cod_barras=cod_barras,
             )
         except (ValueError, OSError, RuntimeError) as error:
             return False, str(error), None
@@ -1243,6 +1247,14 @@ class StockManager:
             self._cargar_catalogo()
 
         return resumen
+
+    def buscar_producto_por_codigo_o_barras(self, query: str) -> Optional[sqlite3.Row]:
+        """Busca un producto por su código interno (SKU) o por su código de barras."""
+        return self.product_store.find_product_by_code_or_barcode(query)
+
+    def asignar_codigo_barras(self, codigo: str, cod_barras: str) -> None:
+        """Asocia o actualiza el código de barras de un producto."""
+        self.product_store.set_product_barcode(codigo, cod_barras)
 
     def obtener_analisis_reposicion(self, solo_criticos: bool = True) -> List:
         """Consulta la vista de la base de datos v_analisis_reposicion."""

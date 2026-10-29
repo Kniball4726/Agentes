@@ -20,7 +20,8 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
     sm_cls = _get_stock_manager_cls()
     stock_manager = sm_cls(interfaz.menu.ruta_excel_base)
     busqueda = ft.TextField(
-        label="Buscar por código o nombre",
+        label="Buscar por código, nombre o código de barras",
+        hint_text="Escribe o escanea un código para filtrar...",
         expand=True,
     )
     productos = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
@@ -32,7 +33,8 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             codigo = str(producto["code"])
             nombre = str(producto["name"])
             activo = bool(producto["active"])
-            if consulta and consulta not in f"{codigo} {nombre}".casefold():
+            barras = str(producto["cod_barras"] or "").strip() if "cod_barras" in producto.keys() else ""
+            if consulta and consulta not in f"{codigo} {nombre} {barras}".casefold():
                 continue
 
             stk = int(producto["stock"])
@@ -63,6 +65,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                         [
                             ft.Text(codigo, width=90, color=interfaz.texto, weight=ft.FontWeight.BOLD),
                             ft.Text(nombre, expand=True, color=interfaz.texto),
+                            ft.Text(f"🏷️ {barras}" if barras else "-", width=110, size=11, color=interfaz.secundario),
                             ft.Text(
                                 f"{stk} un.",
                                 width=70,
@@ -144,9 +147,16 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             value=str(stock_max_val),
             keyboard_type=ft.KeyboardType.NUMBER,
         )
+        barras_init = str(producto["cod_barras"] or "").strip() if "cod_barras" in producto.keys() else ""
+        campo_barras = ft.TextField(
+            label="Código de barras (EAN-13, QR, etc.)",
+            value=barras_init,
+            hint_text="Escanear o ingresar código de barras",
+        )
         campos: list[ft.Control] = [
             campo_codigo,
             campo_nombre,
+            campo_barras,
             campo_stock,
             campo_min,
             campo_max,
@@ -180,7 +190,13 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             actualizado = await interfaz.ejecutar_tarea(
                 "Edición de producto",
                 lambda: stock_manager.actualizar_producto(
-                    codigo_original, codigo, nombre, stock, s_min, s_max
+                    codigo_original,
+                    codigo,
+                    nombre,
+                    stock,
+                    s_min,
+                    s_max,
+                    cod_barras=(campo_barras.value or "").strip(),
                 ),
             )
             if actualizado:
@@ -411,6 +427,7 @@ def mostrar_dialogo_formulario_producto(
     campos = {
         "codigo": ft.TextField(label="Código del nuevo producto"),
         "nombre": ft.TextField(label="Nombre del producto"),
+        "cod_barras": ft.TextField(label="Código de barras (opcional)"),
         "referencia": ft.TextField(label="Código del producto anterior"),
         "stock": ft.TextField(label="Stock inicial (opcional)", keyboard_type=ft.KeyboardType.NUMBER),
     }
@@ -441,6 +458,7 @@ def mostrar_dialogo_formulario_producto(
                 nombre_nuevo=nombre,
                 codigo_arriba=referencia,
                 stock_inicial=stock,
+                cod_barras=(campos["cod_barras"].value or "").strip(),
             )
             if not exito:
                 raise ValueError(mensaje)

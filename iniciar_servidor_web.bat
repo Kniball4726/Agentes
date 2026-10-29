@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
+title StockAgent - Servidor Web HTTPS
 cd /d "%~dp0"
 
 echo ==================================================================
@@ -17,51 +18,45 @@ for %%A in (%*) do (
     if /i "%%~A"=="--hide-console" set "MODO_SILENCIOSO=1"
 )
 
-rem 1. Verificar si el servidor ya est? activo en el puerto 8550
-powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 8550 -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
-if not errorlevel 1 (
-    echo [INFO] El servidor ya se encuentra activo y funcionando en segundo plano.
-    echo   -^> En esta PC:   https://127.0.0.1:8550
-    echo.
-    echo Si deseas reiniciar el servidor, primero ejecuta 'detener_servidor.bat'.
-    echo ==================================================================
-    echo.
-    if "!MODO_SILENCIOSO!"=="0" (
-        echo Abriendo navegador en la instancia activa...
-        start "" "https://127.0.0.1:8550"
-        echo.
-        pause
-    )
-    goto :FIN_OK
-)
+rem Iniciar la aplicacion utilizando el entorno disponible
+rem main.py detecta si ya hay una instancia activa en el puerto 8550
+rem y abre el navegador hacia ella sin duplicar procesos
 
-rem 2. Si no est? activo, iniciar la aplicaci?n
 if exist "StockAgent.exe" (
-    echo Iniciando desde StockAgent.exe...
-    "StockAgent.exe" --web --https --port 8550 %*
-    goto :FIN
-)
-
-if exist "ttech\Scripts\python.exe" (
-    echo Iniciando con Python ttech...
-    "ttech\Scripts\python.exe" main.py --web --https --port 8550 %*
+    echo [INFO] Iniciando ejecutable StockAgent.exe...
+    "StockAgent.exe" %*
     goto :FIN
 )
 
 if exist ".venv\Scripts\python.exe" (
-    echo Iniciando con Python venv...
-    ".venv\Scripts\python.exe" main.py --web --https --port 8550 %*
+    echo [INFO] Iniciando con entorno virtual Python .venv...
+    ".venv\Scripts\python.exe" main.py %*
+    goto :FIN
+)
+
+if exist "ttech\Scripts\python.exe" (
+    echo [INFO] Iniciando con Python ttech...
+    "ttech\Scripts\python.exe" main.py %*
+    goto :FIN
+)
+
+where python >nul 2>&1
+if not errorlevel 1 (
+    echo [INFO] Iniciando con Python del sistema...
+    python main.py %*
     goto :FIN
 )
 
 if exist "dist\StockAgent.exe" (
-    echo Iniciando desde dist\StockAgent.exe...
-    "dist\StockAgent.exe" --web --https --port 8550 %*
+    echo [INFO] Iniciando desde dist\StockAgent.exe...
+    "dist\StockAgent.exe" %*
     goto :FIN
 )
 
-echo Iniciando con Python del sistema...
-python main.py --web --https --port 8550 %*
+echo [ERROR] No se encontro Python ni el ejecutable StockAgent.exe.
+echo Por favor instala Python o activa el entorno virtual .venv.
+pause
+exit /b 1
 
 :FIN
 if errorlevel 1 (
@@ -79,8 +74,5 @@ if errorlevel 1 (
         echo   El servidor se ha detenido.
         echo ==================================================================
         echo.
-        pause
     )
 )
-
-:FIN_OK

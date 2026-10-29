@@ -54,6 +54,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                 interfaz.boton("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                 interfaz.boton("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
+                interfaz.boton("Inventario en Vivo (Escáner)", ft.Icons.DOCUMENT_SCANNER, interfaz.mostrar_dialogo_inventario_vivo),
                 interfaz.boton("Cierre de Jornada", ft.Icons.TASK_ALT, interfaz.mostrar_cierre_jornada),
             ]
         )

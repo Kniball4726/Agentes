@@ -1246,6 +1246,11 @@ def mostrar_stock_fisico_operario(interfaz: Any, _evento: ft.Event | None = None
             ),
         ),
         actions=[
+            ft.TextButton(
+                "Relevar en Vivo (Cámara / Escáner)",
+                icon=ft.Icons.DOCUMENT_SCANNER,
+                on_click=lambda _e: (interfaz.page.pop_dialog(), interfaz.mostrar_dialogo_inventario_vivo()),
+            ),
             interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
             interfaz.boton_dialogo("Confirmar y Notificar Admin", confirmar_stock_fisico),
         ],
@@ -1401,6 +1406,13 @@ def mostrar_comparativa_stock_fisico_admin(interfaz: Any, _evento: ft.Event | No
             ),
         ),
         actions=[
+            ft.Button(
+                "Relevar Inventario (Escáner)",
+                icon=ft.Icons.DOCUMENT_SCANNER,
+                bgcolor=ROJO,
+                color=ft.Colors.WHITE,
+                on_click=lambda _e: (interfaz.page.pop_dialog(), interfaz.mostrar_dialogo_inventario_vivo()),
+            ),
             ft.TextButton(
                 "Descargar / Abrir Documento Unificado (Excel)",
                 icon=ft.Icons.DOWNLOAD,

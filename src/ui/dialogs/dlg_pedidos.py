@@ -29,7 +29,8 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         autofocus=True,
         expand=True,
     )
-    clientes_actuales = interfaz.order_store.listar_nombres_clientes()
+    clientes_lista_obj = interfaz.order_store.listar_clientes()
+    clientes_actuales = [c.nombre for c in clientes_lista_obj]
 
     cliente_input = ft.TextField(
         label="Cliente (buscar o escribir nuevo) *",
@@ -54,27 +55,48 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             interfaz.page.update()
             return
 
-        coincidencias = [c for c in clientes_actuales if q in c.lower()]
+        coincidencias = [
+            c for c in clientes_lista_obj
+            if q in c.nombre.lower() or (c.codigo and q in c.codigo.lower()) or (c.direccion and q in c.direccion.lower())
+        ]
         if coincidencias:
             sugerencias_lista.controls.clear()
             for c in coincidencias[:6]:
+                sub_info = []
+                if c.codigo:
+                    sub_info.append(f"Cód: {c.codigo}")
+                if c.direccion:
+                    sub_info.append(f"📍 {c.direccion}")
+                det_txt = " | ".join(sub_info)
+
                 sugerencias_lista.controls.append(
                     ft.Container(
                         content=ft.Row(
                             [
                                 ft.Icon(ft.Icons.PERSON, size=16, color=ft.Colors.BLUE_400),
-                                ft.Text(c, size=13, weight=ft.FontWeight.W_500),
+                                ft.Column(
+                                    [
+                                        ft.Text(c.nombre, size=13, weight=ft.FontWeight.W_500),
+                                        *(
+                                            [ft.Text(det_txt, size=10, color=interfaz.secundario)]
+                                            if det_txt
+                                            else []
+                                        ),
+                                    ],
+                                    spacing=1,
+                                    expand=True,
+                                ),
                             ],
                             spacing=6,
                         ),
                         padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                         border_radius=4,
                         ink=True,
-                        on_click=lambda _ev, nom=c: seleccionar_cliente_sugerido(nom),
+                        on_click=lambda _ev, nom=c.nombre: seleccionar_cliente_sugerido(nom),
                     )
                 )
             sugerencias_lista.visible = True
-            if any(c.lower() == q for c in coincidencias):
+            if any(c.nombre.lower() == q for c in coincidencias):
                 estado_cliente_txt.value = "✓ Cliente registrado"
                 estado_cliente_txt.color = ft.Colors.GREEN_400
             else:
@@ -97,14 +119,56 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
     )
 
     bultos_input = ft.TextField(
-        label="Cantidad de bultos",
         value="1",
         keyboard_type=ft.KeyboardType.NUMBER,
-        expand=True,
+        text_align=ft.TextAlign.CENTER,
+        width=70,
+        dense=True,
     )
+
+    def ajustar_bultos(delta: int) -> None:
+        try:
+            val = int(bultos_input.value or "1")
+        except ValueError:
+            val = 1
+        nuevo = max(1, val + delta)
+        bultos_input.value = str(nuevo)
+        interfaz.page.update()
+
+    btn_restar_bultos = ft.IconButton(
+        icon=ft.Icons.REMOVE_CIRCLE_OUTLINE,
+        tooltip="Restar 1 bulto",
+        icon_color=interfaz.secundario,
+        on_click=lambda _e: ajustar_bultos(-1),
+    )
+    btn_sumar_bultos = ft.IconButton(
+        icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+        tooltip="Sumar 1 bulto",
+        icon_color=ROJO,
+        on_click=lambda _e: ajustar_bultos(1),
+    )
+    fila_bultos = ft.Container(
+        content=ft.Row(
+            [
+                ft.Text("Cantidad de bultos *", size=13, weight=ft.FontWeight.W_500),
+                ft.Row(
+                    [btn_restar_bultos, bultos_input, btn_sumar_bultos],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+        border=ft.Border.all(1, interfaz.borde),
+        border_radius=8,
+    )
+
     selector_logistica = ft.Dropdown(
-        label="Tipo de Logística",
-        value="Domicilio",
+        label="Tipo de Logística *",
+        hint_text="Seleccionar tipo de logística...",
+        value=None,
         options=[ft.DropdownOption(key=op, text=op) for op in LOGISTICA_OPCIONES],
         expand=True,
     )
@@ -171,6 +235,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
     )
 
     ruta_comprobante: list[Path] = []
+    datos_doc_ref: list[Any] = []
     texto_archivo = ft.Text(
         "Ningún comprobante seleccionado (.pdf o .xlsx/.xls)",
         size=12,
@@ -191,6 +256,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     duplicado = interfaz.order_store.buscar_pedido_por_hash(hash_candidato)
                     if duplicado:
                         ruta_comprobante.clear()
+                        datos_doc_ref.clear()
                         texto_archivo.value = f"⛔ DUPLICADO: {arch_candidato.name}"
                         texto_archivo.color = ft.Colors.RED_400
                         mensaje_error.value = (
@@ -216,11 +282,37 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                         datos_doc = parsear_canje_excel(arch_candidato)
 
                     if datos_doc:
+                        datos_doc_ref.clear()
+                        datos_doc_ref.append(datos_doc)
                         if getattr(datos_doc, "numero_remito", None):
                             remito_factura_input.value = str(datos_doc.numero_remito).strip()
                         if getattr(datos_doc, "cliente", None):
                             cliente_input.value = str(datos_doc.cliente).strip()
                             on_cliente_cambio(None)
+                        # Auto-asignar fecha de retiro según la fecha de despacho
+                        if getattr(datos_doc, "fecha_despacho", None) and str(datos_doc.fecha_despacho).strip() and str(datos_doc.fecha_despacho).strip() != "Sin fecha":
+                            fecha_retiro_input.value = str(datos_doc.fecha_despacho).strip()
+                        elif getattr(datos_doc, "fecha", None) and str(datos_doc.fecha).strip() and str(datos_doc.fecha).strip() != "Sin fecha" and not fecha_retiro_input.value:
+                            fecha_retiro_input.value = str(datos_doc.fecha).strip()
+
+                        # Enriquecer cliente con código y dirección automáticamente
+                        cli_cod = getattr(datos_doc, "codigo_cliente", "") or ""
+                        cli_dir = getattr(datos_doc, "direccion", "") or ""
+                        cli_nom = str(getattr(datos_doc, "cliente", "")).strip()
+                        if cli_nom and (cli_cod or cli_dir):
+                            try:
+                                interfaz.order_store.obtener_o_crear_cliente(
+                                    nombre=cli_nom,
+                                    codigo=cli_cod,
+                                    direccion=cli_dir,
+                                    usuario=armador_nom,
+                                )
+                                clientes_lista_obj.clear()
+                                clientes_lista_obj.extend(interfaz.order_store.listar_clientes())
+                                clientes_actuales.clear()
+                                clientes_actuales.extend([c.nombre for c in clientes_lista_obj])
+                            except Exception:
+                                pass
                 except Exception:
                     pass
 
@@ -289,14 +381,25 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             mensaje_error.value = "Debes ingresar o seleccionar un Cliente."
             interfaz.page.update()
             return
+        if not log:
+            mensaje_error.value = "Debes seleccionar un tipo de logística."
+            interfaz.page.update()
+            return
         if not ruta_comprobante:
             mensaje_error.value = "Debes adjuntar el comprobante (.pdf o .xlsx/.xls)."
             interfaz.page.update()
             return
 
-        if cli and cli not in interfaz.order_store.listar_nombres_clientes():
+        if cli:
             try:
-                interfaz.order_store.crear_cliente(cli)
+                cli_cod = getattr(datos_doc_ref[0], "codigo_cliente", "") if datos_doc_ref and datos_doc_ref[0] else ""
+                cli_dir = getattr(datos_doc_ref[0], "direccion", "") if datos_doc_ref and datos_doc_ref[0] else ""
+                interfaz.order_store.obtener_o_crear_cliente(
+                    nombre=cli,
+                    codigo=cli_cod,
+                    direccion=cli_dir,
+                    usuario=armador_nom,
+                )
             except Exception:
                 pass
 
@@ -388,7 +491,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     sugerencias_lista,
                     estado_cliente_txt,
                     numero_pedido_input,
-                    bultos_input,
+                    fila_bultos,
                     selector_logistica,
                     fila_fecha_retiro,
                     armador_input,

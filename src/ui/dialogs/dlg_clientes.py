@@ -12,13 +12,23 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
     usr_nom = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
 
     filtro_txt = ft.TextField(
-        hint_text="Buscar cliente por nombre...",
+        hint_text="Buscar cliente por nombre, código o dirección...",
         prefix_icon=ft.Icons.SEARCH,
         dense=True,
         expand=True,
     )
     nuevo_cliente_txt = ft.TextField(
-        hint_text="Nombre del nuevo cliente...",
+        hint_text="Nombre del nuevo cliente *",
+        dense=True,
+        expand=True,
+    )
+    nuevo_codigo_txt = ft.TextField(
+        hint_text="Código (opc)",
+        dense=True,
+        width=110,
+    )
+    nueva_direccion_txt = ft.TextField(
+        hint_text="Dirección para mapas / logística (opcional)...",
         dense=True,
         expand=True,
     )
@@ -39,7 +49,10 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
             return
 
         if busqueda:
-            clientes = [c for c in clientes if busqueda in c.nombre.lower()]
+            clientes = [
+                c for c in clientes
+                if busqueda in c.nombre.lower() or busqueda in c.codigo.lower() or busqueda in c.direccion.lower()
+            ]
 
         total_txt.value = f"Total: {len(clientes)} cliente(s) activo(s)"
 
@@ -61,22 +74,42 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
             for cli in clientes:
                 c_id = cli.id
                 c_nom = cli.nombre
+                c_cod = cli.codigo
+                c_dir = cli.direccion
 
-                def editar_cli(_e: ft.Event, cid=c_id, cnom=c_nom):
+                def editar_cli(_e: ft.Event, cid=c_id, cnom=c_nom, ccod=c_cod, cdir=c_dir):
                     campo_edit = ft.TextField(
                         value=cnom,
-                        label="Nombre del cliente",
+                        label="Nombre del cliente *",
                         expand=True,
                         autofocus=True,
+                    )
+                    campo_cod = ft.TextField(
+                        value=ccod,
+                        label="Código de cliente (opcional)",
+                        dense=True,
+                    )
+                    campo_dir = ft.TextField(
+                        value=cdir,
+                        label="Dirección (para mapas Google / logística)",
+                        dense=True,
                     )
                     err_edit = ft.Text(size=11, color=ft.Colors.RED_400)
 
                     def guardar_edit(_ev: ft.Event):
-                        val = (campo_edit.value or "").strip()
+                        val_nom = (campo_edit.value or "").strip()
+                        val_cod = (campo_cod.value or "").strip()
+                        val_dir = (campo_dir.value or "").strip()
                         try:
-                            interfaz.order_store.actualizar_cliente(cid, val, usuario=usr_nom)
+                            interfaz.order_store.actualizar_cliente(
+                                cid,
+                                val_nom,
+                                usuario=usr_nom,
+                                codigo=val_cod,
+                                direccion=val_dir,
+                            )
                             interfaz.page.pop_dialog()
-                            interfaz.notificar(f"Cliente '{val}' actualizado.")
+                            interfaz.notificar(f"Cliente '{val_nom}' actualizado.")
                             recargar_clientes()
                         except Exception as err:
                             err_edit.value = str(err)
@@ -88,8 +121,12 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                         modal=True,
                         title=ft.Row([ft.Icon(ft.Icons.EDIT, color=ROJO), ft.Text("Editar Cliente")]),
                         content=ft.Container(
-                            width=420,
-                            content=ft.Column([campo_edit, err_edit], tight=True, spacing=10),
+                            width=440,
+                            content=ft.Column(
+                                [campo_edit, campo_cod, campo_dir, err_edit],
+                                tight=True,
+                                spacing=10,
+                            ),
                         ),
                         actions=[
                             ft.Button("Guardar", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_edit),
@@ -121,7 +158,14 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                     interfaz.page.show_dialog(dlg_del)
 
                 fecha_creado = cli.created_at[:10] if cli.created_at else ""
-                subtitulo = f"Alta: {fecha_creado}" if fecha_creado else ""
+                sub_partes = []
+                if cli.codigo:
+                    sub_partes.append(f"Cód: {cli.codigo}")
+                if cli.direccion:
+                    sub_partes.append(f"📍 {cli.direccion}")
+                if fecha_creado:
+                    sub_partes.append(f"Alta: {fecha_creado}")
+                subtitulo = " | ".join(sub_partes)
 
                 fila = ft.Container(
                     padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -141,7 +185,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                             ),
                             ft.IconButton(
                                 ft.Icons.EDIT_OUTLINED,
-                                tooltip="Editar nombre",
+                                tooltip="Editar cliente",
                                 icon_size=18,
                                 on_click=editar_cli,
                             ),
@@ -163,14 +207,18 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
 
     def agregar_cliente(_e: ft.Event) -> None:
         nom = (nuevo_cliente_txt.value or "").strip()
+        cod = (nuevo_codigo_txt.value or "").strip()
+        dir_c = (nueva_direccion_txt.value or "").strip()
         if not nom:
             msg_feedback.value = "Por favor ingresa un nombre para el cliente."
             msg_feedback.color = ft.Colors.RED_400
             interfaz.page.update()
             return
         try:
-            interfaz.order_store.crear_cliente(nom, usuario=usr_nom)
+            interfaz.order_store.crear_cliente(nom, usuario=usr_nom, codigo=cod, direccion=dir_c)
             nuevo_cliente_txt.value = ""
+            nuevo_codigo_txt.value = ""
+            nueva_direccion_txt.value = ""
             msg_feedback.value = f"✓ Cliente '{nom}' agregado correctamente."
             msg_feedback.color = ft.Colors.GREEN_400
             recargar_clientes()
@@ -193,6 +241,13 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                     ft.Row(
                         [
                             nuevo_cliente_txt,
+                            nuevo_codigo_txt,
+                        ],
+                        spacing=8,
+                    ),
+                    ft.Row(
+                        [
+                            nueva_direccion_txt,
                             ft.Button(
                                 "Agregar",
                                 icon=ft.Icons.PERSON_ADD,
