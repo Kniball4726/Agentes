@@ -115,6 +115,7 @@ StockAgent permite parametrizar su ejecución tanto por flags de consola como me
 | `--http` | `STOCKAGENT_HTTPS=0` | Desactivado | Desactiva HTTPS y ejecuta en HTTP plano. |
 | `--ssl-cert <RUTA>` | `STOCKAGENT_SSL_CERT` | Autogenerado | Ruta personalizada al certificado X.509 (`.crt` / `.pem`). |
 | `--ssl-key <RUTA>` | `STOCKAGENT_SSL_KEY` | Autogenerado | Ruta personalizada a la clave privada (`.key` / `.pem`). |
+| `--inactividad <MIN>` | `STOCKAGENT_INACTIVIDAD_MINUTOS` | `720` (12 horas) | Minutos de inactividad antes de cerrar sesión (`0` desactiva el cierre automático). |
 | `--desktop` | — | Desactivado | Inicia en ventana nativa de escritorio (Flet App). |
 | `--hide-console` | `STOCKAGENT_HIDE_CONSOLE=1` | Desactivado | Oculta la consola de Windows al arrancar. |
 | `--no-browser` | `STOCKAGENT_NO_BROWSER=1` | Desactivado | Evita abrir automáticamente el navegador al iniciar. |
@@ -183,6 +184,10 @@ StockAgent incorpora estrictas medidas de seguridad para proteger la integridad 
 
 4. **Desbloqueo Administrativo Inmediato:**
    * Tanto el usuario Master como los Administradores pueden desbloquear manualmente cualquier cuenta bloqueada desde la tabla de **Gestión de Usuarios**, limpiando los contadores e historial de fallos sin necesidad de esperar el transcurso de los 15 minutos.
+
+5. **Sesión Continua durante la Jornada (Inactividad de 12 Horas):**
+   * Para evitar interrupciones o pérdida de contexto durante el trabajo diario en depósito, la sesión de usuario se mantiene abierta de forma continua durante **12 horas** (720 minutos) de inactividad.
+   * Puede ajustarse con el parámetro `--inactividad <minutos>` o la variable de entorno `STOCKAGENT_INACTIVIDAD_MINUTOS` (establecer en `0` desactiva completamente el cierre de sesión por inactividad).
 
 ---
 
@@ -499,25 +504,59 @@ StockAgent/
 │   ├── Mayoristas/
 │   ├── Canjes/
 │   └── MercadoLibre/
-├── src/                               # Código fuente modular
+├── src/                               # Código fuente modular y desacoplado
 │   ├── agent.py                       # Orquestador del Agente de Stock
-│   ├── flet_gui.py                    # Interfaz gráfica Flet, PWA y endpoints web
+│   ├── flet_gui.py                    # Fachada principal Flet, PWA y orquestación UI
 │   ├── tray_icon.py                   # Controlador del icono en bandeja de Windows (pystray)
 │   ├── orders_store.py                # DAO SQLite para pedidos, clientes y auditoría
 │   ├── user_store.py                  # DAO SQLite para usuarios, perfiles y seguridad
-│   ├── stock_manager.py               # Gestor de stock y manipulación Excel
+│   ├── product_store.py               # DAO SQLite para catálogo, reposición e inventario físico
+│   ├── stock_manager.py               # Fachada central de inventario y manipulación de catálogo
 │   ├── remito_parser.py               # Parser de remitos PDF
 │   ├── canjes_parser.py               # Parser de canjes Excel
 │   ├── mercado_libre_parser.py        # Parser de pedidos DOCX
+│   ├── mercado_full_parser.py         # Parser de planillas Mercado Libre Full
 │   ├── dispatch_manifest.py           # Generador de Hoja de Ruta por Transporte (PDF)
 │   ├── label_generator.py             # Generador de Rótulos de Bultos con QR (PDF)
 │   ├── backup_manager.py              # Motor de respaldos comprimidos y restauración verificada
 │   ├── email_sender.py                # Envío directo SMTP con adjuntos y credenciales cifradas
 │   ├── secretos.py                    # Cifrado local de credenciales (Windows DPAPI / Fernet)
 │   ├── alertas_programadas.py         # Planificador en segundo plano de alertas diarias por correo
-│   ├── ssl_manager.py                 # Generador automático de certificados X.509 autofirmados para HTTPS
+│   ├── ssl_manager.py                 # Generador automático de certificados X.509 para HTTPS
 │   ├── logger_config.py               # Configuración de logs rotativos en data/logs/stockagent.log
-│   └── internal_chat.py               # Bot y Asistente Virtual con chips por rol
+│   ├── internal_chat.py               # Bot y Asistente Virtual con chips por rol
+│   │
+│   ├── stock/                         # Subpaquete modular de dominio de stock e informes
+│   │   ├── __init__.py                # Exportaciones públicas del módulo stock
+│   │   ├── models.py                  # Dataclasses de descuento (RegistroDescuento, ReporteStock)
+│   │   ├── reports.py                 # Exportadores de informes (.xls con xlwt y .pdf con ReportLab)
+│   │   ├── replenishment.py           # Sugerencia y generación de pedidos a fábrica en Excel
+│   │   └── physical_inventory.py      # Comparación y generación de planillas unificadas de inventario físico
+│   │
+│   └── ui/                            # Subpaquete modular de interfaz gráfica de usuario (Flet)
+│       ├── __init__.py                # Exportaciones públicas de UI
+│       ├── theme.py                   # Paleta cromática corporativa, bordes y estilos temáticos
+│       ├── components/                # Componentes visuales desacoplados
+│       │   ├── __init__.py            # Exportaciones de componentes
+│       │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
+│       │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
+│       │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
+│       │   └── panels.py              # Paneles de métricas de jornada e historial de actividad
+│       └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
+│           ├── __init__.py            # Re-exportación unificada de diálogos
+│           ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
+│           ├── dlg_clientes.py        # Alta, edición y administración de clientes
+│           ├── dlg_usuarios.py        # Administración de cuentas, roles y reseteo de claves
+│           ├── dlg_smtp.py            # Configuración de servidor SMTP y credenciales cifradas
+│           ├── dlg_backup.py          # Copias de seguridad y restauración asistida
+│           ├── dlg_productos.py       # Catálogo, edición de productos y movimientos de stock
+│           ├── dlg_pedidos.py         # Carga, cancelación, desarme y edición de pedidos
+│           ├── dlg_historial_pedidos.py # Historial de pedidos con búsqueda y reimpresión de comprobantes
+│           ├── dlg_escaner.py         # Escáner QR de despacho y avance de estado logístico
+│           ├── dlg_cierre.py          # Cierre de jornada y generación de hoja de ruta
+│           ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
+│           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
+│           └── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
@@ -531,6 +570,23 @@ StockAgent/
 ├── requirements.txt                   # Dependencias de producción
 └── requirements-build.txt             # Dependencias de compilación
 ```
+#### Refactorización Modular de la Arquitectura
+
+Para garantizar un código limpio, mantenible y escalable, la base de código fue descompuesta en módulos cohesivos con responsabilidades bien delimitadas:
+
+1. **Subpaquete de Dominio de Stock (`src/stock/`):**
+   * **`models.py`:** Define las estructuras de datos inmutables (`RegistroDescuento`, `ReporteStock`).
+   * **`reports.py`:** Encapsula la lógica de renderizado y dibujo visual tanto en binario de Excel 97-2003 (`.xls` vía `xlwt`) como en documentos PDF vectoriales (`ReportLab`), separando los detalles de formato de la lógica de negocio.
+   * **`replenishment.py`:** Implementa los cálculos de reposición y generación estilizada de pedidos a fábrica según puntos de quiebre y stock máximo.
+   * **`physical_inventory.py`:** Administra la reconciliación entre inventario digital e inventario físico relevado por operarios, con generación de documentos unificados de doble solapa (diferencias y catálogo consolidado).
+
+2. **Subpaquete de Interfaz de Usuario (`src/ui/`):**
+   * **`theme.py`:** Centraliza las constantes cromáticas institucionales (`ROJO`, `FONDO`, `SUPERFICIE`, `TEXTO`, `SECUNDARIO`, `BORDE`).
+   * **`components/`:** Desacopla la barra superior adaptable (`header.py`), el drawer de navegación móvil/escritorio (`sidebar.py`), el panel de indicadores y línea de tiempo (`panels.py`) y la ventana flotante de mensajería (`floating_chat.py`).
+   * **`dialogs/`:** Divide las pantallas modales por dominio funcional específico (`dlg_auth.py`, `dlg_clientes.py`, `dlg_usuarios.py`, `dlg_pedidos.py`, `dlg_historial_pedidos.py`, `dlg_productos.py`, `dlg_escaner.py`, `dlg_cierre.py`, `dlg_email.py`, `dlg_analytics.py`, `dlg_stock_ops.py`, `dlg_smtp.py`, `dlg_backup.py`).
+
+3. **Compatibilidad Inversa al 100%:**
+   * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
 ### Esquema de Bases de Datos SQLite
 
@@ -733,8 +789,8 @@ Firefox posee su propio almacén de certificados independiente del sistema opera
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 118 pruebas unitarias automatizadas distribuidas en 15 módulos.
-* **Tasa de éxito:** 100% aprobadas (`118 passed in 21.80s - OK`).
+* **Total de pruebas:** 122 pruebas unitarias automatizadas distribuidas en 15 módulos.
+* **Tasa de éxito:** 100% aprobadas (`122 passed in 19.99s - OK`).
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:

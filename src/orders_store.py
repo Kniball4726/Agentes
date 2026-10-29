@@ -361,12 +361,35 @@ class OrderStore:
     def listar_nombres_clientes(self) -> list[str]:
         return [c.nombre for c in self.listar_clientes()]
 
-    def crear_cliente(self, nombre: str) -> Cliente:
+    def crear_cliente(self, nombre: str, usuario: str = "Sistema") -> Cliente:
         nombre = nombre.strip()
         if not nombre:
             raise ValueError("El nombre del cliente no puede estar vacío.")
         if len(nombre) > 120:
             raise ValueError("El nombre del cliente no puede superar los 120 caracteres.")
+
+        with self._connect() as connection:
+            existente = connection.execute(
+                "SELECT id, nombre, activo, created_at FROM clientes WHERE nombre = ? COLLATE NOCASE",
+                (nombre,),
+            ).fetchone()
+
+        if existente:
+            if existente["activo"] == 1:
+                raise ValueError(f"El cliente '{nombre}' ya existe.")
+            with self._connect() as connection, connection:
+                connection.execute(
+                    "UPDATE clientes SET activo = 1, nombre = ? WHERE id = ?",
+                    (nombre, existente["id"]),
+                )
+            self.registrar_auditoria(usuario, "REACTIVAR_CLIENTE", f"Reactivación de cliente '{nombre}'")
+            return Cliente(
+                id=existente["id"],
+                nombre=nombre,
+                activo=True,
+                created_at=existente["created_at"],
+            )
+
         try:
             with self._connect() as connection, connection:
                 cursor = connection.execute(
@@ -385,8 +408,88 @@ class OrderStore:
             activo=bool(row["activo"]),
             created_at=row["created_at"],
         )
-        self.registrar_auditoria("Sistema", "CREAR_CLIENTE", f"Alta de cliente '{nombre}'")
+        self.registrar_auditoria(usuario, "CREAR_CLIENTE", f"Alta de cliente '{nombre}'")
         return cliente_nuevo
+
+    def registrar_cliente(self, nombre: str, usuario: str = "Sistema") -> Cliente:
+        """Alias compatible para crear o asegurar la existencia de un cliente."""
+        return self.crear_cliente(nombre, usuario=usuario)
+
+    def actualizar_cliente(
+        self,
+        cliente_id: int,
+        nuevo_nombre: str,
+        actualizar_pedidos: bool = True,
+        usuario: str = "Sistema",
+    ) -> Cliente:
+        """Actualiza el nombre de un cliente existente y opcionalmente sus pedidos vinculados."""
+        nuevo_nombre = nuevo_nombre.strip()
+        if not nuevo_nombre:
+            raise ValueError("El nombre del cliente no puede estar vacío.")
+        if len(nuevo_nombre) > 120:
+            raise ValueError("El nombre del cliente no puede superar los 120 caracteres.")
+
+        with self._connect() as connection:
+            actual = connection.execute(
+                "SELECT id, nombre, activo, created_at FROM clientes WHERE id = ?",
+                (cliente_id,),
+            ).fetchone()
+            if not actual:
+                raise ValueError(f"No se encontró el cliente con ID {cliente_id}.")
+
+            nombre_anterior = actual["nombre"]
+            if nombre_anterior.strip().lower() != nuevo_nombre.lower():
+                existente = connection.execute(
+                    "SELECT id FROM clientes WHERE nombre = ? COLLATE NOCASE AND id != ?",
+                    (nuevo_nombre, cliente_id),
+                ).fetchone()
+                if existente:
+                    raise ValueError(f"Ya existe otro cliente con el nombre '{nuevo_nombre}'.")
+
+            with connection:
+                connection.execute(
+                    "UPDATE clientes SET nombre = ? WHERE id = ?",
+                    (nuevo_nombre, cliente_id),
+                )
+                if actualizar_pedidos and nombre_anterior != nuevo_nombre:
+                    connection.execute(
+                        "UPDATE pedidos SET cliente = ? WHERE cliente = ? COLLATE NOCASE",
+                        (nuevo_nombre, nombre_anterior),
+                    )
+
+        self.registrar_auditoria(
+            usuario,
+            "ACTUALIZAR_CLIENTE",
+            f"Cliente ID {cliente_id} renombrado de '{nombre_anterior}' a '{nuevo_nombre}'",
+        )
+        return Cliente(
+            id=cliente_id,
+            nombre=nuevo_nombre,
+            activo=bool(actual["activo"]),
+            created_at=actual["created_at"],
+        )
+
+    def eliminar_cliente(self, cliente_id: int, usuario: str = "Sistema") -> None:
+        """Da de baja lógica a un cliente desactivándolo."""
+        with self._connect() as connection:
+            actual = connection.execute(
+                "SELECT id, nombre FROM clientes WHERE id = ?",
+                (cliente_id,),
+            ).fetchone()
+            if not actual:
+                raise ValueError(f"No se encontró el cliente con ID {cliente_id}.")
+
+            with connection:
+                connection.execute(
+                    "UPDATE clientes SET activo = 0 WHERE id = ?",
+                    (cliente_id,),
+                )
+
+        self.registrar_auditoria(
+            usuario,
+            "ELIMINAR_CLIENTE",
+            f"Cliente ID {cliente_id} ('{actual['nombre']}') desactivado",
+        )
 
     # ==========================
     # GESTIÓN DE PEDIDOS

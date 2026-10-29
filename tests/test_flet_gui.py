@@ -145,7 +145,7 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        self.assertEqual(len(interfaz.controles_tarea), 17)
+        self.assertEqual(len(interfaz.controles_tarea), 18)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -557,6 +557,26 @@ class FletGuiTests(unittest.TestCase):
             self.assertEqual(interfaz.contadores["ml"].value, "0")
             self.assertEqual(interfaz.contadores["total"].value, "0")
             self.assertIn("Jornada en curso: 0 pedido(s) descontado(s)", interfaz.pendientes_texto.value)
+
+    def test_inactividad_timeout_12_horas(self):
+        from datetime import datetime, timedelta
+        from src.flet_gui import INACTIVIDAD_MAX_MINUTOS
+        self.assertEqual(INACTIVIDAD_MAX_MINUTOS, 720)
+
+        interfaz, _, _ = self.crear_interfaz()
+        user = User(1, "operador_test", "operador", True)
+        interfaz.usuario_actual = user
+        interfaz.user_store.get_user = lambda uid: user
+
+        # Actividad reciente (hace 1 hora) -> no expira
+        interfaz.ultima_actividad = datetime.now() - timedelta(hours=1)
+        self.assertTrue(interfaz.exigir_roles("operador"))
+        self.assertIsNotNone(interfaz.usuario_actual)
+
+        # Inactividad mayor a 12 horas (721 minutos) -> expira
+        interfaz.ultima_actividad = datetime.now() - timedelta(minutes=721)
+        self.assertFalse(interfaz.exigir_roles("operador"))
+        self.assertIsNone(interfaz.usuario_actual)
 
 
 if __name__ == "__main__":

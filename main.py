@@ -9,6 +9,7 @@ También soporta:
   --https            : habilita servidor web seguro HTTPS (genera certificado autofirmado si no existe)
   --ssl-cert RUTA    : ruta opcional a certificado X.509 (.crt / .pem)
   --ssl-key RUTA     : ruta opcional a clave privada (.key / .pem)
+  --inactividad N    : minutos de inactividad antes de cerrar sesión (por defecto 720 = 12h, 0 = desactivar)
   --auto             : procesamiento completo automático
   --dry-run          : modo simulación por consola
 """
@@ -70,6 +71,10 @@ def main():
 
         InterfazGrafica().iniciar()
     else:
+        inactividad_cli = _obtener_parametro("--inactividad", _obtener_parametro("--timeout", ""))
+        if inactividad_cli:
+            os.environ["STOCKAGENT_INACTIVIDAD_MINUTOS"] = inactividad_cli
+
         from src.flet_gui import PUERTO_WEB_DEFAULT, iniciar
 
         modo_web = "--desktop" not in sys.argv

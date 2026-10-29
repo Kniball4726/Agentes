@@ -345,8 +345,9 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(len(page.dialogos), 1)
             page.pop_dialog()
 
-            # Probar expiración por inactividad (> 30 minutos)
-            interfaz.ultima_actividad = datetime.now() - timedelta(minutes=35)
+            # Probar expiración por inactividad
+            from src.flet_gui import INACTIVIDAD_MAX_MINUTOS
+            interfaz.ultima_actividad = datetime.now() - timedelta(minutes=INACTIVIDAD_MAX_MINUTOS + 5)
             permitido = interfaz.exigir_roles("administrador")
             self.assertFalse(permitido)
             self.assertIsNone(interfaz.usuario_actual)
@@ -357,6 +358,106 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
         logger = configurar_logging()
         logger.info("Prueba unitaria de logger rotativo")
         self.assertTrue(len(logger.handlers) >= 1)
+
+    def test_crud_clientes_order_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "pedidos_test.db"
+            store = OrderStore(db_path)
+
+            # 1. Crear cliente
+            cli1 = store.crear_cliente("Distribuidora Norte S.A.", usuario="admin")
+            self.assertEqual(cli1.nombre, "Distribuidora Norte S.A.")
+            self.assertTrue(cli1.activo)
+
+            # No permitir nombres duplicados
+            with self.assertRaises(ValueError):
+                store.crear_cliente("distribuidora norte s.a.")
+
+            # No permitir nombres vacíos
+            with self.assertRaises(ValueError):
+                store.crear_cliente("   ")
+
+            # 2. Listar clientes
+            clientes = store.listar_clientes()
+            self.assertEqual(len(clientes), 1)
+            self.assertIn("Distribuidora Norte S.A.", store.listar_nombres_clientes())
+
+            # 3. Actualizar cliente
+            actualizado = store.actualizar_cliente(cli1.id, "Distribuidora Norte SRL", usuario="admin")
+            self.assertEqual(actualizado.nombre, "Distribuidora Norte SRL")
+            self.assertIn("Distribuidora Norte SRL", store.listar_nombres_clientes())
+
+            # 4. Eliminar cliente (soft-delete)
+            store.eliminar_cliente(cli1.id, usuario="admin")
+            self.assertEqual(len(store.listar_clientes()), 0)
+
+            # 5. Reactivación al crear cliente con mismo nombre
+            reactivado = store.crear_cliente("Distribuidora Norte SRL", usuario="admin")
+            self.assertEqual(reactivado.id, cli1.id)
+            self.assertTrue(reactivado.activo)
+            self.assertEqual(len(store.listar_clientes()), 1)
+
+            # 6. Alias registrar_cliente
+            cli2 = store.registrar_cliente("Ferretería Central", usuario="operador")
+            self.assertEqual(cli2.nombre, "Ferretería Central")
+            self.assertEqual(len(store.listar_clientes()), 2)
+
+    def test_modal_gestion_clientes_flet_gui(self):
+        from src.user_store import User
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            page = FakePage()
+            o_store = OrderStore(tmp_path / "pedidos.sqlite3")
+            o_store.crear_cliente("Cliente Inicial")
+
+            interfaz = InterfazFlet(cast(ft.Page, cast(object, page)))
+            interfaz.order_store = o_store
+            interfaz.usuario_actual = User(1, "operario1", "operador", True)
+
+            interfaz.mostrar_gestion_clientes()
+            self.assertEqual(len(page.dialogos), 1)
+            dialogo = page.dialogos[0]
+            self.assertTrue(dialogo.modal)
+            page.pop_dialog()
+            self.assertEqual(len(page.dialogos), 0)
+
+    def test_adaptacion_responsive_mobile_deteccion_y_layout(self):
+        from src.user_store import User
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            page = FakePage()
+            interfaz = InterfazFlet(cast(ft.Page, cast(object, page)))
+            interfaz.usuario_actual = User(1, "admin", "administrador", True)
+
+            # Por defecto (sin width numérico o desktop)
+            self.assertFalse(interfaz.es_pantalla_movil)
+            self.assertEqual(interfaz.ancho_adaptable(600), 600)
+
+            # Simular pantalla de celular (400px ancho, 800px alto)
+            page.width = 400
+            page.height = 800
+            self.assertTrue(interfaz.es_pantalla_movil)
+            self.assertEqual(interfaz.ancho_adaptable(600), 376)  # 400 - 24
+            self.assertEqual(interfaz.alto_adaptable(900), 740)   # 800 - 60
+
+            # Construir en modo móvil
+            interfaz.construir()
+            self.assertEqual(len(page.controls), 1)
+            # En móvil el root es un ft.Container fluido y no un Row con sidebar rígido
+            contenedor_raiz = cast(ft.Container, page.controls[0])
+            self.assertIsInstance(contenedor_raiz, ft.Container)
+            # Todos los 18 comandos siguen disponibles para el usuario
+            self.assertEqual(len(interfaz.controles_tarea), 18)
+            # Botón flotante más compacto
+            self.assertEqual(interfaz.boton_chat_flotante.width, 110)
+
+            # Verificar que los diálogos adaptan su ancho automáticamente
+            dialogo_prueba = ft.AlertDialog(
+                content=ft.Container(width=600, height=500, content=ft.Text("Contenido"))
+            )
+            page.show_dialog(dialogo_prueba)
+            self.assertEqual(dialogo_prueba.content.width, 376)
+            self.assertEqual(dialogo_prueba.content.height, 500)
 
 
 if __name__ == "__main__":
