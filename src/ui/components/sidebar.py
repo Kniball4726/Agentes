@@ -64,6 +64,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ft.Text("SISTEMA", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Configuración SMTP", ft.Icons.SETTINGS_APPLICATIONS, interfaz.mostrar_configuracion_smtp),
                 interfaz.boton("Alertas Telegram", ft.Icons.SEND, interfaz.mostrar_configuracion_telegram),
+                interfaz.boton("Mercado Libre API (Credenciales)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
 
                 # Gestión de Usuarios al final para Master
                 ft.Divider(height=18, color=interfaz.borde),

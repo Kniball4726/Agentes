@@ -1,3 +1,4 @@
+from datetime import datetime
 """Diálogos de historial de pedidos e impresión de comprobantes de descuento."""
 
 from pathlib import Path
@@ -323,6 +324,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     texto_contador = ft.Text(f"Total: {len(pedidos)} pedidos" if pedidos else "", size=11, color=interfaz.secundario)
     pedidos_visibles: list[Pedido] = []
+    filtro_rapido_activo = "todos"  # "todos", "hoy", "pendientes", "despachados"
 
     def recargar_y_actualizar() -> None:
         nonlocal pedidos
@@ -331,7 +333,22 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     def actualizar_vista(termino: str = "") -> None:
         nonlocal pedidos_visibles
-        filtrados = [p for p in pedidos if coincide(p, termino)]
+        hoy_str = datetime.now().strftime("%Y-%m-%d")
+
+        candidatos = []
+        for p in pedidos:
+            if filtro_rapido_activo == "hoy":
+                if not (p.created_at and p.created_at.startswith(hoy_str)):
+                    continue
+            elif filtro_rapido_activo == "pendientes":
+                if getattr(p, "cierre_id", None) is not None or getattr(p, "estado", "") == "anulado":
+                    continue
+            elif filtro_rapido_activo == "despachados":
+                if getattr(p, "estado_despacho", "") != "despachado":
+                    continue
+            candidatos.append(p)
+
+        filtrados = [p for p in candidatos if coincide(p, termino)]
         pedidos_visibles = filtrados
         items_lista.controls.clear()
 
@@ -788,36 +805,75 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             return
         interfaz.imprimir_rotulos_lote(candidatos)
 
-    barra_busqueda = ft.Row(
+    def cambiar_filtro_rapido(nuevo_filtro: str) -> None:
+        nonlocal filtro_rapido_activo
+        filtro_rapido_activo = nuevo_filtro
+        actualizar_botones_filtro()
+        actualizar_vista(campo_busqueda.value or "")
+
+    btn_f_todos = ft.OutlinedButton("Todos", on_click=lambda _e: cambiar_filtro_rapido("todos"))
+    btn_f_hoy = ft.OutlinedButton("Solo Hoy", icon=ft.Icons.TODAY, on_click=lambda _e: cambiar_filtro_rapido("hoy"))
+    btn_f_pend = ft.OutlinedButton("Pendientes de Cierre", icon=ft.Icons.PENDING_ACTIONS, on_click=lambda _e: cambiar_filtro_rapido("pendientes"))
+    btn_f_desp = ft.OutlinedButton("Despachados", icon=ft.Icons.LOCAL_SHIPPING, on_click=lambda _e: cambiar_filtro_rapido("despachados"))
+
+    def actualizar_botones_filtro() -> None:
+        for b, tag in [(btn_f_todos, "todos"), (btn_f_hoy, "hoy"), (btn_f_pend, "pendientes"), (btn_f_desp, "despachados")]:
+            if filtro_rapido_activo == tag:
+                b.style = ft.ButtonStyle(bgcolor=ROJO, color=ft.Colors.WHITE)
+            else:
+                b.style = ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color=interfaz.texto)
+
+    actualizar_botones_filtro()
+
+    fila_chips_filtro = ft.Row(
         [
-            campo_busqueda,
-            ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_size=18,
-                icon_color=interfaz.secundario,
-                tooltip="Borrar búsqueda",
-                on_click=limpiar_busqueda,
-            ),
-            ft.Button(
-                "Rótulos A4 (Lote)",
-                icon=ft.Icons.PRINT,
-                tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
-                style=ft.ButtonStyle(
-                    color=ft.Colors.WHITE,
-                    bgcolor=ft.Colors.BLUE_GREY_700,
-                ),
-                on_click=imprimir_lote_rotulos_a4,
-            ),
-            ft.Button(
-                "Escanear QR / Cambiar Estado",
-                icon=ft.Icons.QR_CODE_SCANNER,
-                bgcolor=ROJO,
-                color=ft.Colors.WHITE,
-                on_click=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
-            ),
+            ft.Text("Filtros rápidos:", size=11, color=interfaz.secundario, weight=ft.FontWeight.BOLD),
+            btn_f_todos,
+            btn_f_hoy,
+            btn_f_pend,
+            btn_f_desp,
         ],
         spacing=6,
+        wrap=True,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    barra_busqueda = ft.Column(
+        [
+            ft.Row(
+                [
+                    campo_busqueda,
+                    ft.IconButton(
+                        icon=ft.Icons.CLEAR,
+                        icon_size=18,
+                        icon_color=interfaz.secundario,
+                        tooltip="Borrar búsqueda",
+                        on_click=limpiar_busqueda,
+                    ),
+                    ft.Button(
+                        "Rótulos A4 (Lote)",
+                        icon=ft.Icons.PRINT,
+                        tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
+                        style=ft.ButtonStyle(
+                            color=ft.Colors.WHITE,
+                            bgcolor=ft.Colors.BLUE_GREY_700,
+                        ),
+                        on_click=imprimir_lote_rotulos_a4,
+                    ),
+                    ft.Button(
+                        "Escanear QR / Cambiar Estado",
+                        icon=ft.Icons.QR_CODE_SCANNER,
+                        bgcolor=ROJO,
+                        color=ft.Colors.WHITE,
+                        on_click=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
+                    ),
+                ],
+                spacing=6,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            fila_chips_filtro,
+        ],
+        spacing=6,
     )
 
     actualizar_vista("")

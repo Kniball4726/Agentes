@@ -441,7 +441,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             nombre_inf = Path(reporte.reporte_stock.archivo_guardado).name if reporte.reporte_stock.archivo_guardado else f"Pedido_{remito}"
             stock_mgr.actualizar_stock_base(
                 descuentos=reporte.reporte_stock.descuentos_aplicados,
-                sincronizar_excel=False,
+                sincronizar_excel=True,
                 nombre_archivo=nombre_inf,
                 usuario=armador_nom,
             )
@@ -475,6 +475,73 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             )
             interfaz.actualizar_listas()
             print(f"[PEDIDO REGISTRADO] Remito/Factura: {remito} | Pedido: {num_ped} | Cliente: {cli} | Descontados: {resumen_items} | Retiro: {f_retiro}")
+
+            # Buscar el pedido recién registrado para ofrecer imprimir rótulos o avisar quiebre
+            try:
+                pedido_reciente = interfaz.order_store.buscar_pedido_por_nota(remito)
+                if pedido_reciente and interfaz.page:
+                    # Chequear si hubo productos en quiebre o críticos
+                    items_alerta = []
+                    for d in reporte.reporte_stock.descuentos_aplicados:
+                        if d.stock_nuevo <= 0:
+                            items_alerta.append(f"🔴 [{d.codigo}] {d.nombre_producto}: QUIEBRE (Quedan {d.stock_nuevo} un.)")
+                        elif d.stock_nuevo <= 5:
+                            items_alerta.append(f"🟠 [{d.codigo}] {d.nombre_producto}: CRÍTICO (Quedan {d.stock_nuevo} un.)")
+
+                    def cerrar_exito(_e):
+                        interfaz.page.pop_dialog()
+
+                    def imprimir_rotulos_directo(_e, ped=pedido_reciente):
+                        interfaz.page.pop_dialog()
+                        interfaz.imprimir_rotulos_pedido(ped)
+
+                    dialogo_exito = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400), ft.Text("Pedido Registrado y Descontado")]),
+                        content=ft.Container(
+                            width=450,
+                            content=ft.Column(
+                                [
+                                    ft.Text(f"El pedido #{remito} de '{cli}' fue procesado con éxito.", size=13, weight=ft.FontWeight.W_500),
+                                    ft.Text(f"• Bultos: {bultos_val} · Logística: {log}", size=12, color=interfaz.secundario),
+                                    ft.Text(f"• Descuento: {resumen_items} en tiempo real.", size=12, color=ft.Colors.GREEN_400),
+                                    *(
+                                        [
+                                            ft.Divider(height=10),
+                                            ft.Text("⚠️ Advertencia de Inventario:", weight=ft.FontWeight.BOLD, size=11, color=ft.Colors.AMBER_400),
+                                            ft.Container(
+                                                content=ft.ListView(
+                                                    [ft.Text(it, size=11, color=interfaz.texto) for it in items_alerta],
+                                                    height=70,
+                                                    spacing=2,
+                                                ),
+                                                bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.GREY_100,
+                                                padding=6,
+                                                border_radius=4,
+                                            )
+                                        ] if items_alerta else []
+                                    ),
+                                    ft.Divider(height=10),
+                                    ft.Text("¿Deseas imprimir los rótulos A4 para los bultos ahora?", size=12, color=interfaz.texto),
+                                ],
+                                tight=True,
+                                spacing=8,
+                            ),
+                        ),
+                        actions=[
+                            ft.Button(
+                                f"Imprimir Rótulos A4 ({bultos_val} bultos)",
+                                icon=ft.Icons.PRINT,
+                                bgcolor=ROJO,
+                                color=ft.Colors.WHITE,
+                                on_click=imprimir_rotulos_directo,
+                            ),
+                            interfaz.boton_dialogo("Listo / Continuar", cerrar_exito),
+                        ],
+                    )
+                    interfaz.page.show_dialog(dialogo_exito)
+            except Exception as ex_post:
+                print(f"[AVISO] Error al mostrar diálogo posterior: {ex_post}")
 
         await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_descuento_pedido)
 
@@ -517,12 +584,36 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
     interfaz.page.show_dialog(dialogo)
 
 
+def _restituir_stock_pedido(interfaz: Any, pedido: Pedido) -> int:
+    """Reincorpora los productos y cantidades de un pedido al stock de SQLite y Productos.xlsx en tiempo real."""
+    items = interfaz.order_store.obtener_items_pedido(pedido.id)
+    if not items:
+        return 0
+    devoluciones: dict[str, int] = {}
+    for cod, _desc, cant in items:
+        if cant > 0:
+            devoluciones[cod] = devoluciones.get(cod, 0) + cant
+    if devoluciones:
+        sm_cls = _get_stock_manager_cls()
+        ruta_base_datos = getattr(interfaz, "ruta_base_datos", None) or getattr(interfaz.menu, "ruta_base_datos", None)
+        kwargs = {"ruta_excel_base": interfaz.menu.ruta_excel_base}
+        if ruta_base_datos:
+            kwargs["ruta_base_datos"] = ruta_base_datos
+        sm = sm_cls(**kwargs)
+        sm.registrar_ingreso_fabrica(devoluciones, sobrescribir=False)
+        try:
+            sm.registrar_movimientos_historial(devoluciones, tipo="ingreso_fabrica")
+        except Exception:
+            pass
+    return sum(devoluciones.values())
+
+
 def mostrar_dialogo_confirmar_anulacion_pedido(
     interfaz: Any,
     pedido: Pedido,
     al_final: Callable[[], None] | None = None,
 ) -> None:
-    """Abre el diálogo para anular un pedido registrado."""
+    """Abre el diálogo para anular un pedido registrado restituyendo su stock en tiempo real."""
     motivo_input = ft.TextField(
         label="Motivo de la anulación (opcional)",
         hint_text="ej: Cancelado por el cliente, duplicado, error en carga",
@@ -532,15 +623,31 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
 
     def ejecutar_anulacion(_e: ft.Event) -> None:
         interfaz.page.pop_dialog()
+        usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
+        motivo_txt = (motivo_input.value or "").strip()
         try:
+            unidades_restituidas = 0
+            if pedido.estado != "anulado":
+                unidades_restituidas = _restituir_stock_pedido(interfaz, pedido)
+
             interfaz.order_store.anular_pedido(
                 pedido_id=pedido.id,
-                motivo=motivo_input.value or "",
-                usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema",
+                motivo=f"Anulación de pedido: {motivo_txt}".strip() if motivo_txt else "Anulación de pedido",
+                usuario=usr,
             )
-            interfaz.notificar(f"Pedido {pedido.nota_pedido} anulado correctamente.")
+            interfaz.order_store.registrar_auditoria(
+                usuario=usr,
+                accion="ANULAR_PEDIDO",
+                detalle=f"Pedido #{pedido.nota_pedido} ({pedido.cliente}) anulado. Stock devuelto: {unidades_restituidas} un. Motivo: {motivo_txt or 'Sin motivo'}",
+            )
+            msg = f"Pedido {pedido.nota_pedido} anulado correctamente."
+            if unidades_restituidas > 0:
+                msg += f" Se reincorporaron {unidades_restituidas} unidades al inventario y al Excel."
+            interfaz.notificar(msg)
             if al_final:
                 al_final()
+            interfaz.actualizar_listas()
+            interfaz.sincronizar_sesiones()
         except Exception as err:
             interfaz.notificar(f"Error al anular pedido: {err}")
 
@@ -551,10 +658,11 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
             content=ft.Column(
                 [
                     ft.Text(f"¿Estás seguro de anular el pedido '{pedido.nota_pedido}' del cliente '{pedido.cliente}'?"),
-                    *(
-                        [ft.Text(f"⚠️ Atención: Este pedido ya formó parte del Cierre #{pedido.cierre_id} (el stock ya fue descontado en el Excel).", size=11, color=ft.Colors.AMBER_800, weight=ft.FontWeight.W_500)]
-                        if getattr(pedido, "cierre_id", None)
-                        else [ft.Text("Al estar pendiente de cierre, sus artículos no se descontarán en el Excel.", size=11, color=ft.Colors.GREEN_700)]
+                    ft.Text(
+                        "⚠️ Al anular este pedido, todas las unidades descontadas se devolverán automáticamente al stock disponible y a la planilla Productos.xlsx en tiempo real.",
+                        size=11,
+                        color=ft.Colors.AMBER_800,
+                        weight=ft.FontWeight.W_500,
                     ),
                     ft.Text("Esta acción quedará registrada en el log de auditoría del sistema.", size=11, color=interfaz.secundario),
                     ft.Divider(height=10),
@@ -565,7 +673,7 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
             ),
         ),
         actions=[
-            ft.Button("Anular Pedido", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_anulacion),
+            ft.Button("Anular y Devolver Stock", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_anulacion),
             interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
         ],
     )
@@ -747,17 +855,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
         motivo_txt = (motivo_input.value or "").strip()
         try:
-            if items:
-                devoluciones: dict[str, int] = {}
-                for cod, _desc, cant in items:
-                    if cant > 0:
-                        devoluciones[cod] = devoluciones.get(cod, 0) + cant
-                if devoluciones:
-                    interfaz.menu.stock_manager.registrar_ingreso_fabrica(devoluciones, sobrescribir=False)
-                    try:
-                        interfaz.menu.stock_manager.registrar_movimientos_historial(devoluciones, tipo="ingreso_fabrica")
-                    except Exception:
-                        pass
+            unidades_devueltas = _restituir_stock_pedido(interfaz, pedido)
 
             motivo_anulacion = f"Desarmado de pedido y devolución de stock. {motivo_txt}".strip()
             interfaz.order_store.anular_pedido(

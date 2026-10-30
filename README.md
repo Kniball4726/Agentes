@@ -215,7 +215,7 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
   * **Centro de Auditoría Forense y Trazabilidad (Exclusivo Master):** Consulta inmutable y filtrado en tiempo real de todos los eventos del sistema: inicios de sesión, bloqueos por fuerza bruta, anulaciones, altas de usuarios, respaldos y modificaciones de configuración. Por principio de segregación de funciones (*SoD*), el Administrador no accede a este visor para evitar que el auditado audite sus propias operaciones.
   * **Gestión de Identidades y Accesos (IAM Compartida):** Master posee control supremo sobre todos los roles (incluyendo creación, modificación y reseteo de contraseñas de cuentas Administrador). Los Administradores comparten la facultad de crear y gestionar cuentas de Operador y Consulta, pero no pueden alterar cuentas Master ni ver la auditoría forense.
   * **Continuidad del Negocio (Backups / Disaster Recovery):** Generación manual de copias de seguridad `.zip`, configuración de directorios externos y verificación de políticas de rotación.
-  * **Configuración del Servidor y Servicios:** Gestión de credenciales SMTP para alertas automáticas, monitoreo de certificados SSL/HTTPS y estado de la red.
+  * **Configuración del Servidor y Servicios:** Gestión de credenciales SMTP para alertas automáticas, custodia exclusiva de credenciales oficiales de la **API de Mercado Libre** (App ID, Client Secret, Tokens OAuth), monitoreo de certificados SSL/HTTPS y estado de la red.
   * **Protección Inviolable:** La cuenta Master no puede ser desactivada ni degradada de rol por ningún usuario ni por sí misma.
 * **Exclusión de la Lógica de Negocio (Protección Operativa):**
   * ❌ No procesa remitos, facturas ni comprobantes de Mercado Libre.
@@ -452,17 +452,22 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 * **Sincronización Mercado Libre (API REST):**
   * Botón directo **"Sincronizar Mercado Libre (API)"** para consultar y descontar pedidos pagados en tiempo real directo desde los servidores de Mercado Libre, sin tener que descargar o arrastrar archivos a la plataforma.
 * **Historial de Pedidos:**
+  * **Filtros Rápidos de 1 Clic:** Selector superior instantáneo con chips temáticos:
+    - 🔘 `Todos`: Vista histórica general.
+    - 🔘 `Solo Hoy`: Filtra de inmediato los pedidos registrados en la fecha actual sin tener que tipear el día en el buscador.
+    - 🔘 `Pendientes de Cierre`: Aísla exclusivamente los pedidos armados en el turno que aguardan el Cierre de Jornada.
+    - 🔘 `Despachados`: Muestra únicamente los pedidos entregados al chofer o transporte.
   * **Diseño Espacioso y Jerárquico de Tarjetas:** Tarjetas de 960px con división en 4 niveles semánticos que impiden el solapamiento de información (Cabecera con N° de pedido y badge de estado con borde temático, chips de cliente y transporte con ajuste multi-línea, datos de comprobante y resumen de artículos con elipsis, y barra inferior de acciones operativas).
   * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
   * **Botón Rótulos A4 (Lote):** Impresión directa de hojas A4 optimizadas que contienen los rótulos de todos los pedidos filtrados.
   * **Modificación de Pedido:** Edición directa de cliente, N° de pedido, bultos, logística y fecha de entrega.
-  * **Desarmar Pedido:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock disponible.
+  * **Desarmar Pedido y Regresión de Stock:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock físico en SQLite y `Productos.xlsx` al instante.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
 * **Cierre de Jornada Consolidado:**
   * Agrupa y suma todos los pedidos y descuentos realizados durante el turno de trabajo.
-  * Descuenta de forma atómica y definitiva las unidades en el archivo maestro `Productos.xlsx`.
+  * **Cálculo Exacto sin Doble Descuento:** Al consolidar los pedidos ya descontados en tiempo real, el motor calcula con precisión el stock original previo y el saldo real vigente en SQLite y `Productos.xlsx`.
   * Genera el **Informe Oficial Consolidado de Cierre (PDF y Excel)** donde se suman todos los descuentos de la jornada (`Cierre_Descuento_*.pdf` y `Cierre_Descuento_*.xls`).
-  * Genera la **Hoja de Ruta de Despacho por Transporte (PDF)** con casilleros de firma para los choferes y transportistas.
+  * **Emisión Modular de Hojas de Ruta de Despacho (PDF):** Permite generar la **Hoja de Ruta General** (todos los pedidos de la jornada) o **Hojas de Ruta Individuales por Transporte / Chofer** (ej: solo *Expreso*, solo *Comisionista* o solo *Canje*), detallando cantidades de bultos y casillero de firma de conformidad para cada transportista.
   * Dispara la **Copia de Seguridad Automática** en `data/backups/`.
   * Detecta y alerta sobre productos en **quiebre ($\le 0$)** o **stock crítico ($1$ a $5$ un.)**.
   * Prepara el borrador de correo electrónico automático para notificar a la administración.
@@ -541,7 +546,9 @@ En la parte superior del panel de control se encuentran las tarjetas de métrica
    * Al seleccionar un remito, el sistema extrae automáticamente la **Fecha de Despacho** indicada en el documento y la asigna de inmediato como Fecha de Retiro, manteniendo el selector de calendario y botón de limpieza para ajustes manuales.
 7. **Armador:** Campo automático y bloqueado que toma el nombre o identificador de la sesión activa (ej. `Juan Pérez`, `Desarrollo`).
 8. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo binario no haya sido procesado previamente.
-9. **Sin Generación de Documento Individual:** Cada pedido descuenta su stock en la base transaccional sin generar archivos Excel o PDF individuales en disco, manteniendo el espacio de trabajo limpio.
+9. **Descuento Atómico y Sincronización en Tiempo Real con `Productos.xlsx`:** Cada pedido descuenta su stock inmediatamente tanto en la base SQLite (`productos.sqlite3`) como en la planilla maestra `Productos.xlsx`, garantizando que cualquier consulta externa o apertura del Excel refleje el inventario real disponible al instante.
+10. **Prompt Instantáneo de Rótulos A4 y Alerta de Quiebres:** Al confirmar un pedido con éxito, el sistema despliega un diálogo de confirmación que informa el estado de inventario (alertando si algún artículo quedó en quiebre o stock crítico) y ofrece un botón de 1 clic: `[ Imprimir Rótulos A4 (X bultos) ]` para imprimir inmediatamente sin salir al historial.
+11. **Regresión y Devolución Automática de Stock (Desarme y Anulación):** Si un pedido es desarmado o cancelado porque no saldrá del depósito, el sistema recupera automáticamente sus artículos y cantidades desde `pedido_items` y restituye el stock en tiempo real en SQLite y en `Productos.xlsx`, registrando la trazabilidad en auditoría forense.
 
 ### Módulo de Inventario en Vivo con Escáner Móvil y PC
 
@@ -1011,8 +1018,21 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 182 pruebas unitarias automatizadas distribuidas en 25 módulos.
-* **Tasa de éxito:** 100% aprobadas (`182 passed in 36.26s - OK`).
+* **Total de pruebas:** 191 pruebas unitarias automatizadas distribuidas en 27 módulos.
+* **Tasa de éxito:** 100% aprobadas (`191 passed in 29.89s - OK`).
+
+#### Módulos de Prueba Adicionales
+21. `tests/test_realtime_stock_and_cierre.py`:
+    - Descuento en tiempo real en SQLite y sincronización instantánea con celdas de `Productos.xlsx`.
+    - Restitución y regresión de stock al anular o desarmar pedidos mediante `_restituir_stock_pedido`.
+    - Informe de Cierre de Jornada con `descuento_ya_aplicado=True` sin doble descuento en memoria y evaluación precisa de quiebres/críticos.
+    - Deduplicación y consolidación de remitos en `OrderStore.obtener_items_pendientes_cierre`.
+22. `tests/test_mercadolibre_permissions.py`:
+    - Segregación de funciones (SoD): bloqueo y ocultamiento estricto de credenciales de Mercado Libre (`App ID`, `Client Secret`, tokens) para roles Administrador y Operador.
+    - Acceso exclusivo a la configuración técnica de la API para el rol Master (`Desarrollo`).
+23. `tests/test_operability_enhancements.py`:
+    - Generación de Hojas de Ruta de despacho individuales filtradas por empresa de transporte / chofer.
+    - Encabezado responsivo con menú desplegable de usuario (*Dropdown* de cuenta, perfil y cierre de sesión).
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:

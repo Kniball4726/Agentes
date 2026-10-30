@@ -77,13 +77,20 @@ def generar_hoja_ruta_pdf(
     usuario: str,
     carpeta_destino: Path,
     fecha_hora: datetime | None = None,
+    filtro_logistica: str | None = None,
 ) -> Path:
-    """Genera la Hoja de Ruta de Despacho en PDF agrupada por transporte/logística."""
+    """Genera la Hoja de Ruta de Despacho en PDF agrupada por transporte/logística.
+    
+    Si filtro_logistica está presente, genera la hoja exclusivamente para ese transporte.
+    """
+    if filtro_logistica:
+        pedidos = [p for p in pedidos if (p.logistica or "").strip().lower() == filtro_logistica.strip().lower()]
     carpeta_destino.mkdir(parents=True, exist_ok=True)
     dt = fecha_hora or datetime.now()
     fecha_formateada = dt.strftime("%d/%m/%Y %H:%M")
     timestamp_archivo = dt.strftime("%Y%m%d_%H%M%S")
-    nombre_archivo = f"Hoja_Ruta_Cierre_{cierre_id}_{timestamp_archivo}.pdf"
+    sufijo_log = f"_{filtro_logistica.replace(' ', '_')}" if filtro_logistica else ""
+    nombre_archivo = f"Hoja_Ruta_Cierre_{cierre_id}{sufijo_log}_{timestamp_archivo}.pdf"
     ruta_pdf = carpeta_destino / nombre_archivo
 
     ancho_util = A4[0] - 2.4 * cm  # 18.6 cm

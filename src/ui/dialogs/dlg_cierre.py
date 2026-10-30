@@ -113,21 +113,80 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
             hoja_ruta = interfaz.menu.carpeta_descuentos / c.archivo_hoja_ruta if c.archivo_hoja_ruta else None
 
             def abrir_o_generar_hoja_ruta(cierre_obj=c, hr_path=hoja_ruta) -> None:
-                if hr_path and hr_path.exists():
-                    interfaz.abrir_informe(ruta_especifica=hr_path)
-                else:
-                    peds = interfaz.order_store.obtener_pedidos_por_cierre(cierre_obj.id)
-                    if not peds:
-                        interfaz.notificar("No se encontraron registros de pedidos para generar la hoja de ruta de este cierre.")
-                        return
-                    nueva_hr = generar_hoja_ruta_pdf(
+                peds = interfaz.order_store.obtener_pedidos_por_cierre(cierre_obj.id)
+                if not peds:
+                    if hr_path and hr_path.exists():
+                        interfaz.abrir_informe(ruta_especifica=hr_path)
+                    else:
+                        interfaz.notificar("No se encontraron registros de pedidos para este cierre.")
+                    return
+
+                transportes_presentes = sorted(list({p.logistica for p in peds if p.logistica}))
+
+                if len(transportes_presentes) <= 1:
+                    # Un solo transporte o ninguno especial: abrir general directo
+                    if hr_path and hr_path.exists():
+                        interfaz.abrir_informe(ruta_especifica=hr_path)
+                    else:
+                        nueva_hr = generar_hoja_ruta_pdf(
+                            cierre_id=cierre_obj.id,
+                            pedidos=peds,
+                            usuario=cierre_obj.usuario,
+                            carpeta_destino=interfaz.menu.carpeta_descuentos,
+                        )
+                        interfaz.order_store.actualizar_hoja_ruta_cierre(cierre_obj.id, nueva_hr.name)
+                        interfaz.abrir_informe(ruta_especifica=nueva_hr)
+                    return
+
+                # Si hay varios transportes, ofrecer modal para imprimir general o por chofer específico
+                def emitir_hr(transporte_sel=None):
+                    interfaz.page.pop_dialog()
+                    doc = generar_hoja_ruta_pdf(
                         cierre_id=cierre_obj.id,
                         pedidos=peds,
                         usuario=cierre_obj.usuario,
                         carpeta_destino=interfaz.menu.carpeta_descuentos,
+                        filtro_logistica=transporte_sel,
                     )
-                    interfaz.order_store.actualizar_hoja_ruta_cierre(cierre_obj.id, nueva_hr.name)
-                    interfaz.abrir_informe(ruta_especifica=nueva_hr)
+                    interfaz.abrir_informe(ruta_especifica=doc)
+
+                botones_transportes = [
+                    ft.Button(
+                        "📄 Hoja de Ruta General (Todos los transportes)",
+                        icon=ft.Icons.ALL_INBOX,
+                        bgcolor=ROJO,
+                        color=ft.Colors.WHITE,
+                        on_click=lambda _e: emitir_hr(None),
+                    )
+                ]
+                for tr in transportes_presentes:
+                    c_bultos = sum(p.bultos for p in peds if p.logistica == tr)
+                    c_peds = sum(1 for p in peds if p.logistica == tr)
+                    botones_transportes.append(
+                        ft.OutlinedButton(
+                            f"🚚 Solo {tr} ({c_peds} pedidos · {c_bultos} bultos)",
+                            icon=ft.Icons.LOCAL_SHIPPING,
+                            on_click=lambda _e, t=tr: emitir_hr(t),
+                        )
+                    )
+
+                dlg_sel_transporte = ft.AlertDialog(
+                    title=ft.Row([ft.Icon(ft.Icons.LOCAL_SHIPPING, color=ROJO), ft.Text(f"Hoja de Ruta · Cierre #{cierre_obj.id}")]),
+                    content=ft.Container(
+                        width=460,
+                        content=ft.Column(
+                            [
+                                ft.Text("Selecciona cómo deseas imprimir la Hoja de Ruta de despacho:", size=12, color=interfaz.texto),
+                                ft.Divider(height=6),
+                                *botones_transportes,
+                            ],
+                            tight=True,
+                            spacing=8,
+                        ),
+                    ),
+                    actions=[interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog())],
+                )
+                interfaz.page.show_dialog(dlg_sel_transporte)
 
             boton_hoja_ruta_cierre = ft.IconButton(
                 icon=ft.Icons.LOCAL_SHIPPING,
@@ -220,12 +279,19 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
             items_consolidados: dict[str, ItemConsolidado] = {}
 
             for cod, desc, cant, remitos in items_pendientes_data:
-                items_consolidados[cod] = ItemConsolidado(
-                    codigo=cod,
-                    descripcion=desc,
-                    cantidad_total=cant,
-                    remitos_origen=remitos,
-                )
+                cod_n = normalizar_codigo(cod)
+                if cod_n not in items_consolidados:
+                    items_consolidados[cod_n] = ItemConsolidado(
+                        codigo=cod_n,
+                        descripcion=desc,
+                        cantidad_total=cant,
+                        remitos_origen=list(remitos),
+                    )
+                else:
+                    items_consolidados[cod_n].cantidad_total += cant
+                    for rem in remitos:
+                        if rem not in items_consolidados[cod_n].remitos_origen:
+                            items_consolidados[cod_n].remitos_origen.append(rem)
 
             if not items_consolidados:
                 for ped in pedidos_pendientes:
@@ -251,15 +317,27 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
 
             pedidos_doc = []
             for p in pedidos_pendientes:
+                items_db = interfaz.order_store.obtener_items_pedido(p.id)
                 items_p = [
                     ItemRemito(
-                        codigo=cod,
+                        codigo=normalizar_codigo(cod),
                         descripcion=desc,
                         cantidad=cant,
                         origen_remito=p.nota_pedido,
                     )
-                    for cod, desc, cant in interfaz.order_store.obtener_items_pedido(p.id)
+                    for cod, desc, cant in items_db
                 ]
+                if not items_p:
+                    arch_p = application_root() / "data" / "pedidos_archivos" / p.nombre_archivo
+                    if arch_p.exists():
+                        try:
+                            if p.tipo_archivo == "pdf":
+                                res_p = parsear_remito(arch_p)
+                            else:
+                                res_p = parsear_canje_excel(arch_p)
+                            items_p = res_p.items
+                        except Exception:
+                            pass
                 pedidos_doc.append(
                     ResultadoRemito(
                         archivo=p.nombre_archivo,
@@ -281,6 +359,7 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                 pedidos_procesados=pedidos_doc,
                 guardar_archivo=True,
                 prefijo_archivo="Cierre_Descuento",
+                descuento_ya_aplicado=True,
             )
 
             pdf_path = Path(rep.archivo_pdf) if rep.archivo_pdf else None
@@ -298,6 +377,7 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                 archivo_excel=xls_path.name if xls_path else "",
             )
 
+            total_bultos = sum(p.bultos for p in pedidos_pendientes)
             try:
                 from ...telegram_notifier import notificar_cierre_jornada_telegram
                 notificar_cierre_jornada_telegram(
@@ -310,7 +390,7 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                 pass
 
             try:
-                sm_cierre = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+                sm_cierre = _get_stock_manager_cls()(ruta_excel_base=interfaz.menu.ruta_excel_base)
                 if hasattr(sm_cierre, "sincronizar_catalogo_completo_excel"):
                     sm_cierre.sincronizar_catalogo_completo_excel()
             except Exception:

@@ -838,28 +838,42 @@ class OrderStore:
         return conteo
 
     def obtener_items_pendientes_cierre(self) -> list[tuple[str, str, int, list[str]]]:
-        """Devuelve productos consolidados pendientes de cierre: (codigo, descripcion, total_cantidad, [notas_pedido])."""
+        """Devuelve productos consolidados pendientes de cierre: (codigo, descripcion, total_cantidad, [notas_pedido]).
+        
+        Agrupa estrictamente por código de producto (normalizado) deduplicando notas de pedido
+        para evitar líneas separadas si una misma referencia tuviera descripciones levemente distintas.
+        """
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT pi.codigo, pi.descripcion, SUM(pi.cantidad) as total_cant,
+                SELECT pi.codigo,
+                       MAX(pi.descripcion) as descripcion,
+                       SUM(pi.cantidad) as total_cant,
                        GROUP_CONCAT(p.nota_pedido, ', ') as remitos_origen
                 FROM pedido_items pi
                 JOIN pedidos p ON p.id = pi.pedido_id
                 WHERE p.cierre_id IS NULL AND p.estado = 'descontado'
-                GROUP BY pi.codigo, pi.descripcion
+                GROUP BY pi.codigo
                 ORDER BY pi.codigo ASC
                 """
             ).fetchall()
-        return [
-            (
-                r["codigo"],
-                r["descripcion"],
-                int(r["total_cant"]),
-                [n.strip() for n in (r["remitos_origen"] or "").split(",") if n.strip()],
+        resultado = []
+        for r in rows:
+            remitos_crudos = [n.strip() for n in (r["remitos_origen"] or "").split(",") if n.strip()]
+            # Deduplicar preservando orden
+            remitos_unicos: list[str] = []
+            for rem in remitos_crudos:
+                if rem not in remitos_unicos:
+                    remitos_unicos.append(rem)
+            resultado.append(
+                (
+                    r["codigo"],
+                    r["descripcion"],
+                    int(r["total_cant"]),
+                    remitos_unicos,
+                )
             )
-            for r in rows
-        ]
+        return resultado
 
     def registrar_cierre(
         self,

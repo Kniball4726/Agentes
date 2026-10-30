@@ -361,7 +361,7 @@ class MenuAgente:
             nombre_informe = Path(reporte.reporte_stock.archivo_guardado).name
             actualizados = stock_mgr.actualizar_stock_base(
                 descuentos=reporte.reporte_stock.descuentos_aplicados,
-                sincronizar_excel=False,
+                sincronizar_excel=True,
                 nombre_archivo=nombre_informe,
                 usuario=usuario,
             )

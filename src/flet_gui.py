@@ -1887,29 +1887,17 @@ class InterfazFlet:
 
     def enviar_correo_cierre(
         self,
-        resultado_cierre: dict,
-        destinatarios: list[str],
-        asunto: str,
-        adjuntar_pdf: bool = True,
-        adjuntar_excel: bool = True,
-        mensaje_adicional: str = "",
-    ) -> tuple[bool, str]:
-        return enviar_correo_cierre(
-            self,
-            resultado_cierre,
-            destinatarios,
-            asunto,
-            adjuntar_pdf=adjuntar_pdf,
-            adjuntar_excel=adjuntar_excel,
-            mensaje_adicional=mensaje_adicional,
-        )
+        *args,
+        **kwargs,
+    ) -> None:
+        return enviar_correo_cierre(self, *args, **kwargs)
 
     def mostrar_dialogo_compartir_cierre(
         self,
-        resultado_cierre: dict,
-        _e: ft.Event | None = None,
+        *args,
+        **kwargs,
     ) -> None:
-        mostrar_dialogo_compartir_cierre(self, resultado_cierre, _e)
+        mostrar_dialogo_compartir_cierre(self, *args, **kwargs)
 
     def mostrar_dialogo_enviar_correo(
         self,

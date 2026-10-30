@@ -22,31 +22,60 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
     )
     interfaz._actualizar_icono_notificaciones()
 
+    menu_usuario = ft.PopupMenuButton(
+        content=ft.Row(
+            [
+                ft.CircleAvatar(
+                    content=ft.Text(
+                        (interfaz.usuario_actual.nombre_identificador or "U")[:1].upper(),
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.WHITE,
+                    ),
+                    radius=14,
+                    bgcolor=ROJO,
+                ),
+                ft.Text(
+                    interfaz.usuario_actual.nombre_identificador,
+                    size=12,
+                    weight=ft.FontWeight.BOLD,
+                    color=interfaz.texto,
+                ),
+                ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=interfaz.secundario),
+            ],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        tooltip="Mi Cuenta y Opciones",
+        items=[
+            ft.PopupMenuItem(
+                icon=ft.Icons.BADGE_OUTLINED,
+                content="Mi Perfil (Nombre y Email)",
+                on_click=interfaz.mostrar_mi_perfil,
+            ),
+            ft.PopupMenuItem(
+                icon=ft.Icons.KEY,
+                content="Cambiar mi contraseña",
+                on_click=interfaz.mostrar_cambiar_mi_clave,
+            ),
+            ft.PopupMenuItem(),
+            ft.PopupMenuItem(
+                icon=ft.Icons.LOGOUT,
+                content="Cerrar sesión",
+                on_click=interfaz.cerrar_sesion,
+            ),
+        ],
+    )
+
     fila_acciones: list[ft.Control] = []
     if interfaz.usuario_actual.role == "administrador":
         fila_acciones.append(interfaz.contenedor_notificaciones)
     fila_acciones.extend(
         [
             boton_tema,
-            ft.IconButton(
-                icon=ft.Icons.BADGE_OUTLINED,
-                tooltip="Mi perfil (Nombre y Email)",
-                icon_color=interfaz.secundario,
-                on_click=interfaz.mostrar_mi_perfil,
-            ),
-            ft.IconButton(
-                icon=ft.Icons.KEY,
-                tooltip="Cambiar mi contraseña",
-                icon_color=interfaz.secundario,
-                on_click=interfaz.mostrar_cambiar_mi_clave,
-            ),
-            ft.TextButton(
-                f"{interfaz.usuario_actual.nombre_identificador} · Cerrar sesión",
-                icon=ft.Icons.LOGOUT,
-                on_click=interfaz.cerrar_sesion,
-            ),
+            menu_usuario,
             interfaz.boton(
-                "Actualizar", ft.Icons.REFRESH, interfaz.actualizar_estado, 150
+                "Actualizar", ft.Icons.REFRESH, interfaz.actualizar_estado, 130
             ),
         ]
     )

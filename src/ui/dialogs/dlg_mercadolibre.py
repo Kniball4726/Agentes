@@ -384,25 +384,36 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         expand=True,
     )
 
-    tabs = ft.Tabs(
-        length=2,
-        expand=True,
-        content=ft.Column(
+    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+
+    if es_master:
+        tabs = ft.Tabs(
+            length=2,
             expand=True,
-            controls=[
-                ft.TabBar(
-                    tabs=[
-                        ft.Tab(label="Órdenes Sincronizadas", icon=ft.Icons.LIST_ALT),
-                        ft.Tab(label="Credenciales API", icon=ft.Icons.SETTINGS),
-                    ]
-                ),
-                ft.TabBarView(
-                    expand=True,
-                    controls=[vista_ordenes, vista_config],
-                ),
-            ],
-        ),
-    )
+            content=ft.Column(
+                expand=True,
+                controls=[
+                    ft.TabBar(
+                        tabs=[
+                            ft.Tab(label="Órdenes Sincronizadas", icon=ft.Icons.LIST_ALT),
+                            ft.Tab(label="Credenciales API (Master)", icon=ft.Icons.SETTINGS),
+                        ]
+                    ),
+                    ft.TabBarView(
+                        expand=True,
+                        controls=[vista_ordenes, vista_config],
+                    ),
+                ],
+            ),
+        )
+        contenido_dialogo = tabs
+    else:
+        # Administradores y Operadores solo operan sobre las órdenes sincronizadas (SoD)
+        contenido_dialogo = ft.Container(
+            content=vista_ordenes,
+            padding=ft.Padding.all(4),
+            expand=True,
+        )
 
     dialogo = ft.AlertDialog(
         modal=True,
@@ -414,7 +425,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
             spacing=8,
         ),
         content=ft.Container(
-            content=tabs,
+            content=contenido_dialogo,
             width=680,
             height=460,
         ),

@@ -635,8 +635,15 @@ class StockManager:
         pedidos_procesados: Optional[List[ResultadoRemito]] = None,
         guardar_archivo: bool = True,
         prefijo_archivo: str = "Descuento",
+        descuento_ya_aplicado: bool = False,
     ) -> ReporteStock:
-        """Genera un informe con el diseño del catálogo, sin modificarlo."""
+        """Genera un informe con el diseño del catálogo, sin modificarlo.
+
+        Si descuento_ya_aplicado es True (caso Cierre de Jornada donde los pedidos ya
+        se descontaron en tiempo real de SQLite y Productos.xlsx), el stock_ant del
+        catálogo ya es el saldo post-descuento: stock_nuevo = stock_ant y
+        stock_anterior = stock_ant + cantidad_descontada.
+        """
         carpeta_destino = Path(carpeta_destino)
         fecha_generacion = datetime.now()
         fecha_hora_str = fecha_generacion.strftime("%d-%m-%Y_%H-%M-%S")
@@ -649,13 +656,20 @@ class StockManager:
             item = items_consolidados.get(cod)
             if item is None:
                 continue
+            if descuento_ya_aplicado:
+                stk_ant_calc = int(stock_ant + item.cantidad_total)
+                stk_nvo_calc = int(stock_ant)
+            else:
+                stk_ant_calc = int(stock_ant)
+                stk_nvo_calc = int(stock_ant - item.cantidad_total)
+
             descuentos.append(RegistroDescuento(
                 codigo=cod,
                 nombre_producto=nombre,
                 fila_excel=4 + len(descuentos),
-                stock_anterior=stock_ant,
+                stock_anterior=stk_ant_calc,
                 cantidad_descontada=item.cantidad_total,
-                stock_nuevo=int(stock_ant - item.cantidad_total),
+                stock_nuevo=stk_nvo_calc,
             ))
 
         filas_productos = []
