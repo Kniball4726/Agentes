@@ -145,7 +145,8 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        self.assertEqual(len(interfaz.controles_tarea), 18)
+        # 20 comandos para administrador (incluye Archivado Histórico, Sincronización Excel y Telegram)
+        self.assertEqual(len(interfaz.controles_tarea), 23)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -577,6 +578,34 @@ class FletGuiTests(unittest.TestCase):
         interfaz.ultima_actividad = datetime.now() - timedelta(minutes=721)
         self.assertFalse(interfaz.exigir_roles("operador"))
         self.assertIsNone(interfaz.usuario_actual)
+
+    def test_dialogos_mercadolibre_anomalias_heatmap(self):
+        """Verifica que los diálogos de Mercado Libre, Radar de Anomalías y Heatmap se instancien y abran sin error."""
+        interfaz, _, page = self.crear_interfaz("administrador")
+
+        # 1. Diálogo Mercado Libre Sync
+        interfaz.mostrar_sincronizacion_mercadolibre()
+        self.assertGreater(len(page.dialogos), 0)
+        self.assertIsInstance(page.dialogos[-1], ft.AlertDialog)
+        interfaz.page.pop_dialog()
+
+        # 2. Diálogo Radar de Anomalías
+        interfaz.mostrar_dialogo_anomalias()
+        self.assertGreater(len(page.dialogos), 0)
+        self.assertIsInstance(page.dialogos[-1], ft.AlertDialog)
+        interfaz.page.pop_dialog()
+
+        # 3. Diálogo Heatmap y Picking ABC
+        interfaz.mostrar_dialogo_heatmap()
+        self.assertGreater(len(page.dialogos), 0)
+        self.assertIsInstance(page.dialogos[-1], ft.AlertDialog)
+        interfaz.page.pop_dialog()
+
+        # 4. Diálogo Historial de Pedidos (con tarjetas rediseñadas)
+        interfaz.mostrar_historial_pedidos()
+        self.assertGreater(len(page.dialogos), 0)
+        self.assertIsInstance(page.dialogos[-1], ft.AlertDialog)
+        interfaz.page.pop_dialog()
 
 
 if __name__ == "__main__":

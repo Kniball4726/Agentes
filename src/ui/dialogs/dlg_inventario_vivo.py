@@ -85,7 +85,7 @@ def mostrar_dialogo_inventario_vivo(
     _evento: ft.Event | None = None,
 ) -> None:
     """Ventana interactiva de conteo físico en vivo con soporte de lector óptico y cámara móvil."""
-    if not interfaz.exigir_roles("operador", "administrador", "master"):
+    if not interfaz.exigir_roles("operador", "administrador"):
         return
 
     sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
@@ -125,7 +125,7 @@ def mostrar_dialogo_inventario_vivo(
     # Controles de interfaz principales
     input_escaneo = ft.TextField(
         label="Escanear código de barras o ingresar SKU",
-        hint_text="Pasa el lector aquí o escribe el código...",
+        hint_text="Pasa la pistola lectora (Barcode Wedge) o escribe el código...",
         prefix_icon=ft.Icons.BARCODE_READER,
         autofocus=True,
         expand=True,
@@ -435,7 +435,9 @@ def mostrar_dialogo_inventario_vivo(
             pass
 
     def procesar_escaneo(_e: ft.Event | None = None) -> None:
-        valor = (input_escaneo.value or "").strip()
+        from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
+
+        valor = normalizar_codigo_lector(input_escaneo.value or "")
         if not valor:
             return
 
@@ -451,7 +453,9 @@ def mostrar_dialogo_inventario_vivo(
             conteo_fisico[cod] = conteo_fisico.get(cod, 0) + cant_a_sumar
             texto_feedback.value = f"✅ Contado '{prod['name']}' [{cod}] (+{cant_a_sumar} un. | Total: {conteo_fisico[cod]})"
             texto_feedback.color = ft.Colors.GREEN_400
+            emitir_tono_exito()
         else:
+            emitir_tono_error()
             # El código no pertenece a ningún SKU ni código de barras registrado
             # Permitir asociarlo a un producto o registrarlo como ítem directo
             mostrar_dialogo_asociar_codigo_barras(valor, cant_a_sumar)

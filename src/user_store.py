@@ -581,6 +581,11 @@ class UserStore:
                     """,
                     (username, ahora + LOCKOUT_SECONDS),
                 )
+                try:
+                    from .telegram_notifier import notificar_seguridad_bloqueo_telegram
+                    notificar_seguridad_bloqueo_telegram(username, retry_after_minutos=15)
+                except Exception:
+                    pass
                 return AuthResult(None, "locked", retry_after=LOCKOUT_SECONDS)
             connection.execute(
                 """

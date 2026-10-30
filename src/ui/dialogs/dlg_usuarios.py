@@ -7,7 +7,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
     """Abre la ventana modal para administrar usuarios, roles y contraseñas."""
-    if not interfaz.exigir_roles("administrador"):
+    if not interfaz.exigir_roles("administrador", "master"):
         return
 
     nuevo_usuario = ft.TextField(label="Nombre de usuario *", expand=True)
@@ -240,7 +240,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             )
 
     def desbloquear_cuenta(uname: str) -> None:
-        if not interfaz.exigir_roles("administrador"):
+        if not interfaz.exigir_roles("administrador", "master"):
             return
         interfaz.user_store.unlock_user(uname)
         try:
@@ -302,7 +302,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         interfaz.page.show_dialog(dlg_reset)
 
     def cambiar_rol(user_id: int, role: str) -> None:
-        if not interfaz.exigir_roles("administrador"):
+        if not interfaz.exigir_roles("administrador", "master"):
             return
         try:
             interfaz.user_store.update_role(
@@ -317,7 +317,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         interfaz.page.update()
 
     def cambiar_estado(user_id: int, active: bool) -> None:
-        if not interfaz.exigir_roles("administrador"):
+        if not interfaz.exigir_roles("administrador", "master"):
             return
         try:
             interfaz.user_store.set_active(
@@ -332,7 +332,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         interfaz.page.update()
 
     def crear_usuario(_evento: ft.Event) -> None:
-        if not interfaz.exigir_roles("administrador"):
+        if not interfaz.exigir_roles("administrador", "master"):
             return
         try:
             interfaz.user_store.create_user(

@@ -411,9 +411,16 @@ def obtener_mensaje_bienvenida(rol: str, nombre_usuario: str = "") -> str:
             "o consultar el cierre de jornada (/cierre).\n"
             "Escribe /ayuda para ver todos tus comandos."
         )
-    elif rol in ("administrador", "master"):
+    elif rol == "master":
         return (
-            f"¡Hola{nombre}! 👋 Asistente de Gestión Activo.\n"
+            f"¡Hola{nombre}! 👋 Consola de Seguridad y Auditoría Activa.\n"
+            "Puedes auditar eventos del sistema (/auditoria), consultar respaldos (/backup), "
+            "verificar el estado de servicios (/estado) o comunicarte por el canal interno (/equipo).\n"
+            "Escribe /ayuda para ver el listado de comandos."
+        )
+    elif rol == "administrador":
+        return (
+            f"¡Hola{nombre}! 👋 Asistente de Gestión Operativa Activo.\n"
             "Puedes supervisar stock crítico (/criticos), calcular reposición para fábrica (/reposicion), "
             "verificar archivos pendientes (/diagnostico), simular remitos (/simular) y auditar inventario (/stock).\n"
             "Escribe /ayuda para ver el listado de comandos."
@@ -440,9 +447,20 @@ def obtener_comandos_ayuda(rol: str) -> str:
             "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
             "• /limpiar: Limpia la pantalla del chat."
         )
-    elif rol in ("administrador", "master"):
+    elif rol == "master":
         return (
-            "📋 Comandos disponibles para Administrador / Master:\n"
+            "📋 Comandos disponibles para Master (Seguridad & Auditoría):\n"
+            "• /auditoria: Consulta los últimos eventos registrados en auditoría del sistema.\n"
+            "• /backup: Estado y ruta del último respaldo de bases de datos.\n"
+            "• /estado: Resumen de estado de servicios y almacenamiento.\n"
+            "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un usuario o al equipo.\n"
+            "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
+            "• /limpiar: Limpia la pantalla del chat.\n"
+            "• /ayuda: Muestra esta ayuda técnica."
+        )
+    elif rol == "administrador":
+        return (
+            "📋 Comandos disponibles para Administrador (Gestión Operativa):\n"
             "• /stock <código o nombre>: Consulta stock y estado en tiempo real.\n"
             "• /criticos: Lista productos con stock bajo o agotados.\n"
             "• /reposicion: Sugiere cantidades a pedir a fábrica para evitar quiebres.\n"
@@ -454,7 +472,6 @@ def obtener_comandos_ayuda(rol: str) -> str:
             "• /pedidos: Resumen de pedidos del sistema.\n"
             "• /cierre: Resumen de cierres y descuentos acumulados.\n"
             "• /metricas: Panel de rendimiento, bultos y estadísticas de despacho.\n"
-            "• /auditoria: Consulta los últimos eventos registrados en auditoría.\n"
             "• /backup: Estado y ruta del último respaldo del sistema.\n"
             "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un compañero o a todo el equipo.\n"
             "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
@@ -484,14 +501,20 @@ def obtener_chips_configuracion(rol: str) -> list[tuple[str, str, str]]:
             ("Mercado Libre", "/mercadolibre", "LOCAL_SHIPPING"),
             ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
         ]
-    elif rol in ("administrador", "master"):
+    elif rol == "master":
+        return [
+            ("Chat Equipo", "/equipo", "CHAT"),
+            ("Copia Backup", "/backup", "BACKUP"),
+            ("Estado General", "/estado", "DASHBOARD"),
+            ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
+        ]
+    elif rol == "administrador":
         return [
             ("Chat Equipo", "/equipo", "CHAT"),
             ("Consultar Stock", "/stock", "SEARCH"),
             ("Stock Crítico", "/criticos", "WARNING_AMBER_ROUNDED"),
             ("Pedido Reposición", "/reposicion", "PRECISION_MANUFACTURING"),
             ("Métricas Depósito", "/metricas", "ANALYTICS"),
-            ("Registro Auditoría", "/auditoria", "HISTORY"),
             ("Copia Backup", "/backup", "BACKUP"),
             ("Diagnóstico Archivos", "/diagnostico", "FACT_CHECK"),
             ("Estado General", "/estado", "DASHBOARD"),
@@ -514,7 +537,9 @@ def obtener_pie_ayuda(rol: str) -> str:
     """Texto de ayuda en el pie de la ventana de chat según el rol."""
     if rol == "operador":
         return "Usa /stock <cód>, /pedidos, /cierre, /mercadolibre o /ayuda"
-    elif rol in ("administrador", "master"):
+    elif rol == "master":
+        return "Usa /auditoria, /backup, /estado, /equipo o /ayuda"
+    elif rol == "administrador":
         return "Usa /stock <cód>, /criticos, /reposicion, /diagnostico, /estado o /ayuda"
     else:
         return "Usa /stock <cód>, /criticos, /informes o /ayuda"

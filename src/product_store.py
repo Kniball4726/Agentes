@@ -59,10 +59,20 @@ class ProductStore:
                 connection.execute(
                     "ALTER TABLE products ADD COLUMN cod_barras TEXT DEFAULT ''"
                 )
+            if "ubicacion" not in columns:
+                connection.execute(
+                    "ALTER TABLE products ADD COLUMN ubicacion TEXT NOT NULL DEFAULT ''"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_products_cod_barras
                 ON products(cod_barras)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_ubicacion
+                ON products(ubicacion)
                 """
             )
 
@@ -424,11 +434,12 @@ class ProductStore:
                     product.stock_maximo AS stock_maximo,
                     product.stock_fisico AS stock_fisico,
                     product.cod_barras AS cod_barras,
+                    product.ubicacion AS ubicacion,
                     MIN(catalog_row.display_order) AS display_order
                 FROM products AS product
                 JOIN product_catalog_rows AS catalog_row
                     ON catalog_row.product_code = product.code
-                GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico, product.cod_barras
+                GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico, product.cod_barras, product.ubicacion
                 ORDER BY display_order, product.code
                 """
             ).fetchall()
@@ -635,12 +646,21 @@ class ProductStore:
         with closing(self._connect()) as connection:
             return connection.execute(
                 """
-                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion
                 FROM products
                 WHERE code = ?
                 """,
                 (code.strip(),),
             ).fetchone()
+
+    def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:
+        """Actualiza la ubicación física en el depósito para un producto (ej. 'A-01-2')."""
+        with closing(self._connect()) as connection, connection:
+            cur = connection.execute(
+                "UPDATE products SET ubicacion = ? WHERE code = ?",
+                (ubicacion.strip().upper(), code.strip()),
+            )
+            return cur.rowcount > 0
 
     def get_product_by_barcode(self, cod_barras: str) -> sqlite3.Row | None:
         """Obtiene un producto por su código de barras (EAN-13, QR, Code-128, etc.)."""

@@ -10,7 +10,7 @@
    - [Formas de Inicio y Detención](#formas-de-inicio-y-detención)
    - [Icono en la Bandeja del Sistema (System Tray de Windows)](#icono-en-la-bandeja-del-sistema-system-tray-de-windows)
    - [Parámetros de Línea de Comandos y Variables de Entorno](#parámetros-de-línea-de-comandos-y-variables-de-entorno)
-   - [Progressive Web App (PWA) e Identidad Visual](#progressive-web-app-pwa-e-identidad-visual)
+   - [Progressive Web App (PWA) y Arquitectura Resiliente Offline-First](#progressive-web-app-pwa-y-arquitectura-resiliente-offline-first)
 2. [Manual de Usuario por Roles](#2-manual-de-usuario-por-roles)
    - [Gestión de Perfil de Usuario ("Mi Perfil")](#gestión-de-perfil-de-usuario-mi-perfil)
    - [Autenticación, Seguridad y Bloqueo de Cuentas](#autenticación-seguridad-y-bloqueo-de-cuentas)
@@ -29,7 +29,9 @@
    - [Esquema de Bases de Datos SQLite](#esquema-de-bases-de-datos-sqlite)
    - [Compilación del Ejecutable (`.exe`)](#compilación-del-ejecutable-exe)
    - [Despliegue e Implementación en Red Local (Servidor LAN sobre HTTPS)](#despliegue-e-implementación-en-red-local-servidor-lan-sobre-https)
+   - [Acceso Remoto Seguro desde Fuera de la Oficina (Tailscale VPN)](#acceso-remoto-seguro-desde-fuera-de-la-oficina-tailscale-vpn)
    - [Instalación del Certificado SSL para Eliminar "No es Seguro"](#instalación-del-certificado-ssl-para-eliminar-no-es-seguro)
+   - [Protección Integral Contra Ataques Maliciosos y Seguridad del Sistema](#protección-integral-contra-ataques-maliciosos-y-seguridad-del-sistema)
    - [Batería de Pruebas Unitarias y Aseguramiento de Calidad](#batería-de-pruebas-unitarias-y-aseguramiento-de-calidad)
 
 ---
@@ -129,12 +131,19 @@ StockAgent permite parametrizar su ejecución tanto por flags de consola como me
 
 ---
 
-### Progressive Web App (PWA) e Identidad Visual
+### Progressive Web App (PWA) y Arquitectura Resiliente Offline-First
 
-StockAgent está preparado para operar como una **Progressive Web App (PWA)** completa:
-* **Instalación con 1 Clic:** Desde Google Chrome, Microsoft Edge o navegadores móviles, se puede presionar el botón "Instalar aplicación" en la barra de direcciones para tener StockAgent como programa de escritorio independiente con su propia ventana.
-* **Manifiesto Web (`assets/manifest.json`):** Configurado con el tema corporativo Ultratech (`#D32F2F`), modo de visualización `standalone` y orientación horizontal/vertical adaptativa.
+StockAgent opera como una **Progressive Web App (PWA)** completa de alta resiliencia para terminales móviles y puestos de depósito:
+* **Instalación con 1 Clic:** Desde Google Chrome, Microsoft Edge o navegadores móviles (Android/iOS), se puede presionar el botón "Instalar aplicación" en la barra de direcciones para ejecutar StockAgent como aplicación de escritorio/móvil independiente sin barras del navegador.
+* **Manifiesto Web (`assets/manifest.json`):** Configurado con el tema corporativo Ultratech (`#D32F2F`), modo de visualización `standalone`, orientación horizontal/vertical adaptativa y accesos directos (*shortcuts*) directos al escáner de códigos de barra (`/scanner.html`) y al panel principal.
 * **Iconografía Multi-Resolución:** Iconos oficiales en 192x192, 512x512 y versiones maskable para Android y Windows en `assets/icons/`.
+* **Service Worker con Caching Estratégico (`assets/sw.js`):** Implementa estrategias combinadas:
+  * **Stale-While-Revalidate:** Carga instantánea de hojas de estilo (`.css`), scripts (`.js`), fuentes e imágenes desde caché mientras se actualizan en segundo plano.
+  * **Network-First con Fallback a Caché:** Navegación HTML rápida que prioriza la versión más reciente del servidor y utiliza la copia en caché ante microcortes.
+  * **Exclusión de WebSockets (`/ws`):** Tráfico en tiempo real canalizado sin interferencias de la capa de caché.
+* **Pantalla de Contingencia Offline (`assets/offline.html`):** Interfaz oscura amigable que se despliega automáticamente ante caídas totales del enlace Wi-Fi, con detección y reconexión desatendida.
+* **Búfer de Escaneo Offline para Depósito (`assets/js/scanner.js`):** Cola local persistente en `localStorage` (`stockagent_offline_scan_queue`). Si un operario escanea mercadería en una zona ciega de Wi-Fi, las lecturas se encolan de forma segura con un indicador visual ámbar y se sincronizan atómicamente con el servidor tan pronto como se detecta el evento `online`.
+* **Banner de Microcortes de Red (`assets/index.html`):** Indicador superior no bloqueante que informa sobre el estado de la conexión en tiempo real sin entorpecer la operativa.
 * **Pantalla de Carga Personalizada (`assets/index.html`):** Animación de carga con isotipo oficial y pre-conexión de tipografías para eliminar destellos en pantalla.
 
 ---
@@ -195,23 +204,43 @@ StockAgent incorpora estrictas medidas de seguridad para proteger la integridad 
 
 ---
 
-### Rol Master (`Desarrollo`)
+### Rol Master (`Desarrollo`) — Seguridad, IAM y Auditoría
 
-El usuario **Master** es la máxima autoridad del sistema. Está precargado por defecto en la base de datos para garantizar la instalación y continuidad operativa.
+Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)** y el **Principio de Menor Privilegio**, el usuario **Master** está enfocado exclusivamente en la **administración técnica, gestión de identidades (IAM), auditoría integral y resguardo del sistema**. Al estar completamente desacoplado de la lógica de negocio y del inventario contable, garantiza imparcialidad y elimina conflictos de interés en las auditorías.
 
 * **Usuario precargado:** `Desarrollo`
-* **Contraseña inicial:** `master1713`
-* **Atributos y Seguridad:**
-  * **Exclusividad Jerárquica:** Es el **único rol facultado para crear, modificar o desactivar cuentas de rol Administrador**.
-  * **Visibilidad Total:** Desde la sesión del Master se visualizan **todos los usuarios existentes** en el sistema (Master, Administradores, Operadores y Consulta).
-  * **Protección Inviolable:** El usuario Master no puede ser desactivado ni degradado de rol por ningún usuario ni por sí mismo.
-  * **Acceso Total:** Tiene habilitadas todas las funciones operativas, analíticas, de auditoría, catálogos, relevamiento físico y estadísticas.
+* **Contraseña inicial:** `master1713` (con cambio obligatorio en el primer inicio de sesión).
+* **Alcance Exclusivo y Atributos Técnicos:**
+  * **Gestión de Identidades y Accesos (IAM):** Es el **único rol facultado para crear, modificar, activar, desactivar y resetear contraseñas de cuentas de rol Administrador**. Asimismo, puede gestionar todas las cuentas operativas y desbloquear usuarios bloqueados por fuerza bruta.
+  * **Centro de Auditoría Forense y Trazabilidad (Exclusivo Master):** Consulta inmutable y filtrado en tiempo real de todos los eventos del sistema: inicios de sesión, bloqueos por fuerza bruta, anulaciones, altas de usuarios, respaldos y modificaciones de configuración. Por principio de segregación de funciones (*SoD*), el Administrador no accede a este visor para evitar que el auditado audite sus propias operaciones.
+  * **Gestión de Identidades y Accesos (IAM Compartida):** Master posee control supremo sobre todos los roles (incluyendo creación, modificación y reseteo de contraseñas de cuentas Administrador). Los Administradores comparten la facultad de crear y gestionar cuentas de Operador y Consulta, pero no pueden alterar cuentas Master ni ver la auditoría forense.
+  * **Continuidad del Negocio (Backups / Disaster Recovery):** Generación manual de copias de seguridad `.zip`, configuración de directorios externos y verificación de políticas de rotación.
+  * **Configuración del Servidor y Servicios:** Gestión de credenciales SMTP para alertas automáticas, monitoreo de certificados SSL/HTTPS y estado de la red.
+  * **Protección Inviolable:** La cuenta Master no puede ser desactivada ni degradada de rol por ningún usuario ni por sí misma.
+* **Exclusión de la Lógica de Negocio (Protección Operativa):**
+  * ❌ No procesa remitos, facturas ni comprobantes de Mercado Libre.
+  * ❌ No modifica cantidades de stock ni altera la planilla `Productos.xlsx`.
+  * ❌ No realiza ingresos de fábrica, inventarios físicos ni pedidos a proveedores.
+  * ❌ No realiza cierres de jornada operativa ni emite Hojas de Ruta de despacho.
+* **Experiencia de Usuario Especializada:**
+  * Menú lateral organizado en bloques técnicos: *Seguridad y Accesos*, *Auditoría y Trazabilidad*, *Resguardo y Continuidad* y *Sistema*.
+  * Dashboard adaptado con tarjetas KPI de infraestructura: *Usuarios Registrados*, *Cuentas Activas*, *Eventos Auditoría*, *Copias de Respaldo*, *Espacio en Disco* y *Salud Servidor* (diagnóstico en tiempo real de RAM, disco y proceso).
+  * Módulo de *Archivado Histórico* para organizar comprobantes antiguos en subcarpetas cronológicas `data/historico/YYYY/MM/`.
+  * Configuración de *Alertas Telegram* bajo el bloque de Sistema para pruebas de conectividad y monitoreo de eventos.
+  * Panel de actividad que lista en vivo los últimos eventos de auditoría y seguridad.
 
 ---
 
 ### Rol Administrador
 
-Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito:
+Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
+
+* **📦 Stock y Catálogo:** Gestión de catálogo maestro, ajustes de stock físico / ingresos de fábrica, comparativa de discrepancias, sincronización atómica con `Productos.xlsx` y generación automática de pedidos a fábrica.
+* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST), Mercado Full y restauración documental.
+* **📊 Analítica y Picking:** Dashboard ejecutivo de métricas de rendimiento, estadísticas de salida, radar predictivo de anomalías de demanda y mapa de calor de depósito con matriz de rotación ABC (Slotting).
+* **📄 Informes:** Apertura y descarga de reportes, envío directo por correo electrónico y comunicación por WhatsApp Web.
+* **🛡️ Sistema y Resguardo:** Copias de seguridad automáticas `.zip`, archivado histórico cronológico y alertas proactivas por Bot de Telegram.
+* **👥 Administración de Usuarios (Sección Final):** Gestión de identidades y accesos (IAM) para roles Operador y Consulta (creación, edición, reseteo de claves y desbloqueos).
 
 #### 1. Gestión de Usuarios Operativos
 * **Qué hace:** Permite crear, modificar datos de perfil (nombre y email), restablecer contraseñas, desbloquear cuentas y activar o desactivar accesos para roles `Operador` y `Consulta`. Protege la jerarquía del sistema ocultando la cuenta `Master`.
@@ -227,18 +256,13 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   2. Los indicadores se calculan automáticamente a partir de los datos consolidados en SQLite en horario local.
   3. Presionar **"Actualizar"** para refrescar los datos en cualquier momento de la jornada.
 
-#### 3. Registro de Auditoría y Trazabilidad
-* **Qué hace:** Mantiene un registro cronológico e inmutable de todos los eventos relevantes ocurridos en el sistema (cargas de pedidos, cierres de jornada, altas de clientes, anulaciones y respaldos), garantizando transparencia y control de responsabilidades.
-* **Cómo se hace:**
-  1. Seleccionar la opción **"Registro de Auditoría"** en el menú de navegación.
-  2. Utilizar el cuadro de texto de búsqueda rápida para filtrar al instante por usuario, tipo de acción (`CREAR_PEDIDO`, `CIERRE_JORNADA`, `ANULACION_PEDIDO`, etc.) o palabra clave en el detalle.
-  3. Los resultados se actualizan en tiempo real conforme se escribe.
-
-#### 4. Historial de Pedidos: Modificación, Desarmado con Restitución de Stock y Anulación
+#### 3. Historial de Pedidos: Consulta, Reimpresión de Comprobantes, Modificación y Desarmado
 * **Qué hace:** Permite buscar, supervisar y gestionar en detalle todos los pedidos cargados en el sistema (remito, N° de pedido, cliente, logística, bultos, armador y estado de despacho). Faculta a los usuarios para:
-  1. **Modificar Pedido:** Corregir o actualizar datos de cabecera de pedidos activos (cliente, N° de pedido, cantidad de bultos, logística y fecha de retiro programada) sin necesidad de recargar comprobantes. Si el nombre del cliente es nuevo, se incorpora automáticamente a la base de datos de clientes para futuras búsquedas.
-  2. **Desarmar Pedido y Restituir Stock:** En caso de cancelaciones o pedidos desarmados antes o después del despacho, esta opción anula el pedido y reincorpora automáticamente todas las unidades y códigos descontados sumándolos de vuelta al inventario físico tanto en SQLite (`productos.sqlite3`) como en la planilla maestra (`Productos.xlsx`).
-  3. **Anular Pedido:** Cancela el comprobante registrando el motivo en auditoría (sin mover stock físico si se requiere anulación administrativa pura).
+  1. **Consulta y Reimpresión del Comprobante Cargado:** Cada pedido presenta un badge interactivo con el ícono de formato del archivo original (PDF, Excel o Word/DOCX). Al hacer clic o presionar el botón de impresora (`🖨️`), el sistema abre o descarga de inmediato el documento para su revisión o reimpresión directa.
+  2. **Detalle Completo del Pedido:** Presionando el botón de información (`ℹ️`) se accede a un modal con los datos logísticos, estado de despacho, enlace al informe de descuento asociado, lista de artículos descontados y acceso a rótulos con QR.
+  3. **Modificar Pedido:** Corregir o actualizar datos de cabecera de pedidos activos (cliente, N° de pedido, cantidad de bultos, logística y fecha de retiro programada) sin necesidad de recargar comprobantes. Si el nombre del cliente es nuevo, se incorpora automáticamente a la base de datos de clientes para futuras búsquedas.
+  4. **Desarmar Pedido y Restituir Stock:** En caso de cancelaciones o pedidos desarmados antes o después del despacho, esta opción anula el pedido y reincorpora automáticamente todas las unidades y códigos descontados sumándolos de vuelta al inventario físico tanto en SQLite (`productos.sqlite3`) como en la planilla maestra (`Productos.xlsx`).
+  5. **Anular Pedido:** Cancela el comprobante registrando el motivo en auditoría (sin mover stock físico si se requiere anulación administrativa pura).
 * **Cómo se hace:**
   1. Ingresar a la sección **"Historial de Pedidos"**.
   2. Filtrar por cliente, número de remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador mediante la barra de búsqueda en tiempo real.
@@ -246,20 +270,20 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   4. **Para Desarmar un Pedido:** Presionar el botón ámbar **"Desarmar pedido"** (icono de carrito retirado / reposición), verificar la lista detallada de artículos y cantidades que se devolverán al depósito, ingresar el motivo opcional y presionar **"Desarmar y Devolver Stock"**. El sistema actualizará el stock al instante.
   5. **Para Anular un Pedido:** Presionar el botón rojo **"Anular"** (icono de cancelar), ingresar el motivo y confirmar.
 
-#### 5. Copias de Seguridad (Backup Manual)
+#### 4. Copias de Seguridad (Backup Manual)
 * **Qué hace:** Genera un respaldo íntegro comprimido `.zip` en la carpeta `data/backups/`, resguardando las bases SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`), usuarios, notificaciones y el catálogo maestro `Productos.xlsx`. Mantiene automáticamente una rotación de las últimas 30 copias.
 * **Cómo se hace:**
   1. Presionar el botón **"Copia de Seguridad"** en la barra superior de herramientas (o escribir `/backup` en el Asistente Virtual).
   2. El sistema notificará la generación exitosa del respaldo indicando el nombre del archivo y la fecha/hora exacta.
 
-#### 6. Gestión de Catálogo de Productos (`Productos.xlsx`)
+#### 5. Gestión de Catálogo de Productos (`Productos.xlsx`)
 * **Qué hace:** Administra la base de datos maestra de artículos: altas de nuevos productos, edición de descripciones, códigos, precios y definición de umbrales de **Stock Mínimo** y **Stock Máximo** para alertas tempranas de desabastecimiento.
 * **Cómo se hace:**
   1. Dirigirse a la pestaña **"Gestionar Productos"**.
   2. Para modificar un artículo existente, buscarlo en la tabla y presionar el botón de edición. Actualizar los campos deseados (descripción, stock de seguridad, etc.) y presionar **"Guardar"**.
   3. Para dar de alta un producto, presionar **"Nuevo Producto"**, completar la ficha técnica y confirmar. El archivo maestro se actualiza automáticamente preservando una copia previa.
 
-#### 7. Ajuste de Stock y Entrada de Fábrica
+#### 6. Ajuste de Stock y Entrada de Fábrica
 * **Qué hace:** Procesa remitos o planillas de recepción de mercadería provenientes de fábrica (`.xlsx`, `.xls` o `.pdf`) sumando las cantidades al inventario disponible, o permite realizar ajustes manuales por mermas, roturas o sobrantes.
 * **Cómo se hace:**
   1. Acceder a **"Ajustar Stock / Entrada Fábrica"**.
@@ -267,7 +291,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Si se realiza un ajuste manual, indicar el código del artículo y la cantidad (+ para ingreso, - para egreso).
   4. Revisar la previsualización del impacto y presionar **"Confirmar Entrada / Ajuste"**.
 
-#### 8. Descuento Mercado Libre Full y Mercado Libre (DOCX)
+#### 7. Descuento Mercado Libre Full y Mercado Libre (DOCX)
 * **Qué hace:** Procesa comprobantes de Mercado Libre (formato Full o documentos `.docx`), emparejando descripciones con los códigos del catálogo y descontando las unidades del stock general con validación antiduplicados (SHA-256).
 * **Cómo se hace:**
   1. Ingresar a **"Descontar Mercado Libre Full"** o **"Descontar Mercado Libre (DOCX)"**.
@@ -275,7 +299,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Revisar el reporte previo en pantalla: el sistema marcará en verde las coincidencias exactas y alertará si hay artículos sin stock suficiente o descripciones no identificadas.
   4. Hacer clic en **"Confirmar Descuento"** para aplicar la rebaja en el catálogo y generar el comprobante PDF.
 
-#### 9. Comparativa de Stock Físico
+#### 8. Comparativa de Stock Físico
 * **Qué hace:** Contrasta una planilla de recuento físico realizada en las estanterías del depósito contra las existencias registradas en el sistema, clasificando cada producto como `COINCIDE`, `FALTANTE` o `SOBRANTE`.
 * **Cómo se hace:**
   1. Abrir la herramienta **"Comparativa de Stock Físico"**.
@@ -283,7 +307,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Presionar **"Comparar Inventario"**.
   4. Inspeccionar la tabla comparativa con las diferencias cuantitativas y exportar el reporte a Excel o PDF.
 
-#### 10. Generar Pedido a Fábrica (Excel de Reposición)
+#### 9. Generar Pedido a Fábrica (Excel de Reposición)
 * **Qué hace:** Analiza los artículos cuyo stock actual está por debajo del stock mínimo configurado y genera una planilla formal de pedido a proveedores calculando la cantidad sugerida para alcanzar el nivel óptimo.
 * **Cómo se hace:**
   1. Entrar en la sección de reposición (o invocar el comando `/reposicion` en el chat).
@@ -291,14 +315,14 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Revisar y ajustar las cantidades deseadas en la tabla si fuera necesario.
   4. Presionar **"Generar Pedido a Fábrica"** para exportar la planilla Excel oficial de compra.
 
-#### 11. Estadísticas de Salida y Rotación
+#### 10. Estadísticas de Salida y Rotación
 * **Qué hace:** Procesa el histórico de movimientos para entregar curvas de rotación ABC, promedios de consumo diario/semanal y detección de artículos de baja demanda o alta demanda.
 * **Cómo se hace:**
   1. Navegar a **"Estadísticas y Rotación"**.
   2. Definir el período de análisis (últimos 7 días, mes actual, rango personalizado).
   3. Presionar **"Calcular Estadísticas"** para visualizar los gráficos y tablas de rotación.
 
-#### 12. Restauración de Documentos (Rollback de Lotes)
+#### 11. Restauración de Documentos (Rollback de Lotes)
 * **Qué hace:** Permite deshacer un lote de descuento completo o una carga previa, recalculando el stock y regresando el catálogo `Productos.xlsx` al estado exacto anterior a dicha operación sin pérdida de datos.
 * **Cómo se hace:**
   1. Ingresar a **"Restaurar Documentos"**.
@@ -306,7 +330,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Presionar **"Previsualizar Rollback"** para constatar los productos y unidades que se reincorporarán al inventario.
   4. Confirmar la operación presionando **"Restaurar Catálogo"**.
 
-#### 13. Informes Rápidos (Apertura, Correo con Adjuntos y WhatsApp Web)
+#### 12. Informes Rápidos (Apertura, Correo con Adjuntos y WhatsApp Web)
 * **Qué hace:** Permite seleccionar, inspeccionar y enviar los reportes oficiales generados (PDF de cierre, planillas Excel, hojas de ruta de choferes o pedidos a fábrica) por correo electrónico con los **archivos físicamente adjuntos** (vía Simple MAPI o envío directo SMTP) o compartirlos por WhatsApp Web.
 * **Cómo se hace:**
   1. En el menú lateral o tras finalizar un cierre/pedido, hacer clic en **"Compartir por correo"**.
@@ -319,7 +343,7 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Presionar **"Enviar Correo"**. El sistema adjuntará los archivos y despachará el mensaje.
   4. Para compartir por WhatsApp, presionar **"WhatsApp Web"** (abre el navegador con el mensaje de resumen listo y el archivo seleccionado en el Explorador).
 
-#### 14. Asistente Virtual Inteligente y Chat de Comunicación Interna
+#### 13. Asistente Virtual Inteligente y Chat de Comunicación Interna
 * **Qué hace:** Provee una ventana flotante de doble propósito: un asistente virtual interactivo para consultas y diagnósticos rápidos de inventario, y un **canal de comunicación interna (Chat de Equipo)** que permite a operarios, administradores y encargados enviarse mensajes en tiempo real (tanto al canal general como mensajes privados directos entre usuarios), persistidos en SQLite y sincronizados entre todas las sesiones abiertas.
 * **Cómo se hace:**
   1. Hacer clic en el botón flotante **"Asistente"** en la esquina inferior derecha (el botón muestra un indicador numérico en rojo cuando existen mensajes de equipo no leídos).
@@ -330,12 +354,80 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
      * En la pestaña **Chat Equipo**, elegir el destinatario en el menú desplegable (`📢 Todos (Canal General)` o un usuario específico `@operario`), redactar el mensaje y presionar **Enter** o el botón de enviar.
      * O desde la pestaña del **Bot**, escribir directamente: `/msg @usuario tu mensaje aquí` o `/msg aviso para todos` y el asistente registrará y enviará el mensaje inmediatamente.
 
-#### 15. Supervisión y Reimpresión de Rótulos de Bulto con Código QR
-* **Qué hace:** Permite supervisar y reimprimir en cualquier momento las etiquetas normalizadas de despacho en formato **A4 (6 etiquetas por hoja en cuadrícula 2x3)** generadas para cada bulto de cualquier pedido del depósito (`Bulto 1 de N`), con el **nombre del cliente destacado en gran tamaño** (igual de visible que el número de bulto), identificación del armador mediante su nombre real, compactas, optimizadas para corte y con código QR para trazabilidad en expedición.
+#### 14. Supervisión y Reimpresión de Rótulos de Bulto con Código QR (Optimización Hoja A4 Completa)
+* **Qué hace:** Genera rótulos de despacho en formato **A4 (10 etiquetas por hoja en cuadrícula 2x5)** para cada bulto de los pedidos (`Bulto 1 de N`), con el **nombre del cliente destacado en tipografía de gran tamaño** (`13.5pt bold`) concatenado con el N° de pedido, identificación del armador con su nombre real, trazabilidad por código QR y optimización de papel:
+  * **Aprovechamiento Integral de Hoja A4:** Para pedidos individuales con menos de 10 bultos (o cuando la última página de un pedido con múltiples bultos no llena los 10 casilleros), el sistema **completa automáticamente los espacios vacíos** repitiendo proporcionalmente los rótulos del pedido. Esto evita el desperdicio de planchas adhesivas y garantiza que toda hoja A4 impresa se utilice al 100%.
+  * **Impresión en Lote de Múltiples Pedidos:** Permite imprimir en un único archivo PDF todos los pedidos filtrados o de la jornada, ordenados consecutivamente a razón de 10 etiquetas por página y completando la última hoja.
 * **Cómo se hace:**
-  1. Ir a **"Historial de Pedidos"** y localizar el pedido deseado.
-  2. Presionar el botón **"Imprimir Rótulos"** en la fila del pedido.
-  3. El sistema generará y abrirá inmediatamente el documento PDF con todas las etiquetas (6 por hoja A4) listas para ser enviadas a la impresora térmica o estándar.
+  1. Ir a **"Historial de Pedidos"**.
+  2. **Para un Pedido Individual:** Presionar el botón de código QR (`🔲`) en la tarjeta del pedido para generar su hoja A4 llena (10 rótulos).
+  3. **Para Lote Completo:** Filtrar los pedidos deseados en el buscador y presionar el botón **"Rótulos A4 (Lote)"** en la barra superior. El sistema abrirá el PDF con todas las hojas A4 combinadas listas para imprimir.
+
+#### 15. Archivado Histórico de Comprobantes
+* **Qué hace:** Mantiene limpio y optimizado el almacenamiento del servidor organizando comprobantes de pedidos antiguos (PDF, Excel, Word) en subcarpetas cronológicas `data/historico/YYYY/MM/`. Permite seleccionar un umbral de antigüedad (30, 60, 90 o 180 días) y moverlos en bloque sin romper el acceso: el buscador del Historial de Pedidos localiza automáticamente cualquier documento tanto en la carpeta activa como en las subcarpetas del histórico.
+* **Cómo se hace:**
+  1. En el menú lateral de Administrador (o Master), seleccionar **"Archivado Histórico"**.
+  2. Visualizar las estadísticas en tiempo real: volumen ocupado, total de archivos y fecha del comprobante más antiguo.
+  3. Seleccionar el rango de antigüedad a archivar y presionar **"Iniciar Archivado Histórico"**. El sistema reportará la cantidad exacta de comprobantes clasificados.
+
+#### 16. Alertas Proactivas en Tiempo Real por Telegram Bot
+* **Qué hace:** Conecta el servidor StockAgent con la API oficial de Telegram para despachar notificaciones automáticas inmediatas a los administradores o grupos de depósito ante eventos críticos:
+  * **Quiebres de Stock:** Notificación instantánea cuando un producto llega a 0 unidades o cae por debajo de su umbral mínimo de seguridad.
+  * **Alertas de Seguridad:** Aviso de bloqueo preventivo de cuenta tras 5 intentos fallidos de inicio de sesión por sospecha de fuerza bruta.
+  * **Resumen de Cierre de Jornada:** Mensaje ejecutivo al finalizar el turno con total de pedidos procesados, unidades descontadas y productos críticos.
+* **Cómo se hace:**
+  1. En el menú lateral, hacer clic en **"Alertas Telegram"**.
+  2. Ingresar el **Token del Bot** (obtenido de `@BotFather`) y el **Chat ID** del grupo o canal privado de recepción.
+  3. Presionar **"Probar Envío"** para verificar la comunicación en vivo.
+  4. Activar o desactivar individualmente los tipos de alerta deseados mediante los interruptores dedicados y presionar **"Guardar Configuración"**.
+
+#### 17. Sincronización Total con Excel (Flush & Decoupling)
+* **Qué hace:** Vuelca todos los productos y existencias consolidadas en SQLite directamente hacia la planilla maestra `Productos.xlsx`. Esta herramienta permite operar a ultra-alta velocidad durante el día desacoplando las lecturas directas del archivo Excel, y consolidar o sincronizar manualmente o de forma automática al registrar el Cierre de Jornada.
+* **Cómo se hace:**
+  1. En el menú lateral, presionar **"Sincronizar con Excel"**.
+  2. El sistema leerá todos los saldos vigentes en la base de datos `productos.sqlite3` y actualizará fila por fila la planilla `Productos.xlsx`, informando en pantalla la cantidad de artículos sincronizados.
+
+#### 18. Conector Oficial Mercado Libre API (Sincronización Desatendida)
+* **Qué hace:** Permite consultar y sincronizar en tiempo real las órdenes de compra pagadas desde la API REST oficial de Mercado Libre (`/orders/search`), eliminando la necesidad de descargar archivos Word (.docx) o planillas manualmente.
+  * **Emparejamiento Inteligente:** Asocia automáticamente los artículos comprados priorizando el **SKU del vendedor** (`seller_sku`) para 100% de precisión y, en caso de no poseerlo, ejecuta matching semántico aproximado del título contra el catálogo.
+  * **Comprobación de Stock en Tiempo Real:** Informa si existe stock suficiente antes del descuento o alerta sobre productos en quiebre.
+  * **Descuento Atómico y Resguardo Documental:** Con un solo clic (`Descontar Seleccionadas`), actualiza las existencias en SQLite, registra los pedidos en `OrderStore` y crea automáticamente el archivo físico `.docx` en `data/pedidos_archivos/` para trazabilidad y reimpresión.
+* **Cómo se hace:**
+  1. En el menú lateral, presionar **"Mercado Libre API (Sync)"**.
+  2. En la pestaña **Credenciales API**, cargar el *App ID*, *Client Secret* y *Access Token* (con renovación automática mediante *Refresh Token*) y presionar **"Probar Conexión"**.
+  3. En la pestaña **Órdenes Sincronizadas**, presionar **"Sincronizar Ahora"** para consultar las órdenes recientes.
+  4. Revisar la previsualización del stock, tildar las órdenes a procesar y presionar **"Descontar Seleccionadas"**.
+
+#### 19. Radar de Consumo Anómalo y Detección de Desvíos de Demanda
+* **Qué hace:** Aplica análisis estadístico continuo sobre el historial de movimientos de inventario (`stock_movements`) para alertar preventivamente sobre tres tipos de riesgos críticos de demanda:
+  * **Picos Anómalos Diarios:** Identifica artículos cuya salida en el día supera la media histórica habitual en más de 2 desviaciones estándar ($C_{\text{hoy}} > \mu + 2\sigma$), permitiendo detectar de inmediato errores de tipeo o picos extraordinarios de compra.
+  * **Descuentos Masivos Individuales:** Detecta cualquier remito o pedido individual que consuma de golpe el 50% o más del stock total disponible del producto.
+  * **Velocidad Acelerada de Agotamiento (Run-out Run-rate):** Calcula el ritmo de salida diario de los últimos 14 días y proyecta los días de cobertura restantes. Si el stock se agotará en 3 días o menos, genera una alerta temprana de reposición urgente.
+* **Cómo se hace:**
+  1. En el menú de Administración, presionar **"Radar de anomalías"**.
+  2. Visualizar los tres indicadores KPI en el encabezado (*Picos de Demanda*, *Descuentos > 50%*, *Agotamiento < 3d*).
+  3. Navegar por las pestañas para inspeccionar los artículos afectados, diagnósticos detallados y días de cobertura.
+  4. Presionar **"Notificar por Telegram"** para despachar de inmediato un reporte de advertencia al canal de gerencia/depósito.
+
+#### 20. Mapa de Calor y Matriz de Rotación de Picking (Slotting)
+* **Qué hace:** Aplica análisis de Pareto ABC y modelado espacial del depósito para optimizar los recorridos de los operarios y minimizar la fatiga ergonómica:
+  * **Clasificación ABC (Pareto 75/15/10):** Agrupa automáticamente los productos en Clase A (*Fast Movers*, alta frecuencia de picking), Clase B (*Medium Movers*) y Clase C (*Slow Movers* / reposición lenta).
+  * **Mapa de Calor 2D (Warehouse Heatmap):** Modela visualmente las 48 ubicaciones estándar del depósito (Racks A, B, C y D × Módulos 1-4 × Niveles 1-3) asignando colores térmicos dinámicos según el volumen de picks:
+    * 🔴 **Muy Caliente (> 70%):** Altísimo tránsito de operarios.
+    * 🟠 **Caliente (40% - 70%):** Tránsito moderado-alto.
+    * 🟡 **Medio (15% - 40%):** Tránsito normal.
+    * 🔘 **Frío (< 15%):** Zona de almacenamiento de baja rotación.
+  * **Zona Dorada Ergonómica (Golden Zone ⭐):** Identifica el Nivel 2 (altura de cintura y pecho: 0.8m a 1.5m) como la posición más rápida y segura sin requerir agacharse al piso ni usar escaleras.
+  * **Motor de Recomendaciones de Slotting:** Alerta sobre ineficiencias críticas:
+    * *Fast-Mover en Fondo o Altura:* Producto Clase A alojado en Rack D o Nivel 3 (sobre-recorrido y riesgo de fatiga).
+    * *Slow-Mover en Zona Dorada:* Producto Clase C ocupando una posición estratégica en Rack A.
+  * **Reubicación Atómica con 1 Clic:** Botón directo en la interfaz que actualiza de inmediato la posición física del artículo en SQLite (`products.ubicacion`) y recalcula la eficiencia global del depósito.
+* **Cómo se hace:**
+  1. En el menú de Administración, presionar **"Heatmap y Picking"**.
+  2. Consultar los 4 indicadores KPI superiores (*Eficiencia de Slotting*, *Picks Analizados*, *Distribución A/B/C* y *Reubicaciones Pendientes*).
+  3. En la pestaña **"Mapa Térmico (Layout)"**, explorar los estantes visuales y hacer clic en cualquier casilla para ver los artículos almacenados.
+  4. En la pestaña **"Matriz Rotación ABC"**, filtrar y ordenar productos por frecuencia de salida y porcentaje acumulado.
+  5. En la pestaña **"Plan de Reubicación"**, revisar las sugerencias automáticas y presionar **"Reubicar"** para aplicar el cambio en el sistema.
 
 ---
 
@@ -350,14 +442,19 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * Asignación de cantidad de bultos y fecha de retiro programada (con calendario).
   * **Descuento Ágil sin Generación de Documentos Individuales:** Cada descuento impacta en el stock y queda registrado en la jornada sin generar archivos PDF o Excel individuales en disco. El documento formal se genera únicamente en el Cierre como un consolidado general.
   * **Protección Antiduplicados (SHA-256):** Bloquea automáticamente la carga si el archivo binario ya fue procesado con anterioridad.
-* **Generación de Rótulos de Bulto Compactos (6 por Hoja A4):**
-  * Botón directo en cada pedido para imprimir etiquetas de despacho en formato estándar A4 (6 por página, disposición 2x3).
+* **Generación de Rótulos de Bulto Compactos (10 por Hoja A4 sin Desperdicio):**
+  * Botón directo en cada pedido y botón en lote en el Historial para imprimir etiquetas de despacho en formato estándar A4 (10 por página, disposición 2x5).
+  * **Llenado Inteligente de Hoja A4:** Llena siempre los 10 espacios de la hoja A4 sin dejar cuadrículas en blanco mediante replicación proporcional de los bultos del pedido.
   * **Nombre del Cliente Extra Grande y en Negrita:** Resaltado en tipografía grande (`13.5pt bold`) para máxima legibilidad en el depósito, concatenado automáticamente con el número de pedido (ej: `Gregory Rodriguez Nro 3`), con el mismo o mayor impacto visual que el recuadro de `BULTO X DE Y`.
   * Genera una etiqueta por cada bulto (`Bulto 1 de N`, `Bulto 2 de N`) con datos del remito, cliente, transporte, nombre identificador del armador y código QR escaneable por celular o lector.
 * **Descuento Mercado Libre (DOCX):**
   * Carga y descuento de remitos de Mercado Libre en formato `.docx`, con previsualización del impacto y protección contra archivos duplicados (sin generación de documentos individuales innecesarios).
+* **Sincronización Mercado Libre (API REST):**
+  * Botón directo **"Sincronizar Mercado Libre (API)"** para consultar y descontar pedidos pagados en tiempo real directo desde los servidores de Mercado Libre, sin tener que descargar o arrastrar archivos a la plataforma.
 * **Historial de Pedidos:**
+  * **Diseño Espacioso y Jerárquico de Tarjetas:** Tarjetas de 960px con división en 4 niveles semánticos que impiden el solapamiento de información (Cabecera con N° de pedido y badge de estado con borde temático, chips de cliente y transporte con ajuste multi-línea, datos de comprobante y resumen de artículos con elipsis, y barra inferior de acciones operativas).
   * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
+  * **Botón Rótulos A4 (Lote):** Impresión directa de hojas A4 optimizadas que contienen los rótulos de todos los pedidos filtrados.
   * **Modificación de Pedido:** Edición directa de cliente, N° de pedido, bultos, logística y fecha de entrega.
   * **Desarmar Pedido:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock disponible.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
@@ -855,12 +952,67 @@ Firefox posee su propio almacén de certificados independiente del sistema opera
 
 ---
 
+### Acceso Remoto Seguro desde Fuera de la Oficina (Tailscale VPN)
+
+StockAgent permite acceder y operar de forma remota desde cualquier PC, notebook, tablet o teléfono móvil fuera del depósito o la oficina (por ejemplo, desde el hogar o de viaje) sin necesidad de estar conectado a la misma red Wi-Fi o cable.
+
+#### ¿Por qué usar Tailscale y NO abrir puertos en el módem/router?
+* ❌ **Abrir puertos en el router (Port Forwarding):** Expone tu computadora a escaneos masivos en Internet, ataques automatizados de fuerza bruta, bots y potenciales vulnerabilidades de ransomware.
+* ✅ **Tailscale (Malla VPN WireGuard de Cero Configuración):**
+  - **Cero puertos abiertos:** Tu router permanece completamente cerrado al exterior; StockAgent es 100% invisible para el resto de Internet.
+  - **Cifrado de Grado Militar:** Todo el tráfico viaja mediante un túnel punto a punto autenticado con **WireGuard** (ChaCha20-Poly1305).
+  - **Autenticación Fuerte (MFA/2FA):** Solo los dispositivos que tengan instalada tu cuenta de Tailscale (Google, Microsoft o Apple con segundo factor) pueden conectarse.
+  - **Detección Automática en StockAgent:** Al iniciar `iniciar_servidor_web.bat`, el sistema detecta de forma nativa tu dirección Tailscale (`100.x.y.z`) y la expone en la consola y en el menú del System Tray para copiarla con un solo clic.
+
+#### Configuración Paso a Paso de Tailscale:
+1. **En la PC Servidor (donde corre StockAgent):**
+   - Descarga e instala Tailscale desde [tailscale.com](https://tailscale.com/download/windows).
+   - Inicia sesión con tu cuenta preferida (Google, Microsoft o Apple).
+   - Haz clic en el icono de Tailscale en la barra de tareas de Windows y anota tu dirección IP (empieza con `100.`, por ejemplo `100.85.120.45`).
+2. **En la PC Remota, Notebook o Celular (cliente):**
+   - Instala Tailscale en el dispositivo remoto (disponible para Windows, macOS, Linux, Android e iOS).
+   - Inicia sesión con la **misma cuenta** que utilizaste en el servidor.
+   - Ambos equipos quedarán vinculados de inmediato en tu red privada segura (*tailnet*).
+3. **Acceder a la Aplicación:**
+   - Abre Google Chrome, Microsoft Edge o cualquier navegador en el equipo remoto e ingresa a:
+     ```text
+     https://100.x.y.z:8550
+     ```
+     *(Sustituye `100.x.y.z` por la IP Tailscale real de la PC servidora).*
+   - Toda la información de stock, remitos, clientes y pedidos se sincronizará de forma inmediata y en tiempo real.
+
+---
+
+### Protección Integral Contra Ataques Maliciosos y Seguridad del Sistema
+
+StockAgent implementa una arquitectura de seguridad por capas conforme a estándares de la industria (**OWASP Top 10, NIST y CIS Controls**):
+
+1. **Cifrado Obligatorio en Tránsito (TLS / HTTPS):**
+   * Todas las comunicaciones web y conexiones WebSocket viajan cifradas con algoritmos criptográficos modernos, garantizando inmunidad total frente a ataques de interceptación (*Man-in-the-Middle* o espionaje en redes Wi-Fi públicas).
+2. **Protección Contra Fuerza Bruta y Credential Stuffing:**
+   * **Bloqueo preventivo:** Tras 5 intentos fallidos consecutivos de inicio de sesión desde un usuario o IP, la cuenta queda automáticamente bloqueada durante 15 minutos.
+   * **Desbloqueo administrativo:** El rol Master o un Administrador pueden desbloquear manualmente al usuario al instante desde el panel de gestión.
+   * **Derivación de Claves PBKDF2-HMAC-SHA256:** Las contraseñas se almacenan con salt individual de alta entropía y miles de iteraciones, impidiendo ataques de tablas arcoíris (*rainbow tables*).
+   * **Política de Claves Fuertes:** Obligatoriedad de cambio de contraseña por defecto en el primer inicio de sesión con validación de longitud mínima (10 caracteres).
+3. **Inmunidad Contra Inyección SQL (SQL Injection):**
+   * El 100% de las consultas a SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`) se realizan mediante **sentencias parametrizadas** y tipadas. No existe concatenación dinámica de cadenas en consultas SQL.
+4. **Segregación de Funciones y Mínimo Privilegio (Separation of Duties - SoD):**
+   * **Rol Master (IAM, Auditoría y Seguridad Técnica):** Desacoplado de la lógica comercial para actuar como auditor independiente imparcial. Dispone de un registro inmutable y visor de auditoría forense exclusivo.
+   * **Rol Administrador (Gestión Comercial y Operativa):** Supervisa el depósito y comparte la administración de operarios (IAM compartida), pero **no tiene acceso a la auditoría forense de seguridad**, evitando que el personal operativo audite sus propias acciones.
+   * **Rol Operador:** Estrictamente acotado a la carga de pedidos y escaneo de inventario, sin acceso a configuraciones críticas.
+5. **Control de Concurrencia y Prevención de Corrupción de Archivos:**
+   * **Bloqueo atómico transaccional:** Mecanismo `PROCESAMIENTO_GLOBAL_ACTIVO` que impide colisiones si dos usuarios intentan procesar o descontar remitos en el mismo milisegundo.
+   * **Bases de datos en modo WAL (Write-Ahead Logging):** Lecturas no bloqueantes y escrituras transaccionales protegidas contra cortes de energía.
+   * **Rotación de Backups Automatizada:** 30 copias de seguridad continuas y automáticas en formato comprimido `.zip` verificadas con comprobaciones de integridad `PRAGMA integrity_check`.
+
+---
+
 ### Batería de Pruebas Unitarias y Aseguramiento de Calidad
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 133 pruebas unitarias automatizadas distribuidas en 17 módulos.
-* **Tasa de éxito:** 100% aprobadas (`133 passed in 22.88s - OK`).
+* **Total de pruebas:** 182 pruebas unitarias automatizadas distribuidas en 25 módulos.
+* **Tasa de éxito:** 100% aprobadas (`182 passed in 36.26s - OK`).
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:
@@ -903,6 +1055,54 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
 10. `tests/test_client_code_and_order_fields.py`: Separación automática de código y razón social de cliente al escanear remito, extracción y persistencia de dirección para Google Maps API, auto-poblado de fecha de despacho hacia fecha de retiro, stepper interactivo (+/-) de bultos y validación obligatoria de logística.
 11. `tests/test_fast_path_and_parsers.py`: Verificación del mecanismo Fast-Path de `StockManager` (omisión garantizada de `openpyxl.load_workbook` cuando el catálogo ya reside en SQLite) y cierre seguro de descriptores de archivos en todos los parsers Excel.
 12. Parsers y Rutas (`test_remito_parser`, `test_mercado_libre_parser`, `test_mercado_full_parser`, `test_factory_parser`, `test_physical_stock_parser`, `test_restoration`, `test_app_paths`).
+13. `tests/test_historial_archivos.py`:
+    - Detección y resolución de comprobantes originales cargados (PDF, Excel `.xlsx`/`.xls`, Word `.docx`/`.doc`).
+    - Apertura y descarga directa mediante `interfaz.abrir_informe(ruta_especifica=...)` tanto en entorno desktop como web.
+    - Modal de inspección exhaustiva con desglose de ítems descontados, estado de despacho y chips de formato.
+14. `tests/test_master_role_scope.py`:
+    - Aislamiento estricto del Rol Master (SoD): panel lateral dedicado exclusivamente a IAM, Auditoría, Backups y SMTP.
+    - Bloqueo preventivo en interfaz y chat para tareas de inventario, stock y remitos.
+    - Exclusividad de la auditoría forense para Master (denegada al rol Administrador).
+    - Preservación de la gestión compartida de usuarios (IAM) para roles Administrador.
+15. `tests/test_fase1_features.py`:
+    - Telemetría de infraestructura en vivo para el rol Master (monitoreo de espacio en disco, carga de memoria RAM y salud del servidor).
+    - Normalización Barcode Wedge y supresión de prefijos AIM para lectores industriales de códigos de barra.
+    - Emisión de feedback acústico sin dependencias pesadas (tonos agudo y grave para confirmación y advertencia).
+    - Archivado inteligente de comprobantes en subcarpetas cronológicas `data/historico/YYYY/MM/`.
+    - Resolución transparente de comprobantes históricos desde el diálogo de Historial de Pedidos.
+16. `tests/test_fase2_features.py`:
+    - Persistencia y validación segura de configuración de Telegram Bot en `data/config_telegram.json`.
+    - Envío no bloqueante y síncrono mediante `urllib.request` con mock de respuestas y control de excepciones.
+    - Activación condicional de disparadores proactivos (quiebre de inventario, bloqueo de cuenta por fuerza bruta y reporte de cierre).
+    - Desencadenamiento automático de alertas de seguridad en `UserStore.authenticate_detailed` ante ataques de diccionario/fuerza bruta.
+    - Sincronización atómica y masiva de catálogo SQLite hacia la planilla maestra `Productos.xlsx` con verificación de celdas.
+17. `tests/test_fase3_features.py`:
+    - Conector oficial con la API REST de Mercado Libre (`src/mercado_libre_api.py` y `dlg_mercadolibre.py`).
+    - Flujo OAuth 2.0: verificación de credenciales en `/users/me` y renovación desatendida mediante `/oauth/token`.
+    - Consulta de órdenes pagadas recientes en `/orders/search` con filtrado por rango de fecha y estado.
+    - Emparejamiento híbrido inteligente de productos: prioridad por SKU del vendedor y fallback a matching semántico de títulos.
+    - Descuento atómico de existencias en SQLite, validación anticolisiones/duplicados y generación documental `.docx` en `data/pedidos_archivos/`.
+18. `tests/test_fase4_features.py`:
+    - Módulo analítico de detección de consumo anómalo y radar de demanda (`src/anomaly_detector.py` y `dlg_anomalias.py`).
+    - Algoritmo de media aritmética muestral (μ), desviación estándar (s) y cálculo de desvíos Z-score.
+    - Detección de picos inusuales de demanda diaria (> μ + 2σ) con filtro de significancia para evitar falsos positivos.
+    - Detección de comprobantes individuales masivos (≥ 50% de las existencias disponibles).
+    - Proyección predictiva de velocidad de agotamiento (run-rate ≤ 3 días de cobertura).
+    - Creación de notificaciones en `admin_notifications` y despacho automático de alertas a Telegram.
+
+19. `tests/test_fase5_features.py`:
+    - Manifiesto PWA (`assets/manifest.json`): verificación de modo `standalone`, color de tema `#D32F2F`, iconografía y shortcuts directos.
+    - Service Worker (`assets/sw.js`): estrategias Stale-While-Revalidate en estáticos, Network-First en páginas HTML y exclusión de WebSockets `/ws`.
+    - Contingencia offline (`assets/offline.html`): pantalla amigable de pérdida de señal y reconexión automática por evento de red.
+    - Búfer de escaneo offline (`assets/js/scanner.js`): cola `stockagent_offline_scan_queue` en `localStorage`, indicador visual ámbar y vaciado automático al recuperar conexión.
+    - Banner de conectividad en `assets/index.html` y rutas PWA dedicadas en `src/flet_gui.py` con cabecera `Service-Worker-Allowed: /`.
+
+20. `tests/test_fase6_features.py`:
+    - Matriz de rotación ABC (`src/warehouse_slotting.py`): clasificación de Pareto (75% A, 15% B, 10% C) según frecuencia de picks.
+    - Mapa térmico de depósito (`dlg_heatmap.py`): cuadrícula térmica 2D sobre 48 slots (Racks A-D, Módulos 1-4, Niveles 1-3) con gradientes cromáticos (muy caliente, caliente, templado, frío).
+    - Detección de Golden Zone (Nivel 2 ergonómico a altura de cintura/pecho).
+    - Identificación de desvíos de slotting (Fast Movers en fondo/altura y Slow Movers ocupando espacio dorado).
+    - Generador de recomendaciones inteligentes y reubicación persistente atómica en SQLite (`ProductStore.actualizar_ubicacion`).
 
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:

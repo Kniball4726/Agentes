@@ -1,12 +1,19 @@
 {
-  "name": "Control de Inventario Depósito Pasteur",
-  "short_name": "Depósito Pasteur",
-  "start_url": ".",
+  "id": "com.stockagent.app",
+  "name": "StockAgent · Control de Inventario y Despacho",
+  "short_name": "StockAgent",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#121212",
   "theme_color": "#D32F2F",
-  "description": "Agente de control de stock y remitos",
-  "orientation": "natural",
+  "description": "Plataforma integral de gestión de stock, remitos mayoristas y escáner móvil de inventario en vivo.",
+  "orientation": "any",
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "prefer_related_applications": false,
   "icons": [
     {
@@ -30,6 +37,32 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "📷 Escáner de Barras",
+      "short_name": "Escáner",
+      "description": "Abrir lector de códigos de barra para inventario en vivo",
+      "url": "/scanner.html",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "📦 Cargar / Armar Pedido",
+      "short_name": "Nuevo Pedido",
+      "description": "Procesar y descontar un nuevo comprobante",
+      "url": "/",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

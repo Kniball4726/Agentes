@@ -2,6 +2,8 @@
 
 Genera un documento PDF en formato estándar A4 con exactamente 6 etiquetas por hoja (disposición 2x3),
 haciendo las etiquetas compactas y eficientes para impresión y corte sobre papel común o autoadhesivo.
+Optimiza el aprovechamiento del papel A4 llenando completamente la hoja con los rótulos disponibles
+para no desperdiciar adhesivo ni papel en blanco.
 Incluye por cada bulto del pedido (Bulto 1 de N, Bulto 2 de N, etc.):
 - Nombre del cliente destacado en tamaño grande (igual de visible que el número de bulto).
 - Cuadro destacado 'BULTO X DE Y' en gran tamaño y color contrastante.
@@ -50,6 +52,11 @@ def _crear_qr_drawing(contenido: str, tamano_cm: float = 1.7) -> Drawing:
     return d
 
 
+ETIQUETAS_POR_HOJA = 10
+FILAS_POR_HOJA = 5
+COLUMNAS_POR_HOJA = 2
+
+
 def _construir_tarjeta_etiqueta(
     pedido: Pedido,
     bulto_idx: int,
@@ -58,89 +65,89 @@ def _construir_tarjeta_etiqueta(
     fecha_retiro: str,
     ancho_card: float = 9.6 * cm,
 ) -> Table:
-    """Construye el componente visual autocontenido de una etiqueta individual (6 por hoja)."""
-    ancho_inner = ancho_card - (0.5 * cm)  # Espacio interior útil dentro de la tarjeta
+    """Construye el componente visual autocontenido de una etiqueta individual (10 por hoja A4, 2x5)."""
+    ancho_inner = ancho_card - (0.4 * cm)  # Espacio interior util dentro de la tarjeta
     styles = getSampleStyleSheet()
 
-    # Estilos tipográficos
+    # Estilos tipograficos optimizados para grilla de 10 etiquetas por hoja A4
     estilo_top_izq = ParagraphStyle(
-        f"TopIzq_{bulto_idx}",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=6.5,
-        leading=8,
-        textColor=colors.HexColor("#475569"),
-    )
-    estilo_top_der = ParagraphStyle(
-        f"TopDer_{bulto_idx}",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=6.5,
-        leading=8,
-        alignment=2,  # Alineado a la derecha
-        textColor=colors.HexColor("#0f172a"),
-    )
-
-    # Cliente GRANDE (tan visible como el número de bulto)
-    estilo_cli_etiqueta = ParagraphStyle(
-        f"CliEtiqueta_{bulto_idx}",
+        f"TopIzq_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
         fontSize=5.5,
         leading=6.5,
+        textColor=colors.HexColor("#475569"),
+    )
+    estilo_top_der = ParagraphStyle(
+        f"TopDer_{bulto_idx}_{id(pedido)}",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=6.0,
+        leading=7.0,
+        alignment=2,  # Alineado a la derecha
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    # Cliente GRANDE y visible
+    estilo_cli_etiqueta = ParagraphStyle(
+        f"CliEtiqueta_{bulto_idx}_{id(pedido)}",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=5.0,
+        leading=6.0,
         alignment=1,  # Centrado
         textColor=colors.HexColor("#64748b"),
     )
     estilo_cliente_grande = ParagraphStyle(
-        f"ClienteGrande_{bulto_idx}",
+        f"ClienteGrande_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=13.5,
-        leading=15.5,
+        fontSize=10.5,
+        leading=12.0,
         alignment=1,  # Centrado
         textColor=colors.HexColor("#0f172a"),
     )
 
-    # Número de Bulto GRANDE
+    # Numero de Bulto GRANDE
     estilo_bulto_grande = ParagraphStyle(
-        f"BultoGrande_{bulto_idx}",
+        f"BultoGrande_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=11.5,
-        leading=13.5,
+        fontSize=9.5,
+        leading=11.0,
         alignment=1,  # Centrado
         textColor=colors.HexColor("#dc2626"),
     )
 
     estilo_campo_k = ParagraphStyle(
-        f"CampoK_{bulto_idx}",
+        f"CampoK_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=6.2,
-        leading=7.5,
+        fontSize=5.2,
+        leading=6.2,
         textColor=colors.HexColor("#334155"),
     )
     estilo_campo_v = ParagraphStyle(
-        f"CampoV_{bulto_idx}",
+        f"CampoV_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=6.5,
-        leading=7.5,
+        fontSize=5.5,
+        leading=6.5,
         textColor=colors.HexColor("#0f172a"),
     )
     estilo_qr_pie = ParagraphStyle(
-        f"QRPie_{bulto_idx}",
+        f"QRPie_{bulto_idx}_{id(pedido)}",
         parent=styles["Normal"],
         fontName="Helvetica",
-        fontSize=5,
-        leading=6,
+        fontSize=4.5,
+        leading=5.5,
         alignment=1,
         textColor=colors.HexColor("#64748b"),
     )
 
     items_label = []
 
-    # 1. ENCABEZADO SUPERIOR: Tipo de rótulo y Remito / Factura
+    # 1. ENCABEZADO SUPERIOR: Tipo de rotulo y Remito / Factura
     t_top = Table(
         [
             [
@@ -148,7 +155,7 @@ def _construir_tarjeta_etiqueta(
                 Paragraph(f"Remito: <b>{escape(pedido.nota_pedido)}</b>", estilo_top_der),
             ]
         ],
-        colWidths=[4.5 * cm, ancho_inner - 4.5 * cm],
+        colWidths=[4.2 * cm, ancho_inner - 4.2 * cm],
     )
     t_top.setStyle(
         TableStyle(
@@ -161,9 +168,8 @@ def _construir_tarjeta_etiqueta(
         )
     )
     items_label.append(t_top)
-    items_label.append(Spacer(1, 0.08 * cm))
 
-    # 2. NOMBRE DEL CLIENTE GRANDE (Destacado) Y CONCATENACIÓN CON NÚMERO DE PEDIDO
+    # 2. NOMBRE DEL CLIENTE GRANDE (Destacado) Y CONCATENACION CON NUMERO DE PEDIDO
     num_ped = str(getattr(pedido, "numero_pedido", "") or "").strip()
     if num_ped:
         if not re.search(r"\b(nro|n°|nº|numero)\b", num_ped, re.IGNORECASE):
@@ -186,17 +192,16 @@ def _construir_tarjeta_etiqueta(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-                ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ]
         )
     )
     items_label.append(tarjeta_cliente)
-    items_label.append(Spacer(1, 0.08 * cm))
 
     # 3. CUADRO DESTACADO: BULTO X DE Y
     tarjeta_bulto = Table(
@@ -211,30 +216,29 @@ def _construir_tarjeta_etiqueta(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
-                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#dc2626")),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dc2626")),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.2),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ]
         )
     )
     items_label.append(tarjeta_bulto)
-    items_label.append(Spacer(1, 0.08 * cm))
 
-    # 4. DATOS COMPACTOS (Izquierda) + CÓDIGO QR (Derecha)
+    # 4. DATOS COMPACTOS (Izquierda) + CODIGO QR (Derecha)
     datos_filas = [
         [Paragraph("Logística:", estilo_campo_k), Paragraph(f"<b>{escape(pedido.logistica)}</b>", estilo_campo_v)],
         [Paragraph("Fecha:", estilo_campo_k), Paragraph(escape(fecha_retiro), estilo_campo_v)],
         [Paragraph("Armador:", estilo_campo_k), Paragraph(escape(pedido.armador), estilo_campo_v)],
     ]
-    t_datos_mini = Table(datos_filas, colWidths=[1.8 * cm, 4.3 * cm])
+    t_datos_mini = Table(datos_filas, colWidths=[1.6 * cm, 5.0 * cm])
     t_datos_mini.setStyle(
         TableStyle(
             [
-                ("TOPPADDING", (0, 0), (-1, -1), 1.2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.2),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2.5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
+                ("TOPPADDING", (0, 0), (-1, -1), 0.8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0.8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
                 ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
                 ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc")),
@@ -247,10 +251,10 @@ def _construir_tarjeta_etiqueta(
         f"BULTO:{bulto_idx}/{total_bultos}|LOGISTICA:{pedido.logistica}|"
         f"FECHA:{fecha_retiro}|ARMADOR:{pedido.armador}"
     )
-    qr_drawing = _crear_qr_drawing(contenido_qr, tamano_cm=1.7)
-    info_qr = Paragraph("<b>CONTROL QR</b><br/>Escanear despacho", estilo_qr_pie)
+    qr_drawing = _crear_qr_drawing(contenido_qr, tamano_cm=1.35)
+    info_qr = Paragraph("<b>CONTROL QR</b>", estilo_qr_pie)
 
-    t_qr_sub = Table([[qr_drawing], [info_qr]], colWidths=[2.6 * cm])
+    t_qr_sub = Table([[qr_drawing], [info_qr]], colWidths=[2.2 * cm])
     t_qr_sub.setStyle(
         TableStyle(
             [
@@ -263,7 +267,7 @@ def _construir_tarjeta_etiqueta(
         )
     )
 
-    t_inferior = Table([[t_datos_mini, t_qr_sub]], colWidths=[6.3 * cm, 2.8 * cm])
+    t_inferior = Table([[t_datos_mini, t_qr_sub]], colWidths=[6.8 * cm, 2.3 * cm])
     t_inferior.setStyle(
         TableStyle(
             [
@@ -282,12 +286,12 @@ def _construir_tarjeta_etiqueta(
     tarjeta_exterior.setStyle(
         TableStyle(
             [
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#94a3b8")),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#94a3b8")),
                 ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
             ]
         )
     )
@@ -297,10 +301,13 @@ def _construir_tarjeta_etiqueta(
 def generar_etiquetas_bultos_pdf(
     pedido: Pedido,
     carpeta_destino: Path,
+    llenar_hoja: bool = True,
 ) -> Path:
     """Genera el PDF con las etiquetas de todos los bultos de un pedido.
     
-    Distribuye exactamente 6 etiquetas por hoja A4 (disposición cuadrícula 2x3).
+    Distribuye exactamente 10 etiquetas por hoja A4 (disposicion cuadricula 2 columnas x 5 filas).
+    Si llenar_hoja es True (por defecto), completa los espacios vacios de la hoja A4
+    repitiendo equitativamente los rotulos del pedido para aprovechar al 100% la hoja.
     """
     carpeta_destino.mkdir(parents=True, exist_ok=True)
     remito_limpio = "".join(c if c.isalnum() or c in "-_" else "_" for c in pedido.nota_pedido)
@@ -312,7 +319,7 @@ def generar_etiquetas_bultos_pdf(
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
     fecha_retiro = pedido.fecha_retiro.strip() if pedido.fecha_retiro else "Inmediato"
 
-    # Construir todas las tarjetas individuales
+    # Construir todas las tarjetas individuales originales del pedido
     tarjetas = [
         _construir_tarjeta_etiqueta(
             pedido=pedido,
@@ -325,49 +332,173 @@ def generar_etiquetas_bultos_pdf(
         for idx in range(1, total_bultos + 1)
     ]
 
+    # Si se solicita llenar la hoja A4 y la ultima pagina no llega a 10 etiquetas,
+    # completamos la cuadricula repitiendo equitativamente los bultos
+    if llenar_hoja and tarjetas:
+        resto = len(tarjetas) % ETIQUETAS_POR_HOJA
+        if resto != 0:
+            faltantes = ETIQUETAS_POR_HOJA - resto
+            for k in range(faltantes):
+                b_idx = (k % total_bultos) + 1
+                tarjetas.append(
+                    _construir_tarjeta_etiqueta(
+                        pedido=pedido,
+                        bulto_idx=b_idx,
+                        total_bultos=total_bultos,
+                        fecha_emision=fecha_emision,
+                        fecha_retiro=fecha_retiro,
+                        ancho_card=9.6 * cm,
+                    )
+                )
+
     story: list = []
 
-    # Agrupar de a 6 etiquetas por página A4 (grilla 2 columnas x 3 filas)
-    for i in range(0, len(tarjetas), 6):
-        chunk = tarjetas[i : i + 6]
-        while len(chunk) < 6:
-            chunk.append("")  # Celdas vacías si la última página tiene menos de 6
+    # Agrupar de a 10 etiquetas por pagina A4 (grilla 2 columnas x 5 filas)
+    for i in range(0, len(tarjetas), ETIQUETAS_POR_HOJA):
+        chunk = tarjetas[i : i + ETIQUETAS_POR_HOJA]
+        while len(chunk) < ETIQUETAS_POR_HOJA:
+            chunk.append("")  # Celdas vacias si llenar_hoja fuera False
 
         grid_data = [
             [chunk[0], chunk[1]],
             [chunk[2], chunk[3]],
             [chunk[4], chunk[5]],
+            [chunk[6], chunk[7]],
+            [chunk[8], chunk[9]],
         ]
         grid_table = Table(
             grid_data,
             colWidths=[9.8 * cm, 9.8 * cm],
-            rowHeights=[9.2 * cm, 9.2 * cm, 9.2 * cm],
+            rowHeights=[5.55 * cm] * 5,
         )
         grid_table.setStyle(
             TableStyle(
                 [
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 1),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 1),
-                    ("TOPPADDING", (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                 ]
             )
         )
         story.append(grid_table)
 
-        # Salto de página para el siguiente bloque de 6 etiquetas
-        if i + 6 < len(tarjetas):
+        # Salto de pagina para el siguiente bloque de 10 etiquetas
+        if i + ETIQUETAS_POR_HOJA < len(tarjetas):
             story.append(PageBreak())
 
     doc = SimpleDocTemplate(
         str(ruta_pdf),
         pagesize=A4,
-        leftMargin=0.5 * cm,
-        rightMargin=0.5 * cm,
-        topMargin=0.5 * cm,
-        bottomMargin=0.5 * cm,
+        leftMargin=0.6 * cm,
+        rightMargin=0.6 * cm,
+        topMargin=0.6 * cm,
+        bottomMargin=0.6 * cm,
+    )
+    doc.build(story)
+    return ruta_pdf
+
+
+def generar_etiquetas_lote_pedidos_pdf(
+    pedidos: list[Pedido],
+    carpeta_destino: Path,
+    llenar_hoja: bool = True,
+) -> Path:
+    """Genera un PDF combinando los rotulos de multiples pedidos en hojas A4 optimizadas (10 por hoja).
+    
+    Acomoda consecutivamente todos los bultos de los pedidos dados en grillas 2 columnas x 5 filas.
+    Si llenar_hoja es True, completa los espacios sobrantes de la ultima pagina para no desperdiciar papel.
+    """
+    carpeta_destino.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_archivo = f"Rotulos_Lote_{timestamp}.pdf"
+    ruta_pdf = carpeta_destino / nombre_archivo
+
+    fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    todas_tarjetas = []
+    lista_pedidos_bultos = []
+
+    for ped in pedidos:
+        total_bultos = max(1, ped.bultos)
+        fecha_retiro = ped.fecha_retiro.strip() if ped.fecha_retiro else "Inmediato"
+        for idx in range(1, total_bultos + 1):
+            tarjeta = _construir_tarjeta_etiqueta(
+                pedido=ped,
+                bulto_idx=idx,
+                total_bultos=total_bultos,
+                fecha_emision=fecha_emision,
+                fecha_retiro=fecha_retiro,
+                ancho_card=9.6 * cm,
+            )
+            todas_tarjetas.append(tarjeta)
+            lista_pedidos_bultos.append((ped, idx, total_bultos, fecha_retiro))
+
+    if not todas_tarjetas:
+        raise ValueError("No hay bultos para generar rótulos en el lote.")
+
+    if llenar_hoja and todas_tarjetas:
+        resto = len(todas_tarjetas) % ETIQUETAS_POR_HOJA
+        if resto != 0:
+            faltantes = ETIQUETAS_POR_HOJA - resto
+            for k in range(faltantes):
+                ped_ref, b_idx, tot_b, f_ret = lista_pedidos_bultos[k % len(lista_pedidos_bultos)]
+                todas_tarjetas.append(
+                    _construir_tarjeta_etiqueta(
+                        pedido=ped_ref,
+                        bulto_idx=b_idx,
+                        total_bultos=tot_b,
+                        fecha_emision=fecha_emision,
+                        fecha_retiro=f_ret,
+                        ancho_card=9.6 * cm,
+                    )
+                )
+
+    story: list = []
+
+    for i in range(0, len(todas_tarjetas), ETIQUETAS_POR_HOJA):
+        chunk = todas_tarjetas[i : i + ETIQUETAS_POR_HOJA]
+        while len(chunk) < ETIQUETAS_POR_HOJA:
+            chunk.append("")
+
+        grid_data = [
+            [chunk[0], chunk[1]],
+            [chunk[2], chunk[3]],
+            [chunk[4], chunk[5]],
+            [chunk[6], chunk[7]],
+            [chunk[8], chunk[9]],
+        ]
+        grid_table = Table(
+            grid_data,
+            colWidths=[9.8 * cm, 9.8 * cm],
+            rowHeights=[5.55 * cm] * 5,
+        )
+        grid_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        story.append(grid_table)
+
+        if i + ETIQUETAS_POR_HOJA < len(todas_tarjetas):
+            story.append(PageBreak())
+
+    doc = SimpleDocTemplate(
+        str(ruta_pdf),
+        pagesize=A4,
+        leftMargin=0.6 * cm,
+        rightMargin=0.6 * cm,
+        topMargin=0.6 * cm,
+        bottomMargin=0.6 * cm,
     )
     doc.build(story)
     return ruta_pdf

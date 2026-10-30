@@ -314,7 +314,7 @@ def mostrar_dashboard_metricas(interfaz: Any, _e: ft.Event | None = None) -> Non
 
 def mostrar_registro_auditoria(interfaz: Any, _e: ft.Event | None = None) -> None:
     """Ventana del historial de auditoría y trazabilidad del sistema."""
-    if not interfaz.exigir_roles("administrador"):
+    if not interfaz.exigir_roles("master"):
         return
 
     lista_eventos = ft.ListView(expand=True, spacing=6, height=380)

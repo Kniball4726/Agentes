@@ -58,7 +58,7 @@ from .email_sender import (
     obtener_config_email,
     probar_conexion_smtp,
 )
-from .label_generator import generar_etiquetas_bultos_pdf
+from .label_generator import generar_etiquetas_bultos_pdf, generar_etiquetas_lote_pedidos_pdf
 from .orders_store import (
     CierreJornada,
     ESTADOS_DESPACHO,
@@ -71,6 +71,7 @@ from .orders_store import (
 )
 from .remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo, parsear_remito
 from .paths import application_root
+from .product_store import ProductStore
 from .ssl_manager import asegurar_certificado_ssl
 from .stock_manager import StockManager
 from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
@@ -127,6 +128,8 @@ from .ui.dialogs import (
     mostrar_stock_fisico_operario,
     mostrar_dialogo_inventario_vivo,
 )
+from .ui.dialogs.dlg_archivo_historico import mostrar_dialogo_archivo_historico
+from .ui.dialogs.dlg_telegram import mostrar_dialogo_configuracion_telegram
 
 logger = configurar_logging()
 
@@ -176,6 +179,21 @@ def obtener_ip_local() -> str:
             return "127.0.0.1"
 
 
+def obtener_ip_tailscale() -> str | None:
+    """Busca una dirección IPv4 de Tailscale asignada a la máquina (rango 100.64.0.0/10)."""
+    try:
+        host = socket.gethostname()
+        for item in socket.getaddrinfo(host, None, socket.AF_INET):
+            ip = item[4][0]
+            if ip.startswith("100."):
+                partes = [int(p) for p in ip.split(".") if p.isdigit()]
+                if len(partes) == 4 and 64 <= partes[1] <= 127:
+                    return ip
+    except Exception:
+        pass
+    return None
+
+
 def obtener_correo_cierre_guardado() -> str:
     """Recupera los destinatarios guardados para el cierre de jornada."""
     cfg = application_root() / "data" / "config_notificaciones.json"
@@ -214,6 +232,9 @@ class InterfazFlet:
         )
         self.order_store = OrderStore(
             application_root() / "data" / "pedidos.sqlite3"
+        )
+        self.product_store = ProductStore(
+            application_root() / "data" / "productos.sqlite3"
         )
         (application_root() / "data" / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
         self.usuario_actual: User | None = None
@@ -475,14 +496,21 @@ class InterfazFlet:
             return False
         self.ultima_actividad = ahora
 
-        usuario = self.user_store.get_user(self.usuario_actual.id)
+        usuario = None
+        if self.user_store:
+            try:
+                usuario_db = self.user_store.get_user(self.usuario_actual.id)
+                if usuario_db and usuario_db.username.lower() == self.usuario_actual.username.lower():
+                    usuario = usuario_db
+            except Exception:
+                pass
+        if usuario is None:
+            usuario = self.usuario_actual
         if usuario is None or not usuario.active:
             self.usuario_actual = None
             self.mostrar_inicio_sesion("La cuenta ya no está activa. Inicia sesión nuevamente.")
             return False
         self.usuario_actual = usuario
-        if usuario.role == "master":
-            return True
         if usuario.role not in roles:
             self.notificar("Tu rol no tiene permiso para realizar esta acción.")
             return False
@@ -935,12 +963,16 @@ class InterfazFlet:
                 conteo_jornada = self.order_store.contar_pedidos_pendientes_cierre_por_tipo()
             except Exception:
                 pass
-        self.contadores["pdf"].value = str(conteo_jornada.get("pdf", 0))
-        self.contadores["canjes"].value = str(conteo_jornada.get("excel", 0))
-        self.contadores["ml"].value = str(conteo_jornada.get("docx", 0))
+        if "pdf" in self.contadores:
+            self.contadores["pdf"].value = str(conteo_jornada.get("pdf", 0))
+        if "canjes" in self.contadores:
+            self.contadores["canjes"].value = str(conteo_jornada.get("excel", 0))
+        if "ml" in self.contadores:
+            self.contadores["ml"].value = str(conteo_jornada.get("docx", 0))
         if "total" in self.contadores:
             self.contadores["total"].value = str(conteo_jornada.get("total", 0))
-        self.contadores["informes"].value = str(len(informes))
+        if "informes" in self.contadores:
+            self.contadores["informes"].value = str(len(informes))
 
         if self.usuario_actual and self.usuario_actual.role == "administrador":
             try:
@@ -958,63 +990,156 @@ class InterfazFlet:
         else:
             self.banner_alerta_quiebre.visible = False
 
-        total_descontados = conteo_jornada.get("total", 0)
-        total_archivados = sum(map(len, archivados))
-        self.pendientes_texto.value = (
-            f"Jornada en curso: {total_descontados} pedido(s) descontado(s) · Archivados: {total_archivados} · Informes: {len(informes)}"
-        )
-        self.lista_informes.controls.clear()
-        if not informes:
-            self.lista_informes.controls.append(
-                ft.Text("Todavía no hay informes.", size=12, color=self.secundario)
-            )
-        else:
-            for ruta in informes:
-                es_fabrica = ruta.name.startswith("Pedido_Fabrica")
-                es_comparativa = ruta.name.startswith("Comparativa_Stock_Fisico")
-                if es_comparativa:
-                    icono = ft.Icons.COMPARE_ARROWS
-                    color_icono = ft.Colors.BLUE_400
-                    tipo_txt = "Comparativa stock físico"
-                elif es_fabrica:
-                    icono = ft.Icons.INVENTORY_2
-                    color_icono = ft.Colors.AMBER_400
-                    tipo_txt = "Pedido a fábrica"
-                else:
-                    icono = ft.Icons.DESCRIPTION
-                    color_icono = ROJO
-                    tipo_txt = "Informe de descuentos"
+        if self.usuario_actual and self.usuario_actual.role == "master":
+            try:
+                todos_usr = self.user_store.list_users()
+                activos_usr = sum(1 for u in todos_usr if u.active)
+            except Exception:
+                todos_usr = []
+                activos_usr = 0
+
+            if "usuarios_total" in self.contadores:
+                self.contadores["usuarios_total"].value = str(len(todos_usr))
+            if "usuarios_activos" in self.contadores:
+                self.contadores["usuarios_activos"].value = str(activos_usr)
+
+            eventos_auditoria = []
+            if hasattr(self, "order_store") and self.order_store:
                 try:
-                    mtime = datetime.fromtimestamp(ruta.stat().st_mtime)
-                    fecha_fmt = mtime.strftime("%d/%m/%Y %H:%M")
+                    eventos_auditoria = self.order_store.listar_auditoria(limit=100)
                 except Exception:
-                    fecha_fmt = ""
+                    pass
+            if "auditoria_eventos" in self.contadores:
+                self.contadores["auditoria_eventos"].value = str(len(eventos_auditoria))
 
-                subtitulo_txt = f"{tipo_txt} · {fecha_fmt}" if fecha_fmt else tipo_txt
+            try:
+                from .backup_manager import listar_backups
+                bks = listar_backups()
+            except Exception:
+                bks = []
+            if "backups_total" in self.contadores:
+                self.contadores["backups_total"].value = str(len(bks))
+            if "servidor_seguro" in self.contadores:
+                self.contadores["servidor_seguro"].value = "HTTPS" if getattr(self, "https", True) else "HTTP"
 
-                subtitulo = ft.Text(
-                    subtitulo_txt,
-                    size=10,
-                    color=ft.Colors.BLUE_300
-                    if (es_comparativa and self.modo_oscuro)
-                    else (
-                        ft.Colors.BLUE_700
-                        if es_comparativa
-                        else (
-                            ft.Colors.AMBER_300
-                            if (es_fabrica and self.modo_oscuro)
-                            else (ft.Colors.AMBER_700 if es_fabrica else self.secundario)
-                        )
-                    ),
-                )
-                self.lista_informes.controls.append(
-                    ft.ListTile(
-                        leading=ft.Icon(icono, color=color_icono, size=19),
-                        title=ft.Text(ruta.name, size=12, color=self.texto, weight=ft.FontWeight.W_500),
-                        subtitle=subtitulo,
-                        on_click=lambda _e, archivo=ruta: self.seleccionar_informe(archivo),
+            try:
+                from .system_telemetry import obtener_telemetria_sistema
+                telem = obtener_telemetria_sistema()
+            except Exception:
+                telem = None
+
+            if telem:
+                if "telemetria_disco" in self.contadores:
+                    self.contadores["telemetria_disco"].value = f"{telem.disco_libre_gb} GB"
+                    self.contadores["telemetria_disco"].color = (
+                        ft.Colors.RED_400 if telem.disco_alerta else self.texto
                     )
+                if "telemetria_salud" in self.contadores:
+                    self.contadores["telemetria_salud"].value = telem.estado_salud
+                    if telem.estado_salud == "Óptimo":
+                        self.contadores["telemetria_salud"].color = ft.Colors.GREEN_400
+                    elif telem.estado_salud == "Atención":
+                        self.contadores["telemetria_salud"].color = ft.Colors.AMBER_400
+                    else:
+                        self.contadores["telemetria_salud"].color = ft.Colors.RED_400
+
+            self.banner_alerta_quiebre.visible = False
+            self.pendientes_texto.value = (
+                f"Consola de Auditoría y Control de Accesos · Usuarios: {len(todos_usr)} · Cuentas activas: {activos_usr} · Backups: {len(bks)}"
+            )
+            self.lista_informes.controls.clear()
+            if not eventos_auditoria:
+                self.lista_informes.controls.append(
+                    ft.Text("Todavía no hay eventos de auditoría registrados.", size=12, color=self.secundario)
                 )
+            else:
+                for ev in eventos_auditoria[:15]:
+                    accion_ev = getattr(ev, "accion", "")
+                    usuario_ev = getattr(ev, "usuario", "")
+                    fecha_ev = getattr(ev, "fecha", "")
+                    detalle_ev = getattr(ev, "detalle", "")
+
+                    if "LOGIN" in accion_ev or "AUTH" in accion_ev:
+                        icono_ev = ft.Icons.LOGIN
+                        color_ev = ft.Colors.GREEN_400
+                    elif "LOCK" in accion_ev or "BLOQUEO" in accion_ev or "ANULAR" in accion_ev:
+                        icono_ev = ft.Icons.LOCK
+                        color_ev = ft.Colors.RED_400
+                    elif "RESET" in accion_ev or "USER" in accion_ev:
+                        icono_ev = ft.Icons.MANAGE_ACCOUNTS
+                        color_ev = ft.Colors.BLUE_400
+                    elif "BACKUP" in accion_ev:
+                        icono_ev = ft.Icons.BACKUP
+                        color_ev = ft.Colors.PURPLE_400
+                    else:
+                        icono_ev = ft.Icons.SECURITY
+                        color_ev = ROJO
+
+                    self.lista_informes.controls.append(
+                        ft.ListTile(
+                            leading=ft.Icon(icono_ev, color=color_ev, size=19),
+                            title=ft.Text(f"[{accion_ev}] @{usuario_ev}", size=12, color=self.texto, weight=ft.FontWeight.W_500),
+                            subtitle=ft.Text(f"{detalle_ev} · {fecha_ev}", size=10, color=self.secundario),
+                        )
+                    )
+        else:
+            total_descontados = conteo_jornada.get("total", 0)
+            total_archivados = sum(map(len, archivados))
+            self.pendientes_texto.value = (
+                f"Jornada en curso: {total_descontados} pedido(s) descontado(s) · Archivados: {total_archivados} · Informes: {len(informes)}"
+            )
+            self.lista_informes.controls.clear()
+            if not informes:
+                self.lista_informes.controls.append(
+                    ft.Text("Todavía no hay informes.", size=12, color=self.secundario)
+                )
+            else:
+                for ruta in informes:
+                    es_fabrica = ruta.name.startswith("Pedido_Fabrica")
+                    es_comparativa = ruta.name.startswith("Comparativa_Stock_Fisico")
+                    if es_comparativa:
+                        icono = ft.Icons.COMPARE_ARROWS
+                        color_icono = ft.Colors.BLUE_400
+                        tipo_txt = "Comparativa stock físico"
+                    elif es_fabrica:
+                        icono = ft.Icons.INVENTORY_2
+                        color_icono = ft.Colors.AMBER_400
+                        tipo_txt = "Pedido a fábrica"
+                    else:
+                        icono = ft.Icons.DESCRIPTION
+                        color_icono = ROJO
+                        tipo_txt = "Informe de descuentos"
+                    try:
+                        mtime = datetime.fromtimestamp(ruta.stat().st_mtime)
+                        fecha_fmt = mtime.strftime("%d/%m/%Y %H:%M")
+                    except Exception:
+                        fecha_fmt = ""
+
+                    subtitulo_txt = f"{tipo_txt} · {fecha_fmt}" if fecha_fmt else tipo_txt
+
+                    subtitulo = ft.Text(
+                        subtitulo_txt,
+                        size=10,
+                        color=ft.Colors.BLUE_300
+                        if (es_comparativa and self.modo_oscuro)
+                        else (
+                            ft.Colors.BLUE_700
+                            if es_comparativa
+                            else (
+                                ft.Colors.AMBER_300
+                                if (es_fabrica and self.modo_oscuro)
+                                else (ft.Colors.AMBER_700 if es_fabrica else self.secundario)
+                            )
+                        ),
+                    )
+                    self.lista_informes.controls.append(
+                        ft.ListTile(
+                            leading=ft.Icon(icono, color=color_icono, size=19),
+                            title=ft.Text(ruta.name, size=12, color=self.texto, weight=ft.FontWeight.W_500),
+                            subtitle=subtitulo,
+                            on_click=lambda _e, archivo=ruta: self.seleccionar_informe(archivo),
+                        )
+                    )
         self.actualizar_badge_chat()
         if self.page.controls:
             self.page.update()
@@ -1037,6 +1162,25 @@ class InterfazFlet:
 
         agotados = sum(1 for p in criticos if int(p["stock"]) <= 0)
         quiebres = len(criticos) - agotados
+
+        if not hasattr(self, "_quiebres_telegram_notificados"):
+            self._quiebres_telegram_notificados = set()
+
+        for c in criticos:
+            item = dict(c) if hasattr(c, "keys") else (c if isinstance(c, dict) else {})
+            cod_c = str(item.get("code", "")).strip()
+            if cod_c and cod_c not in self._quiebres_telegram_notificados:
+                self._quiebres_telegram_notificados.add(cod_c)
+                try:
+                    from .telegram_notifier import notificar_quiebre_stock_telegram
+                    notificar_quiebre_stock_telegram(
+                        codigo=cod_c,
+                        nombre=str(item.get("name", "")).strip(),
+                        stock_actual=int(item.get("stock", 0)),
+                        stock_minimo=int(item.get("stock_minimo", item.get("min_stock", 0))),
+                    )
+                except Exception:
+                    pass
 
         self.banner_alerta_quiebre.visible = True
         self.banner_alerta_quiebre.bgcolor = (
@@ -1243,10 +1387,40 @@ class InterfazFlet:
         nom = self.usuario_actual.username if self.usuario_actual else ""
 
         # Control de permisos según el rol activo
+        if rol != "master" and intencion == "auditoria":
+            self.escribir_chat(
+                "Agente",
+                "⚠️ El registro de auditoría forense y eventos de seguridad está reservado exclusivamente para el rol Master (Seguridad & IAM).",
+            )
+            self.page.update()
+            return
+
+        if rol == "master" and intencion in (
+            "simular",
+            "reposicion",
+            "diagnostico",
+            "buscar_stock",
+            "criticos",
+            "pedidos",
+            "cierre",
+            "mercadolibre",
+            "ultimo_informe",
+            "informes",
+            "metricas",
+        ):
+            self.escribir_chat(
+                "Agente",
+                "⚠️ El rol Master está dedicado exclusivamente a Seguridad, IAM y Auditoría.\n"
+                "Las operaciones de stock, reposición y pedidos están reservadas para Administrador y Operador.\n"
+                "Puedes consultar /auditoria, /backup, /estado o comunicarte por /equipo.",
+            )
+            self.page.update()
+            return
+
         if rol == "operador" and intencion in ("simular", "reposicion", "diagnostico"):
             self.escribir_chat(
                 "Agente",
-                "⚠️ Esta función está reservada para roles de gestión (Administrador / Master).\n"
+                "⚠️ Esta función está reservada para roles de gestión (Administrador).\n"
                 "Como Operador puedes consultar /stock, /pedidos, /cierre o /mercadolibre.",
             )
             self.page.update()
@@ -1857,13 +2031,26 @@ class InterfazFlet:
     ) -> None:
         mostrar_dialogo_formulario_producto(self, al_guardar)
 
-    def imprimir_rotulos_pedido(self, pedido: Pedido) -> None:
+    def imprimir_rotulos_pedido(self, pedido: Pedido, llenar_hoja: bool = True) -> None:
         try:
-            ruta_pdf = generar_etiquetas_bultos_pdf(pedido, self.menu.carpeta_descuentos)
+            ruta_pdf = generar_etiquetas_bultos_pdf(pedido, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
             self.abrir_informe(ruta_especifica=ruta_pdf)
             self.notificar(f"Rótulos para {pedido.bultos} bulto(s) generados con éxito ({ruta_pdf.name}).")
         except Exception as error:
             self.notificar(f"Error generando rótulos de bulto:\n{error}")
+
+    def imprimir_rotulos_lote(self, pedidos: list[Pedido], llenar_hoja: bool = True) -> None:
+        try:
+            pedidos_validos = [p for p in pedidos if getattr(p, "estado", "") != "anulado" and getattr(p, "bultos", 0) > 0]
+            if not pedidos_validos:
+                self.notificar("No hay pedidos válidos con bultos para generar rótulos.")
+                return
+            ruta_pdf = generar_etiquetas_lote_pedidos_pdf(pedidos_validos, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
+            self.abrir_informe(ruta_especifica=ruta_pdf)
+            total_bultos = sum(p.bultos for p in pedidos_validos)
+            self.notificar(f"Rótulos para {len(pedidos_validos)} pedido(s) ({total_bultos} bultos) generados en A4 ({ruta_pdf.name}).")
+        except Exception as error:
+            self.notificar(f"Error generando lote de rótulos:\n{error}")
 
     def confirmar_anulacion_pedido(self, pedido: Pedido, al_final: Callable[[], None] | None = None) -> None:
         mostrar_dialogo_confirmar_anulacion_pedido(self, pedido, al_final)
@@ -1876,6 +2063,36 @@ class InterfazFlet:
 
     def mostrar_dialogo_backup(self, _e: ft.Event | None = None) -> None:
         mostrar_dialogo_backup(self)
+
+    def mostrar_dialogo_archivo_historico(self, _e: ft.Event | None = None) -> None:
+        mostrar_dialogo_archivo_historico(self, _e)
+
+    def mostrar_configuracion_telegram(self, _e: ft.Event | None = None) -> None:
+        mostrar_dialogo_configuracion_telegram(self, _e)
+
+    def mostrar_sincronizacion_mercadolibre(self, _e: ft.Event | None = None) -> None:
+        from .ui.dialogs.dlg_mercadolibre import mostrar_dialogo_mercadolibre
+        mostrar_dialogo_mercadolibre(self, _e)
+
+    def mostrar_dialogo_anomalias(self, _e: ft.Event | None = None) -> None:
+        from .ui.dialogs.dlg_anomalias import mostrar_dialogo_anomalias
+        mostrar_dialogo_anomalias(self, _e)
+
+    def mostrar_dialogo_heatmap(self, _e: ft.Event | None = None) -> None:
+        from .ui.dialogs.dlg_heatmap import mostrar_dialogo_heatmap
+        mostrar_dialogo_heatmap(self, _e)
+
+    def sincronizar_catalogo_excel(self, _e: ft.Event | None = None) -> None:
+        """Vuelca de forma atómica y completa el catálogo SQLite hacia Productos.xlsx."""
+        if not self.exigir_roles("administrador", "master"):
+            return
+        try:
+            from .stock_manager import StockManager
+            sm = StockManager(self.menu.ruta_excel_base)
+            total = sm.sincronizar_catalogo_completo_excel()
+            self.notificar(f"✅ Se sincronizaron {total} productos en 'Productos.xlsx' con éxito.")
+        except Exception as exc:
+            self.notificar(f"❌ Error al sincronizar con Excel: {exc}")
 
     def mostrar_dashboard_metricas(self, _e: ft.Event | None = None) -> None:
         mostrar_dashboard_metricas(self, _e)
@@ -2060,6 +2277,12 @@ def iniciar(
                 assets_path = Path(obtener_directorio_assets())
                 ico_path = assets_path / "favicon.ico"
                 png_path = assets_path / "favicon.png"
+                sw_path = assets_path / "sw.js"
+                manifest_path = assets_path / "manifest.json"
+                offline_path = assets_path / "offline.html"
+                scanner_path = assets_path / "scanner.html"
+                scanner_js = assets_path / "js" / "scanner.js"
+                scanner_css = assets_path / "css" / "scanner.css"
 
                 if not hasattr(flet_web.fastapi.FastAPI, "_orig_init"):
                     orig_init = flet_web.fastapi.FastAPI.__init__
@@ -2081,6 +2304,58 @@ def iniciar(
                                 return FileResponse(
                                     str(png_path),
                                     media_type="image/png",
+                                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                                )
+                        if sw_path.exists():
+                            @self.get("/sw.js")
+                            @self.get("/service-worker.js")
+                            async def _serve_sw():
+                                return FileResponse(
+                                    str(sw_path),
+                                    media_type="application/javascript",
+                                    headers={
+                                        "Service-Worker-Allowed": "/",
+                                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                                    },
+                                )
+                        if manifest_path.exists():
+                            @self.get("/manifest.json")
+                            async def _serve_manifest():
+                                return FileResponse(
+                                    str(manifest_path),
+                                    media_type="application/manifest+json",
+                                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                                )
+                        if offline_path.exists():
+                            @self.get("/offline.html")
+                            async def _serve_offline():
+                                return FileResponse(
+                                    str(offline_path),
+                                    media_type="text/html",
+                                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                                )
+                        if scanner_path.exists():
+                            @self.get("/scanner.html")
+                            async def _serve_scanner():
+                                return FileResponse(
+                                    str(scanner_path),
+                                    media_type="text/html",
+                                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                                )
+                        if scanner_js.exists():
+                            @self.get("/js/scanner.js")
+                            async def _serve_scanner_js():
+                                return FileResponse(
+                                    str(scanner_js),
+                                    media_type="application/javascript",
+                                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                                )
+                        if scanner_css.exists():
+                            @self.get("/css/scanner.css")
+                            async def _serve_scanner_css():
+                                return FileResponse(
+                                    str(scanner_css),
+                                    media_type="text/css",
                                     headers={"Cache-Control": "no-cache, must-revalidate"},
                                 )
 
@@ -2134,16 +2409,20 @@ def iniciar(
             pass
 
         ip_local = obtener_ip_local()
-        print("=" * 66)
+        ip_tailscale = obtener_ip_tailscale()
+        print("=" * 70)
         print(f"  STOCK AGENT - SERVIDOR WEB MULTI-EQUIPO ({esquema.upper()})")
-        print("=" * 66)
-        print(f"  -> En esta PC (Principal):   {esquema}://127.0.0.1:{port}")
-        print(f"  -> Desde la 2da PC (Red):    {esquema}://{ip_local}:{port}")
+        print("=" * 70)
+        print(f"  -> Acceso Local (esta PC):        {esquema}://127.0.0.1:{port}")
+        print(f"  -> Acceso Red LAN (misma red):    {esquema}://{ip_local}:{port}")
+        if ip_tailscale:
+            print(f"  -> Acceso Remoto (Tailscale VPN): {esquema}://{ip_tailscale}:{port}")
+        else:
+            print(f"  -> Acceso Remoto Seguro (VPN):    {esquema}://<IP_TAILSCALE>:{port} (via Tailscale)")
         if https and cert_path_final:
-            print(f"  -> Certificado SSL activo:   {cert_path_final}")
-        print("  Mantén esta aplicación ejecutándose para que ambas máquinas")
-        print("  puedan operar sobre el inventario en tiempo real.")
-        print("=" * 66)
+            print(f"  -> Certificado SSL activo:        {cert_path_final}")
+        print("  Mantén esta consola abierta mientras el servidor esté en uso.")
+        print("=" * 70)
         assets_dir = obtener_directorio_assets()
         os.environ["FLET_ASSETS_DIR"] = assets_dir
 

@@ -658,7 +658,7 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
 
 def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = None) -> None:
     """Ventana para procesar y descontar pedidos de Mercado Libre en formato .docx."""
-    if not interfaz.exigir_roles("operador", "administrador", "master"):
+    if not interfaz.exigir_roles("operador", "administrador"):
         return
 
     carpeta_ml = getattr(interfaz.menu, "carpeta_mercado_libre", None) or (

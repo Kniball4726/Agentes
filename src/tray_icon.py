@@ -70,6 +70,21 @@ def _obtener_ip_local() -> str:
             return "127.0.0.1"
 
 
+def _obtener_ip_tailscale() -> Optional[str]:
+    """Busca una dirección IPv4 de Tailscale asignada a la máquina (rango 100.64.0.0/10)."""
+    try:
+        host = socket.gethostname()
+        for item in socket.getaddrinfo(host, None, socket.AF_INET):
+            ip = item[4][0]
+            if ip.startswith("100."):
+                partes = [int(p) for p in ip.split(".") if p.isdigit()]
+                if len(partes) == 4 and 64 <= partes[1] <= 127:
+                    return ip
+    except Exception:
+        pass
+    return None
+
+
 def _copiar_al_portapapeles(texto: str) -> bool:
     """Copia una cadena de texto al portapapeles nativo de Windows."""
     try:
@@ -133,7 +148,9 @@ class TrayIconServidor:
 
         self.ip_local = _obtener_ip_local()
         self.url_local = f"{self.esquema}://127.0.0.1:{self.port}"
+        self.ip_tailscale = _obtener_ip_tailscale()
         self.url_red = f"{self.esquema}://{self.ip_local}:{self.port}"
+        self.url_remoto = f"{self.esquema}://{self.ip_tailscale}:{self.port}" if self.ip_tailscale else None
 
         self.estado = ESTADO_INICIANDO
         self._icon = None
@@ -209,6 +226,15 @@ class TrayIconServidor:
                 "📋 Copiar enlace de red local",
                 self._accion_copiar_enlace_red,
             ),
+        ]
+        if self.url_remoto:
+            items.append(
+                pystray.MenuItem(
+                    "🔒 Copiar enlace remoto (Tailscale)",
+                    self._accion_copiar_enlace_remoto,
+                )
+            )
+        items.extend([
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "📂 Abrir carpeta del programa",
@@ -223,7 +249,7 @@ class TrayIconServidor:
                 "⏹️ Detener servidor y salir",
                 self._accion_detener,
             ),
-        ]
+        ])
         return pystray.Menu(*items)
 
     def _accion_abrir_navegador(self, _icon=None, _item=None):
@@ -241,6 +267,16 @@ class TrayIconServidor:
                 "Enlace de Red Copiado",
                 f"Dirección copiada al portapapeles:\n{self.url_red}",
             )
+
+    def _accion_copiar_enlace_remoto(self, _icon=None, _item=None):
+        """Copia el enlace remoto de Tailscale al portapapeles y notifica."""
+        if self.url_remoto:
+            copiado = _copiar_al_portapapeles(self.url_remoto)
+            if copiado:
+                self.mostrar_notificacion(
+                    "Enlace Remoto Copiado",
+                    f"Dirección remota copiada al portapapeles:\n{self.url_remoto}",
+                )
 
     def _accion_abrir_carpeta(self, _icon=None, _item=None):
         """Abre la carpeta raíz de la aplicación en el explorador de archivos."""

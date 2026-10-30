@@ -103,11 +103,15 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                         color=interfaz.texto,
                     ),
                     ft.Text(
-                        f"Gestiona tus documentos, inventario y actividad · Red local: {esquema_red}://{ip_red}:{puerto_red}",
+                        (f"Consola de Seguridad, IAM y Auditoría · Red local: {esquema_red}://{ip_red}:{puerto_red}"
+                         if interfaz.usuario_actual.role == "master"
+                         else f"Gestiona tus documentos, inventario y actividad · Red local: {esquema_red}://{ip_red}:{puerto_red}"),
                         size=14,
                         color=interfaz.secundario,
                     ),
-                    interfaz.pendientes_texto,
+                    (ft.Text("Módulo de Administración Técnica y Auditoría de Seguridad", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
+                     if interfaz.usuario_actual.role == "master"
+                     else interfaz.pendientes_texto),
                 ],
                 spacing=4,
             ),

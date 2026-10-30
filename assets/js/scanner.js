@@ -1,6 +1,7 @@
 /**
  * Controlador de escaneo de códigos de barra para cámara web y móvil.
- * Utiliza WebRTC (getUserMedia) y la BarcodeDetector API nativa.
+ * Utiliza WebRTC (getUserMedia), la BarcodeDetector API nativa
+ * e incorpora cola resiliente Offline-First ante microcortes de red.
  */
 
 let currentStream = null;
@@ -16,7 +17,7 @@ let lastScanTime = 0;
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioCtx = AudioContextClass ? new AudioContextClass() : null;
 
-function playBeep() {
+function playBeep(frequency = 1200, duration = 0.12) {
   if (!audioCtx) return;
   try {
     if (audioCtx.state === "suspended") {
@@ -25,14 +26,89 @@ function playBeep() {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
     gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.12);
+    osc.stop(audioCtx.currentTime + duration);
   } catch (e) {
     console.warn("AudioContext error:", e);
+  }
+}
+
+/**
+ * Gestión de la Cola Resiliente Local (Offline Scan Queue)
+ */
+function obtenerColaOffline() {
+  try {
+    const q = localStorage.getItem("stockagent_offline_scan_queue");
+    return q ? JSON.parse(q) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function guardarEnColaOffline(code) {
+  const q = obtenerColaOffline();
+  q.push({ code: code, timestamp: Date.now() });
+  try {
+    localStorage.setItem("stockagent_offline_scan_queue", JSON.stringify(q));
+  } catch (e) {}
+  actualizarIndicadorRed();
+}
+
+function sincronizarColaOffline() {
+  const q = obtenerColaOffline();
+  if (!q || q.length === 0) return;
+  console.log(`[PWA] Sincronizando ${q.length} escaneos acumulados en offline...`);
+
+  for (const item of q) {
+    localStorage.setItem(
+      "stockagent_scanned_barcode",
+      JSON.stringify({ code: item.code, timestamp: item.timestamp, offline: true })
+    );
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: "BARCODE_SCANNED", code: item.code, offline: true }, "*");
+    }
+  }
+
+  localStorage.removeItem("stockagent_offline_scan_queue");
+  const detectionInfo = document.getElementById("detectionInfo");
+  if (detectionInfo) {
+    detectionInfo.textContent = `✅ Red restablecida: ¡${q.length} código(s) sincronizados con el servidor!`;
+    detectionInfo.style.color = "#22c55e";
+  }
+  actualizarIndicadorRed();
+}
+
+function actualizarIndicadorRed() {
+  const q = obtenerColaOffline();
+  const isOffline = !navigator.onLine;
+  let badge = document.getElementById("netStatusBadge");
+
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.id = "netStatusBadge";
+    badge.style.cssText =
+      "font-size: 11px; padding: 4px 8px; border-radius: 12px; margin-top: 6px; font-weight: 600; text-align: center; display: inline-block;";
+    const statusCard = document.querySelector(".status-card");
+    if (statusCard) statusCard.appendChild(badge);
+  }
+
+  if (isOffline) {
+    badge.textContent = `⚠️ Sin WiFi · ${q.length} escaneo(s) guardados en cola local`;
+    badge.style.background = "#78350f";
+    badge.style.color = "#fef3c7";
+  } else if (q.length > 0) {
+    badge.textContent = `🔄 Sincronizando ${q.length} escaneo(s)...`;
+    badge.style.background = "#1e3a8a";
+    badge.style.color = "#dbeafe";
+    sincronizarColaOffline();
+  } else {
+    badge.textContent = "🟢 En línea · Conexión activa";
+    badge.style.background = "#14532d";
+    badge.style.color = "#dcfce7";
   }
 }
 
@@ -58,6 +134,7 @@ async function initCamera() {
     track = currentStream.getVideoTracks()[0];
     await video.play();
     startDetection();
+    actualizarIndicadorRed();
   } catch (err) {
     if (detectionInfo) {
       detectionInfo.textContent = "Permiso de cámara denegado o no disponible: " + err.message;
@@ -96,7 +173,7 @@ async function startDetection() {
           }
         }
       } catch (e) {
-        // Error temporal de decodificación en cuadro
+        // Error temporal de cuadro
       }
     }
     requestAnimationFrame(detectLoop);
@@ -106,6 +183,7 @@ async function startDetection() {
 
 /**
  * Procesa un código detectado emitiendo feedback y transmitiéndolo a la sesión.
+ * Si no hay red, lo resguarda en la cola offline local.
  */
 function onCodeDetected(code) {
   playBeep();
@@ -116,6 +194,18 @@ function onCodeDetected(code) {
   const lastCodeEl = document.getElementById("lastCode");
   const detectionInfo = document.getElementById("detectionInfo");
   if (lastCodeEl) lastCodeEl.textContent = code;
+
+  const isOffline = !navigator.onLine;
+
+  if (isOffline) {
+    guardarEnColaOffline(code);
+    if (detectionInfo) {
+      detectionInfo.textContent = "⚠️ Guardado en cola local (sin WiFi). Se sincronizará al reconectar.";
+      detectionInfo.style.color = "#f59e0b";
+    }
+    return;
+  }
+
   if (detectionInfo) {
     detectionInfo.textContent = "¡Código leído y transmitido!";
     detectionInfo.style.color = "#22c55e";
@@ -134,6 +224,8 @@ function onCodeDetected(code) {
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage({ type: "BARCODE_SCANNED", code: code }, "*");
   }
+
+  actualizarIndicadorRed();
 }
 
 /**
@@ -171,6 +263,27 @@ async function toggleFlash() {
 function switchCamera() {
   currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
   initCamera();
+}
+
+// Event Listeners de Conectividad y PWA
+window.addEventListener("online", () => {
+  console.log("[PWA] Conexión WiFi reanudada");
+  actualizarIndicadorRed();
+  sincronizarColaOffline();
+});
+
+window.addEventListener("offline", () => {
+  console.log("[PWA] Conexión WiFi perdida");
+  actualizarIndicadorRed();
+});
+
+// Registro de Service Worker PWA
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" })
+      .then((reg) => console.log("[PWA] Service Worker activo:", reg.scope))
+      .catch((err) => console.warn("[PWA] Aviso registro Service Worker:", err));
+  });
 }
 
 window.addEventListener("DOMContentLoaded", initCamera);

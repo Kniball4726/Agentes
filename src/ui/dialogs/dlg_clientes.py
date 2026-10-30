@@ -6,7 +6,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
     """Abre la ventana modal con el CRUD interactivo de clientes."""
-    if not interfaz.exigir_roles("operador", "administrador", "master"):
+    if not interfaz.exigir_roles("operador", "administrador"):
         return
 
     usr_nom = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"

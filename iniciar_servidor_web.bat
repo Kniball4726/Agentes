@@ -1,11 +1,15 @@
 @echo off
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
-title StockAgent - Servidor Web HTTPS
+title StockAgent - Servidor Web HTTPS (Multi-Equipo)
 cd /d "%~dp0"
 
 echo ==================================================================
-echo   STOCK AGENT - SERVIDOR WEB HTTPS - PUERTO 8550
+echo   STOCK AGENT - SERVIDOR WEB HTTPS (PUERTO 8550)
+echo ==================================================================
+echo   * Modo: Multi-Equipo (Red Local LAN y Acceso Remoto Seguro)
+echo   * Escucha: 0.0.0.0:8550 (Todas las placas de red activas)
+echo   * Seguridad: Cifrado TLS / HTTPS con proteccion anti-ataques
 echo ==================================================================
 echo.
 
@@ -22,20 +26,20 @@ rem Iniciar la aplicacion utilizando el entorno disponible
 rem main.py detecta si ya hay una instancia activa en el puerto 8550
 rem y abre el navegador hacia ella sin duplicar procesos
 
-if exist "StockAgent.exe" (
-    echo [INFO] Iniciando ejecutable StockAgent.exe...
-    "StockAgent.exe" %*
-    goto :FIN
-)
-
 if exist ".venv\Scripts\python.exe" (
     echo [INFO] Iniciando con entorno virtual Python .venv...
     ".venv\Scripts\python.exe" main.py %*
     goto :FIN
 )
 
+if exist "StockAgent.exe" (
+    echo [INFO] Iniciando ejecutable principal StockAgent.exe...
+    "StockAgent.exe" %*
+    goto :FIN
+)
+
 if exist "ttech\Scripts\python.exe" (
-    echo [INFO] Iniciando con Python ttech...
+    echo [INFO] Iniciando con entorno Python ttech...
     "ttech\Scripts\python.exe" main.py %*
     goto :FIN
 )
@@ -54,7 +58,7 @@ if exist "dist\StockAgent.exe" (
 )
 
 echo [ERROR] No se encontro Python ni el ejecutable StockAgent.exe.
-echo Por favor instala Python o activa el entorno virtual .venv.
+echo Por favor instala Python 3.10+ o activa el entorno virtual .venv.
 pause
 exit /b 1
 
@@ -71,7 +75,7 @@ if errorlevel 1 (
     if "!MODO_SILENCIOSO!"=="0" (
         echo.
         echo ==================================================================
-        echo   El servidor se ha detenido.
+        echo   El servidor web se ha detenido correctamente.
         echo ==================================================================
         echo.
     )

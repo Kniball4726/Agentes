@@ -15,7 +15,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_backup(interfaz: Any) -> None:
     """Abre el diálogo modal para crear y restaurar copias de seguridad del sistema."""
-    if not interfaz.exigir_roles("administrador"):
+    if not interfaz.exigir_roles("administrador", "master"):
         return
 
     cfg_bk = obtener_config_backup()

@@ -1142,6 +1142,16 @@ class StockManager:
         self._cargar_catalogo()
         return filas_actualizadas
 
+    def sincronizar_catalogo_completo_excel(self) -> int:
+        """Vuelca todo el stock y productos consolidados desde SQLite hacia Productos.xlsx."""
+        if not hasattr(self, "product_store") or not self.product_store:
+            return 0
+        rows = self.product_store.list_products()
+        if not rows:
+            return 0
+        stocks = {str(r["code"]).strip(): int(r["stock"]) for r in rows}
+        return self.sincronizar_stocks(stocks)
+
     def registrar_movimientos_historial(
         self,
         stocks_delta: Dict[str, int],

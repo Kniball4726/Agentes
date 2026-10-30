@@ -298,6 +298,24 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                 archivo_excel=xls_path.name if xls_path else "",
             )
 
+            try:
+                from ...telegram_notifier import notificar_cierre_jornada_telegram
+                notificar_cierre_jornada_telegram(
+                    responsable=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
+                    pedidos=len(pedidos_pendientes),
+                    bultos=total_bultos,
+                    articulos=total_arts,
+                )
+            except Exception:
+                pass
+
+            try:
+                sm_cierre = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+                if hasattr(sm_cierre, "sincronizar_catalogo_completo_excel"):
+                    sm_cierre.sincronizar_catalogo_completo_excel()
+            except Exception:
+                pass
+
             art_quiebre = rep.articulos_quiebre
             art_criticos = rep.articulos_criticos
             alerta_texto_correo = ""

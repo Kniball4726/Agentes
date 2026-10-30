@@ -6,12 +6,12 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Control de Inventario Depósito Pasteur - Gestión de stock y remitos.">
+  <meta name="description" content="StockAgent · Control de Inventario, Gestión de Stock y Remitos.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Depósito Pasteur">
+  <meta name="apple-mobile-web-app-title" content="StockAgent">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon-192.png">
 
   <!-- Favicon para navegadores -->
@@ -20,7 +20,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 
-  <title>Control de Inventario Depósito Pasteur</title>
+  <title>StockAgent · Control de Inventario</title>
   <link rel="manifest" href="manifest.json">
 
   <script>
@@ -28,6 +28,37 @@
       if (event.persisted &&
         navigator.vendor && navigator.vendor.startsWith('Apple')) {
         window.location.reload();
+      }
+    });
+
+    // Registro de Service Worker PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
+          .catch(err => console.warn('[PWA] Aviso registro Service Worker:', err));
+      });
+    }
+
+    // Banner indicador de microcortes de red en depósito
+    window.addEventListener('offline', () => {
+      let banner = document.getElementById('offline-banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'offline-banner';
+        banner.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#b91c1c;color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;font-weight:600;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:flex;align-items:center;gap:8px;';
+        banner.innerHTML = '<span>⚠️</span> Sin conexión WiFi · Modo resiliente activo';
+        document.body.appendChild(banner);
+      }
+      banner.style.display = 'flex';
+    });
+
+    window.addEventListener('online', () => {
+      const banner = document.getElementById('offline-banner');
+      if (banner) {
+        banner.style.background = '#15803d';
+        banner.innerHTML = '<span>✅</span> Conexión WiFi restablecida';
+        setTimeout(() => { banner.style.display = 'none'; }, 2500);
       }
     });
   </script>

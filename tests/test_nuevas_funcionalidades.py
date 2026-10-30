@@ -447,7 +447,8 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             contenedor_raiz = cast(ft.Container, page.controls[0])
             self.assertIsInstance(contenedor_raiz, ft.Container)
             # Todos los 18 comandos siguen disponibles para el usuario
-            self.assertEqual(len(interfaz.controles_tarea), 18)
+            # Todos los 20 comandos de administración siguen disponibles (incluye Archivado, Sincronización Excel y Telegram)
+            self.assertEqual(len(interfaz.controles_tarea), 23)
             # Botón flotante más compacto
             self.assertEqual(interfaz.boton_chat_flotante.width, 110)
 

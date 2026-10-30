@@ -9,15 +9,26 @@ from ..theme import ROJO
 
 def construir_panel_metricas(interfaz: Any) -> ft.Control:
     """Genera las tarjetas de métricas en vivo para la jornada activa."""
-    metricas = [
-        ("PDF de la jornada", "pdf", ft.Icons.DESCRIPTION),
-        ("Canjes de la jornada", "canjes", ft.Icons.SHOPPING_BAG),
-        ("Pedidos ML", "ml", ft.Icons.LOCAL_SHIPPING),
-        ("Total Jornada", "total", ft.Icons.RECEIPT_LONG),
-        ("Informes", "informes", ft.Icons.INSERT_CHART),
-    ]
-    if interfaz.usuario_actual and interfaz.usuario_actual.role == "administrador":
-        metricas.append(("Quiebres de stock", "quiebres", ft.Icons.WARNING_AMBER))
+    if interfaz.usuario_actual and interfaz.usuario_actual.role == "master":
+        metricas = [
+            ("Usuarios Registrados", "usuarios_total", ft.Icons.GROUP),
+            ("Cuentas Activas", "usuarios_activos", ft.Icons.VERIFIED_USER),
+            ("Eventos Auditoría", "auditoria_eventos", ft.Icons.SECURITY),
+            ("Copias de Respaldo", "backups_total", ft.Icons.BACKUP),
+            ("Espacio en Disco", "telemetria_disco", ft.Icons.STORAGE),
+            ("Salud Servidor", "telemetria_salud", ft.Icons.HEALTH_AND_SAFETY),
+        ]
+    else:
+        metricas = [
+            ("PDF de la jornada", "pdf", ft.Icons.DESCRIPTION),
+            ("Canjes de la jornada", "canjes", ft.Icons.SHOPPING_BAG),
+            ("Pedidos ML", "ml", ft.Icons.LOCAL_SHIPPING),
+            ("Total Jornada", "total", ft.Icons.RECEIPT_LONG),
+            ("Informes", "informes", ft.Icons.INSERT_CHART),
+        ]
+        if interfaz.usuario_actual and interfaz.usuario_actual.role == "administrador":
+            metricas.append(("Quiebres de stock", "quiebres", ft.Icons.WARNING_AMBER))
+
     tarjetas = []
     for titulo, clave, icono in metricas:
         valor = ft.Text("0", size=25, weight=ft.FontWeight.BOLD, color=interfaz.texto)
@@ -62,12 +73,16 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
 
 def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     """Genera el panel de lista de informes recientes y actividad en tiempo real."""
+    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+    titulo_panel = "Eventos de auditoría recientes" if es_master else "Informes generados"
+    icono_panel = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
+
     contenido_informes = ft.Column(
         [
             ft.Row(
                 [
-                    ft.Text("Informes generados", size=16, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ft.Icon(ft.Icons.DESCRIPTION, color=ROJO, size=18),
+                    ft.Text(titulo_panel, size=16, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Icon(icono_panel, color=ROJO, size=18),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
