@@ -217,9 +217,10 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
   * **Continuidad del Negocio (Backups / Disaster Recovery):** Generación manual de copias de seguridad `.zip`, configuración de directorios externos y verificación de políticas de rotación.
   * **Configuración del Servidor y Servicios:** Gestión de credenciales SMTP para alertas automáticas, custodia exclusiva de credenciales oficiales de la **API de Mercado Libre** (App ID, Client Secret, Tokens OAuth), monitoreo de certificados SSL/HTTPS y estado de la red.
   * **Protección Inviolable:** La cuenta Master no puede ser desactivada ni degradada de rol por ningún usuario ni por sí misma.
-* **Exclusión de la Lógica de Negocio (Protección Operativa):**
+* **Exclusión de la Lógica de Negocio (Protección Operativa y Segregación SoD):**
+  * ❌ **Sin Acceso a Pedidos:** Directamente el usuario Master **no visualiza pedidos operativos**. Su panel de control no contiene la tarjeta de pedidos preparados del turno y tiene restringido el acceso al Historial de Pedidos y a la consulta de pedidos individuales.
   * ❌ No procesa remitos, facturas ni comprobantes de Mercado Libre.
-  * ❌ No modifica cantidades de stock ni altera la planilla `Productos.xlsx`.
+  * ❌ No modifica pedidos preparados ni altera cantidades de stock o la planilla `Productos.xlsx`.
   * ❌ No realiza ingresos de fábrica, inventarios físicos ni pedidos a proveedores.
   * ❌ No realiza cierres de jornada operativa ni emite Hojas de Ruta de despacho.
 * **Experiencia de Usuario Especializada:**
@@ -260,18 +261,19 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
 * **Qué hace:** Permite buscar, supervisar y gestionar en detalle todos los pedidos cargados en el sistema (remito, N° de pedido, cliente, logística, bultos, armador y estado de despacho). Faculta a los usuarios para:
   1. **Consulta y Reimpresión del Comprobante Cargado:** Cada pedido presenta un badge interactivo con el ícono de formato del archivo original (PDF, Excel o Word/DOCX). Al hacer clic o presionar el botón de impresora (`🖨️`), el sistema abre o descarga de inmediato el documento para su revisión o reimpresión directa.
   2. **Detalle Completo del Pedido:** Presionando el botón de información (`ℹ️`) se accede a un modal con los datos logísticos, estado de despacho, enlace al informe de descuento asociado, lista de artículos descontados y acceso a rótulos con QR.
-  3. **Modificar Pedido:** Corregir o actualizar datos de cabecera de pedidos activos (cliente, N° de pedido, cantidad de bultos, logística y fecha de retiro programada) sin necesidad de recargar comprobantes. Si el nombre del cliente es nuevo, se incorpora automáticamente a la base de datos de clientes para futuras búsquedas.
+  3. **Visualización sin Modificación (Consulta de Pedidos):** El Administrador puede hacer clic en cualquier pedido (tanto en la tarjeta en vivo de la jornada como en el Historial) para abrir la **ventana modal de detalle completo**, consultar los artículos descontados, reimprimir el comprobante original o generar rótulos QR. Sin embargo, **no puede modificar los datos operativos del pedido** (cliente, bultos, logística o fecha), facultad que está estrictamente reservada a los operarios en turno para evitar colisiones con el empaque físico en depósito.
   4. **Desarmar Pedido y Restituir Stock:** En caso de cancelaciones o pedidos desarmados antes o después del despacho, esta opción anula el pedido y reincorpora automáticamente todas las unidades y códigos descontados sumándolos de vuelta al inventario físico tanto en SQLite (`productos.sqlite3`) como en la planilla maestra (`Productos.xlsx`).
   5. **Anular Pedido:** Cancela el comprobante registrando el motivo en auditoría (sin mover stock físico si se requiere anulación administrativa pura).
 * **Cómo se hace:**
   1. Ingresar a la sección **"Historial de Pedidos"**.
   2. Filtrar por cliente, número de remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador mediante la barra de búsqueda en tiempo real.
-  3. **Para Modificar un Pedido:** Presionar el botón azul **"Modificar pedido"** (icono de lápiz) en la fila correspondiente, editar los campos en la ventana emergente y presionar **"Guardar Cambios"**.
+  3. **Para Modificar un Pedido (Exclusivo Operador):** La edición directa está reservada a los operarios en turno. El administrador puede consultar el detalle completo con el botón `ℹ️` o proceder al desarme con restitución de stock mediante `Desarmar pedido`.
   4. **Para Desarmar un Pedido:** Presionar el botón ámbar **"Desarmar pedido"** (icono de carrito retirado / reposición), verificar la lista detallada de artículos y cantidades que se devolverán al depósito, ingresar el motivo opcional y presionar **"Desarmar y Devolver Stock"**. El sistema actualizará el stock al instante.
   5. **Para Anular un Pedido:** Presionar el botón rojo **"Anular"** (icono de cancelar), ingresar el motivo y confirmar.
 
-#### 4. Copias de Seguridad (Backup Manual)
+#### 4. Copias de Seguridad y Respaldo Espejo en Red / Nube (NAS / Drive / OneDrive)
 * **Qué hace:** Genera un respaldo íntegro comprimido `.zip` en la carpeta `data/backups/`, resguardando las bases SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`), usuarios, notificaciones y el catálogo maestro `Productos.xlsx`. Mantiene automáticamente una rotación de las últimas 30 copias.
+* **Espejo en Red o Nube Secundario:** Permite configurar y verificar con 1 clic (`Probar y Guardar Espejo`) una carpeta secundaria externa (ej. `\\NAS\Backups_Deposito` o `C:\Users\...\Google Drive\Backups`). Cada respaldo generado se copia atómicamente a dicha ruta para máxima resiliencia ante fallos de disco local.
 * **Cómo se hace:**
   1. Presionar el botón **"Copia de Seguridad"** en la barra superior de herramientas (o escribir `/backup` en el Asistente Virtual).
   2. El sistema notificará la generación exitosa del respaldo indicando el nombre del archivo y la fecha/hora exacta.
@@ -343,7 +345,15 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Presionar **"Enviar Correo"**. El sistema adjuntará los archivos y despachará el mensaje.
   4. Para compartir por WhatsApp, presionar **"WhatsApp Web"** (abre el navegador con el mensaje de resumen listo y el archivo seleccionado en el Explorador).
 
-#### 13. Asistente Virtual Inteligente y Chat de Comunicación Interna
+#### 13. Buscador Rápido Global y Paleta de Comandos (`Ctrl + K` / `F2`)
+* **Qué hace:** Proporciona una ventana modal flotante ultrarrápida accesible desde cualquier pantalla del sistema presionando `Ctrl + K`, `F2` o el botón de lupa en la barra superior.
+* **Búsqueda Unificada en Tiempo Real:**
+  * **Productos:** Localiza artículos por código, descripción o código de barras, mostrando stock disponible y ubicación en estantería (con copia rápida al portapapeles).
+  * **Clientes:** Busca por razón social, código o domicilio.
+  * **Pedidos y Remitos:** Filtra en vivo por número de pedido, remito, transporte o N° de guía.
+  * **Acciones y Módulos:** Salto inmediato a *Cargar Pedido*, *Inventario Escáner*, *Cierre de Jornada*, *Métricas* o *Backups*.
+
+#### 14. Asistente Virtual Inteligente y Chat de Comunicación Interna
 * **Qué hace:** Provee una ventana flotante de doble propósito: un asistente virtual interactivo para consultas y diagnósticos rápidos de inventario, y un **canal de comunicación interna (Chat de Equipo)** que permite a operarios, administradores y encargados enviarse mensajes en tiempo real (tanto al canal general como mensajes privados directos entre usuarios), persistidos en SQLite y sincronizados entre todas las sesiones abiertas.
 * **Cómo se hace:**
   1. Hacer clic en el botón flotante **"Asistente"** en la esquina inferior derecha (el botón muestra un indicador numérico en rojo cuando existen mensajes de equipo no leídos).
@@ -354,8 +364,9 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
      * En la pestaña **Chat Equipo**, elegir el destinatario en el menú desplegable (`📢 Todos (Canal General)` o un usuario específico `@operario`), redactar el mensaje y presionar **Enter** o el botón de enviar.
      * O desde la pestaña del **Bot**, escribir directamente: `/msg @usuario tu mensaje aquí` o `/msg aviso para todos` y el asistente registrará y enviará el mensaje inmediatamente.
 
-#### 14. Supervisión y Reimpresión de Rótulos de Bulto con Código QR (Optimización Hoja A4 Completa)
-* **Qué hace:** Genera rótulos de despacho en formato **A4 (10 etiquetas por hoja en cuadrícula 2x5)** para cada bulto de los pedidos (`Bulto 1 de N`), con el **nombre del cliente destacado en tipografía de gran tamaño** (`13.5pt bold`) concatenado con el N° de pedido, identificación del armador con su nombre real, trazabilidad por código QR y optimización de papel:
+#### 14. Supervisión y Reimpresión de Rótulos de Bulto con Código QR (Formato A4 y Rollo Térmico 100x150 mm)
+* **Qué hace:** Genera rótulos de despacho tanto para hojas **A4 estándar (10 por hoja)** como para **impresoras térmicas de etiquetas autoadhesivas continuas (Zebra, Xprinter, etc.)**:
+  * **Rótulos Térmicos Continuos (Rollos 100x150 mm / 4"x6"):** Genera un PDF continuo de alta resolución donde cada bulto del pedido (`Bulto X de Y`) conforma una página exacta sin sobrantes de papel. Incluye nombre del cliente en tipografía extra-grande (`15pt bold`), N° de pedido, cuadro destacado de bulto, datos de transporte, N° de guía/tracking y código QR vectorizado para lectura con pistola o celular.
   * **Aprovechamiento Integral de Hoja A4:** Para pedidos individuales con menos de 10 bultos (o cuando la última página de un pedido con múltiples bultos no llena los 10 casilleros), el sistema **completa automáticamente los espacios vacíos** repitiendo proporcionalmente los rótulos del pedido. Esto evita el desperdicio de planchas adhesivas y garantiza que toda hoja A4 impresa se utilice al 100%.
   * **Impresión en Lote de Múltiples Pedidos:** Permite imprimir en un único archivo PDF todos los pedidos filtrados o de la jornada, ordenados consecutivamente a razón de 10 etiquetas por página y completando la última hoja.
 * **Cómo se hace:**
@@ -452,6 +463,10 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 * **Sincronización Mercado Libre (API REST):**
   * Botón directo **"Sincronizar Mercado Libre (API)"** para consultar y descontar pedidos pagados en tiempo real directo desde los servidores de Mercado Libre, sin tener que descargar o arrastrar archivos a la plataforma.
 * **Historial de Pedidos:**
+  * **Despacho Masivo en Lote:** Casillas de verificación (checkboxes) por pedido y botón de 1 clic `Seleccionar Visibles` con barra flotante de acciones:
+    - `[ Despachar Seleccionados ]`: Cambia en lote a estado **DESPACHADO** todos los pedidos tildados al subir al transporte.
+    - `[ Marcar como Entregados ]`: Cambia en bloque a estado **ENTREGADO**.
+  * **N° de Guía / Tracking ID y Notificación WhatsApp:** Cada pedido admite registrar su código de seguimiento del transporte (ej: Andreani, Vía Cargo). Al presionar el botón de WhatsApp (`💬`), el sistema abre WhatsApp Web con el mensaje pre-armado informando al cliente el estado de su pedido, transporte y número de guía.
   * **Filtros Rápidos de 1 Clic:** Selector superior instantáneo con chips temáticos:
     - 🔘 `Todos`: Vista histórica general.
     - 🔘 `Solo Hoy`: Filtra de inmediato los pedidos registrados en la fecha actual sin tener que tipear el día en el buscador.
@@ -460,7 +475,7 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * **Diseño Espacioso y Jerárquico de Tarjetas:** Tarjetas de 960px con división en 4 niveles semánticos que impiden el solapamiento de información (Cabecera con N° de pedido y badge de estado con borde temático, chips de cliente y transporte con ajuste multi-línea, datos de comprobante y resumen de artículos con elipsis, y barra inferior de acciones operativas).
   * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
   * **Botón Rótulos A4 (Lote):** Impresión directa de hojas A4 optimizadas que contienen los rótulos de todos los pedidos filtrados.
-  * **Modificación de Pedido:** Edición directa de cliente, N° de pedido, bultos, logística y fecha de entrega.
+  * **Modificación de Pedidos Preparados (Exclusivo Operador):** Capacidad exclusiva para editar directamente cliente, N° de pedido, cantidad de bultos, logística y fecha programada de entrega, tanto desde el panel de pedidos en vivo como desde el Historial. Esta exclusividad operativa previene colisiones y discrepancias con administradores o usuarios master.
   * **Desarmar Pedido y Regresión de Stock:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock físico en SQLite y `Productos.xlsx` al instante.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
 * **Cierre de Jornada Consolidado:**
@@ -529,6 +544,23 @@ En la parte superior del panel de control se encuentran las tarjetas de métrica
 | **Informes** | Total de reportes oficiales disponibles para descarga o visualización. | Archivos generados en `Descuentos/` |
 | **Quiebres de stock** *(Admin)* | Artículos que han alcanzado stock cero o negativo, requiriendo reposición urgente. | Análisis de stock en `Productos.xlsx` |
 
+### Panel en Tiempo Real: Pedidos Preparados e Informes de la Jornada
+
+Debajo del formulario de carga, el panel principal organiza la operativa en dos tarjetas estratégicas:
+
+* **Panel Izquierdo — Pedidos Preparados del Turno (Orden Descendente - Exclusivo Operador y Administrador):**
+  * **Exclusión de Usuario Master:** Por principio de segregación de funciones (*SoD*), el usuario Master **no visualiza esta tarjeta ni los pedidos**, visualizando en su lugar de forma expandida la consola de eventos de auditoría y salud del servidor.
+  * **Encabezado con Fecha y Bultos Acumulados:** Muestra la fecha actual del turno y una insignia destacada con el **total acumulado de bultos preparados hasta el cierre** (`📦 X bultos preparados`), actualizándose reactivamente en vivo cada vez que se descuenta un pedido o se modifica su empaque.
+  * **Visualización Descendente (`id DESC`):** Presenta los pedidos preparados en el turno ordenados de forma descendente, dejando siempre los más recientes en la parte superior.
+  * **Tarjeta Resumen por Pedido:** Cada elemento muestra de un vistazo el identificador `#id`, número de pedido, comprobante/remito, cliente, logística/transporte, armador, resumen de artículos y cantidad de bultos.
+  * **Comportamiento al Hacer Clic según Rol:**
+    * **Operador:** Abre de inmediato el diálogo de **modificación rápida** para ajustar bultos, logística, cliente o fecha de retiro.
+    * **Administrador:** Abre la **ventana modal de detalle de solo lectura**, permitiendo consultar artículos, reimprimir comprobantes y emitir rótulos QR, sin permisos de alteración de datos.
+* **Panel Derecho — Informes Generados:**
+  * Conserva la lista y acceso directo a todos los reportes oficiales generados (informes PDF/Excel de cierres consolidados, hojas de ruta de despacho y pedidos a fábrica) para apertura, descarga o reenvío instantáneo por correo o WhatsApp.
+* **Optimización Ergonómica de Pantalla:**
+  * Se removió la tarjeta técnica de actividad/consola para maximizar el área útil del panel y enfocar la atención del equipo en el flujo continuo de despacho y volumen de bultos de la jornada.
+
 ### Formulario de Carga y Descuento Individual
 
 1. **Remito / Factura:** Identificador único del comprobante. Si se intenta ingresar un remito ya registrado, el sistema lo rechaza para evitar duplicaciones.
@@ -547,7 +579,14 @@ En la parte superior del panel de control se encuentran las tarjetas de métrica
 7. **Armador:** Campo automático y bloqueado que toma el nombre o identificador de la sesión activa (ej. `Juan Pérez`, `Desarrollo`).
 8. **Adjuntar Comprobante (con Anti-duplicados SHA-256):** Permite seleccionar archivos `.pdf` (pedidos mayoristas) o `.xlsx`/`.xls` (canjes), verificando que el archivo binario no haya sido procesado previamente.
 9. **Descuento Atómico y Sincronización en Tiempo Real con `Productos.xlsx`:** Cada pedido descuenta su stock inmediatamente tanto en la base SQLite (`productos.sqlite3`) como en la planilla maestra `Productos.xlsx`, garantizando que cualquier consulta externa o apertura del Excel refleje el inventario real disponible al instante.
-10. **Prompt Instantáneo de Rótulos A4 y Alerta de Quiebres:** Al confirmar un pedido con éxito, el sistema despliega un diálogo de confirmación que informa el estado de inventario (alertando si algún artículo quedó en quiebre o stock crítico) y ofrece un botón de 1 clic: `[ Imprimir Rótulos A4 (X bultos) ]` para imprimir inmediatamente sin salir al historial.
+10. **Alerta Preventiva de Stock Insuficiente *Antes* de Descontar:**
+    * Mediante simulación previa atómica, el sistema detecta si algún artículo del comprobante quedará en quiebre ($\le 0$ unidades).
+    * Si existen discrepancias, despliega un cuadro de advertencia previa con la lista de productos y saldos resultantes, requiriendo autorización explícita (`[ Autorizar y Descontar ]`) o permitiendo cancelar para revisión (`[ Cancelar y Revisar ]`), evitando quiebres accidentales.
+11. **Feedback Sonoro Operativo (Web Audio API):**
+    * Notificaciones de audio sintetizadas en tiempo real en navegador y escritorio:
+      - 🎵 *Beep agudo (880 Hz):* Confirmación de pedido descontado, rótulo generado o despacho en lote exitoso.
+      - ⚠️ *Beep grave descendente:* Advertencia preventiva de stock insuficiente, remito duplicado o error de escaneo.
+12. **Prompt Instantáneo de Rótulos A4 y Térmicos Continuos:** Al confirmar un pedido con éxito, el sistema despliega el diálogo de confirmación y permite elegir entre `[ Imprimir Rótulos A4 ]` o `[ Rótulo Térmico Rollo (100x150 mm) ]` con un solo clic.
 11. **Regresión y Devolución Automática de Stock (Desarme y Anulación):** Si un pedido es desarmado o cancelado porque no saldrá del depósito, el sistema recupera automáticamente sus artículos y cantidades desde `pedido_items` y restituye el stock en tiempo real en SQLite y en `Productos.xlsx`, registrando la trazabilidad en auditoría forense.
 
 ### Módulo de Inventario en Vivo con Escáner Móvil y PC
@@ -649,7 +688,7 @@ StockAgent/
 │   ├── mercado_libre_parser.py        # Parser de pedidos DOCX
 │   ├── mercado_full_parser.py         # Parser de planillas Mercado Libre Full
 │   ├── dispatch_manifest.py           # Generador de Hoja de Ruta por Transporte (PDF)
-│   ├── label_generator.py             # Generador de Rótulos de Bultos con QR (PDF)
+│   ├── label_generator.py             # Generador de Rótulos con QR (Hojas A4 y Rollo Térmico 100x150 mm)
 │   ├── backup_manager.py              # Motor de respaldos comprimidos y restauración verificada
 │   ├── email_sender.py                # Envío directo SMTP con adjuntos y credenciales cifradas
 │   ├── secretos.py                    # Cifrado local de credenciales (Windows DPAPI / Fernet)
@@ -673,7 +712,7 @@ StockAgent/
 │       │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
 │       │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
 │       │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
-│       │   └── panels.py              # Paneles de métricas de jornada e historial de actividad
+│       │   └── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
 │       └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
 │           ├── __init__.py            # Re-exportación unificada de diálogos
 │           ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup

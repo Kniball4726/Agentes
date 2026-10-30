@@ -72,51 +72,91 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
 
 
 def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
-    """Genera el panel de lista de informes recientes y actividad en tiempo real."""
+    """Genera el panel principal: 
+    - Lado izquierdo: Pedidos preparados en vivo del turno con contador de bultos acumulados y fecha.
+    - Lado derecho: Informes generados (o eventos de auditoría para Master).
+    """
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
-    titulo_panel = "Eventos de auditoría recientes" if es_master else "Informes generados"
-    icono_panel = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
+    titulo_derecha = "Eventos de auditoría recientes" if es_master else "Informes generados"
+    icono_derecha = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
 
-    contenido_informes = ft.Column(
+    # Panel LADO DERECHO: Informes generados
+    contenido_derecha = ft.Column(
         [
             ft.Row(
                 [
-                    ft.Text(titulo_panel, size=16, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ft.Icon(icono_panel, color=ROJO, size=18),
+                    ft.Text(titulo_derecha, size=15, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Icon(icono_derecha, color=ROJO, size=18),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
             interfaz.lista_informes,
         ],
         expand=True,
-        spacing=10,
+        spacing=8,
     )
-    contenido_actividad = ft.Column(
+
+    # Panel LADO IZQUIERDO: Pedidos preparados en tiempo real (descendiente)
+    contenido_izq = ft.Column(
         [
-            ft.Row(
-                [
-                    ft.Text("Actividad", size=16, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ft.Icon(ft.Icons.BOLT, color=ROJO, size=18),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            # Header con fecha y contador de bultos acumulados
+            ft.Container(
+                bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.RED_50,
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ROJO)),
+                border_radius=8,
+                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                content=ft.Row(
+                    [
+                        ft.Column(
+                            [
+                                ft.Row(
+                                    [
+                                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=14, color=ROJO),
+                                        interfaz.header_pedidos_fecha,
+                                    ],
+                                    spacing=6,
+                                ),
+                                interfaz.header_pedidos_subtitulo,
+                            ],
+                            spacing=2,
+                        ),
+                        ft.Container(
+                            content=interfaz.header_pedidos_bultos,
+                            bgcolor=ROJO,
+                            padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                            border_radius=12,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
             ),
-            interfaz.actividad,
+            interfaz.lista_pedidos_preparados,
         ],
         expand=True,
-        spacing=10,
+        spacing=8,
     )
+
+    tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=True)
+
+    # El usuario Master no gestiona ni visualiza pedidos operativos (Segregación SoD)
+    if es_master:
+        return tarjeta_der
+
+    tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=True)
+
     if interfaz.es_pantalla_movil:
         return ft.Column(
             [
-                interfaz.tarjeta(contenido_informes),
-                interfaz.tarjeta(contenido_actividad),
+                tarjeta_izq,
+                tarjeta_der,
             ],
             spacing=12,
         )
     return ft.Row(
         [
-            interfaz.tarjeta(contenido_informes, expand=True),
-            interfaz.tarjeta(contenido_actividad, expand=True),
+            tarjeta_izq,
+            tarjeta_der,
         ],
         spacing=12,
         expand=True,

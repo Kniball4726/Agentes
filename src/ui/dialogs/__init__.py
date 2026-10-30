@@ -50,6 +50,7 @@ from .dlg_stock_ops import (
     mostrar_comparativa_stock_fisico_admin,
 )
 from .dlg_inventario_vivo import mostrar_dialogo_inventario_vivo
+from .dlg_command_palette import mostrar_command_palette
 
 __all__ = [
     # Auth & Profile
@@ -98,4 +99,5 @@ __all__ = [
     "mostrar_stock_fisico_operario",
     "mostrar_comparativa_stock_fisico_admin",
     "mostrar_dialogo_inventario_vivo",
+    "mostrar_command_palette",
 ]

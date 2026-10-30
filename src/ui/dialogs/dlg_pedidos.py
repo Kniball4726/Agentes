@@ -474,6 +474,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 archivo_hash=hash_comprobante,
             )
             interfaz.actualizar_listas()
+            interfaz.reproducir_sonido("exito")
             print(f"[PEDIDO REGISTRADO] Remito/Factura: {remito} | Pedido: {num_ped} | Cliente: {cli} | Descontados: {resumen_items} | Retiro: {f_retiro}")
 
             # Buscar el pedido recién registrado para ofrecer imprimir rótulos o avisar quiebre
@@ -530,11 +531,21 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                         ),
                         actions=[
                             ft.Button(
-                                f"Imprimir Rótulos A4 ({bultos_val} bultos)",
+                                f"Rótulos A4 ({bultos_val} b)",
                                 icon=ft.Icons.PRINT,
                                 bgcolor=ROJO,
                                 color=ft.Colors.WHITE,
                                 on_click=imprimir_rotulos_directo,
+                            ),
+                            ft.Button(
+                                "Rótulo Térmico Rollo",
+                                icon=ft.Icons.LABEL,
+                                bgcolor=ft.Colors.PURPLE_700,
+                                color=ft.Colors.WHITE,
+                                on_click=lambda _e, ped=pedido_reciente: (
+                                    interfaz.page.pop_dialog(),
+                                    interfaz.imprimir_rotulos_termicos_pedido(ped)
+                                ),
                             ),
                             interfaz.boton_dialogo("Listo / Continuar", cerrar_exito),
                         ],
@@ -543,7 +554,60 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             except Exception as ex_post:
                 print(f"[AVISO] Error al mostrar diálogo posterior: {ex_post}")
 
-        await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_descuento_pedido)
+        async def iniciar_procesamiento() -> None:
+            try:
+                sm_cls = _get_stock_manager_cls()
+                sm_sim = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
+                ag_sim = AgenteRemitosStock(stock_manager=sm_sim)
+                if tipo_archivo == "pdf":
+                    rep_sim = ag_sim.ejecutar(rutas_pdf=[archivo_path], carpeta_descuentos=interfaz.menu.carpeta_descuentos, simulacion=True, guardar_archivo=False)
+                else:
+                    rep_sim = ag_sim.ejecutar(rutas_canjes=[archivo_path], carpeta_descuentos=interfaz.menu.carpeta_descuentos, simulacion=True, guardar_archivo=False)
+
+                quiebres = [d for d in rep_sim.reporte_stock.descuentos_aplicados if d.stock_nuevo <= 0]
+                if quiebres and interfaz.page:
+                    filas_q = [
+                        ft.Text(f"• [{d.codigo}] {d.nombre_producto}: Stock actual {d.stock_original} → Descuenta {d.cantidad_descontada} → Quedará en {d.stock_nuevo} un.", size=11, color=ft.Colors.RED_400, weight=ft.FontWeight.W_500)
+                        for d in quiebres
+                    ]
+                    async def autorizar_y_seguir(_e):
+                        interfaz.page.pop_dialog()
+                        await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_descuento_pedido)
+
+                    dlg_prev = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_400), ft.Text("Alerta Preventiva de Stock Insuficiente")]),
+                        content=ft.Container(
+                            width=480,
+                            content=ft.Column(
+                                [
+                                    ft.Text(f"El comprobante '{remito}' contiene {len(quiebres)} artículo(s) que dejarán el inventario en quiebre o saldo negativo:", size=12, color=interfaz.texto),
+                                    ft.Container(
+                                        content=ft.ListView(filas_q, height=85, spacing=3),
+                                        bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.RED_50,
+                                        padding=8,
+                                        border_radius=6,
+                                    ),
+                                    ft.Text("¿Deseas autorizar el descuento de todos modos o apartar el comprobante para revisión?", size=12, color=interfaz.secundario),
+                                ],
+                                tight=True,
+                                spacing=8,
+                            ),
+                        ),
+                        actions=[
+                            ft.Button("Autorizar y Descontar", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=autorizar_y_seguir),
+                            interfaz.boton_dialogo("Cancelar y Revisar", lambda _e: interfaz.page.pop_dialog()),
+                        ],
+                    )
+                    interfaz.reproducir_sonido("error")
+                    interfaz.page.show_dialog(dlg_prev)
+                    return
+            except Exception as e_sim:
+                print(f"[SIMULACION PREVENTIVA] Omitida: {e_sim}")
+
+            await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_descuento_pedido)
+
+        await iniciar_procesamiento()
 
     dialogo = ft.AlertDialog(
         modal=True,
@@ -685,9 +749,14 @@ def mostrar_dialogo_editar_pedido(
     pedido: Pedido,
     al_final: Callable[[], None] | None = None,
 ) -> None:
-    """Abre el diálogo para modificar los datos de un pedido existente."""
-    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador", "master"):
-        interfaz.notificar("No tienes permisos suficientes para modificar pedidos.")
+    """Abre el diálogo para modificar los datos de un pedido existente.
+    
+    Por regla operativa y segregación de funciones, la modificación de pedidos
+    es exclusiva de los operarios de depósito para evitar conflictos de concurrencia
+    con la supervisión de administradores o auditoría master.
+    """
+    if interfaz.usuario_actual is None or interfaz.usuario_actual.role != "operador":
+        interfaz.notificar("La modificación de pedidos es una función exclusiva del rol Operador de depósito.")
         return
 
     cliente_input = ft.TextField(
@@ -718,6 +787,12 @@ def mostrar_dialogo_editar_pedido(
         label="Fecha de Retiro / Despacho (opcional)",
         value=str(getattr(pedido, "fecha_retiro", "") or ""),
         hint_text="ej: 26/10/2026",
+        dense=True,
+    )
+    numero_guia_input = ft.TextField(
+        label="N° de Guía / Tracking del Transporte (opcional)",
+        value=str(getattr(pedido, "numero_guia", "") or ""),
+        hint_text="ej: TRK-987654 o 00012345678",
         dense=True,
     )
     error_msg = ft.Text("", color=ft.Colors.RED_400, size=11, visible=False)
@@ -756,6 +831,7 @@ def mostrar_dialogo_editar_pedido(
                 logistica=log_val,
                 fecha_retiro=ret_val,
                 usuario=usr,
+                numero_guia=(numero_guia_input.value or "").strip(),
             )
             interfaz.page.pop_dialog()
             interfaz.notificar(f"Pedido #{pedido.nota_pedido} actualizado correctamente.")
@@ -790,6 +866,7 @@ def mostrar_dialogo_editar_pedido(
                     bultos_input,
                     logistica_dropdown,
                     fecha_retiro_input,
+                    numero_guia_input,
                     error_msg,
                 ],
                 tight=True,
@@ -810,7 +887,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
     al_final: Callable[[], None] | None = None,
 ) -> None:
     """Abre el diálogo para desarmar un pedido y reincorporar sus artículos al inventario."""
-    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador", "master"):
+    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador"):
         interfaz.notificar("No tienes permisos suficientes para desarmar pedidos.")
         return
 

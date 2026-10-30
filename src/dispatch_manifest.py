@@ -313,14 +313,19 @@ def generar_hoja_ruta_pdf(
         for idx, ped in enumerate(peds, start=1):
             bg_color = colors.HexColor("#f8fafc") if idx % 2 == 0 else colors.white
             f_retiro = ped.fecha_retiro.strip() if ped.fecha_retiro else "Inmediato"
-            remito_txt = ped.nota_pedido.strip()
+            remito_base = escape(ped.nota_pedido.strip())
+            n_guia = getattr(ped, "numero_guia", "") or ""
+            if n_guia:
+                remito_txt = f"<b>{remito_base}</b><br/><font size=6 color='#64748b'>Guía: {escape(n_guia.strip())}</font>"
+            else:
+                remito_txt = f"<b>{remito_base}</b>"
             cliente_txt = ped.cliente.strip()
             armador_txt = ped.armador.strip()
 
             filas_tabla.append(
                 [
                     Paragraph(str(idx), estilo_td_center),
-                    Paragraph(f"<b>{escape(remito_txt)}</b>", estilo_td),
+                    Paragraph(remito_txt, estilo_td),
                     Paragraph(escape(cliente_txt), estilo_td),
                     Paragraph(f"<b>{ped.bultos}</b>", estilo_td_center),
                     Paragraph(escape(f_retiro), estilo_td_center),

@@ -37,11 +37,31 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
         dense=True,
     )
 
-    def guardar_cfg_ext(_ev: ft.Event) -> None:
-        guardar_config_backup(input_carpeta_ext.value or "")
-        msg_bk.value = "✅ Carpeta secundaria guardada."
-        msg_bk.color = ft.Colors.GREEN_400
-        interfaz.page.update()
+    def probar_y_guardar_cfg_ext(_ev: ft.Event) -> None:
+        val = (input_carpeta_ext.value or "").strip()
+        if not val:
+            guardar_config_backup("")
+            msg_bk.value = "ℹ️ Carpeta secundaria desactivada (respaldos solo en data/backups)."
+            msg_bk.color = interfaz.secundario
+            if interfaz.page:
+                interfaz.page.update()
+            return
+        try:
+            p = Path(val)
+            p.mkdir(parents=True, exist_ok=True)
+            test_file = p / "_test_perm.tmp"
+            test_file.write_text("ok", encoding="utf-8")
+            test_file.unlink(missing_ok=True)
+            guardar_config_backup(val)
+            msg_bk.value = f"✅ Espejo verificado con éxito en: {val}"
+            msg_bk.color = ft.Colors.GREEN_400
+            interfaz.reproducir_sonido("exito")
+        except Exception as ex_e:
+            msg_bk.value = f"❌ Error de acceso a carpeta espejo: {ex_e}"
+            msg_bk.color = ft.Colors.RED_400
+            interfaz.reproducir_sonido("error")
+        if interfaz.page:
+            interfaz.page.update()
 
     def ejecutar_backup(_ev: ft.Event) -> None:
         guardar_config_backup(input_carpeta_ext.value or "")
@@ -56,6 +76,7 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
                 accion="BACKUP_MANUAL",
                 detalle=f"Respaldo manual completo generado: {ruta_zip.name}",
             )
+            interfaz.reproducir_sonido("exito")
             interfaz.notificar(f"Copia de seguridad generada con éxito:\n{ruta_zip.name}")
             interfaz.abrir_carpeta_informe(ruta_zip)
         except Exception as err:
@@ -116,10 +137,11 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
                     ft.Row(
                         [
                             input_carpeta_ext,
-                            ft.IconButton(
-                                icon=ft.Icons.SAVE_AS,
-                                tooltip="Guardar carpeta secundaria",
-                                on_click=guardar_cfg_ext,
+                            ft.Button(
+                                "Probar y Guardar Espejo",
+                                icon=ft.Icons.CLOUD_SYNC,
+                                tooltip="Verifica permisos y activa el respaldo en espejo hacia red/nube",
+                                on_click=probar_y_guardar_cfg_ext,
                             ),
                         ],
                         spacing=6,

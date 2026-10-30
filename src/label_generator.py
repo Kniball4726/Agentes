@@ -301,7 +301,7 @@ def _construir_tarjeta_etiqueta(
 def generar_etiquetas_bultos_pdf(
     pedido: Pedido,
     carpeta_destino: Path,
-    llenar_hoja: bool = True,
+    llenar_hoja: bool = False,
 ) -> Path:
     """Genera el PDF con las etiquetas de todos los bultos de un pedido.
     
@@ -404,7 +404,7 @@ def generar_etiquetas_bultos_pdf(
 def generar_etiquetas_lote_pedidos_pdf(
     pedidos: list[Pedido],
     carpeta_destino: Path,
-    llenar_hoja: bool = True,
+    llenar_hoja: bool = False,
 ) -> Path:
     """Genera un PDF combinando los rotulos de multiples pedidos en hojas A4 optimizadas (10 por hoja).
     
@@ -499,6 +499,247 @@ def generar_etiquetas_lote_pedidos_pdf(
         rightMargin=0.6 * cm,
         topMargin=0.6 * cm,
         bottomMargin=0.6 * cm,
+    )
+    doc.build(story)
+    return ruta_pdf
+
+
+def generar_etiquetas_termicas_pdf(
+    pedido: Pedido,
+    carpeta_destino: Path | None = None,
+    tamano_mm: tuple[float, float] = (100.0, 150.0),
+    fecha_hora: datetime | None = None,
+) -> Path:
+    """Genera rótulos de despacho en formato continuo para impresoras térmicas (Zebra, Xprinter).
+    
+    Cada bulto del pedido ocupa exactamente 1 página individual del PDF con dimensiones exactas
+    (por defecto 100mm x 150mm / 4"x6", o personalizable), permitiendo impresión continua sin cortes.
+    """
+    if carpeta_destino is None:
+        raiz = Path(__file__).resolve().parent.parent
+        carpeta_destino = raiz / "Descuentos" / "Rotulos"
+    carpeta_destino.mkdir(parents=True, exist_ok=True)
+
+    dt = fecha_hora or datetime.now()
+    fecha_emision = dt.strftime("%d/%m/%Y")
+    f_ret = pedido.fecha_retiro.strip() if getattr(pedido, "fecha_retiro", "") else fecha_emision
+
+    nota_segura = "".join(c for c in pedido.nota_pedido if c.isalnum() or c in ("-", "_")).strip()
+    ruta_pdf = carpeta_destino / f"Rotulo_Termico_{nota_segura}.pdf"
+
+    ancho_pt = (tamano_mm[0] / 10.0) * cm
+    alto_pt = (tamano_mm[1] / 10.0) * cm
+    margen_pt = 0.4 * cm
+    ancho_util = ancho_pt - (margen_pt * 2)
+
+    styles = getSampleStyleSheet()
+
+    total_bultos = max(1, int(pedido.bultos))
+    story: list = []
+
+    for bulto_idx in range(1, total_bultos + 1):
+        # 1. Cabecera Térmica: Identificador de comprobante
+        estilo_hdr_izq = ParagraphStyle(
+            f"Term_HdrI_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=12,
+            textColor=colors.HexColor("#dc2626"),
+        )
+        estilo_hdr_der = ParagraphStyle(
+            f"Term_HdrD_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=12,
+            alignment=2,
+            textColor=colors.HexColor("#0f172a"),
+        )
+        t_header = Table(
+            [
+                [
+                    Paragraph("RÓTULO DE DESPACHO", estilo_hdr_izq),
+                    Paragraph(f"Remito: <b>{escape(pedido.nota_pedido)}</b>", estilo_hdr_der),
+                ]
+            ],
+            colWidths=[ancho_util * 0.5, ancho_util * 0.5],
+        )
+        t_header.setStyle(
+            TableStyle(
+                [
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+
+        # 2. Tarjeta Destinatario / Cliente (Grande y destacado)
+        num_ped = str(getattr(pedido, "numero_pedido", "") or "").strip()
+        if num_ped:
+            if not re.search(r"\b(nro|n°|nº|numero)\b", num_ped, re.IGNORECASE):
+                sufijo_ped = f"Nro {num_ped}"
+            else:
+                sufijo_ped = num_ped
+            cli_txt = f"{pedido.cliente.strip()} {sufijo_ped}"
+        else:
+            cli_txt = pedido.cliente.strip()
+
+        estilo_cli_lbl = ParagraphStyle(
+            f"Term_CliLbl_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            leading=9,
+            alignment=1,
+            textColor=colors.HexColor("#64748b"),
+        )
+        estilo_cli_val = ParagraphStyle(
+            f"Term_CliVal_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=15,
+            leading=18,
+            alignment=1,
+            textColor=colors.HexColor("#0f172a"),
+        )
+        t_cliente = Table(
+            [
+                [Paragraph("DESTINATARIO / CLIENTE", estilo_cli_lbl)],
+                [Paragraph(escape(cli_txt), estilo_cli_val)],
+            ],
+            colWidths=[ancho_util],
+        )
+        t_cliente.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                    ("BOX", (0, 0), (-1, -1), 1.2, colors.HexColor("#94a3b8")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+
+        # 3. Badge Gigante de Bulto: BULTO X DE Y
+        estilo_bulto_txt = ParagraphStyle(
+            f"Term_BultoTxt_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=20,
+            leading=23,
+            alignment=1,
+            textColor=colors.white,
+        )
+        t_bulto = Table(
+            [[Paragraph(f"BULTO {bulto_idx} DE {total_bultos}", estilo_bulto_txt)]],
+            colWidths=[ancho_util],
+        )
+        t_bulto.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#dc2626")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]
+            )
+        )
+
+        # 4. Datos Logísticos y N° de Guía
+        n_guia = getattr(pedido, "numero_guia", "") or ""
+        guia_txt = f"<br/><b>N° DE GUÍA / TRACKING:</b> <font color='#dc2626'>{escape(n_guia)}</font>" if n_guia else ""
+        
+        info_logistica_txt = (
+            f"<b>TRANSPORTE / VÍA:</b> {escape(pedido.logistica)}<br/>"
+            f"<b>ARMADOR:</b> {escape(pedido.armador)}  |  <b>FECHA:</b> {f_ret}"
+            f"{guia_txt}"
+        )
+        estilo_log_info = ParagraphStyle(
+            f"Term_LogInfo_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#1e293b"),
+        )
+        t_info = Table(
+            [[Paragraph(info_logistica_txt, estilo_log_info)]],
+            colWidths=[ancho_util],
+        )
+        t_info.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+
+        # 5. Código QR de gran formato (3.5 cm)
+        guia_part = f"|GUIA:{n_guia}" if n_guia else ""
+        qr_payload = (
+            f"REMITO:{pedido.nota_pedido}|"
+            f"CLIENTE:{pedido.cliente}|"
+            f"BULTO:{bulto_idx}/{total_bultos}|"
+            f"LOGISTICA:{pedido.logistica}"
+            f"{guia_part}"
+        )
+        qr_draw = _crear_qr_drawing(qr_payload, tamano_cm=3.6)
+        estilo_pie_qr = ParagraphStyle(
+            f"Term_PieQR_{bulto_idx}",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=7,
+            leading=9,
+            alignment=1,
+            textColor=colors.HexColor("#64748b"),
+        )
+        t_qr = Table(
+            [
+                [qr_draw],
+                [Paragraph("Escaneá con la app para control de despacho en depósito", estilo_pie_qr)],
+            ],
+            colWidths=[ancho_util],
+        )
+        t_qr.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]
+            )
+        )
+
+        story.append(t_header)
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(t_cliente)
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(t_bulto)
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(t_info)
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(t_qr)
+
+        if bulto_idx < total_bultos:
+            story.append(PageBreak())
+
+    doc = SimpleDocTemplate(
+        str(ruta_pdf),
+        pagesize=(ancho_pt, alto_pt),
+        leftMargin=margen_pt,
+        rightMargin=margen_pt,
+        topMargin=margen_pt,
+        bottomMargin=margen_pt,
     )
     doc.build(story)
     return ruta_pdf

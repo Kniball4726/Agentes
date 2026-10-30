@@ -67,11 +67,20 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
         ],
     )
 
+    boton_buscar = ft.IconButton(
+        icon=ft.Icons.SEARCH,
+        tooltip="Búsqueda Rápida Global (Ctrl + K o F2)",
+        icon_color=ft.Colors.WHITE,
+        bgcolor=ft.Colors.BLUE_GREY_700 if not interfaz.modo_oscuro else interfaz.fondo_acento,
+        on_click=interfaz.mostrar_command_palette,
+    )
+
     fila_acciones: list[ft.Control] = []
     if interfaz.usuario_actual.role == "administrador":
         fila_acciones.append(interfaz.contenedor_notificaciones)
     fila_acciones.extend(
         [
+            boton_buscar,
             boton_tema,
             menu_usuario,
             interfaz.boton(

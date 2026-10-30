@@ -42,7 +42,7 @@ def calcular_hash_archivo(ruta_o_bytes: Path | bytes | str) -> str:
 
 
 ESTADOS_DESPACHO: tuple[str, ...] = ("armado", "despachado", "entregado")
-_COLUMNAS_DESPACHO = "estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por"
+_COLUMNAS_DESPACHO = "numero_guia, estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por"
 
 
 class OrderStoreError(Exception):
@@ -101,6 +101,7 @@ class Pedido:
     archivo_descuento: str = ""
     cierre_id: int | None = None
     archivo_hash: str = ""
+    numero_guia: str = ""
     estado_despacho: str = "armado"
     despachado_at: str = ""
     despachado_por: str = ""
@@ -186,7 +187,8 @@ class OrderStore:
                     fecha_retiro TEXT NOT NULL DEFAULT '',
                     archivo_descuento TEXT NOT NULL DEFAULT '',
                     cierre_id INTEGER DEFAULT NULL,
-                    archivo_hash TEXT NOT NULL DEFAULT ''
+                    archivo_hash TEXT NOT NULL DEFAULT '',
+                    numero_guia TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -261,6 +263,9 @@ class OrderStore:
             if "archivo_hash" not in columnas_existentes:
                 connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)")
+            if "numero_guia" not in columnas_existentes:
+                connection.execute("ALTER TABLE pedidos ADD COLUMN numero_guia TEXT NOT NULL DEFAULT ''")
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_numero_guia ON pedidos(numero_guia)")
 
             columnas_cierres = {
                 r["name"] for r in connection.execute("PRAGMA table_info(cierres_jornada)").fetchall()
@@ -340,6 +345,7 @@ class OrderStore:
             if "archivo_hash" not in columnas_actuales:
                 connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
             for columna, definicion in (
+                ("numero_guia", "TEXT NOT NULL DEFAULT ''"),
                 ("estado_despacho", "TEXT NOT NULL DEFAULT 'armado'"),
                 ("despachado_at", "TEXT NOT NULL DEFAULT ''"),
                 ("despachado_por", "TEXT NOT NULL DEFAULT ''"),
@@ -651,6 +657,7 @@ class OrderStore:
         archivo_descuento: str = "",
         items: list[tuple[str, str, int]] | None = None,
         archivo_hash: str = "",
+        numero_guia: str = "",
     ) -> Pedido:
         nota_pedido = nota_pedido.strip()
         numero_pedido = numero_pedido.strip()
@@ -682,8 +689,8 @@ class OrderStore:
                     INSERT INTO pedidos (
                         nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                         tipo_archivo, nombre_archivo, agregado, articulos_descontados, resumen_items,
-                        fecha_retiro, archivo_descuento, archivo_hash
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         nota_pedido,
@@ -700,6 +707,7 @@ class OrderStore:
                         fecha_retiro,
                         archivo_descuento,
                         archivo_hash,
+                        (numero_guia or "").strip(),
                     ),
                 )
                 nuevo_id = cursor.lastrowid
@@ -717,7 +725,7 @@ class OrderStore:
                     """
                     SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                            tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                           resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                           resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                     FROM pedidos WHERE id = ?
                     """,
@@ -739,6 +747,7 @@ class OrderStore:
         claves = row.keys()
         c_id = row["cierre_id"] if "cierre_id" in claves else None
         hash_val = row["archivo_hash"] if "archivo_hash" in row.keys() and row["archivo_hash"] else ""
+        guia_val = (row["numero_guia"] if "numero_guia" in claves else "") or ""
         return Pedido(
             id=row["id"],
             nota_pedido=row["nota_pedido"],
@@ -758,6 +767,7 @@ class OrderStore:
             archivo_descuento=row["archivo_descuento"] or "",
             cierre_id=c_id,
             archivo_hash=hash_val,
+            numero_guia=guia_val,
             estado_despacho=(row["estado_despacho"] if "estado_despacho" in claves else "armado") or "armado",
             despachado_at=(row["despachado_at"] if "despachado_at" in claves else "") or "",
             despachado_por=(row["despachado_por"] if "despachado_por" in claves else "") or "",
@@ -775,7 +785,7 @@ class OrderStore:
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                        resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash,
+                       cierre_id, archivo_hash, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE archivo_hash = ? AND estado != 'anulado'
@@ -793,7 +803,7 @@ class OrderStore:
                 """
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 ORDER BY id DESC
@@ -809,7 +819,7 @@ class OrderStore:
                 """
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id IS NULL AND estado = 'descontado'
@@ -952,7 +962,7 @@ class OrderStore:
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica,
                        armador, tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                        resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash,
+                       cierre_id, archivo_hash, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id = ?
@@ -1012,6 +1022,7 @@ class OrderStore:
         logistica: str | None = None,
         fecha_retiro: str | None = None,
         usuario: str = "Sistema",
+        numero_guia: str | None = None,
     ) -> Pedido:
         """Actualiza la información de cabecera de un pedido y registra auditoría."""
         with self._connect() as connection:
@@ -1058,6 +1069,10 @@ class OrderStore:
         if nueva_fecha_retiro != pedido_actual.fecha_retiro:
             cambios.append(f"Fecha Retiro: '{pedido_actual.fecha_retiro}' → '{nueva_fecha_retiro}'")
 
+        nuevo_numero_guia = pedido_actual.numero_guia if numero_guia is None else numero_guia.strip()
+        if nuevo_numero_guia != pedido_actual.numero_guia:
+            cambios.append(f"N° Guía: '{pedido_actual.numero_guia}' → '{nuevo_numero_guia}'")
+
         if not cambios:
             return pedido_actual
 
@@ -1065,10 +1080,10 @@ class OrderStore:
             connection.execute(
                 """
                 UPDATE pedidos
-                SET cliente = ?, numero_pedido = ?, bultos = ?, logistica = ?, fecha_retiro = ?
+                SET cliente = ?, numero_pedido = ?, bultos = ?, logistica = ?, fecha_retiro = ?, numero_guia = ?
                 WHERE id = ?
                 """,
-                (nuevo_cliente, nuevo_num_pedido, nuevo_bultos, nueva_logistica, nueva_fecha_retiro, pedido_id),
+                (nuevo_cliente, nuevo_num_pedido, nuevo_bultos, nueva_logistica, nueva_fecha_retiro, nuevo_numero_guia, pedido_id),
             )
 
         if nuevo_cliente:
@@ -1192,6 +1207,27 @@ class OrderStore:
                 (pedido_id,),
             ).fetchone()
         return self._map_pedido(fila)
+
+    def avanzar_estado_lote(
+        self,
+        pedido_ids: list[int],
+        nuevo_estado: str,
+        usuario: str = "Operador",
+    ) -> int:
+        """Avanza en lote el estado de despacho de múltiples pedidos. Retorna la cantidad actualizada."""
+        if not pedido_ids:
+            return 0
+        nuevo = nuevo_estado.strip().lower()
+        if nuevo not in ESTADOS_DESPACHO:
+            raise OrderStoreError(f"Estado de despacho inválido: '{nuevo_estado}'")
+        actualizados = 0
+        for pid in pedido_ids:
+            try:
+                self.actualizar_estado_despacho(pid, nuevo, usuario=usuario, permitir_retroceso=True)
+                actualizados += 1
+            except Exception:
+                continue
+        return actualizados
 
     def avanzar_estado_por_codigo(
         self,

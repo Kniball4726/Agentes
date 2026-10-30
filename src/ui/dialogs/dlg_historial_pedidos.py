@@ -112,6 +112,10 @@ def abrir_descuento_pedido(interfaz: Any, ped: Pedido) -> None:
 
 def mostrar_detalle_pedido_modal(interfaz: Any, ped: Pedido) -> None:
     """Muestra un modal detallado del pedido con opciones de consulta y reimpresión de comprobante y rótulos."""
+    if interfaz.usuario_actual and interfaz.usuario_actual.role == "master":
+        interfaz.notificar("El usuario Master no tiene acceso a la visualización de pedidos operativos.")
+        return
+
     ruta_comprobante = buscar_archivo_comprobante(ped)
     ruta_descuento = buscar_archivo_descuento(ped)
 
@@ -278,7 +282,7 @@ def mostrar_detalle_pedido_modal(interfaz: Any, ped: Pedido) -> None:
 
 def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) -> None:
     """Ventana completa con buscador y lista histórica de pedidos del depósito."""
-    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador", "master"):
+    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador"):
         interfaz.notificar("No tienes permisos suficientes para acceder al historial de pedidos.")
         return
 
@@ -324,6 +328,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     texto_contador = ft.Text(f"Total: {len(pedidos)} pedidos" if pedidos else "", size=11, color=interfaz.secundario)
     pedidos_visibles: list[Pedido] = []
+    pedidos_seleccionados: set[int] = set()
     filtro_rapido_activo = "todos"  # "todos", "hoy", "pendientes", "despachados"
 
     def recargar_y_actualizar() -> None:
@@ -539,18 +544,36 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                 )
                 boton_rotulo_hist = ft.IconButton(
                     icon=ft.Icons.QR_CODE_2,
-                    tooltip="Imprimir Rótulos de Bultos con QR",
+                    tooltip="Imprimir Rótulos A4 de Bultos con QR",
                     icon_color=ft.Colors.AMBER_700 if not interfaz.modo_oscuro else ft.Colors.AMBER_400,
                     on_click=lambda _e, ped=p: interfaz.imprimir_rotulos_pedido(ped),
+                )
+                boton_rotulo_termico = ft.IconButton(
+                    icon=ft.Icons.LABEL,
+                    tooltip="Imprimir Rótulo Térmico Continuo (100x150 mm)",
+                    icon_color=ft.Colors.PURPLE_400 if interfaz.modo_oscuro else ft.Colors.PURPLE_700,
+                    on_click=lambda _e, ped=p: interfaz.imprimir_rotulos_termicos_pedido(ped),
+                )
+                def _enviar_wa(ped_obj: Pedido) -> None:
+                    g_msg = f" N° Guía: {ped_obj.numero_guia}." if getattr(ped_obj, 'numero_guia', '') else ''
+                    msg = f"Hola {ped_obj.cliente}, tu pedido #{ped_obj.numero_pedido or ped_obj.nota_pedido} figura como '{ped_obj.estado_despacho.upper()}' ({ped_obj.bultos} bulto/s por {ped_obj.logistica}).{g_msg}"
+                    import urllib.parse, webbrowser
+                    webbrowser.open(f"https://web.whatsapp.com/send?text={urllib.parse.quote(msg)}")
+
+                boton_whatsapp_ped = ft.IconButton(
+                    icon=ft.Icons.CHAT,
+                    tooltip="Notificar estado y guía por WhatsApp Web al cliente",
+                    icon_color=ft.Colors.GREEN_400,
+                    on_click=lambda _e, ped=p: _enviar_wa(ped),
                 )
                 boton_editar_hist = (
                     ft.IconButton(
                         icon=ft.Icons.EDIT_OUTLINED,
-                        tooltip="Modificar datos del pedido",
+                        tooltip="Modificar datos del pedido (Exclusivo Operador)",
                         icon_color=ft.Colors.BLUE_400 if interfaz.modo_oscuro else ft.Colors.BLUE_700,
                         on_click=lambda _e, ped=p: interfaz.mostrar_dialogo_editar_pedido(ped, al_final=recargar_y_actualizar),
                     )
-                    if (interfaz.usuario_actual and interfaz.usuario_actual.role in ("operador", "administrador") and p.estado != "anulado")
+                    if (interfaz.usuario_actual and interfaz.usuario_actual.role == "operador" and p.estado != "anulado")
                     else ft.Container()
                 )
                 boton_desarmar_hist = (
@@ -638,6 +661,11 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                                     [
                                         ft.Row(
                                             [
+                                                ft.Checkbox(
+                                                    value=p.id in pedidos_seleccionados,
+                                                    tooltip="Seleccionar para despacho en lote",
+                                                    on_change=lambda e, pid=p.id: _toggle_sel(e, pid),
+                                                ),
                                                 ft.Icon(ft.Icons.RECEIPT_LONG, size=18, color=ROJO),
                                                 ft.Text(num_ped_txt, weight=ft.FontWeight.BOLD, size=14, color=interfaz.texto),
                                                 etiqueta_despacho,
@@ -707,6 +735,30 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                                             if getattr(p, "fecha_retiro", "")
                                             else []
                                         ),
+                                        *(
+                                            [
+                                                ft.Container(
+                                                    content=ft.Row(
+                                                        [
+                                                            ft.Icon(ft.Icons.CONFIRMATION_NUMBER_OUTLINED, size=12, color=ft.Colors.TEAL_400),
+                                                            ft.Text(
+                                                                f"Guía: {p.numero_guia}",
+                                                                size=11,
+                                                                weight=ft.FontWeight.BOLD,
+                                                                color=ft.Colors.TEAL_400,
+                                                            ),
+                                                        ],
+                                                        spacing=4,
+                                                    ),
+                                                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.TEAL_400),
+                                                    border=ft.Border.all(1, ft.Colors.with_opacity(0.4, ft.Colors.TEAL_400)),
+                                                    padding=ft.Padding.symmetric(horizontal=8, vertical=3),
+                                                    border_radius=6,
+                                                )
+                                            ]
+                                            if getattr(p, "numero_guia", "")
+                                            else []
+                                        ),
                                         ft.Row(
                                             [
                                                 ft.Icon(ft.Icons.ENGINEERING_OUTLINED, size=13, color=interfaz.secundario),
@@ -761,6 +813,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                                         ft.Row(
                                             [
                                                 boton_rotulo_hist,
+                                                boton_rotulo_termico,
+                                                boton_whatsapp_ped,
                                                 boton_imprimir_arch,
                                                 boton_detalle_modal,
                                                 boton_editar_hist,
@@ -781,6 +835,84 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                 )
         if interfaz.page:
             interfaz.page.update()
+
+    def _toggle_sel(e: ft.Event, pid: int) -> None:
+        if e.control.value:
+            pedidos_seleccionados.add(pid)
+        else:
+            pedidos_seleccionados.discard(pid)
+        _actualizar_barra_lote()
+
+    texto_lote_sel = ft.Text("0 seleccionados", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto)
+
+    def _actualizar_barra_lote() -> None:
+        c_sel = len(pedidos_seleccionados)
+        barra_lote.visible = c_sel > 0
+        texto_lote_sel.value = f"📦 {c_sel} pedido(s) seleccionado(s):"
+        if interfaz.page:
+            interfaz.page.update()
+
+    def _despachar_lote(st_nuevo: str) -> None:
+        if not pedidos_seleccionados:
+            return
+        usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+        try:
+            n_upd = interfaz.order_store.avanzar_estado_lote(
+                list(pedidos_seleccionados),
+                st_nuevo,
+                usuario=usr
+            )
+            pedidos_seleccionados.clear()
+            _actualizar_barra_lote()
+            interfaz.reproducir_sonido("exito")
+            interfaz.notificar(f"Se actualizaron {n_upd} pedido(s) a '{st_nuevo.upper()}'.")
+            recargar_y_actualizar()
+        except Exception as ex_l:
+            interfaz.reproducir_sonido("error")
+            interfaz.notificar(f"Error en despacho en lote: {ex_l}")
+
+    def _sel_todos_visibles(_e: ft.Event) -> None:
+        for p in pedidos_visibles:
+            if getattr(p, "estado", "") != "anulado":
+                pedidos_seleccionados.add(p.id)
+        _actualizar_barra_lote()
+        actualizar_vista(campo_busqueda.value or "")
+
+    def _desmarcar_todos(_e: ft.Event) -> None:
+        pedidos_seleccionados.clear()
+        _actualizar_barra_lote()
+        actualizar_vista(campo_busqueda.value or "")
+
+    barra_lote = ft.Container(
+        visible=False,
+        bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100,
+        border=ft.Border.all(1, ft.Colors.BLUE_GREY_700 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_300),
+        border_radius=8,
+        padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+        content=ft.Row(
+            [
+                texto_lote_sel,
+                ft.Button(
+                    "Despachar Seleccionados",
+                    icon=ft.Icons.LOCAL_SHIPPING,
+                    bgcolor=ft.Colors.BLUE_600,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda _e: _despachar_lote("despachado"),
+                ),
+                ft.Button(
+                    "Marcar Entregados",
+                    icon=ft.Icons.TASK_ALT,
+                    bgcolor=ft.Colors.GREEN_600,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda _e: _despachar_lote("entregado"),
+                ),
+                ft.TextButton("Desmarcar", on_click=_desmarcar_todos),
+            ],
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            wrap=True,
+        ),
+    )
 
     campo_busqueda = ft.TextField(
         hint_text="Buscar por cliente, remito / nota, N° pedido, fecha (DD/MM/AAAA) o armador...",
@@ -871,7 +1003,16 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                 spacing=6,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            fila_chips_filtro,
+            ft.Row(
+                [
+                    fila_chips_filtro,
+                    ft.TextButton("Seleccionar Visibles", icon=ft.Icons.CHECK_BOX_OUTLINED, on_click=_sel_todos_visibles),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                wrap=True,
+            ),
+            barra_lote,
         ],
         spacing=6,
     )

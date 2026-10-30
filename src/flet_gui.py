@@ -17,7 +17,7 @@ import weakref
 import webbrowser
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
 import openpyxl
@@ -58,7 +58,7 @@ from .email_sender import (
     obtener_config_email,
     probar_conexion_smtp,
 )
-from .label_generator import generar_etiquetas_bultos_pdf, generar_etiquetas_lote_pedidos_pdf
+from .label_generator import generar_etiquetas_bultos_pdf, generar_etiquetas_lote_pedidos_pdf, generar_etiquetas_termicas_pdf
 from .orders_store import (
     CierreJornada,
     ESTADOS_DESPACHO,
@@ -127,6 +127,7 @@ from .ui.dialogs import (
     mostrar_registro_auditoria,
     mostrar_stock_fisico_operario,
     mostrar_dialogo_inventario_vivo,
+    mostrar_command_palette,
 )
 from .ui.dialogs.dlg_archivo_historico import mostrar_dialogo_archivo_historico
 from .ui.dialogs.dlg_telegram import mostrar_dialogo_configuracion_telegram
@@ -257,6 +258,10 @@ class InterfazFlet:
         self.estado_tarea = ft.Text("Listo", color=self.secundario, size=12)
         self.lista_informes = ft.ListView(expand=True, spacing=4)
         self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
+        self.header_pedidos_fecha = ft.Text("Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto)
+        self.header_pedidos_subtitulo = ft.Text("0 pedidos preparados", size=11, color=self.secundario)
+        self.header_pedidos_bultos = ft.Text("0 bultos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+        self.lista_pedidos_preparados = ft.ListView(expand=True, spacing=6)
         self.conversacion = ft.ListView(expand=True, spacing=8, auto_scroll=True)
         self.entrada_chat = ft.TextField(
             hint_text="Escribe una consulta o /ayuda",
@@ -434,6 +439,7 @@ class InterfazFlet:
         self.page.theme = ft.Theme(color_scheme_seed=ROJO)
         if hasattr(self.page, "on_resize"):
             self.page.on_resize = self._al_redimensionar
+        self.page.on_keyboard_event = self._manejar_teclas_globales
         self._configurar_dialogos_adaptables()
 
     def mostrar_inicio_sesion(self, error: str = "") -> None:
@@ -1088,6 +1094,118 @@ class InterfazFlet:
             self.pendientes_texto.value = (
                 f"Jornada en curso: {total_descontados} pedido(s) descontado(s) · Archivados: {total_archivados} · Informes: {len(informes)}"
             )
+
+            # Actualizar tarjeta izquierda: Pedidos preparados en tiempo real (descendiente)
+            pedidos_pendientes_turno = self.order_store.listar_pedidos_pendientes_cierre()
+            # Orden descendiente (el más reciente primero)
+            pedidos_pendientes_turno.sort(key=lambda p: p.id, reverse=True)
+            total_bultos_turno = sum(p.bultos for p in pedidos_pendientes_turno)
+            fecha_hoy_str = datetime.now().strftime("%A %d/%m/%Y").capitalize()
+
+            self.header_pedidos_fecha.value = fecha_hoy_str
+            self.header_pedidos_subtitulo.value = (
+                f"{len(pedidos_pendientes_turno)} pedido(s) preparados en el turno actual"
+                if pedidos_pendientes_turno
+                else "Turno activo · Sin pedidos pendientes"
+            )
+            self.header_pedidos_bultos.value = f"📦 {total_bultos_turno} bultos preparados"
+
+            self.lista_pedidos_preparados.controls.clear()
+            if not pedidos_pendientes_turno:
+                self.lista_pedidos_preparados.controls.append(
+                    ft.Container(
+                        padding=20,
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Column(
+                            [
+                                ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=32, color=ft.Colors.GREEN_400),
+                                ft.Text("No hay pedidos pendientes de cierre.", size=12, color=self.secundario),
+                                ft.Text("Los pedidos que cargues aparecerán aquí en tiempo real.", size=11, color=self.secundario),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=4,
+                        ),
+                    )
+                )
+            else:
+                for ped in pedidos_pendientes_turno:
+                    hora_c = ped.created_at[11:16] if ped.created_at and len(ped.created_at) >= 16 else ""
+                    num_p = f"Pedido #{ped.numero_pedido} · " if getattr(ped, "numero_pedido", "") else ""
+                    titulo_card = f"{num_p}Remito: {ped.nota_pedido}"
+
+                    def abrir_modificar_o_ver(p_obj=ped):
+                        if self.usuario_actual and self.usuario_actual.role == "operador":
+                            self.mostrar_dialogo_editar_pedido(p_obj, al_final=self.actualizar_listas)
+                        elif self.usuario_actual and self.usuario_actual.role == "administrador":
+                            self.mostrar_detalle_pedido_modal(p_obj)
+
+                    card_pedido = ft.Container(
+                        bgcolor=self.superficie,
+                        border=ft.Border.all(1, self.borde),
+                        border_radius=8,
+                        padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+                        ink=True,
+                        tooltip="Clic para abrir y modificar este pedido" if (self.usuario_actual and self.usuario_actual.role == "operador") else "Clic para ver detalle del pedido",
+                        on_click=lambda _e, p_obj=ped: abrir_modificar_o_ver(p_obj),
+                        content=ft.Row(
+                            [
+                                ft.Row(
+                                    [
+                                        ft.Container(
+                                            content=ft.Icon(ft.Icons.INVENTORY_2, size=18, color=ROJO),
+                                            bgcolor=ft.Colors.RED_50,
+                                            padding=6,
+                                            border_radius=6,
+                                        ),
+                                        ft.Column(
+                                            [
+                                                ft.Row(
+                                                    [
+                                                        ft.Text(titulo_card, weight=ft.FontWeight.BOLD, size=12, color=self.texto),
+                                                        ft.Container(
+                                                            content=ft.Text(f"{ped.bultos} bulto(s)", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                                                            bgcolor=ft.Colors.BLUE_GREY_700,
+                                                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                                            border_radius=10,
+                                                        ),
+                                                    ],
+                                                    spacing=6,
+                                                ),
+                                                ft.Text(f"Cliente: {ped.cliente} · {ped.logistica}", size=11, color=self.secundario),
+                                                ft.Text(f"Artículos: {ped.resumen_items or f'{ped.articulos_descontados} un.'}", size=10, color=ft.Colors.GREEN_400),
+                                            ],
+                                            spacing=2,
+                                        ),
+                                    ],
+                                    spacing=8,
+                                    expand=True,
+                                ),
+                                ft.Column(
+                                    [
+                                        ft.Text(hora_c, size=10, color=self.secundario, weight=ft.FontWeight.W_500),
+                                        *(
+                                            [
+                                                ft.IconButton(
+                                                    icon=ft.Icons.EDIT_OUTLINED,
+                                                    icon_size=16,
+                                                    tooltip="Modificar pedido",
+                                                    icon_color=ft.Colors.BLUE_400,
+                                                    on_click=lambda _e, p_obj=ped: self.mostrar_dialogo_editar_pedido(p_obj, al_final=self.actualizar_listas),
+                                                )
+                                            ]
+                                            if (self.usuario_actual and self.usuario_actual.role == "operador")
+                                            else []
+                                        ),
+                                    ],
+                                    horizontal_alignment=ft.CrossAxisAlignment.END,
+                                    spacing=2,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    )
+                    self.lista_pedidos_preparados.controls.append(card_pedido)
             self.lista_informes.controls.clear()
             if not informes:
                 self.lista_informes.controls.append(
@@ -2019,7 +2137,77 @@ class InterfazFlet:
     ) -> None:
         mostrar_dialogo_formulario_producto(self, al_guardar)
 
-    def imprimir_rotulos_pedido(self, pedido: Pedido, llenar_hoja: bool = True) -> None:
+    def _manejar_teclas_globales(self, e: Any) -> None:
+        try:
+            k = (getattr(e, "key", "") or "").lower()
+            ctrl = getattr(e, "ctrl", False) or getattr(e, "meta", False)
+            if (k == "k" and ctrl) or k == "f2":
+                self.mostrar_command_palette()
+        except Exception:
+            pass
+
+    def reproducir_sonido(self, tipo: str = "exito") -> None:
+        """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
+        try:
+            if not self.page:
+                return
+            if tipo == "exito":
+                js = """
+                (() => {
+                    try {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(880, ctx.currentTime);
+                        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
+                        osc.start();
+                        osc.stop(ctx.currentTime + 0.14);
+                    } catch(e) {}
+                })()
+                """
+            else:
+                js = """
+                (() => {
+                    try {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const playTone = (freq, delay, dur) => {
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+                            gain.gain.setValueAtTime(0.18, ctx.currentTime + delay);
+                            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
+                            osc.start(ctx.currentTime + delay);
+                            osc.stop(ctx.currentTime + delay + dur);
+                        };
+                        playTone(280, 0, 0.15);
+                        playTone(200, 0.17, 0.18);
+                    } catch(e) {}
+                })()
+                """
+            if hasattr(self.page, "run_js"):
+                self.page.run_js(js)
+        except Exception:
+            pass
+
+    def mostrar_command_palette(self, _evento: ft.Event | None = None) -> None:
+        mostrar_command_palette(self, _evento)
+
+    def imprimir_rotulos_termicos_pedido(self, pedido: Pedido) -> None:
+        try:
+            ruta_pdf = generar_etiquetas_termicas_pdf(pedido, self.menu.carpeta_descuentos / "Rotulos")
+            self.abrir_informe(ruta_especifica=ruta_pdf)
+            self.notificar(f"Rótulo térmico para {pedido.bultos} bulto(s) generado con éxito ({ruta_pdf.name}).")
+        except Exception as error:
+            self.notificar(f"Error generando rótulo térmico: {error}")
+
+    def imprimir_rotulos_pedido(self, pedido: Pedido, llenar_hoja: bool = False) -> None:
         try:
             ruta_pdf = generar_etiquetas_bultos_pdf(pedido, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
             self.abrir_informe(ruta_especifica=ruta_pdf)
@@ -2027,7 +2215,7 @@ class InterfazFlet:
         except Exception as error:
             self.notificar(f"Error generando rótulos de bulto:\n{error}")
 
-    def imprimir_rotulos_lote(self, pedidos: list[Pedido], llenar_hoja: bool = True) -> None:
+    def imprimir_rotulos_lote(self, pedidos: list[Pedido], llenar_hoja: bool = False) -> None:
         try:
             pedidos_validos = [p for p in pedidos if getattr(p, "estado", "") != "anulado" and getattr(p, "bultos", 0) > 0]
             if not pedidos_validos:
