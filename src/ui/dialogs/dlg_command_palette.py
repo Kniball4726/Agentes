@@ -142,8 +142,21 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     )
                     for prod in productos_encontrados:
                         total_encontrados += 1
-                        stk_color = ft.Colors.GREEN_400 if prod.stock_actual > 5 else (ft.Colors.AMBER_400 if prod.stock_actual > 0 else ft.Colors.RED_400)
-                        loc_txt = f" · Ubic: {prod.ubicacion}" if getattr(prod, "ubicacion", "") else ""
+                        p_code = str(prod["code"] if hasattr(prod, "__getitem__") else getattr(prod, "codigo", getattr(prod, "code", "")))
+                        p_name = str(prod["name"] if hasattr(prod, "__getitem__") else getattr(prod, "descripcion", getattr(prod, "name", "")))
+                        p_stock = int(prod["stock"] if hasattr(prod, "__getitem__") else getattr(prod, "stock_actual", getattr(prod, "stock", 0)))
+                        p_ubic = str(prod["ubicacion"] if hasattr(prod, "__getitem__") else getattr(prod, "ubicacion", "") or "")
+
+                        stk_color = ft.Colors.GREEN_400 if p_stock > 5 else (ft.Colors.AMBER_400 if p_stock > 0 else ft.Colors.RED_400)
+                        loc_txt = f" · Ubic: {p_ubic}" if p_ubic else ""
+
+                        def copiar_y_notificar(cod_val=p_code):
+                            if hasattr(interfaz, "copiar_al_portapapeles"):
+                                interfaz.copiar_al_portapapeles(cod_val)
+                            elif hasattr(interfaz.page, "set_clipboard"):
+                                interfaz.page.set_clipboard(cod_val)
+                            interfaz.notificar(f"Código copiado al portapapeles: {cod_val}")
+
                         resultados_lista.controls.append(
                             ft.Container(
                                 bgcolor=interfaz.superficie,
@@ -151,24 +164,21 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                                 border_radius=8,
                                 padding=ft.Padding.symmetric(horizontal=10, vertical=7),
                                 ink=True,
-                                tooltip=f"Clic para copiar código [{prod.codigo}]",
-                                on_click=lambda _e, cod=prod.codigo: (
-                                    interfaz.page.set_clipboard(cod),
-                                    interfaz.notificar(f"Código copiado al portapapeles: {cod}")
-                                ),
+                                tooltip=f"Clic para copiar código [{p_code}]",
+                                on_click=lambda _e, cod=p_code: copiar_y_notificar(cod),
                                 content=ft.Row(
                                     [
                                         ft.Icon(ft.Icons.INVENTORY_2, size=18, color=ft.Colors.BLUE_400),
                                         ft.Column(
                                             [
-                                                ft.Text(f"[{prod.codigo}] {prod.descripcion}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                                ft.Text(f"Stock: {prod.stock_actual} {prod.unidad}{loc_txt}", size=10, color=stk_color),
+                                                ft.Text(f"[{p_code}] {p_name}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
+                                                ft.Text(f"Stock: {p_stock} un.{loc_txt}", size=10, color=stk_color),
                                             ],
                                             spacing=2,
                                             expand=True,
                                         ),
                                         ft.Container(
-                                            content=ft.Text(f"{prod.stock_actual} un.", size=10, weight=ft.FontWeight.BOLD, color=stk_color),
+                                            content=ft.Text(f"{p_stock} un.", size=10, weight=ft.FontWeight.BOLD, color=stk_color),
                                             bgcolor=ft.Colors.with_opacity(0.12, stk_color),
                                             padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                                             border_radius=4,

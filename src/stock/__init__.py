@@ -1,6 +1,6 @@
 """Módulo de gestión y dominio de stock, inventario y reportes."""
 
-from .models import RegistroDescuento, ReporteStock
+from .models import AlertaStock, RegistroDescuento, ReporteStock
 from .reports import (
     copiar_estilo_fila,
     guardar_informe_pdf,

@@ -1,6 +1,7 @@
 """Interfaz gráfica de escritorio para el agente de control de stock."""
 
 import contextlib
+from datetime import datetime
 import os
 import queue
 import subprocess
@@ -742,7 +743,7 @@ class InterfazGrafica:
         campos: dict[str, ttk.Entry] = {}
         etiquetas = (
             ("codigo", "Código del nuevo producto"),
-            ("nombre", "Nombre del producto"),0
+            ("nombre", "Nombre del producto"),
             ("referencia", "Código del producto anterior"),
             ("stock", "Stock inicial (opcional)"),
         )

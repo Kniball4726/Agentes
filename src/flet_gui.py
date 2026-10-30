@@ -1887,6 +1887,17 @@ class InterfazFlet:
         )
         self.page.show_dialog(dialogo)
 
+    def copiar_al_portapapeles(self, texto: str) -> None:
+        """Copia texto al portapapeles del cliente de forma segura."""
+        try:
+            if self.page:
+                cb = ft.Clipboard()
+                self.page.overlay.append(cb)
+                self.page.update()
+                cb.set(str(texto))
+        except Exception:
+            pass
+
     def ruta_informe(self) -> Path | None:
         if not self.exigir_roles(*USER_ROLES):
             return None

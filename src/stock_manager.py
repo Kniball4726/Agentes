@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 from .consolidator import ItemConsolidado
 from .product_store import ProductStore
 from .remito_parser import ResultadoRemito, normalizar_codigo
-from .stock.models import RegistroDescuento, ReporteStock
+from .stock.models import AlertaStock, RegistroDescuento, ReporteStock
 from .stock.reports import copiar_estilo_fila, guardar_informe_pdf, guardar_informe_xls
 from .stock.replenishment import generar_pedido_sugerido_fabrica_excel
 from .stock.physical_inventory import (

@@ -444,6 +444,37 @@ class ProductStore:
                 """
             ).fetchall()
 
+    def buscar_productos(self, termino: str, limite: int = 50) -> list[sqlite3.Row]:
+        """Busca productos por codigo, nombre o codigo de barras."""
+        termino = (termino or "").strip()
+        if not termino:
+            return self.list_products()[:limite]
+        patron = f"%{termino}%"
+        with closing(self._connect()) as connection:
+            return connection.execute(
+                """
+                SELECT
+                    product.code AS code,
+                    product.name AS name,
+                    product.stock AS stock,
+                    product.active AS active,
+                    product.stock_minimo AS stock_minimo,
+                    product.stock_maximo AS stock_maximo,
+                    product.stock_fisico AS stock_fisico,
+                    product.cod_barras AS cod_barras,
+                    product.ubicacion AS ubicacion,
+                    MIN(catalog_row.display_order) AS display_order
+                FROM products AS product
+                LEFT JOIN product_catalog_rows AS catalog_row
+                    ON catalog_row.product_code = product.code
+                WHERE product.code LIKE ? OR product.name LIKE ? OR product.cod_barras LIKE ?
+                GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico, product.cod_barras, product.ubicacion
+                ORDER BY display_order, product.code
+                LIMIT ?
+                """,
+                (patron, patron, patron, limite),
+            ).fetchall()
+
     def add_product_after(
         self,
         code: str,

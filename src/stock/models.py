@@ -1,7 +1,16 @@
 """Modelos de datos para el dominio de gestión de stock y reportes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
+
+
+@dataclass
+class AlertaStock:
+    """Representa una advertencia de stock o artículo no encontrado."""
+    codigo: str
+    descripcion: str
+    cantidad: int
+    motivo: str = ""
 
 
 @dataclass
@@ -22,6 +31,7 @@ class ReporteStock:
     descuentos_aplicados: List[RegistroDescuento]
     archivo_guardado: str
     archivo_pdf: Optional[str] = None
+    alertas: List[AlertaStock] = field(default_factory=list)
 
     @property
     def articulos_quiebre(self) -> List[RegistroDescuento]:
