@@ -143,8 +143,6 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("SISTEMA Y RESGUARDO", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
-                interfaz.boton("Archivado Histórico", ft.Icons.AUTO_DELETE, interfaz.mostrar_dialogo_archivo_historico),
-                interfaz.boton("Alertas Telegram", ft.Icons.SEND, interfaz.mostrar_configuracion_telegram),
 
                 # 6. Gestión de Usuarios (Al final de todo)
                 ft.Divider(height=18, color=interfaz.borde),

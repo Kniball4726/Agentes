@@ -73,8 +73,19 @@ def obtener_config_email() -> dict:
     except secretos.SecretoError:
         config["smtp_password"] = ""
     clave_entorno = os.environ.get("STOCKAGENT_SMTP_PASSWORD", "")
-    if clave_entorno:
+    if clave_entorno and not config.get("smtp_password"):
         config["smtp_password"] = clave_entorno
+    if os.environ.get("STOCKAGENT_SMTP_SERVER"):
+        config["smtp_servidor"] = os.environ["STOCKAGENT_SMTP_SERVER"].strip()
+    if os.environ.get("STOCKAGENT_SMTP_PORT"):
+        try:
+            config["smtp_puerto"] = int(os.environ["STOCKAGENT_SMTP_PORT"])
+        except ValueError:
+            pass
+    if os.environ.get("STOCKAGENT_SMTP_USER"):
+        config["smtp_usuario"] = os.environ["STOCKAGENT_SMTP_USER"].strip()
+    if os.environ.get("STOCKAGENT_SMTP_SENDER"):
+        config["remitente"] = os.environ["STOCKAGENT_SMTP_SENDER"].strip()
     # Migración automática: si estaba en texto plano, volver a guardarla cifrada.
     if valor_guardado and not secretos.esta_cifrado(valor_guardado):
         try:

@@ -16,6 +16,13 @@ UserRole = Literal["master", "administrador", "operador", "consulta"]
 USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta")
 DEFAULT_MASTER_USERNAME = "Desarrollo"
 DEFAULT_MASTER_PASSWORD = "master1713"
+
+
+def _master_default_credentials() -> tuple[str, str]:
+    return (
+        os.getenv("STOCKAGENT_MASTER_USER") or DEFAULT_MASTER_USERNAME,
+        os.getenv("STOCKAGENT_MASTER_PASSWORD") or DEFAULT_MASTER_PASSWORD,
+    )
 PASSWORD_ITERATIONS = 600_000
 PASSWORD_MIN_LENGTH = 10
 MAX_FAILED_ATTEMPTS = 5
@@ -145,12 +152,14 @@ class UserStore:
                 "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
             )
             # Si el Master todavía usa la clave por defecto publicada, obligar a cambiarla.
+            def_user, def_pass = _master_default_credentials()
             master = connection.execute(
                 "SELECT id, password_hash FROM users WHERE username = ? COLLATE NOCASE",
-                (DEFAULT_MASTER_USERNAME,),
+                (def_user,),
             ).fetchone()
-            if master is not None and self._verificar_clave(
-                DEFAULT_MASTER_PASSWORD, master["password_hash"]
+            if master is not None and (
+                self._verificar_clave(def_pass, master["password_hash"])
+                or self._verificar_clave(DEFAULT_MASTER_PASSWORD, master["password_hash"])
             ):
                 connection.execute(
                     "UPDATE users SET must_change_password = 1 WHERE id = ?", (master["id"],)
@@ -256,15 +265,16 @@ class UserStore:
             if tiene_nombre
             else "SELECT id, role, active FROM users WHERE username = ? COLLATE NOCASE"
         )
-        master_row = connection.execute(query, (DEFAULT_MASTER_USERNAME,)).fetchone()
+        def_user, def_pass = _master_default_credentials()
+        master_row = connection.execute(query, (def_user,)).fetchone()
         if master_row is None:
-            pwd_hash = self._hash_clave(DEFAULT_MASTER_PASSWORD)
+            pwd_hash = self._hash_clave(def_pass)
             connection.execute(
                 """
                 INSERT INTO users (username, password_hash, role, active, must_change_password, nombre, email)
                 VALUES (?, ?, 'master', 1, 1, 'Desarrollo', '')
                 """,
-                (DEFAULT_MASTER_USERNAME, pwd_hash),
+                (def_user, pwd_hash),
             )
         else:
             if master_row["role"] != "master" or not master_row["active"]:

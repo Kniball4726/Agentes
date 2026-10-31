@@ -8,6 +8,7 @@ Permite enviar notificaciones inmediatas a un canal o chat privado de Telegram a
 
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import threading
 from typing import Any
@@ -25,13 +26,21 @@ def _obtener_ruta_config(root_path: Path | None = None) -> Path:
 
 
 def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
-    """Carga la configuración del bot de Telegram desde disco."""
+    """Carga la configuración del bot de Telegram desde disco o entorno."""
     ruta = _obtener_ruta_config(root_path)
+    res = {
+        "bot_token": "",
+        "chat_id": "",
+        "activo": False,
+        "notificar_quiebres": True,
+        "notificar_seguridad": True,
+        "notificar_cierre": True,
+    }
     if ruta.exists():
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return {
+                res = {
                     "bot_token": str(data.get("bot_token", "")).strip(),
                     "chat_id": str(data.get("chat_id", "")).strip(),
                     "activo": bool(data.get("activo", False)),
@@ -42,14 +51,14 @@ def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
         except Exception:
             pass
 
-    return {
-        "bot_token": "",
-        "chat_id": "",
-        "activo": False,
-        "notificar_quiebres": True,
-        "notificar_seguridad": True,
-        "notificar_cierre": True,
-    }
+    env_token = os.environ.get("STOCKAGENT_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+    if env_token and not res["bot_token"]:
+        res["bot_token"] = env_token.strip()
+    env_chat_id = os.environ.get("STOCKAGENT_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID")
+    if env_chat_id and not res["chat_id"]:
+        res["chat_id"] = env_chat_id.strip()
+
+    return res
 
 
 def guardar_config_telegram(config: dict[str, Any], root_path: Path | None = None) -> None:

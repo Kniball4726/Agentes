@@ -14,7 +14,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None) -> None:
     """Ventana para archivar comprobantes antiguos y optimizar el almacenamiento."""
-    if not interfaz.exigir_roles("administrador", "master"):
+    if not interfaz.exigir_roles("master"):
         return
 
     texto_pedidos = ft.Text("...", size=13, color=interfaz.texto)

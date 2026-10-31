@@ -13,7 +13,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_configuracion_telegram(interfaz: Any, _e: ft.Event | None = None) -> None:
     """Ventana para configurar el Bot de Telegram y las alertas proactivas."""
-    if not interfaz.exigir_roles("administrador", "master"):
+    if not interfaz.exigir_roles("master"):
         return
 
     cfg = cargar_config_telegram()
@@ -141,7 +141,7 @@ def mostrar_dialogo_configuracion_telegram(interfaz: Any, _e: ft.Event | None = 
         actions=[
             ft.TextButton(
                 "Probar Conexión",
-                icon=ft.Icons.SENDRUSH,
+                icon=ft.Icons.SEND,
                 on_click=probar_conexion,
             ),
             ft.FilledButton(

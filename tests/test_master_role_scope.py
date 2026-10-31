@@ -81,6 +81,16 @@ class TestMasterRoleScope(unittest.TestCase):
         self.assertEqual(len(self.page.dialogos), 1)
         self.page.pop_dialog()
 
+        # 5. Configuración Telegram
+        self.interfaz.mostrar_configuracion_telegram()
+        self.assertEqual(len(self.page.dialogos), 1)
+        self.page.pop_dialog()
+
+        # 6. Archivado Histórico (Exclusivo Master)
+        self.interfaz.mostrar_dialogo_archivo_historico()
+        self.assertEqual(len(self.page.dialogos), 1)
+        self.page.pop_dialog()
+
     def test_master_permisos_restringidos_de_negocio(self):
         """El rol Master NO puede realizar tareas de inventario, stock ni remitos."""
         # Intento de simular
@@ -138,6 +148,9 @@ class TestMasterRoleScope(unittest.TestCase):
                 textos.append(it.content)
 
         self.assertNotIn("Registro de Auditoría", textos)
+        self.assertNotIn("Alertas Telegram", textos)
+        self.assertNotIn("Archivado Histórico", textos)
+        self.assertNotIn("Configuración SMTP", textos)
         self.assertIn("Gestionar usuarios", textos)
         self.assertIn("Copia de Seguridad", textos)
 
@@ -147,6 +160,30 @@ class TestMasterRoleScope(unittest.TestCase):
         dlg = self.page.dialogos[0]
         texto_contenido = getattr(dlg.content, "value", "") if hasattr(dlg, "content") else ""
         self.assertIn("no tiene permiso", texto_contenido)
+        self.page.pop_dialog()
+
+        # 2b. Intento de abrir configuración de Telegram (restringido a Master)
+        self.interfaz.mostrar_configuracion_telegram()
+        self.assertEqual(len(self.page.dialogos), 1)
+        dlg_tg = self.page.dialogos[0]
+        texto_tg = getattr(dlg_tg.content, "value", "") if hasattr(dlg_tg, "content") else ""
+        self.assertIn("no tiene permiso", texto_tg)
+        self.page.pop_dialog()
+
+        # 2c. Intento de abrir configuración SMTP (restringido a Master)
+        self.interfaz.mostrar_configuracion_smtp()
+        self.assertEqual(len(self.page.dialogos), 1)
+        dlg_smtp = self.page.dialogos[0]
+        texto_smtp = getattr(dlg_smtp.content, "value", "") if hasattr(dlg_smtp, "content") else ""
+        self.assertIn("no tiene permiso", texto_smtp)
+        self.page.pop_dialog()
+
+        # 2d. Intento de abrir Archivado Histórico (restringido a Master)
+        self.interfaz.mostrar_dialogo_archivo_historico()
+        self.assertEqual(len(self.page.dialogos), 1)
+        dlg_arch = self.page.dialogos[0]
+        texto_arch = getattr(dlg_arch.content, "value", "") if hasattr(dlg_arch, "content") else ""
+        self.assertIn("no tiene permiso", texto_arch)
         self.page.pop_dialog()
 
         # 3. Chat: intento de consultar /auditoria

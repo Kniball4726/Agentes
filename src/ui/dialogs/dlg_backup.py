@@ -18,6 +18,7 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
     if not interfaz.exigir_roles("administrador", "master"):
         return
 
+    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
     cfg_bk = obtener_config_backup()
     input_carpeta_ext = ft.TextField(
         label="Carpeta secundaria / externa de backup (opcional, ej: D:\\Backups_Deposito)",
@@ -38,6 +39,9 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
     )
 
     def probar_y_guardar_cfg_ext(_ev: ft.Event) -> None:
+        if not es_master:
+            interfaz.notificar("Solo el rol Master puede modificar la ruta de respaldo externo.")
+            return
         val = (input_carpeta_ext.value or "").strip()
         if not val:
             guardar_config_backup("")
@@ -64,7 +68,8 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             interfaz.page.update()
 
     def ejecutar_backup(_ev: ft.Event) -> None:
-        guardar_config_backup(input_carpeta_ext.value or "")
+        if es_master:
+            guardar_config_backup(input_carpeta_ext.value or "")
         interfaz.page.pop_dialog()
         try:
             ruta_zip = crear_backup_sistema(
@@ -83,6 +88,9 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             interfaz.notificar(f"Error al generar copia de seguridad:\n{err}")
 
     async def subir_zip_restore(_ev: ft.Event) -> None:
+        if not es_master:
+            interfaz.notificar("Solo el rol Master tiene autorización para restaurar copias de seguridad.")
+            return
         carpeta_bks = application_root() / "data" / "backups"
         subidos = await interfaz.subir_archivos_desde_pc(
             carpeta_destino=carpeta_bks,
@@ -97,6 +105,9 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             interfaz.page.update()
 
     def confirmar_restaurar_zip(_ev: ft.Event) -> None:
+        if not es_master:
+            interfaz.notificar("Solo el rol Master tiene autorización para restaurar copias de seguridad.")
+            return
         if not selector_restore.value:
             msg_bk.value = "Selecciona primero un archivo .ZIP de respaldo."
             msg_bk.color = ft.Colors.RED_400
@@ -125,7 +136,7 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             interfaz.notificar(f"❌ {detalle_msg}")
 
     dialogo = ft.AlertDialog(
-        title=ft.Row([ft.Icon(ft.Icons.BACKUP, color=ft.Colors.BLUE_600), ft.Text("Copia de Seguridad y Restauración (.ZIP)")]),
+        title=ft.Row([ft.Icon(ft.Icons.BACKUP, color=ft.Colors.BLUE_600), ft.Text("Copia de Seguridad y Restauración (.ZIP)" if es_master else "Copia de Seguridad del Sistema")]),
         content=ft.Container(
             width=560,
             content=ft.Column(
@@ -133,44 +144,64 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
                     ft.Text("El respaldo completo incluye con verificación de integridad:"),
                     ft.Text("• 3 Bases SQLite: pedidos.sqlite3, productos.sqlite3 y usuarios.sqlite3", size=12),
                     ft.Text("• Configuraciones (SMTP cifrado, notificaciones) y Excel maestro (Productos.xlsx)", size=12),
-                    ft.Divider(height=8),
-                    ft.Row(
-                        [
-                            input_carpeta_ext,
-                            ft.Button(
-                                "Probar y Guardar Espejo",
-                                icon=ft.Icons.CLOUD_SYNC,
-                                tooltip="Verifica permisos y activa el respaldo en espejo hacia red/nube",
-                                on_click=probar_y_guardar_cfg_ext,
+                    *([
+                        ft.Divider(height=8),
+                        ft.Row(
+                            [
+                                input_carpeta_ext,
+                                ft.Button(
+                                    "Probar y Guardar Espejo",
+                                    icon=ft.Icons.CLOUD_SYNC,
+                                    tooltip="Verifica permisos y activa el respaldo en espejo hacia red/nube",
+                                    on_click=probar_y_guardar_cfg_ext,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.Divider(height=10),
+                        ft.Text("Restaurar el sistema desde un Backup (.ZIP):", weight=ft.FontWeight.BOLD, size=12),
+                        ft.Text(
+                            "Verifica automáticamente PRAGMA integrity_check en todas las bases SQLite antes de restaurar.",
+                            size=11,
+                            color=interfaz.secundario,
+                        ),
+                        ft.Row(
+                            [
+                                selector_restore,
+                                ft.Button("Subir .ZIP", icon=ft.Icons.UPLOAD_FILE, on_click=subir_zip_restore),
+                            ],
+                            spacing=6,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Button(
+                                    "Verificar y Restaurar Backup Seleccionado",
+                                    icon=ft.Icons.SETTINGS_BACKUP_RESTORE,
+                                    on_click=confirmar_restaurar_zip,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.END,
+                        ),
+                        msg_bk,
+                    ] if es_master else [
+                        ft.Divider(height=10),
+                        ft.Container(
+                            content=ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.LOCK, size=15, color=interfaz.secundario),
+                                    ft.Text(
+                                        "Restauración de bases de datos (.ZIP) y rutas externas restringidas al usuario Master.",
+                                        size=11,
+                                        color=interfaz.secundario,
+                                    ),
+                                ],
+                                spacing=6,
                             ),
-                        ],
-                        spacing=6,
-                    ),
-                    ft.Divider(height=10),
-                    ft.Text("Restaurar el sistema desde un Backup (.ZIP):", weight=ft.FontWeight.BOLD, size=12),
-                    ft.Text(
-                        "Verifica automáticamente PRAGMA integrity_check en todas las bases SQLite antes de restaurar.",
-                        size=11,
-                        color=interfaz.secundario,
-                    ),
-                    ft.Row(
-                        [
-                            selector_restore,
-                            ft.Button("Subir .ZIP", icon=ft.Icons.UPLOAD_FILE, on_click=subir_zip_restore),
-                        ],
-                        spacing=6,
-                    ),
-                    ft.Row(
-                        [
-                            ft.Button(
-                                "Verificar y Restaurar Backup Seleccionado",
-                                icon=ft.Icons.SETTINGS_BACKUP_RESTORE,
-                                on_click=confirmar_restaurar_zip,
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.END,
-                    ),
-                    msg_bk,
+                            padding=ft.Padding.all(8),
+                            bgcolor=ft.Colors.with_opacity(0.04, interfaz.texto),
+                            border_radius=6,
+                        ),
+                    ]),
                 ],
                 tight=True,
                 spacing=6,

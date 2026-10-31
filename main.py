@@ -16,6 +16,20 @@ También soporta:
 
 import os
 import sys
+from pathlib import Path
+
+# Cargar variables de entorno desde .env
+try:
+    from dotenv import load_dotenv
+    _env_f = Path(__file__).resolve().parent / ".env"
+    if _env_f.exists():
+        load_dotenv(_env_f)
+    elif getattr(sys, "frozen", False):
+        _exe_f = Path(sys.executable).resolve().parent / ".env"
+        if _exe_f.exists():
+            load_dotenv(_exe_f)
+except Exception:
+    pass
 
 # Asegurar que stdout/stderr existan cuando se ejecuta como .exe sin consola (--noconsole)
 if sys.stdout is None:

@@ -12,7 +12,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_configuracion_smtp(interfaz: Any) -> None:
     """Modal para configurar el servidor SMTP (cifrado) y las alertas automáticas programadas."""
-    if not interfaz.exigir_roles("administrador", "master"):
+    if not interfaz.exigir_roles("master"):
         return
 
     cfg = obtener_config_email()

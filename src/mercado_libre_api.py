@@ -12,6 +12,7 @@ Permite:
 from datetime import datetime, timedelta
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.error
@@ -35,13 +36,25 @@ def _obtener_ruta_config_ml(root_path: Path | None = None) -> Path:
 
 
 def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
-    """Carga la configuración de la API de Mercado Libre desde disco."""
+    """Carga la configuración de la API de Mercado Libre desde disco o variables de entorno."""
     ruta = _obtener_ruta_config_ml(root_path)
+    res = {
+        "app_id": "",
+        "client_secret": "",
+        "seller_id": "",
+        "access_token": "",
+        "refresh_token": "",
+        "activo": False,
+        "filtro_estado": "paid",
+        "horas_atras": 48,
+        "auto_descontar": False,
+        "ultima_sincronizacion": "",
+    }
     if ruta.exists():
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return {
+                res = {
                     "app_id": str(data.get("app_id", "")).strip(),
                     "client_secret": str(data.get("client_secret", "")).strip(),
                     "seller_id": str(data.get("seller_id", "")).strip(),
@@ -56,18 +69,21 @@ def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
         except Exception:
             pass
 
-    return {
-        "app_id": "",
-        "client_secret": "",
-        "seller_id": "",
-        "access_token": "",
-        "refresh_token": "",
-        "activo": False,
-        "filtro_estado": "paid",
-        "horas_atras": 48,
-        "auto_descontar": False,
-        "ultima_sincronizacion": "",
-    }
+    for clave, env_nombres in [
+        ("app_id", ["STOCKAGENT_MELI_APP_ID", "MELI_APP_ID"]),
+        ("client_secret", ["STOCKAGENT_MELI_CLIENT_SECRET", "MELI_CLIENT_SECRET"]),
+        ("seller_id", ["STOCKAGENT_MELI_SELLER_ID", "MELI_SELLER_ID"]),
+        ("access_token", ["STOCKAGENT_MELI_ACCESS_TOKEN", "MELI_ACCESS_TOKEN"]),
+        ("refresh_token", ["STOCKAGENT_MELI_REFRESH_TOKEN", "MELI_REFRESH_TOKEN"]),
+    ]:
+        if not res.get(clave):
+            for env_nombre in env_nombres:
+                val = os.environ.get(env_nombre)
+                if val:
+                    res[clave] = val.strip()
+                    break
+
+    return res
 
 
 def guardar_config_mercadolibre(config: dict[str, Any], root_path: Path | None = None) -> None:
