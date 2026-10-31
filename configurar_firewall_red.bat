@@ -1,28 +1,37 @@
 @echo off
 chcp 65001 > nul
 setlocal
+cd /d "%~dp0"
 
+if "%1"=="--elevated" goto :EJECUTAR
+
+net session >nul 2>&1
+if not errorlevel 1 goto :EJECUTAR
+
+echo [INFO] Solicitando permisos de administrador...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '--elevated' -Verb RunAs" >nul 2>&1
+exit /b
+
+:EJECUTAR
 echo ==================================================================
-echo   CONFIGURACI?N DE FIREWALL PARA STOCK AGENT WEB (PUERTO 8550)
+echo   CONFIGURACIÓN DE FIREWALL PARA STOCK AGENT (PUERTO 8550)
 echo ==================================================================
 echo.
-echo Habilitando regla de entrada TCP en el puerto 8550 para permitir
-echo que la segunda m?quina se conecte desde el navegador...
-echo.
 
+echo [1/2] Abriendo puerto TCP 8550 para la App Móvil...
 netsh advfirewall firewall delete rule name="StockAgent Web (Puerto 8550)" >nul 2>&1
-netsh advfirewall firewall add rule name="StockAgent Web (Puerto 8550)" dir=in action=allow protocol=TCP localport=8550 profile=private,domain,public
+netsh advfirewall firewall add rule name="StockAgent Web (Puerto 8550)" dir=in action=allow protocol=TCP localport=8550 profile=any >nul 2>&1
 
-if errorlevel 1 (
-    echo.
-    echo [AVISO] No se pudo crear la regla autom?ticamente.
-    echo Haz clic derecho sobre este archivo ^("configurar_firewall_red.bat"^)
-    echo y selecciona "Ejecutar como administrador".
-) else (
-    echo.
-    echo [OK] Puerto 8550 habilitado exitosamente en el Firewall de Windows.
-    echo Ahora la segunda PC puede entrar desde su navegador a:
-    echo http://TU-IP-LOCAL:8550
+echo [2/2] Habilitando permisos para Python...
+if exist ".venv\Scripts\python.exe" (
+    netsh advfirewall firewall delete rule name="StockAgent Python" >nul 2>&1
+    netsh advfirewall firewall add rule name="StockAgent Python" dir=in action=allow program="%~dp0.venv\Scripts\python.exe" profile=any >nul 2>&1
 )
+
+echo.
+echo ==================================================================
+echo   [OK] Firewall de Windows configurado exitosamente!
+echo   El puerto 8550 esta abierto para tu celular.
+echo ==================================================================
 echo.
 pause

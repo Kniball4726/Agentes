@@ -1,0 +1,1 @@
+ C:\\Users\\glrd4\\Desktop\\Universidad\\Antigravity\\Agentes\\stockagent_mobile\\.dart_tool\\flutter_build\\c4ab9beb4820eb90f42141de4133d8d8\\link_hooks_result.json: 

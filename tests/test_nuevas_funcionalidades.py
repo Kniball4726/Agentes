@@ -43,7 +43,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
     def test_email_config_cifra_password_en_disco_y_descifra_en_memoria(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            with patch("src.email_sender.application_root", return_value=tmp_path):
+            with patch("src.email_sender.application_root", return_value=tmp_path), patch.dict(os.environ, {"STOCKAGENT_SMTP_PASSWORD": ""}):
                 guardar_config_email(
                     {
                         "smtp_servidor": "smtp.gmail.com",

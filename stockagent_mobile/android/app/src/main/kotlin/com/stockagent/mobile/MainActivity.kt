@@ -1,0 +1,6 @@
+package com.stockagent.mobile
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity: FlutterActivity() {
+}

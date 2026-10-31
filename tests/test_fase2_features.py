@@ -1,3 +1,4 @@
+import os
 """Tests unitarios para las funcionalidades de la Fase 2:
 1. Módulo de alertas proactivas por Telegram Bot (quiebres, seguridad, cierre).
 2. Sincronización completa de catálogo SQLite hacia Productos.xlsx (desacople y flush).
@@ -26,6 +27,12 @@ from src.user_store import UserStore
 class TestFase2Features(unittest.TestCase):
     def test_telegram_config_carga_y_guarda_correctamente(self):
         """Verifica la persistencia y carga de la configuración de Telegram."""
+        self.enterContext(unittest.mock.patch.dict(os.environ, {
+            "STOCKAGENT_TELEGRAM_BOT_TOKEN": "",
+            "TELEGRAM_BOT_TOKEN": "",
+            "STOCKAGENT_TELEGRAM_CHAT_ID": "",
+            "TELEGRAM_CHAT_ID": "",
+        }))
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             # 1. Config por defecto

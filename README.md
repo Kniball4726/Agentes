@@ -33,6 +33,12 @@
    - [Instalación del Certificado SSL para Eliminar "No es Seguro"](#instalación-del-certificado-ssl-para-eliminar-no-es-seguro)
    - [Protección Integral Contra Ataques Maliciosos y Seguridad del Sistema](#protección-integral-contra-ataques-maliciosos-y-seguridad-del-sistema)
    - [Batería de Pruebas Unitarias y Aseguramiento de Calidad](#batería-de-pruebas-unitarias-y-aseguramiento-de-calidad)
+6. [Ecosistema Móvil Nativo (Flutter - Android e iOS)](#6-ecosistema-móvil-nativo-flutter---android-e-ios)
+   - [Arquitectura del Cliente Móvil](#arquitectura-del-cliente-móvil)
+   - [Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat`)](#servidor-http-para-conexión-móvil-limpia-iniciar_servidor_movilbat)
+   - [Compilación y Despliegue de APK para Android (`compilar_apk.bat`)](#compilación-y-despliegue-de-apk-para-android-compilar_apkbat)
+   - [Ejecución e Instalación en Apple iOS (iPhone / iPad)](#ejecución-e-instalación-en-apple-ios-iphone--ipad)
+   - [Configuración Dinámica de IP y Resiliencia Wi-Fi](#configuración-dinámica-de-ip-y-resiliencia-wi-fi)
 
 ---
 
@@ -729,6 +735,22 @@ StockAgent/
 │           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
 │           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
 │           └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
+├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
+│   ├── lib/                           # Código fuente Dart (UI y servicios)
+│   │   ├── main.dart                  # Punto de entrada y enrutamiento inicial
+│   │   ├── theme/app_theme.dart       # Paleta cromática corporativa (Dark Theme)
+│   │   ├── services/storage_service.dart # Persistencia de IP/puerto (SharedPreferences)
+│   │   └── screens/
+│   │       ├── config_screen.dart     # Pantalla de configuración y prueba de IP
+│   │       └── app_screen.dart        # Visor WebView, escáner nativo y resiliencia Wi-Fi
+│   ├── android/                       # Configuración y manifiestos nativos Android
+│   │   └── app/src/main/AndroidManifest.xml # Permisos de red, cámara y cleartext
+│   ├── ios/                           # Configuración nativa Apple iOS
+│   │   └── Runner/Info.plist          # Permisos de red local y cámara
+│   ├── pubspec.yaml                   # Dependencias oficiales de Flutter
+│   └── README_MOVIL.md                # Manual operativo del cliente móvil
+├── compilar_apk.bat                   # Compilador con 1 clic de APK Release para Android
+├── iniciar_servidor_movil.bat         # Servidor HTTP limpio para teléfonos en LAN
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
@@ -1168,3 +1190,105 @@ Para ejecutar la suite completa en cualquier momento desde PowerShell:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -o pythonpath=.
 ```
+
+
+---
+
+## 6. Ecosistema Móvil Nativo (Flutter - Android e iOS)
+
+StockAgent dispone de una aplicación cliente nativa desarrollada en **Flutter** (`stockagent_mobile/`) que permite a los operarios de depósito y administradores interactuar con el sistema desde teléfonos inteligentes o tablets (Android e iOS) a través de la red local Wi-Fi, sin requerir internet externo ni configuraciones complejas.
+
+```mermaid
+flowchart LR
+    subgraph PC["PC Servidor Principal (Windows)"]
+        S["StockAgent (Flet ASGI)"]
+        FW["Firewall TCP 8550"]
+        DB["SQLite y Productos.xlsx"]
+        S --> DB
+        FW --> S
+    end
+
+    subgraph WiFi["Red Wi-Fi Local (LAN)"]
+        AP["Módem / Router Wi-Fi"]
+    end
+
+    subgraph Moviles["Dispositivos Móviles"]
+        A["Android (App Nativa .APK)"]
+        I["Apple iPhone/iPad (PWA / .IPA)"]
+    end
+
+    S <--> AP
+    AP <--> A
+    AP <--> I
+```
+
+### Arquitectura del Cliente Móvil
+
+A diferencia de empaquetar un intérprete de Python completo dentro del teléfono (lo que haría la app excesivamente pesada y lenta), la arquitectura adopta un modelo de **Cliente Ligero Inteligente (Shell Nativo)**:
+
+1. **Rendimiento Nativo:** Desarrollado sobre el motor gráfico de Flutter (Impeller/Skia), garantizando 60/120 FPS y consistencia visual exacta en cualquier marca de teléfono.
+2. **Mantenimiento Cero en Móviles:** Cualquier cambio en la lógica de negocio, catálogos, fórmulas o reportes realizado en la PC se refleja **al instante en todos los teléfonos** conectados, sin necesidad de compilar ni reinstalar los APKs.
+3. **Persistencia de Configuración:** Utiliza almacenamiento seguro (`SharedPreferences`) para recordar la IP del servidor de la PC.
+4. **Acceso Directo a Hardware:** Integra permisos nativos para la cámara del dispositivo, alimentando el módulo de escaneo de códigos de barra (`scanner.html`).
+
+---
+
+### Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat`)
+
+Los sistemas operativos móviles modernos (Android 9+ e iOS) aplican políticas de seguridad estrictas que bloquean de forma agresiva los certificados SSL autofirmados locales. 
+
+Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `iniciar_servidor_movil.bat`:
+
+* **Modo HTTP Plano (`--http`):** Inicia el servidor web en `http://0.0.0.0:8550`, permitiendo que los WebViews y navegadores móviles se conecten fluidamente sin pantallas rojas de advertencia ni interrupción de WebSockets (`/ws`).
+* **Verificación de Firewall Automática:** Valida y crea la regla de entrada TCP en el Firewall de Windows para el puerto 8550 en perfiles de red privada y de dominio.
+* **Información de Red Clara:** Muestra de forma destacada la IP local exacta a ingresar en el teléfono (ej: `http://192.168.1.50:8550`).
+
+---
+
+### Compilación y Despliegue de APK para Android (`compilar_apk.bat`)
+
+Para generar el instalador final de Android sin interactuar con comandos complejos de Gradle o consola:
+
+1. Ejecuta haciendo doble clic:
+   ```cmd
+   compilar_apk.bat
+   ```
+2. El script ejecuta las siguientes etapas automatizadas:
+   * **Detección inteligente de Flutter:** Localiza `flutter.bat` en el `PATH` o en rutas típicas (`C:\flutter`, `C:\src\flutter`, `%LOCALAPPDATA%\flutter`). Si no está presente, indica la guía oficial de descarga.
+   * **Resolución de paquetes:** Ejecuta `flutter pub get` descargando `flutter_inappwebview`, `shared_preferences` y `http`.
+   * **Compilación Release:** Genera el binario optimizado ARM/x86 mediante `flutter build apk --release`.
+   * **Distribución:** Copia el instalador a `dist_movil\StockAgent.apk` y abre la carpeta automáticamente en el Explorador de Windows.
+
+#### Instalación en el Teléfono Android:
+1. Envía el archivo `StockAgent.apk` al celular (mediante cable USB, WhatsApp, Telegram o red compartida).
+2. Toca el archivo en el teléfono y selecciona **Instalar** (habilita "Permitir desde esta fuente" si es la primera vez).
+3. Abre la app, escribe la IP de la PC servidor, presiona **"Probar Conexión"** y luego **"Conectar a StockAgent"**.
+
+---
+
+### Ejecución e Instalación en Apple iOS (iPhone / iPad)
+
+Dadas las restricciones del ecosistema de Apple para la instalación de archivos independientes:
+
+#### Método Directo (PWA - Sin requerir Mac ni licencias de desarrollador):
+1. Conecta el iPhone a la misma red Wi-Fi de la PC.
+2. Abre **Safari** y escribe la URL de la PC: `http://192.168.X.X:8550`.
+3. Toca el botón central **Compartir** (icono de rectángulo con flecha hacia arriba).
+4. Selecciona **"Agregar a pantalla de inicio"** (*Add to Home Screen*).
+5. La app se abrirá a pantalla completa con su icono oficial, comportándose como una aplicación nativa y con acceso a la cámara para escaneos.
+
+#### Método Compilado (.IPA vía Mac):
+Si cuentas con una computadora Mac con Xcode:
+1. Abre la carpeta `stockagent_mobile/` en la Mac.
+2. Ejecuta `flutter build ipa`.
+3. Instala el binario en los iPhones de la empresa mediante Xcode o distribúyelo a través de **Apple TestFlight**.
+
+---
+
+### Configuración Dinámica de IP y Resiliencia Wi-Fi
+
+La aplicación móvil incorpora mecanismos defensivos ante situaciones habituales en depósitos y centros de distribución:
+
+* **Modificación de IP en Caliente:** En la esquina inferior derecha de la aplicación móvil se encuentra un botón flotante con el icono de ajustes (⚙️). Si el router reinicia y cambia la IP de la PC (por DHCP), el operario puede corregir la IP en 3 segundos sin desinstalar la app.
+* **Pantalla de Contingencia y Reintento:** Si la señal Wi-Fi se corta en una zona ciega del depósito, la app no se cierra ni queda en blanco; despliega una pantalla de desconexión amigable con botones para **"Reintentar Conexión"** o **"Cambiar IP"**.
+* **Permisos de Cámara Transparentes:** En [`AndroidManifest.xml`](stockagent_mobile/android/app/src/main/AndroidManifest.xml) y [`Info.plist`](stockagent_mobile/ios/Runner/Info.plist) se declararon los permisos necesarios junto al manejador `onPermissionRequest` de Flutter, logrando que el lector de códigos de barras y QR se active fluidamente al ingresar al módulo de escaneo.

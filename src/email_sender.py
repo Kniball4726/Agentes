@@ -73,7 +73,7 @@ def obtener_config_email() -> dict:
     except secretos.SecretoError:
         config["smtp_password"] = ""
     clave_entorno = os.environ.get("STOCKAGENT_SMTP_PASSWORD", "")
-    if clave_entorno and not config.get("smtp_password"):
+    if clave_entorno:
         config["smtp_password"] = clave_entorno
     if os.environ.get("STOCKAGENT_SMTP_SERVER"):
         config["smtp_servidor"] = os.environ["STOCKAGENT_SMTP_SERVER"].strip()
