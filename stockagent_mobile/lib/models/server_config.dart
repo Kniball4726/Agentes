@@ -16,7 +16,51 @@ class ServerConfig {
 
   /// Crea una configuración inicial por defecto
   factory ServerConfig.empty() {
-    return const ServerConfig(host: defaultHost, port: defaultPort, protocol: defaultProtocol);
+    return const ServerConfig(
+      host: '',
+      port: defaultPort,
+      protocol: defaultProtocol,
+    );
+  }
+
+  /// Parser inteligente y sanitizador para entradas de usuario (IP, URL o Host:Port)
+  factory ServerConfig.fromUserInput({
+    required String rawHost,
+    String? rawPort,
+    String? rawProtocol,
+  }) {
+    String cleanHost = rawHost.trim();
+    String detectedProtocol = (rawProtocol ?? defaultProtocol).trim().toLowerCase();
+    String detectedPort = (rawPort ?? defaultPort).trim();
+
+    // 1. Detectar prefijo de protocolo si fue pegado en el campo de host (ej: http:// o https://)
+    if (cleanHost.toLowerCase().startsWith('https://')) {
+      detectedProtocol = 'https';
+      cleanHost = cleanHost.substring(8);
+    } else if (cleanHost.toLowerCase().startsWith('http://')) {
+      detectedProtocol = 'http';
+      cleanHost = cleanHost.substring(7);
+    }
+
+    // 2. Remover rutas o barras finales (ej: 192.168.1.45/ -> 192.168.1.45)
+    if (cleanHost.contains('/')) {
+      cleanHost = cleanHost.split('/').first;
+    }
+
+    // 3. Detectar puerto si está incluido en el host (ej: 192.168.1.45:8550)
+    if (cleanHost.contains(':')) {
+      final parts = cleanHost.split(':');
+      cleanHost = parts[0];
+      if (parts.length > 1 && parts[1].isNotEmpty) {
+        detectedPort = parts[1];
+      }
+    }
+
+    return ServerConfig(
+      host: cleanHost.trim(),
+      port: detectedPort.isEmpty ? defaultPort : detectedPort,
+      protocol: detectedProtocol == 'https' ? 'https' : 'http',
+    );
   }
 
   /// Verifica si el host no está vacío y tiene formato válido
@@ -44,6 +88,9 @@ class ServerConfig {
     if (!isValid) return '';
     return '$normalizedProtocol://${host.trim()}:$normalizedPort';
   }
+
+  /// Alias de conveniencia para la URL base del servidor
+  String get baseUrl => fullUrl;
 
   /// URL WebSocket para streaming de eventos en vivo
   String get wsUrl {

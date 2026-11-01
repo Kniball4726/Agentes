@@ -51,6 +51,8 @@ from .dlg_stock_ops import (
 )
 from .dlg_inventario_vivo import mostrar_dialogo_inventario_vivo
 from .dlg_command_palette import mostrar_command_palette
+from .dlg_quiebre import actualizar_alerta_quiebre, mostrar_detalle_quiebre
+from .dlg_restaurar import confirmar_restaurar, restaurar_documentos
 
 __all__ = [
     # Auth & Profile
@@ -62,9 +64,10 @@ __all__ = [
     # Clientes & Usuarios
     "mostrar_dialogo_gestion_clientes",
     "mostrar_dialogo_gestion_usuarios",
-    # Config & Backup
+    # Config & Backup & Restauración
     "mostrar_dialogo_configuracion_smtp",
     "mostrar_dialogo_backup",
+    "confirmar_restaurar",
     # Catálogo & Productos
     "mostrar_dialogo_gestion_productos",
     "mostrar_dialogo_historial_movimientos_stock",
@@ -86,11 +89,13 @@ __all__ = [
     "enviar_correo_cierre",
     "mostrar_dialogo_compartir_cierre",
     "mostrar_dialogo_enviar_correo",
-    # Métricas & Auditoría
+    # Métricas & Auditoría & Quiebres
     "mostrar_dashboard_metricas",
     "mostrar_registro_auditoria",
     "mostrar_estadisticas",
     "mostrar_notificaciones_admin",
+    "actualizar_alerta_quiebre",
+    "mostrar_detalle_quiebre",
     # Operaciones de Stock & Fábrica
     "generar_pedido_fabrica",
     "mostrar_ingreso_fabrica",

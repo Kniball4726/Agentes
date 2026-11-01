@@ -18,6 +18,7 @@
    - [Rol Administrador](#rol-administrador)
    - [Rol Operador](#rol-operador)
    - [Rol Consulta](#rol-consulta)
+   - [Matriz Oficial de Permisos por Rol (IAM / SoD)](#matriz-oficial-de-permisos-por-rol-iam--sod)
 3. [Módulo de Carga Directa y Panel de Control de la Jornada](#3-módulo-de-carga-directa-y-panel-de-control-de-la-jornada)
    - [Métricas en Tiempo Real de la Jornada](#métricas-en-tiempo-real-de-la-jornada)
    - [Formulario de Carga y Descuento Individual](#formulario-de-carga-y-descuento-individual)
@@ -37,6 +38,8 @@
    - [Arquitectura del Cliente Móvil](#arquitectura-del-cliente-móvil)
    - [Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat`)](#servidor-http-para-conexión-móvil-limpia-iniciar_servidor_movilbat)
    - [Compilación y Despliegue de APK para Android (`compilar_apk.bat`)](#compilación-y-despliegue-de-apk-para-android-compilar_apkbat)
+   - [Actualizaciones Automáticas OTA (Over-The-Air) para Android](#actualizaciones-automáticas-ota-over-the-air-para-android)
+   - [Diseño Responsive Integral y Experiencia Móvil](#diseño-responsive-integral-y-experiencia-móvil)
    - [Ejecución e Instalación en Apple iOS (iPhone / iPad)](#ejecución-e-instalación-en-apple-ios-iphone--ipad)
    - [Configuración Dinámica de IP y Resiliencia Wi-Fi](#configuración-dinámica-de-ip-y-resiliencia-wi-fi)
 
@@ -170,6 +173,22 @@ flowchart TD
 
 ---
 
+### Centro de Documentación y Botón "Manual de Uso" en la Barra Lateral
+
+Para asegurar que cada miembro del equipo cuente con asistencia inmediata y documentación oficial acorde a su nivel de autorización, **la barra lateral de navegación presenta en primer lugar la sección 'DOCUMENTACIÓN' con el botón directo 'Manual de Uso':**
+
+* **Acceso Contextual por Rol:** Al presionar **'Manual de Uso'**, el sistema detecta de forma automática el perfil del usuario activo y abre el PDF oficial correspondiente a su rol:
+  * **Operador:** Abre directamente `Documentacion/Manual_Operador.pdf` (preparación de pedidos, remitos, canjes, Mercado Libre Full, rótulos QR, despacho y cierre).
+  * **Administrador:** Abre directamente `Documentacion/Manual_Administrador.pdf` (catálogo maestro, ajustes de fábrica, analítica de picking, comparativas de stock y gestión IAM).
+  * **Master:** Abre directamente `Documentacion/Manual_Master.pdf` (IAM global, auditoría forense inmutable, salud del servidor, rollback documental y backups).
+  * **Consulta:** Abre directamente `Documentacion/Manual_Consulta.pdf` (búsqueda de stock, lectura de informes y restricciones).
+* **Visualización Dinámica e Inmediata (Zero-Cache):**
+  * **Modo Web / Red Local:** El servidor expone el endpoint seguro `/documentacion/{archivo}` y abre el PDF en una pestaña del navegador con visualización directa (*inline*) y control de versiones dinámico (`?v=timestamp`). Cada vez que la documentación es actualizada en el servidor, **los cambios se reflejan de inmediato para todos los usuarios sin necesidad de limpiar la caché del navegador ni reiniciar la aplicación**.
+  * **Modo Escritorio Nativo:** Abre el documento PDF directamente en el visor predeterminado del sistema operativo (Edge, Adobe Acrobat, Chrome, etc.).
+  * **Autogeneración Desatendida:** Si algún archivo PDF no estuviese presente en el disco, el sistema lo compila automáticamente en tiempo real mediante `generar_todos_los_manuales()`.
+
+---
+
 ### Gestión de Perfil de Usuario ("Mi Perfil")
 
 Todos los usuarios autenticados, sin distinción de su rol, tienen acceso a su ventana de perfil personal:
@@ -221,6 +240,7 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
   * **Centro de Auditoría Forense y Trazabilidad (Exclusivo Master):** Consulta inmutable y filtrado en tiempo real de todos los eventos del sistema: inicios de sesión, bloqueos por fuerza bruta, anulaciones, altas de usuarios, respaldos y modificaciones de configuración. Por principio de segregación de funciones (*SoD*), el Administrador no accede a este visor para evitar que el auditado audite sus propias operaciones.
   * **Gestión de Identidades y Accesos (IAM Compartida):** Master posee control supremo sobre todos los roles (incluyendo creación, modificación y reseteo de contraseñas de cuentas Administrador). Los Administradores comparten la facultad de crear y gestionar cuentas de Operador y Consulta, pero no pueden alterar cuentas Master ni ver la auditoría forense.
   * **Continuidad del Negocio (Backups / Disaster Recovery):** Generación manual de copias de seguridad `.zip`, configuración de directorios externos y verificación de políticas de rotación.
+  * **Restauración de Documentos (Rollback de Lotes — Exclusivo Master):** Capacidad crítica delegada exclusivamente al perfil Master bajo *Resguardo y Continuidad*. Permite deshacer operaciones completas o lotes de descuento históricos por fecha, recalculando el stock y recomponiendo el catálogo en SQLite (`productos.sqlite3`) y en `Productos.xlsx` con registro inmutable en auditoría forense. Por el principio de Segregación de Funciones (*Separation of Duties - SoD*), ningún operario ni administrador dispone de esta función, previniendo reversiones accidentales o manipulación de datos en la jornada diaria.
   * **Configuración del Servidor y Servicios:** Gestión de credenciales SMTP para alertas automáticas, custodia exclusiva de credenciales oficiales de la **API de Mercado Libre** (App ID, Client Secret, Tokens OAuth), monitoreo de certificados SSL/HTTPS y estado de la red.
   * **Protección Inviolable:** La cuenta Master no puede ser desactivada ni degradada de rol por ningún usuario ni por sí misma.
 * **Exclusión de la Lógica de Negocio (Protección Operativa y Segregación SoD):**
@@ -230,7 +250,7 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
   * ❌ No realiza ingresos de fábrica, inventarios físicos ni pedidos a proveedores.
   * ❌ No realiza cierres de jornada operativa ni emite Hojas de Ruta de despacho.
 * **Experiencia de Usuario Especializada:**
-  * Menú lateral organizado en bloques técnicos: *Seguridad y Accesos*, *Auditoría y Trazabilidad*, *Resguardo y Continuidad* y *Sistema*.
+  * Menú lateral organizado en bloques técnicos: *Seguridad y Accesos*, *Auditoría y Trazabilidad*, *Resguardo y Continuidad* (con *Copias de Seguridad*, *Directorio Secundario* y **Restaurar Documentos**) y *Sistema*.
   * Dashboard adaptado con tarjetas KPI de infraestructura: *Usuarios Registrados*, *Cuentas Activas*, *Eventos Auditoría*, *Copias de Respaldo*, *Espacio en Disco* y *Salud Servidor* (diagnóstico en tiempo real de RAM, disco y proceso).
   * Módulo de *Archivado Histórico* para organizar comprobantes antiguos en subcarpetas cronológicas `data/historico/YYYY/MM/`.
   * Configuración de *Alertas Telegram* bajo el bloque de Sistema para pruebas de conectividad y monitoreo de eventos.
@@ -243,7 +263,7 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
 Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
 
 * **📦 Stock y Catálogo:** Gestión de catálogo maestro, ajustes de stock físico / ingresos de fábrica, comparativa de discrepancias, sincronización atómica con `Productos.xlsx` y generación automática de pedidos a fábrica.
-* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST), Mercado Full y restauración documental.
+* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST) y Mercado Full (con restauración documental delegada con exclusividad al rol Master por normativa SoD).
 * **📊 Analítica y Picking:** Dashboard ejecutivo de métricas de rendimiento, estadísticas de salida, radar predictivo de anomalías de demanda y mapa de calor de depósito con matriz de rotación ABC (Slotting).
 * **📄 Informes:** Apertura y descarga de reportes, envío directo por correo electrónico y comunicación por WhatsApp Web.
 * **🛡️ Sistema y Resguardo:** Copias de seguridad automáticas `.zip`, archivado histórico cronológico y alertas proactivas por Bot de Telegram.
@@ -330,13 +350,14 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   2. Definir el período de análisis (últimos 7 días, mes actual, rango personalizado).
   3. Presionar **"Calcular Estadísticas"** para visualizar los gráficos y tablas de rotación.
 
-#### 11. Restauración de Documentos (Rollback de Lotes)
-* **Qué hace:** Permite deshacer un lote de descuento completo o una carga previa, recalculando el stock y regresando el catálogo `Productos.xlsx` al estado exacto anterior a dicha operación sin pérdida de datos.
+#### 11. Descuento Mercado Libre Full (Administrador y Operador)
+* **Qué hace:** Procesa planillas oficiales de despacho de Mercado Libre Full (`.xlsx` o `.xls`), cotejando artículos contra el catálogo activo, comprobando saldos y descontando existencias en bloque de forma atómica y consistente con `Productos.xlsx`.
 * **Cómo se hace:**
-  1. Ingresar a **"Restaurar Documentos"**.
-  2. Identificar el lote en la lista histórica por número de operación, fecha y comprobante.
-  3. Presionar **"Previsualizar Rollback"** para constatar los productos y unidades que se reincorporarán al inventario.
-  4. Confirmar la operación presionando **"Restaurar Catálogo"**.
+  1. Ingresar a **"Descontar Mercado Full"** desde la barra lateral.
+  2. Cargar la planilla de unidades despachadas de Mercado Full.
+  3. Revisar el reporte previo en pantalla: el sistema marcará en verde las coincidencias exactas y alertará si hay artículos sin stock suficiente o descripciones no identificadas.
+  4. Presionar **"Confirmar Descuento"** para aplicar la rebaja en el catálogo y registrar la operación.
+* **Segregación SoD:** La función de **Restauración de Documentos (Rollback de Lotes)** ha sido retirada del menú del Administrador y delegada con exclusividad al rol **Master** para salvaguardar la inmutabilidad de los registros operativos y evitar reversiones documentales accidentales.
 
 #### 12. Informes Rápidos (Apertura, Correo con Adjuntos y WhatsApp Web)
 * **Qué hace:** Permite seleccionar, inspeccionar y enviar los reportes oficiales generados (PDF de cierre, planillas Excel, hojas de ruta de choferes o pedidos a fábrica) por correo electrónico con los **archivos físicamente adjuntos** (vía Simple MAPI o envío directo SMTP) o compartirlos por WhatsApp Web.
@@ -466,6 +487,9 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * Genera una etiqueta por cada bulto (`Bulto 1 de N`, `Bulto 2 de N`) con datos del remito, cliente, transporte, nombre identificador del armador y código QR escaneable por celular o lector.
 * **Descuento Mercado Libre (DOCX):**
   * Carga y descuento de remitos de Mercado Libre en formato `.docx`, con previsualización del impacto y protección contra archivos duplicados (sin generación de documentos individuales innecesarios).
+* **Descuento Mercado Libre Full:**
+  * Habilitado directamente en el menú lateral del operario mediante **"Descontar Mercado Full"**.
+  * Permite al personal de depósito procesar de forma inmediata planillas de despacho Full de Mercado Libre, validando la disponibilidad de stock y descontando al instante en SQLite y `Productos.xlsx` sin requerir asistencia o intervención de la administración.
 * **Sincronización Mercado Libre (API REST):**
   * Botón directo **"Sincronizar Mercado Libre (API)"** para consultar y descontar pedidos pagados en tiempo real directo desde los servidores de Mercado Libre, sin tener que descargar o arrastrar archivos a la plataforma.
 * **Historial de Pedidos:**
@@ -508,6 +532,37 @@ Perfil restringido de solo lectura para auditoría externa, vendedores o supervi
 * **Historial e Informes:** Lectura de comprobantes generados previamente.
 * **Asistente Virtual Restringido:** Comandos permitidos: `/stock`, `/criticos`, `/informes`, `/ayuda`.
 * **Restricción Total:** Bloqueado para cargar pedidos, anular, descontar stock, alterar usuarios o ejecutar cierres.
+
+---
+
+### Matriz Oficial de Permisos por Rol (IAM / SoD)
+
+La siguiente matriz detalla de forma oficial la distribución de responsabilidades y segregación de funciones (*Separation of Duties - SoD*) implementada en StockAgent:
+
+| Módulo / Funcionalidad | Rol Master (`Desarrollo`) | Rol Administrador | Rol Operador | Rol Consulta | Justificación y Regla SoD |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Master desacoplado de la operativa diaria; operadores y administradores procesan comprobantes. |
+| **Descuento Mercado Libre (DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Gestión operativa de ventas online habilitada para depósito y gerencia. |
+| **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | **Novedad:** Operadores y Administradores pueden descontar lotes de Mercado Full de forma ágil. |
+| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Sincronización de órdenes y descuento en tiempo real para agilizar el picking. |
+| **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque y discrepancias entre operarios y supervisores. |
+| **Desarmar Pedido y Restituir Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Retorno atómico de unidades físicas al inventario ante cancelaciones o rechazos. |
+| **Consulta y Reimpresión de Comprobantes** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | Visualización y reimpresión de comprobantes PDF, Excel y Word originales. |
+| **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4 sin desperdicio. |
+| **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Consolidación diaria de pedidos, cierre contable y emisión de hojas de ruta de transporte. |
+| **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
+| **Ajuste de Stock y Entrada de Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Modificación de existencias por recepción mayorista reservada a supervisión. |
+| **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
+| **Comparativa de Stock Físico** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Conciliación de recuentos físicos masivos y detección de sobrantes/faltantes. |
+| **Generación de Pedido a Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Cálculo automático de compras sugeridas y exportación a planilla oficial. |
+| **Métricas, Heatmap y Radar de Anomalías** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Inteligencia de negocios, slotting de depósito y prevención de desabastecimiento. |
+| **Sincronización Total con Excel (Flush)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Volcado masivo y atómico desde SQLite hacia la planilla maestra `Productos.xlsx`. |
+| **Gestión de Cuentas (Operador y Consulta)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Creación, reseteo de claves y desbloqueo de usuarios del turno. |
+| **Gestión de Cuentas (Administrador)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | Solo Master puede promover, editar o dar de baja cuentas con rol Administrador. |
+| **Auditoría Forense y Salud del Servidor** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | **SoD Estricto:** Evita que el auditado tenga acceso o altere los registros de auditoría. |
+| **Configuración Telegram y Servidor SMTP** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | Custodia de credenciales corporativas, tokens de bots y servicios de correo. |
+| **Copias de Seguridad (Backups .zip)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Generación de respaldos comprimidos de las 3 bases SQLite y el catálogo. |
+| **Restauración de Documentos (Rollback Lotes)**| ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | **Delegación SoD a Master:** Reversión histórica de lotes restringida al máximo nivel de seguridad. |
 
 ---
 
@@ -681,6 +736,13 @@ StockAgent/
 │   ├── Mayoristas/
 │   ├── Canjes/
 │   └── MercadoLibre/
+├── Documentacion/                     # Manuales oficiales en PDF discriminados por roles
+│   ├── Manual_Operador.pdf            # Manual oficial para Rol Operador
+│   ├── Manual_Administrador.pdf       # Manual oficial para Rol Administrador
+│   ├── Manual_Master.pdf              # Manual oficial para Rol Master (Técnico / Forense)
+│   ├── Manual_Consulta.pdf            # Manual oficial para Rol Consulta
+│   ├── Manual_General.pdf             # Compendio integral de todos los roles
+│   └── generar_manual_pdf.py          # Script automatizado de compilación PDF (ReportLab)
 ├── src/                               # Código fuente modular y desacoplado
 │   ├── agent.py                       # Orquestador del Agente de Stock
 │   ├── flet_gui.py                    # Fachada principal Flet, PWA y orquestación UI
@@ -702,6 +764,7 @@ StockAgent/
 │   ├── ssl_manager.py                 # Generador automático de certificados X.509 para HTTPS
 │   ├── logger_config.py               # Configuración de logs rotativos en data/logs/stockagent.log
 │   ├── internal_chat.py               # Bot y Asistente Virtual con chips por rol
+│   ├── server.py                      # Servidor ASGI/FastAPI desacoplado, middleware, PWA y OTA updates
 │   │
 │   ├── stock/                         # Subpaquete modular de dominio de stock e informes
 │   │   ├── __init__.py                # Exportaciones públicas del módulo stock
@@ -734,6 +797,8 @@ StockAgent/
 │           ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
 │           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
 │           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
+│           ├── dlg_quiebre.py         # Detección temprana y visualización de productos en quiebre
+│           ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
 │           └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
 ├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
 │   ├── lib/                           # Código fuente Dart (UI y servicios)
@@ -751,6 +816,7 @@ StockAgent/
 │   └── README_MOVIL.md                # Manual operativo del cliente móvil
 ├── compilar_apk.bat                   # Compilador con 1 clic de APK Release para Android
 ├── iniciar_servidor_movil.bat         # Servidor HTTP limpio para teléfonos en LAN
+├── iniciar_servidor_movil_en_segundo_plano.vbs # Servidor móvil silencioso sin ventana de consola
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
@@ -789,7 +855,15 @@ Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo,
 4. **Compatibilidad Inversa al 100%:**
    * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
-5. **Optimización Fast-Path (SQLite-First) y Concurrencia Robusta:**
+5. **Desacoplamiento de Servidor e Infraestructura de Red (`src/server.py`):**
+   * Se desacopló íntegramente la capa de servidor web de `src/flet_gui.py` hacia `src/server.py`, reduciendo `flet_gui.py` en más de 800 líneas de código y facilitando su testeo unitario.
+   * **Servicios Encapsulados:** Gestión del ciclo de vida ASGI / Starlette / Uvicorn, middleware de conexiones activas (`_RegistroConexionesMiddleware`), sondas de socket anti-colisión (`_puerto_local_activo`), resolución automática de IPs (LAN y Tailscale VPN), endpoints PWA (`/sw.js`, `/manifest.json`, `/offline.html`), recursos del escáner (`/scanner.html`, `/js/scanner.js`, `/css/scanner.css`) y el centro de distribución de actualizaciones Over-The-Air (OTA) para móviles (`/api/version` y `/api/apk`).
+
+6. **Especialización Modular de Diálogos (`dlg_quiebre.py` y `dlg_restaurar.py`):**
+   * **`src/ui/dialogs/dlg_quiebre.py`:** Módulo autónomo para el cálculo y presentación interactiva de alertas de quiebre de stock tras la carga de comprobantes o cierres.
+   * **`src/ui/dialogs/dlg_restaurar.py`:** Módulo especializado en la previsualización y ejecución atómica del rollback documental, protegido mediante validación estricta de permisos para acceso exclusivo del rol Master.
+
+7. **Optimización Fast-Path (SQLite-First) y Concurrencia Robusta:**
    * **Carga Inmediata de Catálogo:** `StockManager` comprueba de forma atómica si SQLite ya posee la importación inicial (`is_template_imported()`). De ser así, recupera el catálogo y los metadatos de columnas en `< 2 ms`, sin instanciar `openpyxl` ni bloquear el archivo `Productos.xlsx` en disco.
    * **Cierre Seguro de Descriptores en Parsers:** Se encapsuló la lectura de libros en `canjes_parser.py`, `mercado_full_parser.py` y `factory_parser.py` bajo bloques `try ... finally: wb.close()` garantizando la liberación inmediata de manejadores de archivo en Windows.
    * **Protección de Auditoría Concurrente:** `ProductStore.enrich_latest_movements()` incluye guardas atómicas para evitar sobreescrituras accidentales de metadatos cuando múltiples operarios descuentan inventario en paralelo.
@@ -1233,12 +1307,13 @@ A diferencia de empaquetar un intérprete de Python completo dentro del teléfon
 
 ---
 
-### Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat`)
+### Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat` / `iniciar_servidor_movil_en_segundo_plano.vbs`)
 
 Los sistemas operativos móviles modernos (Android 9+ e iOS) aplican políticas de seguridad estrictas que bloquean de forma agresiva los certificados SSL autofirmados locales. 
 
 Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `iniciar_servidor_movil.bat`:
 
+* **Ejecución Silenciosa / Segundo Plano:** Al hacer doble clic en `iniciar_servidor_movil.bat` o `iniciar_servidor_movil_en_segundo_plano.vbs`, el servidor se ejecuta sin dejar abierta ninguna ventana de consola negra, alojándose en la bandeja del sistema junto al reloj.
 * **Modo HTTP Plano (`--http`):** Inicia el servidor web en `http://0.0.0.0:8550`, permitiendo que los WebViews y navegadores móviles se conecten fluidamente sin pantallas rojas de advertencia ni interrupción de WebSockets (`/ws`).
 * **Verificación de Firewall Automática:** Valida y crea la regla de entrada TCP en el Firewall de Windows para el puerto 8550 en perfiles de red privada y de dominio.
 * **Información de Red Clara:** Muestra de forma destacada la IP local exacta a ingresar en el teléfono (ej: `http://192.168.1.50:8550`).
@@ -1263,6 +1338,63 @@ Para generar el instalador final de Android sin interactuar con comandos complej
 1. Envía el archivo `StockAgent.apk` al celular (mediante cable USB, WhatsApp, Telegram o red compartida).
 2. Toca el archivo en el teléfono y selecciona **Instalar** (habilita "Permitir desde esta fuente" si es la primera vez).
 3. Abre la app, escribe la IP de la PC servidor, presiona **"Probar Conexión"** y luego **"Conectar a StockAgent"**.
+
+---
+
+### Actualizaciones Automáticas OTA (Over-The-Air) para Android
+
+StockAgent cuenta con un sistema nativo de actualizaciones automáticas por red local (OTA - Over-The-Air) que prescinde completamente de Google Play Store:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Desarrollador
+    participant Bat as compilar_apk.bat
+    participant Srv as Servidor StockAgent (src/server.py)
+    participant App as Teléfono Android (App Flutter)
+
+    Dev->>Bat: Ejecuta compilación
+    Bat->>Bat: Incrementa versionCode en pubspec.yaml (+1)
+    Bat->>Bat: Compila StockAgent.apk en modo release
+    Bat->>Srv: Publica APK y version.json en dist_movil/
+    App->>Srv: Al iniciar consulta GET /api/version
+    Srv-->>App: Retorna {"version_code": 2, "apk_url": "/api/apk"}
+    Note over App: Detecta versión remota > local
+    App->>App: Muestra diálogo: "Nueva actualización disponible"
+    App->>Srv: Descarga binario vía GET /api/apk con barra de progreso
+    App->>App: Invoca instalador nativo de Android (.apk intent)
+```
+
+#### ¿Cómo Funciona el Ecosistema OTA?
+1. **Control de Versiones en `pubspec.yaml`:**
+   * La versión de la app móvil se define con la nomenclatura estándar `version: 1.0.1+2`, donde `1.0.1` es el nombre visible (`versionName`) y `2` es el número entero incremental (`versionCode`).
+2. **Distribución Automática desde el Servidor (`src/server.py`):**
+   * El servidor expone dos endpoints especializados:
+     - `GET /api/version` (o `/actualizaciones/version.json`): Devuelve el manifiesto JSON con `version_code`, `version_name`, novedades y URL de descarga.
+     - `GET /api/apk` (o `/actualizaciones/StockAgent.apk`): Sirve el archivo APK binario con encabezados `application/vnd.android.package-archive` y control de caché deshabilitado.
+3. **Flujo en el Dispositivo Móvil:**
+   * Al abrir la app en el teléfono, el servicio `UpdateService` consulta la versión del servidor en segundo plano.
+   * Si `version_remota > version_local`, se despliega un diálogo emergente: *"Actualización disponible. ¿Deseas descargar e instalar la versión X.X.X?"*.
+   * Al confirmar, la app descarga el paquete directamente en el almacenamiento temporal del dispositivo mostrando el porcentaje de avance y lanza el instalador nativo del sistema operativo.
+4. **Nota Importante para la Primera Instalación:**
+   * Para que el teléfono pueda autogestionar sus actualizaciones futuras, el APK instalado inicialmente debe contar con el código de actualización OTA compilado (versión con soporte OTA). Si se compila un nuevo APK pero el teléfono aún tiene una versión legacy anterior que no poseía este módulo, dicha versión inicial debe instalarse manualmente por única vez; a partir de allí, todas las versiones subsiguientes se actualizarán automáticamente vía Wi-Fi.
+
+---
+
+### Diseño Responsive Integral y Experiencia Móvil
+
+Todo el sistema StockAgent está construido con una **arquitectura 100% responsiva y adaptativa** que detecta el factor de forma del dispositivo en tiempo real:
+
+1. **Detección Automática de Viewport y Modo Teléfono:**
+   * Mediante la suscripción a eventos de redimensionamiento de ventana (`page.on_resized`), la interfaz clasifica dinámicamente el dispositivo:
+     - **Dispositivos Móviles (`ancho < 768px`):** Se activa automáticamente el modo compacto. El panel de navegación lateral persistente se oculta y es reemplazado por un **`NavigationDrawer` táctil deslizable** accesible desde el botón de menú tipo hamburguesa (`☰`).
+     - **Escritorio y Tablets (`ancho >= 768px`):** Menú lateral persistente visible con ancho optimizado para trabajo en múltiples monitores.
+2. **Diálogos Adaptables con Auto-Escala:**
+   * Todas las ventanas modulares (`src/ui/dialogs/`) utilizan funciones de cálculo dinámico (`ancho_adaptable` y `alto_adaptable`) que limitan el ancho y alto al `95%` del viewport en pantallas pequeñas, evitando desbordamientos horizontales o botones fuera de pantalla.
+3. **Contenedores con Desplazamiento Táctil:**
+   * Cada lista, tarjeta y formulario integra `scroll=ft.ScrollMode.ADAPTIVE`, permitiendo arrastre táctil nativo con inercia y rebote elástico tanto en navegadores móviles como en el WebView de Flutter.
+4. **Integración con el Selector de Archivos Nativo de Android (`MainActivity.kt`):**
+   * El cliente móvil incorpora en su código nativo Android (`MainActivity.kt`) el manejador `WebChromeClient.onShowFileChooser`. Cuando el operario presiona el botón para adjuntar un remito PDF, canje Excel o planilla de Mercado Full, el teléfono abre directamente el explorador de archivos nativo de Android (Google Files, descargas o almacenamiento interno), permitiendo seleccionar documentos descargados de WhatsApp o correo electrónico sin fricciones.
 
 ---
 

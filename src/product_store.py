@@ -7,6 +7,8 @@ from typing import Callable, Iterable
 
 
 class ProductStore:
+    _initialized_dbs: set[tuple[str, int, int]] = set()
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,10 +19,26 @@ class ProductStore:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+        connection.execute("PRAGMA temp_store = MEMORY")
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    def _db_signature(self) -> tuple[str, int, int] | None:
+        try:
+            if not self.database_path.exists():
+                return None
+            st = self.database_path.stat()
+            if st.st_size <= 0:
+                return None
+            return (str(self.database_path.resolve()), st.st_ctime_ns, st.st_ino)
+        except OSError:
+            return None
+
     def _initialize(self) -> None:
+        sig_before = self._db_signature()
+        if sig_before is not None and sig_before in self._initialized_dbs:
+            return
         with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
@@ -297,6 +315,38 @@ class ProductStore:
                 ON inventario_fisico_detalles(inventario_id)
                 """
             )
+        sig_after = self._db_signature()
+        if sig_after is not None:
+            self._initialized_dbs.add(sig_after)
+
+    def load_catalog_fast(
+        self,
+    ) -> tuple[bool, dict[str, str], list[sqlite3.Row]]:
+        """Carga en una única conexión el estado de plantilla, metadatos y filas activas del catálogo."""
+        with closing(self._connect()) as connection:
+            meta_rows = connection.execute(
+                "SELECT key, value FROM product_catalog_metadata"
+            ).fetchall()
+            meta = {row["key"]: row["value"] for row in meta_rows}
+            if "template_imported" not in meta:
+                return False, meta, []
+            rows = connection.execute(
+                """
+                SELECT
+                    catalog_row.product_code AS code,
+                    product.name AS name,
+                    product.stock AS stock,
+                    catalog_row.display_name AS display_name,
+                    catalog_row.display_order AS display_order,
+                    catalog_row.template_row AS template_row
+                FROM product_catalog_rows AS catalog_row
+                JOIN products AS product
+                    ON product.code = catalog_row.product_code
+                WHERE product.active = 1
+                ORDER BY catalog_row.display_order, catalog_row.id
+                """
+            ).fetchall()
+            return True, meta, rows
 
     def is_template_imported(self) -> bool:
         """Determina rápidamente si la plantilla inicial ya fue importada a SQLite."""
@@ -536,7 +586,7 @@ class ProductStore:
                 filas_plantilla = synchronize_template(orden)
                 filas_catalogo = connection.execute(
                     """
-                    SELECT id, display_order
+                    SELECT id, display_order, template_row
                     FROM product_catalog_rows
                     ORDER BY display_order, id
                     """
@@ -546,16 +596,21 @@ class ProductStore:
                         "La cantidad de filas de la plantilla no coincide "
                         "con el catálogo SQLite."
                     )
-                for fila_catalogo, fila_plantilla in zip(
-                    filas_catalogo, filas_plantilla
-                ):
-                    connection.execute(
+                cambios_fila = [
+                    (fila_plantilla, fila_catalogo["id"])
+                    for fila_catalogo, fila_plantilla in zip(
+                        filas_catalogo, filas_plantilla
+                    )
+                    if fila_catalogo["template_row"] != fila_plantilla
+                ]
+                if cambios_fila:
+                    connection.executemany(
                         """
                         UPDATE product_catalog_rows
                         SET template_row = ?
                         WHERE id = ?
                         """,
-                        (fila_plantilla, fila_catalogo["id"]),
+                        cambios_fila,
                     )
                 connection.commit()
                 return orden, referencia["display_name"]
@@ -639,7 +694,7 @@ class ProductStore:
                 filas_plantilla = synchronize_template()
                 filas_catalogo = connection.execute(
                     """
-                    SELECT id FROM product_catalog_rows
+                    SELECT id, template_row FROM product_catalog_rows
                     ORDER BY display_order, id
                     """
                 ).fetchall()
@@ -648,16 +703,21 @@ class ProductStore:
                         "La cantidad de filas de la plantilla no coincide "
                         "con el catálogo SQLite."
                     )
-                for fila_catalogo, fila_plantilla in zip(
-                    filas_catalogo, filas_plantilla
-                ):
-                    connection.execute(
+                cambios_fila = [
+                    (fila_plantilla, fila_catalogo["id"])
+                    for fila_catalogo, fila_plantilla in zip(
+                        filas_catalogo, filas_plantilla
+                    )
+                    if fila_catalogo["template_row"] != fila_plantilla
+                ]
+                if cambios_fila:
+                    connection.executemany(
                         """
                         UPDATE product_catalog_rows
                         SET template_row = ?
                         WHERE id = ?
                         """,
-                        (fila_plantilla, fila_catalogo["id"]),
+                        cambios_fila,
                     )
                 connection.commit()
             except BaseException:
@@ -943,12 +1003,12 @@ class ProductStore:
                 (usuario, nombre_archivo, reporte_unificado, total_relevados, total_diferencias),
             )
             inventario_id = int(cursor.lastrowid or 0)
-            for cod, nom, stk_dig, stk_fis, dif, estado in detalles:
-                connection.execute(
+            if detalles:
+                connection.executemany(
                     "UPDATE products SET stock_fisico = ? WHERE code = ?",
-                    (stk_fis, cod),
+                    [(stk_fis, cod) for cod, _, _, stk_fis, _, _ in detalles],
                 )
-                connection.execute(
+                connection.executemany(
                     """
                     INSERT INTO inventario_fisico_detalles (
                         inventario_id, product_code, product_name,
@@ -956,7 +1016,10 @@ class ProductStore:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (inventario_id, cod, nom, stk_dig, stk_fis, dif, estado),
+                    [
+                        (inventario_id, cod, nom, stk_dig, stk_fis, dif, estado)
+                        for cod, nom, stk_dig, stk_fis, dif, estado in detalles
+                    ],
                 )
             return inventario_id
 
@@ -1179,7 +1242,7 @@ class ProductStore:
                     filas_plantilla = synchronize_template()
                     filas_catalogo = connection.execute(
                         """
-                        SELECT id FROM product_catalog_rows
+                        SELECT id, template_row FROM product_catalog_rows
                         ORDER BY display_order, id
                         """
                     ).fetchall()
@@ -1188,16 +1251,21 @@ class ProductStore:
                             "La cantidad de filas de la plantilla no coincide "
                             "con el catálogo SQLite."
                         )
-                    for fila_catalogo, fila_plantilla in zip(
-                        filas_catalogo, filas_plantilla
-                    ):
-                        connection.execute(
+                    cambios_fila = [
+                        (fila_plantilla, fila_catalogo["id"])
+                        for fila_catalogo, fila_plantilla in zip(
+                            filas_catalogo, filas_plantilla
+                        )
+                        if fila_catalogo["template_row"] != fila_plantilla
+                    ]
+                    if cambios_fila:
+                        connection.executemany(
                             """
                             UPDATE product_catalog_rows
                             SET template_row = ?
                             WHERE id = ?
                             """,
-                            (fila_plantilla, fila_catalogo["id"]),
+                            cambios_fila,
                         )
                 connection.commit()
                 return len(stocks)

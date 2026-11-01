@@ -131,6 +131,8 @@ class MensajeChat:
 
 
 class OrderStore:
+    _initialized_dbs: set[tuple[str, int, int]] = set()
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,10 +143,26 @@ class OrderStore:
         with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
+            connection.execute("PRAGMA temp_store = MEMORY")
             connection.execute("PRAGMA busy_timeout = 10000")
             yield connection
 
+    def _db_signature(self) -> tuple[str, int, int] | None:
+        try:
+            if not self.database_path.exists():
+                return None
+            st = self.database_path.stat()
+            if st.st_size <= 0:
+                return None
+            return (str(self.database_path.resolve()), st.st_ctime_ns, st.st_ino)
+        except OSError:
+            return None
+
     def _initialize(self) -> None:
+        sig_before = self._db_signature()
+        if sig_before is not None and sig_before in self._initialized_dbs:
+            return
         with self._connect() as connection, connection:
             connection.execute(
                 """
@@ -357,6 +375,18 @@ class OrderStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pedidos_turno ON pedidos(estado, cierre_id, id DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_id ON pedido_items(pedido_id)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)"
+            )
+        sig_after = self._db_signature()
+        if sig_after is not None:
+            self._initialized_dbs.add(sig_after)
 
     # ==========================
     # GESTIÓN DE CLIENTES

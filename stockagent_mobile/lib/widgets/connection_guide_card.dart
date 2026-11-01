@@ -28,10 +28,10 @@ class ConnectionGuideCard extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            '1. Ejecuta "iniciar_servidor_movil.bat" en la PC.\n'
+            '1. En la PC, ejecuta "iniciar_servidor_movil.bat".\n'
             '2. En la consola verás una línea que dice:\n'
-            '   "Acceso Red LAN: http://192.168.X.X:8550".\n'
-            '3. Escribe esa misma dirección IP aquí.',
+            '   "-> Acceso Red LAN (misma red): http://192.168.X.X:8550"\n'
+            '3. Escribe esa IP (ej: 192.168.100.19) o pega el enlace completo aquí.',
             style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
           ),
         ],

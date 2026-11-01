@@ -264,8 +264,8 @@ class FletGuiTests(unittest.TestCase):
         lista = cast(ft.Container, dialogo.content.controls[3])
         self.assertEqual(len(cast(ft.Column, lista.content).controls), 1)
 
-    def test_admin_restores_documents_for_selected_discount_date(self):
-        interfaz, menu, page = self.crear_interfaz()
+    def test_master_restores_documents_for_selected_discount_date(self):
+        interfaz, menu, page = self.crear_interfaz(role="master")
 
         interfaz.confirmar_restaurar(None)
 
@@ -278,6 +278,12 @@ class FletGuiTests(unittest.TestCase):
         self.assertEqual(menu.restauraciones, ["2026-10-21"])
         self.assertEqual(page.dialogos, [])
 
+    def test_admin_cannot_restore_documents(self):
+        interfaz, menu, page = self.crear_interfaz(role="administrador")
+        interfaz.confirmar_restaurar(None)
+        self.assertEqual(len(page.dialogos), 1)
+        self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
+
     def test_consultation_role_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="consulta")
 
@@ -285,7 +291,7 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertEqual(menu.procesamientos, [])
         self.assertEqual(len(page.dialogos), 1)
-        self.assertEqual(len(interfaz.controles_tarea), 4)
+        self.assertEqual(len(interfaz.controles_tarea), 5)
 
     def test_admin_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="administrador")
@@ -296,14 +302,19 @@ class FletGuiTests(unittest.TestCase):
         self.assertEqual(len(page.dialogos), 1)
         self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
 
-    def test_admin_can_open_mercado_full_discount(self):
-        interfaz, _, page = self.crear_interfaz(role="administrador")
+    def test_admin_and_operador_can_open_mercado_full_discount(self):
+        interfaz_admin, _, page_admin = self.crear_interfaz(role="administrador")
         with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(catalogo={})):
-            interfaz.mostrar_descuento_mercado_full()
-        self.assertEqual(len(page.dialogos), 1)
+            interfaz_admin.mostrar_descuento_mercado_full()
+        self.assertEqual(len(page_admin.dialogos), 1)
 
-    def test_non_admin_cannot_open_mercado_full_discount(self):
-        interfaz, _, page = self.crear_interfaz(role="operador")
+        interfaz_op, _, page_op = self.crear_interfaz(role="operador")
+        with patch("src.flet_gui.StockManager", return_value=SimpleNamespace(catalogo={})):
+            interfaz_op.mostrar_descuento_mercado_full()
+        self.assertEqual(len(page_op.dialogos), 1)
+
+    def test_non_admin_non_operador_cannot_open_mercado_full_discount(self):
+        interfaz, _, page = self.crear_interfaz(role="consulta")
         interfaz.mostrar_descuento_mercado_full()
         self.assertEqual(len(page.dialogos), 1)
         self.assertIn("no tiene permiso", cast(ft.Text, page.dialogos[0].content).value)
@@ -606,6 +617,48 @@ class FletGuiTests(unittest.TestCase):
         self.assertGreater(len(page.dialogos), 0)
         self.assertIsInstance(page.dialogos[-1], ft.AlertDialog)
         interfaz.page.pop_dialog()
+
+
+    def test_mostrar_manual_usuario_por_rol(self):
+        # 1. Modo Web para rol Operador
+        interfaz, _, page = self.crear_interfaz(role="operador")
+        page.web = True
+        page.launched_urls = []
+        page.launch_url = lambda u: page.launched_urls.append(u)
+        interfaz.mostrar_manual_usuario()
+        self.assertTrue(any("Manual_Operador.pdf?v=" in u for u in page.launched_urls))
+
+        # 2. Modo Web para rol Master
+        interfaz, _, page = self.crear_interfaz(role="master")
+        page.web = True
+        page.launched_urls = []
+        page.launch_url = lambda u: page.launched_urls.append(u)
+        interfaz.mostrar_manual_usuario()
+        self.assertTrue(any("Manual_Master.pdf?v=" in u for u in page.launched_urls))
+
+        # 3. Modo Web para rol Administrador
+        interfaz, _, page = self.crear_interfaz(role="administrador")
+        page.web = True
+        page.launched_urls = []
+        page.launch_url = lambda u: page.launched_urls.append(u)
+        interfaz.mostrar_manual_usuario()
+        self.assertTrue(any("Manual_Administrador.pdf?v=" in u for u in page.launched_urls))
+
+        # 4. Modo Web para rol Consulta
+        interfaz, _, page = self.crear_interfaz(role="consulta")
+        page.web = True
+        page.launched_urls = []
+        page.launch_url = lambda u: page.launched_urls.append(u)
+        interfaz.mostrar_manual_usuario()
+        self.assertTrue(any("Manual_Consulta.pdf?v=" in u for u in page.launched_urls))
+
+        # 5. Modo Desktop nativo: llama a os.startfile
+        with patch("os.startfile", create=True) as mock_startfile:
+            interfaz, _, page = self.crear_interfaz(role="operador")
+            page.web = False
+            interfaz.mostrar_manual_usuario()
+            mock_startfile.assert_called_once()
+            self.assertIn("Manual_Operador.pdf", str(mock_startfile.call_args[0][0]))
 
 
 if __name__ == "__main__":

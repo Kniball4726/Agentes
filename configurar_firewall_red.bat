@@ -21,11 +21,13 @@ echo.
 echo [1/2] Abriendo puerto TCP 8550 para la App Móvil...
 netsh advfirewall firewall delete rule name="StockAgent Web (Puerto 8550)" >nul 2>&1
 netsh advfirewall firewall add rule name="StockAgent Web (Puerto 8550)" dir=in action=allow protocol=TCP localport=8550 profile=any >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-NetFirewallRule -DisplayName 'StockAgent Web (Puerto 8550)' -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName 'StockAgent Web (Puerto 8550)' -Direction Inbound -LocalPort 8550 -Protocol TCP -Action Allow -Profile Any -ErrorAction SilentlyContinue" >nul 2>&1
 
 echo [2/2] Habilitando permisos para Python...
 if exist ".venv\Scripts\python.exe" (
     netsh advfirewall firewall delete rule name="StockAgent Python" >nul 2>&1
     netsh advfirewall firewall add rule name="StockAgent Python" dir=in action=allow program="%~dp0.venv\Scripts\python.exe" profile=any >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = '%~dp0.venv\Scripts\python.exe'; Remove-NetFirewallRule -DisplayName 'StockAgent Python' -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName 'StockAgent Python' -Direction Inbound -Program $p -Action Allow -Profile Any -ErrorAction SilentlyContinue" >nul 2>&1
 )
 
 echo.
@@ -34,4 +36,4 @@ echo   [OK] Firewall de Windows configurado exitosamente!
 echo   El puerto 8550 esta abierto para tu celular.
 echo ==================================================================
 echo.
-pause
+timeout /t 3 >nul 2>&1

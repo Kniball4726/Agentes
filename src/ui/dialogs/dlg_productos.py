@@ -25,17 +25,39 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
         expand=True,
     )
     productos = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
+    cache_productos: list[Any] = []
+    limite_visibles = [80]
 
-    def actualizar_lista(_evento: ft.Event | None = None) -> None:
+    def mostrar_mas_productos(_e: ft.Event | None = None) -> None:
+        limite_visibles[0] += 100
+        actualizar_lista(recargar=False, mantener_limite=True)
+
+    def actualizar_lista(
+        _evento: ft.Event | None = None,
+        recargar: bool = False,
+        mantener_limite: bool = False,
+    ) -> None:
+        if not mantener_limite:
+            limite_visibles[0] = 80
+        if recargar or not cache_productos:
+            cache_productos.clear()
+            cache_productos.extend(stock_manager.listar_productos())
         productos.controls.clear()
         consulta = (busqueda.value or "").strip().casefold()
-        for producto in stock_manager.listar_productos():
+        filtrados = []
+        for producto in cache_productos:
+            codigo = str(producto["code"])
+            nombre = str(producto["name"])
+            barras = str(producto["cod_barras"] or "").strip() if "cod_barras" in producto.keys() else ""
+            if consulta and consulta not in f"{codigo} {nombre} {barras}".casefold():
+                continue
+            filtrados.append(producto)
+
+        for producto in filtrados[: limite_visibles[0]]:
             codigo = str(producto["code"])
             nombre = str(producto["name"])
             activo = bool(producto["active"])
             barras = str(producto["cod_barras"] or "").strip() if "cod_barras" in producto.keys() else ""
-            if consulta and consulta not in f"{codigo} {nombre} {barras}".casefold():
-                continue
 
             stk = int(producto["stock"])
             try:
@@ -106,6 +128,19 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                             ),
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                )
+            )
+        restantes = len(filtrados) - limite_visibles[0]
+        if restantes > 0:
+            productos.controls.append(
+                ft.Container(
+                    alignment=ft.Alignment.CENTER,
+                    padding=6,
+                    content=ft.TextButton(
+                        f"Mostrar más productos ({restantes} restantes)...",
+                        icon=ft.Icons.EXPAND_MORE,
+                        on_click=mostrar_mas_productos,
                     ),
                 )
             )
@@ -200,7 +235,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                 ),
             )
             if actualizado:
-                actualizar_lista()
+                actualizar_lista(recargar=True)
 
         dialogo_edicion = ft.AlertDialog(
             modal=True,
@@ -255,12 +290,12 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             lambda: stock_manager.cambiar_estado_producto(codigo, activo),
         )
         if actualizado:
-            actualizar_lista()
+            actualizar_lista(recargar=True)
 
     def agregar(_evento: ft.Event) -> None:
         if not interfaz.exigir_roles("administrador"):
             return
-        interfaz.mostrar_formulario_producto(actualizar_lista)
+        interfaz.mostrar_formulario_producto(lambda: actualizar_lista(recargar=True))
 
     dialogo = ft.AlertDialog(
         modal=True,

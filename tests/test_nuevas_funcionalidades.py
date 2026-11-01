@@ -440,17 +440,43 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(interfaz.ancho_adaptable(600), 376)  # 400 - 24
             self.assertEqual(interfaz.alto_adaptable(900), 740)   # 800 - 60
 
+            # Simular WebView de APK Android que reporta ancho amplio (980px) inicialmente
+            page.width = 980
+            page.client_user_agent = "Mozilla/5.0 (Linux; Android 14; SM-A546E Build/UP1A; wv) AppleWebKit/537.36 Mobile"
+            self.assertTrue(interfaz.es_pantalla_movil)
+            self.assertLessEqual(interfaz.ancho_adaptable(880, margen=24), 350)
+            interfaz.mostrar_inicio_sesion()
+            raiz_login = cast(ft.Container, page.controls[0])
+            col_login = cast(ft.Column, raiz_login.content)
+            tarjeta_login = cast(ft.Container, col_login.controls[0])
+            self.assertLessEqual(tarjeta_login.width or 0, 350)
+            page.client_user_agent = ""
+            page.width = 400
+
             # Construir en modo móvil
             interfaz.construir()
             self.assertEqual(len(page.controls), 1)
             # En móvil el root es un ft.Container fluido y no un Row con sidebar rígido
             contenedor_raiz = cast(ft.Container, page.controls[0])
             self.assertIsInstance(contenedor_raiz, ft.Container)
+            col_dashboard = cast(ft.Column, contenedor_raiz.content)
+            encabezado_movil = cast(ft.Column, col_dashboard.controls[0])
+            fila_acciones_movil = cast(ft.Row, encabezado_movil.controls[1])
+            self.assertFalse(fila_acciones_movil.wrap)
+            self.assertEqual(len(fila_acciones_movil.controls), 4)
+            self.assertEqual(cast(ft.IconButton, fila_acciones_movil.controls[0]).icon, ft.Icons.SEARCH)
+            self.assertTrue(cast(ft.Container, fila_acciones_movil.controls[1]).expand)
+            self.assertIn(cast(ft.IconButton, fila_acciones_movil.controls[2]).icon, (ft.Icons.WB_SUNNY, ft.Icons.DARK_MODE))
+            self.assertEqual(cast(ft.IconButton, fila_acciones_movil.controls[3]).icon, ft.Icons.REFRESH)
             # Todos los 18 comandos siguen disponibles para el usuario
             # 22 comandos de administración disponibles (Telegram y SMTP reservados a Master)
             self.assertEqual(len(interfaz.controles_tarea), 21)
             # Botón flotante más compacto
             self.assertEqual(interfaz.boton_chat_flotante.width, 110)
+            self.assertFalse(interfaz.lista_pedidos_preparados.expand)
+            self.assertEqual(interfaz.lista_pedidos_preparados.height, 260)
+            self.assertFalse(interfaz.lista_informes.expand)
+            self.assertEqual(interfaz.lista_informes.height, 240)
 
             # Verificar que los diálogos adaptan su ancho automáticamente
             dialogo_prueba = ft.AlertDialog(
@@ -459,6 +485,18 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             page.show_dialog(dialogo_prueba)
             self.assertEqual(dialogo_prueba.content.width, 376)
             self.assertEqual(dialogo_prueba.content.height, 500)
+
+    def test_repositorio_local_actualizaciones_version_json_y_apk(self):
+        dist_movil = Path(__file__).resolve().parent.parent / "dist_movil"
+        v_file = dist_movil / "version.json"
+        self.assertTrue(v_file.exists(), "El archivo version.json debe existir en dist_movil")
+        data = json.loads(v_file.read_text(encoding="utf-8"))
+        self.assertIn("version_code", data)
+        self.assertIn("version_name", data)
+        self.assertIn("apk_url", data)
+        self.assertGreaterEqual(data["version_code"], 1)
+        self.assertTrue(data["apk_url"].endswith(".apk"))
+
 
 
 if __name__ == "__main__":

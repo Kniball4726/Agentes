@@ -56,6 +56,7 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
                                 valor,
                             ],
                             spacing=3,
+                            expand=True,
                         ),
                     ],
                     spacing=12,
@@ -77,8 +78,17 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     - Lado derecho: Informes generados (o eventos de auditoría para Master).
     """
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+    es_movil = bool(interfaz.es_pantalla_movil)
     titulo_derecha = "Eventos de auditoría recientes" if es_master else "Informes generados"
     icono_derecha = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
+
+    # En pantallas móviles el dashboard padre usa scroll=AUTO (altura vertical no acotada).
+    # Por ello en móvil desactivamos expand=True vertical y asignamos alturas acotadas
+    # a los ListView para evitar excepciones RenderFlex / RenderViewport en Flutter.
+    interfaz.lista_informes.expand = not es_movil
+    interfaz.lista_informes.height = 240 if es_movil else None
+    interfaz.lista_pedidos_preparados.expand = not es_movil
+    interfaz.lista_pedidos_preparados.height = 260 if es_movil else None
 
     # Panel LADO DERECHO: Informes generados
     contenido_derecha = ft.Column(
@@ -92,7 +102,8 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
             ),
             interfaz.lista_informes,
         ],
-        expand=True,
+        expand=not es_movil,
+        tight=es_movil,
         spacing=8,
     )
 
@@ -119,6 +130,7 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
                                 interfaz.header_pedidos_subtitulo,
                             ],
                             spacing=2,
+                            expand=True,
                         ),
                         ft.Container(
                             content=interfaz.header_pedidos_bultos,
@@ -133,25 +145,27 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
             ),
             interfaz.lista_pedidos_preparados,
         ],
-        expand=True,
+        expand=not es_movil,
+        tight=es_movil,
         spacing=8,
     )
 
-    tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=True)
+    tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=not es_movil)
 
     # El usuario Master no gestiona ni visualiza pedidos operativos (Segregación SoD)
     if es_master:
         return tarjeta_der
 
-    tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=True)
+    tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=not es_movil)
 
-    if interfaz.es_pantalla_movil:
+    if es_movil:
         return ft.Column(
             [
                 tarjeta_izq,
                 tarjeta_der,
             ],
             spacing=12,
+            tight=True,
         )
     return ft.Row(
         [

@@ -14,6 +14,9 @@ if exist "C:\Program Files\Eclipse Adoptium\jdk-17.0.14.7-hotspot" (
     set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.14.7-hotspot"
 )
 
+rem Desactivar telemetria de Flutter para mayor velocidad
+set "FLUTTER_SUPPRESS_ANALYTICS=true"
+
 rem 1. Verificar si Flutter esta en el PATH
 set "FLUTTER_CMD=flutter"
 where flutter >nul 2>&1
@@ -56,11 +59,14 @@ if exist "android\gradlew.bat" (
 )
 
 echo [1/3] Verificando dependencias de Flutter...
-call "%FLUTTER_CMD%" pub get
+call "%FLUTTER_CMD%" pub get --offline >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Fallo la descarga de paquetes de Flutter.
-    pause
-    goto :EOF
+    call "%FLUTTER_CMD%" pub get
+    if errorlevel 1 (
+        echo [ERROR] Fallo la resolucion de paquetes de Flutter.
+        pause
+        goto :EOF
+    )
 )
 
 echo.
@@ -73,11 +79,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/3] Organizando instalador final...
+echo [3/3] Organizando instalador y repositorio local de actualizaciones...
 set "DESTINO=%~dp0dist_movil"
 if not exist "%DESTINO%" mkdir "%DESTINO%"
 
 copy /y "build\app\outputs\flutter-apk\app-release.apk" "%DESTINO%\StockAgent.apk" >nul
+
+powershell -NoProfile -Command "$c = Get-Content 'pubspec.yaml' -Raw; if ($c -match 'version:\s*([0-9\.]+)\+([0-9]+)') { $v = $matches[1]; $code = [int]$matches[2] } else { $v = '1.0.0'; $code = 1 }; $apk = Get-Item '%DESTINO%\StockAgent.apk'; $info = [ordered]@{ version_code = $code; version_name = $v; apk_url = '/actualizaciones/StockAgent.apk'; release_notes = 'Actualización lista en el servidor con mejoras en carga de pedidos y sincronización.'; file_size = $apk.Length; updated_at = (Get-Date -Format 'dd/MM/yyyy HH:mm') }; $info | ConvertTo-Json | Set-Content '%DESTINO%\version.json' -Encoding UTF8"
 
 echo ==================================================================
 echo   COMPILACION EXITOSA!

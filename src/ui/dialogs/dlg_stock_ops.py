@@ -431,7 +431,7 @@ def mostrar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> N
 
 def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = None) -> None:
     """Ventana para procesar comprobantes de Mercado Envíos Full (.xlsx / .xls)."""
-    if not interfaz.exigir_roles("administrador"):
+    if not interfaz.exigir_roles("administrador", "operador"):
         return
 
     carpeta_full = getattr(interfaz.menu, "carpeta_mercado_full", None) or (
@@ -543,6 +543,7 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
                 break
 
     selector_archivo.on_change = cambiar_archivo_dropdown
+    selector_archivo.on_select = cambiar_archivo_dropdown
 
     if archivo_seleccionado[0] is not None:
         cargar_previsualizacion_archivo(archivo_seleccionado[0])
@@ -576,7 +577,7 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         )
 
     async def confirmar_descuento_full(_e: ft.Event) -> None:
-        if not interfaz.exigir_roles("administrador"):
+        if not interfaz.exigir_roles("administrador", "operador"):
             return
         if not archivo_seleccionado[0] or not items_a_descontar:
             interfaz.notificar("No hay un archivo válido con productos para descontar.")
@@ -612,7 +613,7 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
             spacing=8,
         ),
         content=ft.Container(
-            width=650,
+            width=interfaz.ancho_adaptable(650) if hasattr(interfaz, "ancho_adaptable") else 650,
             content=ft.Column(
                 [
                     ft.Text(
@@ -665,6 +666,10 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
         getattr(interfaz.menu, "base_dir", Path(".")) / "Descuentos" / "MercadoLibre"
     )
     carpeta_ml.mkdir(parents=True, exist_ok=True)
+    if hasattr(interfaz, "cerrar_drawer_si_movil"):
+        interfaz.cerrar_drawer_si_movil()
+    if hasattr(interfaz, "_asegurar_file_picker"):
+        interfaz._asegurar_file_picker()
 
     archivo_seleccionado: list[Path | None] = [None]
     resultado_parseo: list[ResultadoRemito | None] = [None]
@@ -820,6 +825,7 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                 break
 
     selector_archivo.on_change = cambiar_archivo_dropdown
+    selector_archivo.on_select = cambiar_archivo_dropdown
     if archivos_pendientes:
         archivo_seleccionado[0] = archivos_pendientes[0]
         cargar_previsualizacion_docx(archivos_pendientes[0])
@@ -947,12 +953,12 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.STOREFRONT, color=ROJO),
-                ft.Text("Descontar Pedido Mercado Libre (DOCX)", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("Descontar Pedido Mercado Libre (DOCX)", size=16, weight=ft.FontWeight.BOLD, expand=True),
             ],
             spacing=8,
         ),
         content=ft.Container(
-            width=650,
+            width=interfaz.ancho_adaptable(650) if hasattr(interfaz, "ancho_adaptable") else 650,
             content=ft.Column(
                 [
                     ft.Text(
@@ -973,6 +979,7 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                             ),
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        wrap=bool(getattr(interfaz, "es_pantalla_movil", False)),
                         spacing=8,
                     ),
                     resumen_texto,
@@ -1131,6 +1138,7 @@ def mostrar_stock_fisico_operario(interfaz: Any, _evento: ft.Event | None = None
                 break
 
     selector_archivo.on_change = cambiar_archivo_dropdown
+    selector_archivo.on_select = cambiar_archivo_dropdown
 
     if archivo_seleccionado[0] is not None:
         cargar_comparativa_archivo(archivo_seleccionado[0])
@@ -1366,6 +1374,7 @@ def mostrar_comparativa_stock_fisico_admin(interfaz: Any, _evento: ft.Event | No
                 break
 
     selector_inv.on_change = cambiar_inv
+    selector_inv.on_select = cambiar_inv
     solo_diferencias.on_change = lambda _e: recargar_detalle()
 
     if inv_actual[0] is not None:

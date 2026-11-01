@@ -2,6 +2,7 @@
 
 Muestra el estado en tiempo real del servidor web de StockAgent:
 - 🟢 En línea (servidor respondiendo en el puerto configurado)
+- 🔵 Dispositivo(s) conectado(s) (celular / app móvil u otro equipo de la red)
 - 🟡 Iniciando / Verificando
 - 🔴 Caído o Inaccesible
 - ⚪ Detenido
@@ -38,12 +39,14 @@ logger = configurar_logging()
 # Estados posibles del servidor
 ESTADO_INICIANDO = "iniciando"
 ESTADO_ONLINE = "online"
+ESTADO_CLIENTE = "cliente_conectado"
 ESTADO_ERROR = "error"
 ESTADO_DETENIDO = "detenido"
 
 TEXTOS_ESTADO = {
     ESTADO_INICIANDO: "🟡 Iniciando...",
     ESTADO_ONLINE: "🟢 En línea",
+    ESTADO_CLIENTE: "🔵 Dispositivo conectado",
     ESTADO_ERROR: "🔴 Desconectado / Error",
     ESTADO_DETENIDO: "⚪ Detenido",
 }
@@ -51,6 +54,7 @@ TEXTOS_ESTADO = {
 COLORES_BADGE = {
     ESTADO_INICIANDO: (234, 179, 8, 255),    # Amarillo (#eab308)
     ESTADO_ONLINE: (34, 197, 94, 255),       # Verde (#22c55e)
+    ESTADO_CLIENTE: (59, 130, 246, 255),     # Azul (#3b82f6)
     ESTADO_ERROR: (239, 68, 68, 255),        # Rojo (#ef4444)
     ESTADO_DETENIDO: (156, 163, 175, 255),   # Gris (#9ca3af)
 }
@@ -159,6 +163,56 @@ class TrayIconServidor:
         self._activo = False
         self._primera_conexion_notificada = False
         self._imagenes_cache: dict[str, object] = {}
+        self._lock_clientes = threading.Lock()
+        self._clientes_ws: dict[str, int] = {}
+        self._clientes_http: dict[str, float] = {}
+
+    # Segundos sin actividad HTTP tras los cuales un dispositivo se considera desconectado.
+    # (La app móvil verifica el servidor cada 10 s.)
+    _VENTANA_CLIENTE_HTTP_S = 25.0
+
+    @staticmethod
+    def _es_ip_local(ip: str) -> bool:
+        return not ip or ip in ("127.0.0.1", "::1", "localhost", "desconocido")
+
+    def registrar_actividad_cliente(self, ip: str) -> None:
+        """Marca actividad HTTP reciente de un dispositivo remoto."""
+        if self._es_ip_local(ip):
+            return
+        with self._lock_clientes:
+            self._clientes_http[ip] = time.monotonic()
+
+    def cliente_ws_abierto(self, ip: str) -> None:
+        """Registra una sesión WebSocket abierta (sesión de la app abierta en un dispositivo)."""
+        if self._es_ip_local(ip):
+            return
+        with self._lock_clientes:
+            self._clientes_ws[ip] = self._clientes_ws.get(ip, 0) + 1
+
+    def cliente_ws_cerrado(self, ip: str) -> None:
+        """Registra el cierre de una sesión WebSocket."""
+        if self._es_ip_local(ip):
+            return
+        with self._lock_clientes:
+            restantes = self._clientes_ws.get(ip, 0) - 1
+            if restantes > 0:
+                self._clientes_ws[ip] = restantes
+            else:
+                self._clientes_ws.pop(ip, None)
+            # Cuenta como actividad para no parpadear al recargar la página
+            self._clientes_http[ip] = time.monotonic()
+
+    def clientes_conectados(self) -> list[str]:
+        """Devuelve las IPs remotas actualmente conectadas (ordenadas)."""
+        ahora = time.monotonic()
+        with self._lock_clientes:
+            ips = set(self._clientes_ws)
+            for ip, visto in list(self._clientes_http.items()):
+                if ahora - visto <= self._VENTANA_CLIENTE_HTTP_S:
+                    ips.add(ip)
+                else:
+                    del self._clientes_http[ip]
+            return sorted(ips)
 
     def _generar_imagen(self, estado: str):
         """Genera una imagen con el badge de estado para el icono de la bandeja."""
@@ -192,6 +246,14 @@ class TrayIconServidor:
             draw.ellipse((36, 36, 64, 64), fill=(255, 255, 255, 255))
             # Círculo interior del color de estado
             draw.ellipse(box_badge, fill=color_badge)
+            if estado == ESTADO_CLIENTE:
+                # Marca de verificación blanca: hay un dispositivo conectado
+                draw.line(
+                    [(44, 50), (49, 55), (57, 43)],
+                    fill=(255, 255, 255, 255),
+                    width=3,
+                    joint="curve",
+                )
 
             self._imagenes_cache[estado] = base
             return base
@@ -210,9 +272,20 @@ class TrayIconServidor:
 
         texto_estado_actual = f"Servidor: {TEXTOS_ESTADO.get(self.estado, self.estado)} (Puerto {self.port})"
 
+        clientes = self.clientes_conectados()
+        if clientes:
+            texto_clientes = f"📱 Dispositivos conectados: {len(clientes)} ({', '.join(clientes[:3])})"
+        else:
+            texto_clientes = "📱 Sin dispositivos conectados"
+
         items = [
             pystray.MenuItem(
                 texto_estado_actual,
+                None,
+                enabled=False,
+            ),
+            pystray.MenuItem(
+                texto_clientes,
                 None,
                 enabled=False,
             ),
@@ -325,6 +398,48 @@ class TrayIconServidor:
         except Exception as exc:
             logger.debug("No se pudo enviar notificación de bandeja: %s", exc)
 
+    _INTERVALO_NOTIF_CLIENTE_S = 120.0
+
+    @staticmethod
+    def _describir_dispositivo(agente: str) -> str:
+        """Devuelve un nombre legible del dispositivo a partir del User-Agent."""
+        ua = (agente or "").lower()
+        if "android" in ua:
+            return "Celular Android"
+        if "iphone" in ua:
+            return "iPhone"
+        if "ipad" in ua:
+            return "iPad"
+        if "windows" in ua:
+            return "PC Windows"
+        if "macintosh" in ua or "mac os" in ua:
+            return "Mac"
+        if "linux" in ua:
+            return "Equipo Linux"
+        if "dart" in ua or "okhttp" in ua:
+            return "App móvil StockAgent"
+        return "Dispositivo"
+
+    def notificar_conexion_cliente(self, ip: str, agente: str = "") -> bool:
+        """Muestra una notificación cuando un dispositivo remoto se conecta.
+
+        Ignora conexiones locales (127.0.0.1 / ::1) y no repite el aviso para la
+        misma IP antes de ``_INTERVALO_NOTIF_CLIENTE_S`` segundos.
+        """
+        if not ip or ip in ("127.0.0.1", "::1", "localhost"):
+            return False
+        ahora = time.monotonic()
+        ultimos = self.__dict__.setdefault("_ultimas_notif_cliente", {})
+        if ahora - ultimos.get(ip, -1e9) < self._INTERVALO_NOTIF_CLIENTE_S:
+            return False
+        ultimos[ip] = ahora
+        dispositivo = self._describir_dispositivo(agente)
+        self.mostrar_notificacion(
+            "StockAgent: Nueva conexión",
+            f"{dispositivo} conectado desde {ip}",
+        )
+        return True
+
     def actualizar_estado(self, nuevo_estado: str):
         """Actualiza el icono, tooltip y menú según el nuevo estado del servidor."""
         if not self._icon:
@@ -340,7 +455,13 @@ class TrayIconServidor:
                 self._icon.icon = img
 
             # 2. Actualizar texto de Tooltip al pasar el mouse
-            if nuevo_estado == ESTADO_ONLINE:
+            if nuevo_estado == ESTADO_CLIENTE:
+                clientes = self.clientes_conectados()
+                self._icon.title = (
+                    f"StockAgent: {len(clientes)} dispositivo(s) conectado(s) "
+                    f"({self.esquema.upper()} :{self.port})"
+                )
+            elif nuevo_estado == ESTADO_ONLINE:
                 self._icon.title = f"StockAgent: En línea ({self.esquema.upper()} :{self.port})"
             elif nuevo_estado == ESTADO_INICIANDO:
                 self._icon.title = f"StockAgent: Iniciando en puerto {self.port}..."
@@ -353,7 +474,7 @@ class TrayIconServidor:
             self._icon.menu = self._crear_menu()
 
             # 4. Notificaciones por cambios de estado relevantes
-            if cambio and nuevo_estado == ESTADO_ONLINE and not self._primera_conexion_notificada:
+            if cambio and nuevo_estado in (ESTADO_ONLINE, ESTADO_CLIENTE) and not self._primera_conexion_notificada:
                 self._primera_conexion_notificada = True
                 self.mostrar_notificacion(
                     "StockAgent: Servidor Activo",
@@ -383,7 +504,8 @@ class TrayIconServidor:
             try:
                 activo = self._verificar_servidor_activo()
                 if activo:
-                    self.actualizar_estado(ESTADO_ONLINE)
+                    hay_clientes = bool(self.clientes_conectados())
+                    self.actualizar_estado(ESTADO_CLIENTE if hay_clientes else ESTADO_ONLINE)
                 else:
                     if self._primera_conexion_notificada:
                         self.actualizar_estado(ESTADO_ERROR)
@@ -473,7 +595,45 @@ def iniciar_icono_bandeja(
             on_exit=on_exit,
         )
         if tray.iniciar():
+            global _INSTANCIA_ACTIVA
+            _INSTANCIA_ACTIVA = tray
             return tray
     except Exception as exc:
         logger.warning("No se pudo iniciar el servicio de icono de bandeja: %s", exc)
     return None
+
+
+_INSTANCIA_ACTIVA: Optional[TrayIconServidor] = None
+
+
+def registrar_actividad_cliente(ip: str) -> None:
+    """Registra actividad HTTP de un dispositivo remoto (no hace nada sin bandeja activa)."""
+    tray = _INSTANCIA_ACTIVA
+    if tray is not None:
+        tray.registrar_actividad_cliente(ip)
+
+
+def cliente_ws_abierto(ip: str) -> None:
+    """Registra una sesión WebSocket abierta (no hace nada sin bandeja activa)."""
+    tray = _INSTANCIA_ACTIVA
+    if tray is not None:
+        tray.cliente_ws_abierto(ip)
+
+
+def cliente_ws_cerrado(ip: str) -> None:
+    """Registra el cierre de una sesión WebSocket (no hace nada sin bandeja activa)."""
+    tray = _INSTANCIA_ACTIVA
+    if tray is not None:
+        tray.cliente_ws_cerrado(ip)
+
+
+def notificar_conexion_cliente(ip: str, agente: str = "") -> bool:
+    """Notifica en la bandeja la conexión de un cliente (no hace nada sin bandeja activa)."""
+    tray = _INSTANCIA_ACTIVA
+    if tray is None:
+        return False
+    try:
+        return tray.notificar_conexion_cliente(ip, agente)
+    except Exception as exc:
+        logger.debug("No se pudo notificar conexión de cliente: %s", exc)
+        return False

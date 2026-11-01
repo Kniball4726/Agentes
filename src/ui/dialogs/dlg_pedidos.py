@@ -26,9 +26,13 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
 
     remito_factura_input = ft.TextField(
         label="Remito / Factura *",
-        autofocus=True,
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
         expand=True,
     )
+    if hasattr(interfaz, "cerrar_drawer_si_movil"):
+        interfaz.cerrar_drawer_si_movil()
+    if hasattr(interfaz, "_asegurar_file_picker"):
+        interfaz._asegurar_file_picker()
     clientes_lista_obj = interfaz.order_store.listar_clientes()
     clientes_actuales = [c.nombre for c in clientes_lista_obj]
 
@@ -343,7 +347,8 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     weight=ft.FontWeight.W_500,
                 ),
                 ft.Row(
-                    [boton_archivo, ft.Container(content=texto_archivo, expand=True)],
+                    [boton_archivo, texto_archivo] if getattr(interfaz, "es_pantalla_movil", False) else [boton_archivo, ft.Container(content=texto_archivo, expand=True)],
+                    wrap=bool(getattr(interfaz, "es_pantalla_movil", False)),
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=12,
                 ),
@@ -419,32 +424,39 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         ext = archivo_path.suffix.lower()
         tipo_archivo = "pdf" if ext == ".pdf" else "excel"
 
+        cache_simulacion: dict[str, Any] = {}
+
         def ejecutar_descuento_pedido() -> None:
-            sm_cls = _get_stock_manager_cls()
-            stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
-            agente = AgenteRemitosStock(stock_manager=stock_mgr)
-            if tipo_archivo == "pdf":
-                reporte = agente.ejecutar(
-                    rutas_pdf=[archivo_path],
-                    carpeta_descuentos=interfaz.menu.carpeta_descuentos,
-                    simulacion=False,
-                    guardar_archivo=False,
-                )
-            else:
-                reporte = agente.ejecutar(
-                    rutas_canjes=[archivo_path],
-                    carpeta_descuentos=interfaz.menu.carpeta_descuentos,
-                    simulacion=False,
-                    guardar_archivo=False,
-                )
+            stock_mgr = cache_simulacion.get("stock_mgr")
+            reporte = cache_simulacion.get("reporte")
+            if stock_mgr is None or reporte is None:
+                sm_cls = _get_stock_manager_cls()
+                stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
+                agente = AgenteRemitosStock(stock_manager=stock_mgr)
+                if tipo_archivo == "pdf":
+                    reporte = agente.ejecutar(
+                        rutas_pdf=[archivo_path],
+                        carpeta_descuentos=interfaz.menu.carpeta_descuentos,
+                        simulacion=False,
+                        guardar_archivo=False,
+                    )
+                else:
+                    reporte = agente.ejecutar(
+                        rutas_canjes=[archivo_path],
+                        carpeta_descuentos=interfaz.menu.carpeta_descuentos,
+                        simulacion=False,
+                        guardar_archivo=False,
+                    )
 
             nombre_inf = Path(reporte.reporte_stock.archivo_guardado).name if reporte.reporte_stock.archivo_guardado else f"Pedido_{remito}"
             stock_mgr.actualizar_stock_base(
                 descuentos=reporte.reporte_stock.descuentos_aplicados,
-                sincronizar_excel=True,
+                sincronizar_excel=False,
                 nombre_archivo=nombre_inf,
                 usuario=armador_nom,
             )
+            if hasattr(stock_mgr, "programar_sincronizacion_excel"):
+                stock_mgr.programar_sincronizacion_excel()
 
             pdf_nom = Path(reporte.reporte_stock.archivo_pdf).name if reporte.reporte_stock.archivo_pdf else ""
 
@@ -563,6 +575,8 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     rep_sim = ag_sim.ejecutar(rutas_pdf=[archivo_path], carpeta_descuentos=interfaz.menu.carpeta_descuentos, simulacion=True, guardar_archivo=False)
                 else:
                     rep_sim = ag_sim.ejecutar(rutas_canjes=[archivo_path], carpeta_descuentos=interfaz.menu.carpeta_descuentos, simulacion=True, guardar_archivo=False)
+                cache_simulacion["stock_mgr"] = sm_sim
+                cache_simulacion["reporte"] = rep_sim
 
                 quiebres = [d for d in rep_sim.reporte_stock.descuentos_aplicados if d.stock_nuevo <= 0]
                 if quiebres and interfaz.page:
@@ -613,7 +627,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         modal=True,
         title=ft.Text("Cargar y Armar Pedido", weight=ft.FontWeight.BOLD),
         content=ft.Container(
-            width=500,
+            width=interfaz.ancho_adaptable(500) if hasattr(interfaz, "ancho_adaptable") else 500,
             content=ft.Column(
                 [
                     contenedor_comprobante,
@@ -682,7 +696,7 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
         label="Motivo de la anulación (opcional)",
         hint_text="ej: Cancelado por el cliente, duplicado, error en carga",
         dense=True,
-        autofocus=True,
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
     )
 
     def ejecutar_anulacion(_e: ft.Event) -> None:
@@ -763,7 +777,7 @@ def mostrar_dialogo_editar_pedido(
         label="Cliente *",
         value=pedido.cliente,
         dense=True,
-        autofocus=True,
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
     )
     numero_pedido_input = ft.TextField(
         label="Número de Pedido (opcional)",
@@ -924,7 +938,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
         label="Motivo del desarmado (opcional)",
         hint_text="ej: Pedido cancelado por el cliente / Reincorporación de mercadería a depósito",
         dense=True,
-        autofocus=True,
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
     )
     error_msg = ft.Text("", color=ft.Colors.RED_400, size=11, visible=False)
 

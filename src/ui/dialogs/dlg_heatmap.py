@@ -413,7 +413,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         renderizar_lista_abc(),
         interfaz.page.update() if hasattr(interfaz, "page") and interfaz.page else None,
     )
-    filtro_abc_categoria.on_change = lambda _e: (
+    filtro_abc_categoria.on_select = filtro_abc_categoria.on_change = lambda _e: (
         renderizar_lista_abc(),
         interfaz.page.update() if hasattr(interfaz, "page") and interfaz.page else None,
     )

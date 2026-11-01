@@ -3,10 +3,9 @@
  * Soporte Offline-First y Resiliencia ante Microcortes de Red WiFi en Depósito.
  */
 
-const CACHE_NAME = 'stockagent-pwa-v1';
+const CACHE_NAME = 'stockagent-pwa-v2';
 
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/favicon.ico',
   '/favicon.png',
@@ -42,6 +41,12 @@ self.addEventListener('activate', (event) => {
             console.log('[SW] Eliminando caché antiguo:', name);
             return caches.delete(name);
           }
+          // Limpiar index.html y FontManifest antiguos si quedaron guardados en v1
+          return caches.open(name).then((c) => {
+            c.delete('/');
+            c.delete('/index.html');
+            c.delete('/assets/FontManifest.json');
+          });
         })
       );
     }).then(() => self.clients.claim())
@@ -53,63 +58,64 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Ignorar peticiones no GET y tráfico WebSocket de Flet (/ws)
-  if (req.method !== 'GET' || url.protocol.startsWith('ws') || url.pathname.startsWith('/ws')) {
+  // Ignorar peticiones no GET, orígenes externos y tráfico WebSocket/motor de Flet (/ws, .wasm, canvaskit)
+  if (
+    req.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    url.protocol.startsWith('ws') ||
+    url.pathname.startsWith('/ws') ||
+    url.pathname.endsWith('.wasm') ||
+    url.pathname.endsWith('.mjs') ||
+    url.pathname.includes('canvaskit') ||
+    url.pathname.includes('main.dart') ||
+    url.pathname.includes('flutter_bootstrap') ||
+    url.pathname.includes('FontManifest') ||
+    url.pathname.includes('AssetManifest')
+  ) {
     return;
   }
 
   // A. Peticiones de Navegación HTML (páginas completas)
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
-        .then((networkResponse) => {
-          // Si respondió la red, guardar copia en caché y retornar
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          }
-          return networkResponse;
-        })
-        .catch(async () => {
-          // Si falló la red (microcorte WiFi), intentar responder con la página cacheada
-          const cachedPage = await caches.match(req);
-          if (cachedPage) {
-            return cachedPage;
-          }
-          // Si no está la página específica, servir la pantalla de fallback offline
-          const offlinePage = await caches.match('/offline.html');
-          return offlinePage || new Response('Sin conexión a la red local.', {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-          });
-        })
+      fetch(req).catch(async () => {
+        // Si falló la red (microcorte WiFi), intentar responder con la página cacheada o contingencia offline
+        const cachedPage = await caches.match(req);
+        if (cachedPage) {
+          return cachedPage;
+        }
+        const offlinePage = await caches.match('/offline.html');
+        return offlinePage || new Response('Sin conexión a la red local.', {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      })
     );
     return;
   }
 
-  // B. Recursos Estáticos (imágenes, fuentes, css, scripts)
+  // B. Recursos Estáticos propios (iconos, scanner offline, css, manifest)
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
       if (cachedResponse) {
-        // Stale-While-Revalidate: retornar caché de inmediato y actualizar en segundo plano si hay red
         fetch(req).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResponse));
           }
-        }).catch(() => {
-          // Silencioso ante falta de red
-        });
+        }).catch(() => {});
         return cachedResponse;
       }
 
-      // Si no estaba en caché, pedir a la red
       return fetch(req).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const copy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
         }
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(req, responseToCache);
+        });
         return networkResponse;
       }).catch(async () => {
-        if (req.headers.get('accept') && req.headers.get('accept').includes('text/html')) {
+        if (req.headers.get('accept')?.includes('text/html')) {
           return caches.match('/offline.html');
         }
         return new Response('', { status: 408, statusText: 'Offline' });

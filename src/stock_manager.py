@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
+import threading
 from typing import Dict, List, Literal, Optional, Tuple
 import unicodedata
 import openpyxl
@@ -27,6 +28,46 @@ from .stock.physical_inventory import (
 
 
 class StockManager:
+    _excel_locks: dict[str, threading.RLock] = {}
+    _excel_timers: dict[str, threading.Timer] = {}
+    _meta_lock = threading.Lock()
+
+    @classmethod
+    def _obtener_lock_excel(cls, ruta: Path) -> threading.RLock:
+        key = str(ruta.resolve()) if ruta.exists() else str(ruta)
+        with cls._meta_lock:
+            lock = cls._excel_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                cls._excel_locks[key] = lock
+            return lock
+
+    def programar_sincronizacion_excel(self, delay_s: float = 0.6) -> None:
+        """Programa la sincronización de Productos.xlsx en segundo plano (con debounce) sin bloquear la UI."""
+        key = str(self.ruta_excel_base.resolve()) if self.ruta_excel_base.exists() else str(self.ruta_excel_base)
+        ruta_excel = self.ruta_excel_base
+        nombre_hoja = self.nombre_hoja
+        ruta_db = self.ruta_base_datos
+
+        def _ejecutar_bg() -> None:
+            with self._meta_lock:
+                self._excel_timers.pop(key, None)
+            try:
+                with self._obtener_lock_excel(ruta_excel):
+                    sm_bg = StockManager(ruta_excel, nombre_hoja=nombre_hoja, ruta_base_datos=ruta_db)
+                    sm_bg.sincronizar_catalogo_completo_excel()
+            except Exception as exc_bg:
+                print(f"[AVISO] Sincronización diferida de Excel: {exc_bg}")
+
+        with self._meta_lock:
+            timer_previo = self._excel_timers.pop(key, None)
+            if timer_previo is not None:
+                timer_previo.cancel()
+            nuevo_timer = threading.Timer(delay_s, _ejecutar_bg)
+            nuevo_timer.daemon = True
+            self._excel_timers[key] = nuevo_timer
+            nuevo_timer.start()
+
     def __init__(
         self,
         ruta_excel_base: str | Path,
@@ -135,9 +176,17 @@ class StockManager:
         finally:
             wb.close()
 
-    def _cargar_desde_sqlite(self) -> None:
+    def _cargar_desde_sqlite(
+        self,
+        meta_precargada: Optional[ dict[str, str] ] = None,
+        filas_precargadas: Optional[ list[sqlite3.Row] ] = None,
+    ) -> None:
         """Carga el catálogo directamente desde SQLite utilizando metadatos de esquema cacheados."""
-        meta = self.product_store.get_all_metadata()
+        if meta_precargada is not None and filas_precargadas is not None:
+            meta = meta_precargada
+            filas_iter = filas_precargadas
+        else:
+            _, meta, filas_iter = self.product_store.load_catalog_fast()
         if "fila_inicio_datos" not in meta:
             # Para bases de datos existentes sin metadatos de esquema, detectamos una sola vez desde Excel
             try:
@@ -153,7 +202,7 @@ class StockManager:
                 }
                 for k, v in schema_meta.items():
                     self.product_store.set_metadata(k, v)
-                meta = self.product_store.get_all_metadata()
+                meta.update(schema_meta)
             except Exception:
                 pass
 
@@ -194,7 +243,7 @@ class StockManager:
                 pass
 
         primera_aparicion: set[str] = set()
-        for indice, producto in enumerate(self.product_store.list_catalog_rows()):
+        for indice, producto in enumerate(filas_iter):
             cod = str(producto["code"])
             nombre = str(producto["display_name"])
             nombre_catalogo = str(producto["name"])
@@ -230,10 +279,12 @@ class StockManager:
         self.catalogo.clear()
         self._filas_por_codigo.clear()
 
-        # Fast-Path: Si SQLite ya tiene el catálogo importado, evitamos abrir openpyxl
-        if not forzar_excel and self.product_store.is_template_imported():
-            self._cargar_desde_sqlite()
-            return
+        # Fast-Path: Si SQLite ya tiene el catálogo importado, evitamos abrir openpyxl y leemos en 1 sola conexión
+        if not forzar_excel:
+            importado, meta_fast, filas_fast = self.product_store.load_catalog_fast()
+            if importado:
+                self._cargar_desde_sqlite(meta_fast, filas_fast)
+                return
 
         wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
         try:
@@ -307,14 +358,16 @@ class StockManager:
                 if hoja is None:
                     raise ValueError("No se encontró una hoja para actualizar.")
 
-                filas_producto = [
-                    fila
-                    for fila in range(self._fila_inicio_datos, hoja.max_row + 1)
-                    if normalizar_codigo(
-                        str(hoja.cell(fila, self._col_codigo).value or "")
-                    )
-                    == codigo_actual
-                ]
+                filas_producto: list[int] = []
+                filas_validas: list[int] = []
+                for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
+                    val_c = hoja.cell(fila, self._col_codigo).value
+                    val_n = hoja.cell(fila, self._col_nombre).value
+                    if val_c is not None and str(val_n or "").strip():
+                        filas_validas.append(fila)
+                        if normalizar_codigo(str(val_c)) == codigo_actual:
+                            filas_producto.append(fila)
+
                 filas_catalogo_producto = [
                     producto
                     for producto in self.product_store.list_catalog_rows(
@@ -363,39 +416,11 @@ class StockManager:
                 finally:
                     if ruta_temporal.exists():
                         ruta_temporal.unlink()
+                return filas_validas
 
             except Exception:
                 libro.close()
                 raise
-
-            libro_verificacion = openpyxl.load_workbook(
-                str(self.ruta_excel_base), data_only=True, read_only=True
-            )
-            try:
-                hoja_verificacion = (
-                    libro_verificacion[self.nombre_hoja]
-                    if self.nombre_hoja in libro_verificacion.sheetnames
-                    else libro_verificacion.active
-                )
-                if hoja_verificacion is None:
-                    raise ValueError(
-                        "No se pudo verificar la plantilla después de la edición."
-                    )
-                return [
-                    fila
-                    for fila in range(
-                        self._fila_inicio_datos,
-                        hoja_verificacion.max_row + 1,
-                    )
-                    if hoja_verificacion.cell(
-                        fila, self._col_codigo
-                    ).value is not None
-                    and str(
-                        hoja_verificacion.cell(fila, self._col_nombre).value or ""
-                    ).strip()
-                ]
-            finally:
-                libro_verificacion.close()
 
         def restaurar_plantilla() -> None:
             if not plantilla_actualizada:
@@ -714,19 +739,21 @@ class StockManager:
             for descripcion, motivo in documento.descripciones_sin_coincidencia
         )
 
-        wb_salida, ws_salida = self._crear_informe_desde_plantilla(
-            len(descuentos),
-            sum(descuento.cantidad_descontada for descuento in descuentos),
-            fecha_generacion.strftime("%d/%m/%y"),
-            filas_productos,
-            pedidos_descontados,
-            productos_sin_coincidencia,
-        )
-
         if guardar_archivo:
-            carpeta_destino.mkdir(parents=True, exist_ok=True)
-            self._guardar_informe_xls(wb_salida, ruta_guardado)
-            self._guardar_informe_pdf(wb_salida, ruta_pdf)
+            wb_salida, _ws_salida = self._crear_informe_desde_plantilla(
+                len(descuentos),
+                sum(descuento.cantidad_descontada for descuento in descuentos),
+                fecha_generacion.strftime("%d/%m/%y"),
+                filas_productos,
+                pedidos_descontados,
+                productos_sin_coincidencia,
+            )
+            try:
+                carpeta_destino.mkdir(parents=True, exist_ok=True)
+                self._guardar_informe_xls(wb_salida, ruta_guardado)
+                self._guardar_informe_pdf(wb_salida, ruta_pdf)
+            finally:
+                wb_salida.close()
             archivo_final = str(ruta_guardado)
             archivo_pdf = str(ruta_pdf)
         else:
@@ -1064,10 +1091,14 @@ class StockManager:
                 if hoja is None:
                     raise ValueError("No se encontró una hoja para actualizar.")
 
+                filas_validas: list[int] = []
                 for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
                     val_cod = hoja.cell(fila, self._col_codigo).value
                     if val_cod is None:
                         continue
+                    val_nom = hoja.cell(fila, self._col_nombre).value
+                    if str(val_nom or "").strip():
+                        filas_validas.append(fila)
                     cod = normalizar_codigo(str(val_cod))
                     if cod in stocks_normalizados:
                         nuevo_stock = stocks_normalizados[cod]
@@ -1098,39 +1129,11 @@ class StockManager:
                 finally:
                     if ruta_temporal.exists():
                         ruta_temporal.unlink()
+                return filas_validas
 
             except Exception:
                 libro.close()
                 raise
-
-            libro_verificacion = openpyxl.load_workbook(
-                str(self.ruta_excel_base), data_only=True, read_only=True
-            )
-            try:
-                hoja_verificacion = (
-                    libro_verificacion[self.nombre_hoja]
-                    if self.nombre_hoja in libro_verificacion.sheetnames
-                    else libro_verificacion.active
-                )
-                if hoja_verificacion is None:
-                    raise ValueError(
-                        "No se pudo verificar la plantilla después de la actualización de stock."
-                    )
-                return [
-                    fila
-                    for fila in range(
-                        self._fila_inicio_datos,
-                        hoja_verificacion.max_row + 1,
-                    )
-                    if hoja_verificacion.cell(
-                        fila, self._col_codigo
-                    ).value is not None
-                    and str(
-                        hoja_verificacion.cell(fila, self._col_nombre).value or ""
-                    ).strip()
-                ]
-            finally:
-                libro_verificacion.close()
 
         def restaurar_plantilla() -> None:
             if not plantilla_actualizada:
@@ -1153,8 +1156,23 @@ class StockManager:
             synchronize_template=sincronizar_plantilla,
             restore_template=restaurar_plantilla,
         )
-        self._cargar_catalogo()
+        self._actualizar_stocks_en_memoria(stocks_normalizados)
         return filas_actualizadas
+
+    def _actualizar_stocks_en_memoria(self, stocks: Dict[str, int]) -> None:
+        """Actualiza los saldos de stock en las estructuras en memoria sin releer toda la base SQLite."""
+        for cod, nuevo_stock in stocks.items():
+            if cod in self.catalogo:
+                fila_cat, nombre_cat, _ = self.catalogo[cod]
+                self.catalogo[cod] = (fila_cat, nombre_cat, int(nuevo_stock))
+        self.productos_base = [
+            (fila_c, cod, nom, int(stocks.get(cod, stk)))
+            for fila_c, cod, nom, stk in self.productos_base
+        ]
+        self.filas_catalogo = [
+            (fila_est, cod, nom, int(stocks.get(cod, stk)))
+            for fila_est, cod, nom, stk in self.filas_catalogo
+        ]
 
     def sincronizar_catalogo_completo_excel(self) -> int:
         """Vuelca todo el stock y productos consolidados desde SQLite hacia Productos.xlsx."""
@@ -1293,7 +1311,7 @@ class StockManager:
             return self.sincronizar_stocks(actualizaciones)
 
         filas_actualizadas = self.product_store.update_stocks(actualizaciones)
-        self._cargar_catalogo()
+        self._actualizar_stocks_en_memoria(actualizaciones)
         return filas_actualizadas
 
     def obtener_notificaciones_admin(self, solo_no_leidas: bool = False) -> list:

@@ -40,10 +40,38 @@ class _ConfigScreenState extends State<ConfigScreen> {
     _hostController = TextEditingController(text: currentConfig.host);
     _portController = TextEditingController(text: currentConfig.port);
     _protocol = currentConfig.protocol;
+
+    _hostController.addListener(_onHostChanged);
+  }
+
+  void _onHostChanged() {
+    final text = _hostController.text.trim();
+    // Si el usuario pegó una URL completa (ej: http://192.168.1.50:8550/)
+    if (text.startsWith('http://') || text.startsWith('https://') || text.contains(':') || text.contains('/')) {
+      final parsed = ServerConfig.fromUserInput(
+        rawHost: text,
+        rawPort: _portController.text,
+        rawProtocol: _protocol,
+      );
+
+      if (parsed.host != text) {
+        _hostController.value = TextEditingValue(
+          text: parsed.host,
+          selection: TextSelection.collapsed(offset: parsed.host.length),
+        );
+        _portController.text = parsed.normalizedPort;
+        if (mounted) {
+          setState(() {
+            _protocol = parsed.normalizedProtocol;
+          });
+        }
+      }
+    }
   }
 
   @override
   void dispose() {
+    _hostController.removeListener(_onHostChanged);
     _hostController.dispose();
     _portController.dispose();
     _networkService.dispose();
@@ -51,10 +79,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
   }
 
   ServerConfig _buildConfigFromInputs() {
-    return ServerConfig(
-      host: _hostController.text.trim(),
-      port: _portController.text.trim(),
-      protocol: _protocol,
+    return ServerConfig.fromUserInput(
+      rawHost: _hostController.text,
+      rawPort: _portController.text,
+      rawProtocol: _protocol,
     );
   }
 
@@ -73,6 +101,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     setState(() {
       _isTesting = false;
       _testResult = result;
+      // Si el servidor respondió con el otro protocolo, ajustarlo automáticamente
+      if (result.isSuccess && result.resolvedConfig != null) {
+        _protocol = result.resolvedConfig!.normalizedProtocol;
+      }
     });
   }
 
@@ -121,16 +153,21 @@ class _ConfigScreenState extends State<ConfigScreen> {
                 // Campo IP / Host
                 TextFormField(
                   controller: _hostController,
-                  keyboardType: TextInputType.datetime,
+                  keyboardType: TextInputType.url,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   decoration: const InputDecoration(
                     labelText: 'Dirección IP de la PC Servidor',
-                    hintText: 'Ejemplo: 192.168.1.45',
+                    hintText: 'Ej: 192.168.100.19',
                     prefixIcon: Icon(Icons.wifi_rounded, color: AppTheme.primaryRed),
+                    helperText: 'Puedes escribir solo la IP o pegar la URL completa',
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Por favor ingresa la dirección IP de la PC';
+                    }
+                    final cfg = ServerConfig.fromUserInput(rawHost: value);
+                    if (!cfg.isValid) {
+                      return 'Formato de IP o host no válido';
                     }
                     return null;
                   },
@@ -139,6 +176,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
                 // Selector de Puerto y Protocolo
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       flex: 3,
@@ -151,13 +189,22 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           hintText: '8550',
                           prefixIcon: Icon(Icons.settings_ethernet_rounded, color: AppTheme.primaryRed),
                         ),
+                        validator: (val) {
+                          if (val != null && val.trim().isNotEmpty) {
+                            final p = int.tryParse(val.trim());
+                            if (p == null || p < 1 || p > 65535) {
+                              return 'Puerto inválido (1-65535)';
+                            }
+                          }
+                          return null;
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       flex: 2,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceColor,
                           borderRadius: BorderRadius.circular(12),
@@ -190,7 +237,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: AppTheme.primaryRed),
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleManager(),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   icon: _isTesting
                       ? const SizedBox(

@@ -1,7 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/server_config.dart';
 
-/// Servicio de almacenamiento persistente para la configuración del servidor.
+/// Servicio de almacenamiento persistente para la configuración del servidor StockAgent.
 class StorageService {
   static const String _keyServerHost = 'stockagent_server_ip';
   static const String _keyServerPort = 'stockagent_server_port';
@@ -17,14 +17,25 @@ class StorageService {
     return StorageService(prefs);
   }
 
-  /// Carga la configuración actual del servidor
+  /// Comprueba si el usuario ya configuró explícitamente la conexión al servidor
+  bool get isConfigured {
+    final host = _prefs.getString(_keyServerHost);
+    return host != null && host.trim().isNotEmpty;
+  }
+
+  /// Verifica si existe una configuración guardada y válida
+  bool hasValidConfig() {
+    return isConfigured && loadConfig().isValid;
+  }
+
+  /// Carga la configuración actual del servidor o una por defecto
   ServerConfig loadConfig() {
-    final host = _prefs.getString(_keyServerHost) ?? ServerConfig.defaultHost;
+    final host = _prefs.getString(_keyServerHost);
     final port = _prefs.getString(_keyServerPort) ?? ServerConfig.defaultPort;
     final protocol = _prefs.getString(_keyProtocol) ?? ServerConfig.defaultProtocol;
 
     return ServerConfig(
-      host: host.isEmpty ? ServerConfig.defaultHost : host,
+      host: host != null && host.trim().isNotEmpty ? host.trim() : ServerConfig.defaultHost,
       port: port,
       protocol: protocol,
     );
@@ -35,11 +46,6 @@ class StorageService {
     await _prefs.setString(_keyServerHost, config.host.trim());
     await _prefs.setString(_keyServerPort, config.normalizedPort);
     await _prefs.setString(_keyProtocol, config.normalizedProtocol);
-  }
-
-  /// Verifica si ya existe una configuración válida almacenada
-  bool hasValidConfig() {
-    return loadConfig().isValid;
   }
 
   /// Limpia los datos guardados

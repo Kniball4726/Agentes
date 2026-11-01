@@ -35,19 +35,30 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
     msg_feedback = ft.Text(size=12, color=ft.Colors.RED_400)
     total_txt = ft.Text("", size=11, color=interfaz.secundario)
     lista_col = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=300)
+    cache_clientes: list[Any] = []
+    limite_clientes = [80]
 
-    def recargar_clientes() -> None:
+    def mostrar_mas_clientes(_e: ft.Event | None = None) -> None:
+        limite_clientes[0] += 100
+        recargar_clientes(recargar_db=False, mantener_limite=True)
+
+    def recargar_clientes(recargar_db: bool = True, mantener_limite: bool = False) -> None:
+        if not mantener_limite:
+            limite_clientes[0] = 80
         lista_col.controls.clear()
         msg_feedback.value = ""
         busqueda = (filtro_txt.value or "").strip().lower()
-        try:
-            clientes = interfaz.order_store.listar_clientes()
-        except Exception as err:
-            msg_feedback.value = f"Error al cargar clientes: {err}"
-            msg_feedback.color = ft.Colors.RED_400
-            interfaz.page.update()
-            return
+        if recargar_db or not cache_clientes:
+            try:
+                cache_clientes.clear()
+                cache_clientes.extend(interfaz.order_store.listar_clientes())
+            except Exception as err:
+                msg_feedback.value = f"Error al cargar clientes: {err}"
+                msg_feedback.color = ft.Colors.RED_400
+                interfaz.page.update()
+                return
 
+        clientes = list(cache_clientes)
         if busqueda:
             clientes = [
                 c for c in clientes
@@ -71,7 +82,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                 )
             )
         else:
-            for cli in clientes:
+            for cli in clientes[: limite_clientes[0]]:
                 c_id = cli.id
                 c_nom = cli.nombre
                 c_cod = cli.codigo
@@ -202,6 +213,19 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                     ),
                 )
                 lista_col.controls.append(fila)
+            restantes_cli = len(clientes) - limite_clientes[0]
+            if restantes_cli > 0:
+                lista_col.controls.append(
+                    ft.Container(
+                        alignment=ft.Alignment.CENTER,
+                        padding=4,
+                        content=ft.TextButton(
+                            f"Mostrar más clientes ({restantes_cli} restantes)...",
+                            icon=ft.Icons.EXPAND_MORE,
+                            on_click=mostrar_mas_clientes,
+                        ),
+                    )
+                )
 
         interfaz.page.update()
 
@@ -227,7 +251,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
             msg_feedback.color = ft.Colors.RED_400
             interfaz.page.update()
 
-    filtro_txt.on_change = lambda _e: recargar_clientes()
+    filtro_txt.on_change = lambda _e: recargar_clientes(recargar_db=False)
     nuevo_cliente_txt.on_submit = agregar_cliente
 
     dialogo = ft.AlertDialog(

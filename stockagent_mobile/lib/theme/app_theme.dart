@@ -5,9 +5,13 @@ class AppTheme {
   static const Color darkBg = Color(0xFF121212);
   static const Color cardBg = Color(0xFF1E1E1E);
   static const Color surfaceColor = Color(0xFF262626);
+  static const Color borderColor = Color(0xFF333333);
   static const Color textPrimary = Color(0xFFE0E0E0);
   static const Color textSecondary = Color(0xFF9E9E9E);
   static const Color successGreen = Color(0xFF4CAF50);
+
+  static RoundedRectangleBorder get standardBorder =>
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
 
   static ThemeData get darkTheme {
     return ThemeData(
@@ -53,7 +57,7 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryRed,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleManager(),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 4,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
           textStyle: const TextStyle(

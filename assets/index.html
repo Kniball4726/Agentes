@@ -6,6 +6,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="StockAgent · Control de Inventario, Gestión de Stock y Remitos.">
 
   <!-- iOS meta tags & icons -->
@@ -31,13 +32,17 @@
       }
     });
 
-    // Registro de Service Worker PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
-          .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
-          .catch(err => console.warn('[PWA] Aviso registro Service Worker:', err));
-      });
+    // Limpiar cualquier FontManifest o index antiguo en CacheStorage
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.open(name).then((cache) => {
+            cache.delete('/');
+            cache.delete('/index.html');
+            cache.delete('/assets/FontManifest.json');
+          });
+        });
+      }).catch(() => {});
     }
 
     // Banner indicador de microcortes de red en depósito
@@ -85,6 +90,12 @@
 
     flet.flutterAppLoaded.then((flutterApp) => {
       console.log("Flutter app loaded");
+      document.getElementById('loading')?.remove();
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
+          .catch(err => console.warn('[PWA] Aviso registro Service Worker:', err));
+      }
     });
   </script>
 
@@ -96,6 +107,16 @@
 <body>
   <div id="loading" role="status" aria-label="Loading">
     <style>
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+
       #loading {
         position: fixed;
         inset: 0;
@@ -112,8 +133,9 @@
         object-fit: contain;
       }
     </style>
-    <img src="favicon.png" alt="StockAgent" />
+    <img src="favicon.png" alt="Cargando StockAgent..." />
   </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
+
 </html>

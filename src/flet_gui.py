@@ -129,9 +129,21 @@ from .ui.dialogs import (
     mostrar_stock_fisico_operario,
     mostrar_dialogo_inventario_vivo,
     mostrar_command_palette,
+    actualizar_alerta_quiebre,
+    mostrar_detalle_quiebre,
+    confirmar_restaurar,
+    restaurar_documentos,
 )
 from .ui.dialogs.dlg_archivo_historico import mostrar_dialogo_archivo_historico
 from .ui.dialogs.dlg_telegram import mostrar_dialogo_configuracion_telegram
+from .server import (
+    iniciar_servidor_web,
+    _RegistroConexionesMiddleware,
+    _puerto_local_activo,
+    obtener_directorio_assets,
+    obtener_ip_local,
+    obtener_ip_tailscale,
+)
 
 logger = configurar_logging()
 
@@ -152,48 +164,7 @@ SESIONES_ACTIVAS: weakref.WeakSet["InterfazFlet"] = weakref.WeakSet()
 PROCESAMIENTO_GLOBAL_ACTIVO: bool = False
 
 
-def obtener_directorio_assets() -> str:
-    """Devuelve la ruta absoluta al directorio de assets estáticos (favicons, logos)."""
-    if getattr(sys, "_MEIPASS", None):
-        candidato = Path(sys._MEIPASS) / "assets"
-        if candidato.is_dir():
-            return str(candidato.resolve())
-    candidato = application_root() / "assets"
-    if candidato.is_dir():
-        return str(candidato.resolve())
-    candidato = Path(__file__).resolve().parent.parent / "assets"
-    if candidato.is_dir():
-        return str(candidato.resolve())
-    return str((Path(__file__).resolve().parent / "img").resolve())
 
-
-def obtener_ip_local() -> str:
-    """Devuelve la dirección IP de la máquina en la red local (LAN)."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.settimeout(0.2)
-            s.connect(("8.8.8.8", 80))
-            return str(s.getsockname()[0])
-    except Exception:
-        try:
-            return str(socket.gethostbyname(socket.gethostname()))
-        except Exception:
-            return "127.0.0.1"
-
-
-def obtener_ip_tailscale() -> str | None:
-    """Busca una dirección IPv4 de Tailscale asignada a la máquina (rango 100.64.0.0/10)."""
-    try:
-        host = socket.gethostname()
-        for item in socket.getaddrinfo(host, None, socket.AF_INET):
-            ip = item[4][0]
-            if ip.startswith("100."):
-                partes = [int(p) for p in ip.split(".") if p.isdigit()]
-                if len(partes) == 4 and 64 <= partes[1] <= 127:
-                    return ip
-    except Exception:
-        pass
-    return None
 
 
 def obtener_correo_cierre_guardado() -> str:
@@ -313,7 +284,7 @@ class InterfazFlet:
 
     def _asegurar_file_picker(self) -> None:
         """Asegura que FilePicker esté registrado como servicio (Flet 1.0) sin corromper el overlay visual."""
-        if hasattr(self.page, "services"):
+        if hasattr(self.page, "services") and self.page.services is not None:
             if self.file_picker not in self.page.services:
                 self.page.services.append(self.file_picker)
         elif hasattr(self.page, "overlay"):
@@ -321,6 +292,13 @@ class InterfazFlet:
                 self.page.overlay = []
             if self.file_picker not in self.page.overlay:
                 self.page.overlay.append(self.file_picker)
+        reg = getattr(self.page, "_services", None)
+        if type(reg).__name__ == "ServiceRegistry" and hasattr(reg, "_services"):
+            if self.file_picker not in reg._services:
+                try:
+                    reg.register_service(self.file_picker)
+                except Exception:
+                    pass
 
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
         self.modo_oscuro = not self.modo_oscuro
@@ -342,13 +320,25 @@ class InterfazFlet:
 
     @property
     def es_pantalla_movil(self) -> bool:
-        """Determina si la pantalla actual corresponde a un viewport móvil (< 768px)."""
+        """Determina si la pantalla actual corresponde a un dispositivo o viewport móvil."""
+        ua = str(getattr(self.page, "client_user_agent", "") or "").lower()
+        if any(tok in ua for tok in ("android", "iphone", "ipad", "ipod", "mobile", "; wv")):
+            return True
+        plat = str(getattr(self.page, "platform", "") or "").lower()
+        if any(tok in plat for tok in ("android", "ios")):
+            return True
         w = getattr(self.page, "width", None)
-        return bool(isinstance(w, (int, float)) and w > 0 and w < 768)
+        if isinstance(w, (int, float)) and w > 0:
+            return bool(w < 768)
+        return False
 
     def ancho_adaptable(self, deseado: int, margen: int = 24) -> int:
         """Calcula el ancho óptimo respetando el viewport móvil si está disponible."""
         w = getattr(self.page, "width", None)
+        if self.es_pantalla_movil:
+            if isinstance(w, (int, float)) and 0 < w < 768:
+                return min(deseado, max(260, int(w - margen)))
+            return min(deseado, max(260, 360 - margen))
         if isinstance(w, (int, float)) and w > 0:
             return min(deseado, max(280, int(w - margen)))
         return deseado
@@ -356,6 +346,10 @@ class InterfazFlet:
     def alto_adaptable(self, deseado: int, margen: int = 60) -> int:
         """Calcula el alto óptimo respetando el viewport móvil si está disponible."""
         h = getattr(self.page, "height", None)
+        if self.es_pantalla_movil:
+            if isinstance(h, (int, float)) and 0 < h < 1024:
+                return min(deseado, max(300, int(h - margen)))
+            return min(deseado, 560)
         if isinstance(h, (int, float)) and h > 0:
             return min(deseado, max(300, int(h - margen)))
         return deseado
@@ -366,35 +360,109 @@ class InterfazFlet:
             try:
                 res = self.page.close_drawer()
                 if asyncio.iscoroutine(res):
-                    asyncio.create_task(res)
+                    async def _cerrar_seguro(coro: Any) -> None:
+                        try:
+                            await coro
+                        except Exception:
+                            pass
+
+                    asyncio.create_task(_cerrar_seguro(res))
             except Exception:
                 pass
 
+    def _asegurar_drawer_movil(self) -> None:
+        """Garantiza que el NavigationDrawer esté inicializado cuando se solicita en móvil."""
+        if hasattr(self.page, "drawer") and getattr(self.page, "drawer", None) is None and self.usuario_actual is not None:
+            self.page.drawer = ft.NavigationDrawer(
+                bgcolor=self.superficie,
+                controls=[
+                    ft.Container(
+                        padding=16,
+                        content=ft.Column(
+                            self._sidebar_controls(),
+                            spacing=8,
+                            tight=True,
+                        ),
+                    )
+                ],
+            )
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
+    def _mostrar_menu_movil_fallback(self) -> None:
+        """Muestra el menú lateral en un diálogo modal si el NavigationDrawer falla por timeout."""
+        if self.usuario_actual is None:
+            return
+        dlg_menu = ft.AlertDialog(
+            modal=False,
+            bgcolor=self.superficie,
+            content=ft.Container(
+                width=self.ancho_adaptable(300),
+                content=ft.Column(
+                    self._sidebar_controls(),
+                    spacing=8,
+                    tight=True,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+            ),
+            actions=[
+                ft.TextButton("Cerrar menú", on_click=lambda _e: self.page.pop_dialog()),
+            ],
+        )
+        try:
+            self.page.show_dialog(dlg_menu)
+        except Exception:
+            pass
+
     async def _abrir_drawer_click(self, _e: ft.Event | None = None) -> None:
         """Abre el panel de navegación drawer en dispositivos móviles."""
+        self._asegurar_drawer_movil()
         if hasattr(self.page, "show_drawer"):
-            res = self.page.show_drawer()
-            if asyncio.iscoroutine(res):
-                await res
-        elif hasattr(self.page, "drawer") and self.page.drawer is not None:
+            try:
+                res = self.page.show_drawer()
+                if asyncio.iscoroutine(res):
+                    await res
+                return
+            except Exception as exc:
+                logger.warning("Fallo al abrir NavigationDrawer con show_drawer (%s), usando menú alternativo.", exc)
+        if hasattr(self.page, "drawer") and self.page.drawer is not None:
             if hasattr(self.page.drawer, "open"):
-                self.page.drawer.open = True
-                self.page.update()
+                try:
+                    self.page.drawer.open = True
+                    self.page.update()
+                    return
+                except Exception:
+                    pass
+        self._mostrar_menu_movil_fallback()
 
     def _al_redimensionar(self, _evento: ft.Event | None = None) -> None:
         """Manejador de redimensionamiento de pantalla para alternar layouts desktop/mobile."""
         es_movil = self.es_pantalla_movil
         modo_previo = getattr(self, "_modo_movil_previo", None)
-        if modo_previo is None:
+        w_actual = getattr(self.page, "width", None)
+        ancho_previo = getattr(self, "_ancho_previo", None)
+        cambio_ancho_auth = (
+            self.usuario_actual is None
+            and isinstance(w_actual, (int, float))
+            and w_actual > 0
+            and (ancho_previo is None or abs(float(w_actual) - float(ancho_previo)) >= 16)
+        )
+        if modo_previo is None or modo_previo != es_movil or cambio_ancho_auth:
             self._modo_movil_previo = es_movil
-            return
-        if modo_previo != es_movil:
-            self._modo_movil_previo = es_movil
+            if isinstance(w_actual, (int, float)) and w_actual > 0:
+                self._ancho_previo = float(w_actual)
             if self.usuario_actual is not None:
                 self.construir()
-            elif self.usuario_actual is None:
-                self.mostrar_inicio_sesion()
+            else:
+                if not self.user_store.has_users:
+                    self.mostrar_configuracion_inicial()
+                else:
+                    self.mostrar_inicio_sesion()
         else:
+            if isinstance(w_actual, (int, float)) and w_actual > 0:
+                self._ancho_previo = float(w_actual)
             if self.ventana_chat_flotante is not None and getattr(self.ventana_chat_flotante, "visible", False):
                 if es_movil:
                     self.ventana_chat_flotante.width = None
@@ -541,6 +609,7 @@ class InterfazFlet:
 
         sidebar_items = self._sidebar_controls()
         es_movil = self.es_pantalla_movil
+        self._modo_movil_previo = es_movil
 
         if es_movil and hasattr(self.page, "drawer"):
             self.page.drawer = ft.NavigationDrawer(
@@ -551,11 +620,13 @@ class InterfazFlet:
                         content=ft.Column(
                             sidebar_items,
                             spacing=8,
-                            scroll=ft.ScrollMode.AUTO,
+                            tight=True,
                         ),
                     )
                 ],
             )
+        elif hasattr(self.page, "drawer"):
+            self.page.drawer = None
 
         dashboard_controls: list[ft.Control] = [
             self.encabezado(),
@@ -606,12 +677,12 @@ class InterfazFlet:
                 )
             )
 
-        self._asegurar_file_picker()
         ventana_chat = self.crear_ventana_chat_flotante()
         if not hasattr(self.page, "overlay") or self.page.overlay is None:
             self.page.overlay = []
         else:
             self.page.overlay.clear()
+        self._asegurar_file_picker()
         self.page.overlay.append(ventana_chat)
 
         self.boton_chat_flotante = ft.FloatingActionButton(
@@ -958,9 +1029,18 @@ class InterfazFlet:
             return
         mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
         archivados = self.menu._obtener_archivados()
+        mtimes_informes: dict[Path, float] = {}
+        def _clave_informe(ruta: Path) -> tuple[int, str]:
+            try:
+                st = ruta.stat()
+                mtimes_informes[ruta] = st.st_mtime
+                return (st.st_mtime_ns, ruta.name.casefold())
+            except OSError:
+                return (0, ruta.name.casefold())
+
         informes = sorted(
             self.menu._obtener_generados(),
-            key=lambda ruta: (ruta.stat().st_mtime_ns, ruta.name.casefold()),
+            key=_clave_informe,
             reverse=True,
         )
         self.informes = informes
@@ -1176,6 +1256,7 @@ class InterfazFlet:
                                                 ft.Text(f"Artículos: {ped.resumen_items or f'{ped.articulos_descontados} un.'}", size=10, color=ft.Colors.GREEN_400),
                                             ],
                                             spacing=2,
+                                            expand=True,
                                         ),
                                     ],
                                     spacing=8,
@@ -1213,7 +1294,7 @@ class InterfazFlet:
                     ft.Text("Todavía no hay informes.", size=12, color=self.secundario)
                 )
             else:
-                for ruta in informes:
+                for ruta in informes[:30]:
                     es_fabrica = ruta.name.startswith("Pedido_Fabrica")
                     es_comparativa = ruta.name.startswith("Comparativa_Stock_Fisico")
                     if es_comparativa:
@@ -1229,7 +1310,10 @@ class InterfazFlet:
                         color_icono = ROJO
                         tipo_txt = "Informe de descuentos"
                     try:
-                        mtime = datetime.fromtimestamp(ruta.stat().st_mtime)
+                        ts = mtimes_informes.get(ruta)
+                        if ts is None:
+                            ts = ruta.stat().st_mtime
+                        mtime = datetime.fromtimestamp(ts)
                         fecha_fmt = mtime.strftime("%d/%m/%Y %H:%M")
                     except Exception:
                         fecha_fmt = ""
@@ -1264,207 +1348,10 @@ class InterfazFlet:
             self.page.update()
 
     def actualizar_alerta_quiebre(self, criticos: list | None = None) -> None:
-        if self.usuario_actual is None or self.usuario_actual.role != "administrador":
-            self.banner_alerta_quiebre.visible = False
-            return
-
-        if criticos is None:
-            try:
-                sm = StockManager(self.menu.ruta_excel_base)
-                criticos = sm.obtener_analisis_reposicion(solo_criticos=True)
-            except Exception:
-                criticos = []
-
-        if not criticos:
-            self.banner_alerta_quiebre.visible = False
-            return
-
-        agotados = sum(1 for p in criticos if int(p["stock"]) <= 0)
-        quiebres = len(criticos) - agotados
-
-        if not hasattr(self, "_quiebres_telegram_notificados"):
-            self._quiebres_telegram_notificados = set()
-
-        for c in criticos:
-            item = dict(c) if hasattr(c, "keys") else (c if isinstance(c, dict) else {})
-            cod_c = str(item.get("code", "")).strip()
-            if cod_c and cod_c not in self._quiebres_telegram_notificados:
-                self._quiebres_telegram_notificados.add(cod_c)
-                try:
-                    from .telegram_notifier import notificar_quiebre_stock_telegram
-                    notificar_quiebre_stock_telegram(
-                        codigo=cod_c,
-                        nombre=str(item.get("name", "")).strip(),
-                        stock_actual=int(item.get("stock", 0)),
-                        stock_minimo=int(item.get("stock_minimo", item.get("min_stock", 0))),
-                    )
-                except Exception:
-                    pass
-
-        self.banner_alerta_quiebre.visible = True
-        self.banner_alerta_quiebre.bgcolor = (
-            ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50
-        )
-        self.banner_alerta_quiebre.border = ft.Border.all(
-            1.5, ft.Colors.RED_400 if self.modo_oscuro else ft.Colors.RED_700
-        )
-        self.banner_alerta_quiebre.border_radius = 12
-        self.banner_alerta_quiebre.padding = ft.Padding(16, 12, 16, 12)
-        self.banner_alerta_quiebre.content = ft.Row(
-            [
-                ft.Row(
-                    [
-                        ft.Icon(
-                            ft.Icons.WARNING_AMBER_ROUNDED,
-                            color=ft.Colors.RED_400 if self.modo_oscuro else ft.Colors.RED_700,
-                            size=28,
-                        ),
-                        ft.Column(
-                            [
-                                ft.Text(
-                                    f"ALERTA DE QUIEBRE DE STOCK ({len(criticos)} producto{'s' if len(criticos) != 1 else ''} en riesgo)",
-                                    weight=ft.FontWeight.BOLD,
-                                    size=13,
-                                    color=ft.Colors.RED_300 if self.modo_oscuro else ft.Colors.RED_800,
-                                ),
-                                ft.Text(
-                                    f"{agotados} sin stock o negativo · {quiebres} en stock mínimo de seguridad",
-                                    size=11,
-                                    color=self.texto,
-                                ),
-                            ],
-                            spacing=2,
-                        ),
-                    ],
-                    spacing=12,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    expand=True,
-                ),
-                ft.Row(
-                    [
-                        ft.Button(
-                            "Ver detalle",
-                            icon=ft.Icons.VISIBILITY,
-                            on_click=lambda _e, items=criticos: self.mostrar_detalle_quiebre(items),
-                            bgcolor=ft.Colors.TRANSPARENT,
-                            color=ft.Colors.RED_300 if self.modo_oscuro else ft.Colors.RED_800,
-                        ),
-                        ft.Button(
-                            "Generar pedido fábrica",
-                            icon=ft.Icons.FILE_DOWNLOAD,
-                            on_click=self.generar_pedido_fabrica,
-                            bgcolor=ft.Colors.TRANSPARENT,
-                            color=ft.Colors.RED_300 if self.modo_oscuro else ft.Colors.RED_800,
-                        ),
-                        ft.Button(
-                            "Cargar pedido fábrica",
-                            icon=ft.Icons.INVENTORY_2,
-                            on_click=self.mostrar_ingreso_fabrica,
-                            bgcolor=ROJO,
-                            color=ft.Colors.WHITE,
-                        ),
-                    ],
-                    spacing=6,
-                ),
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
+        actualizar_alerta_quiebre(self, criticos)
 
     def mostrar_detalle_quiebre(self, criticos: list) -> None:
-        if not self.exigir_roles("administrador"):
-            return
-
-        lista = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=360)
-        for p in criticos:
-            cod = str(p["code"])
-            nom = str(p["name"])
-            stk = int(p["stock"])
-            s_min = int(p["stock_minimo"])
-            pedir = int(p["cantidad_sugerida_pedir"])
-
-            if stk <= 0:
-                tag_txt = "AGOTADO"
-                tag_color = ft.Colors.RED_400
-            else:
-                tag_txt = f"QUIEBRE (Mín: {s_min})"
-                tag_color = ft.Colors.AMBER_400
-
-            lista.controls.append(
-                ft.Container(
-                    padding=8,
-                    border=ft.Border.all(1, self.borde),
-                    border_radius=8,
-                    content=ft.Row(
-                        [
-                            ft.Text(cod, width=70, weight=ft.FontWeight.BOLD, size=12),
-                            ft.Text(nom, expand=True, size=12),
-                            ft.Text(
-                                f"{stk} un.",
-                                width=65,
-                                color=tag_color,
-                                weight=ft.FontWeight.BOLD,
-                                size=12,
-                            ),
-                            ft.Text(
-                                tag_txt,
-                                width=120,
-                                color=tag_color,
-                                size=11,
-                                weight=ft.FontWeight.BOLD,
-                            ),
-                            ft.Text(
-                                f"Pedir: +{pedir} un.",
-                                width=100,
-                                color=ft.Colors.BLUE_300 if self.modo_oscuro else ft.Colors.BLUE_700,
-                                size=11,
-                            ),
-                        ],
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                )
-            )
-
-        if not criticos:
-            lista.controls.append(
-                ft.Text("No hay productos en quiebre de stock.", color=self.secundario)
-            )
-
-        dialogo = ft.AlertDialog(
-            modal=True,
-            title=ft.Row(
-                [
-                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.RED_400, size=24),
-                    ft.Text(f"Productos en quiebre de stock ({len(criticos)})"),
-                ],
-                spacing=8,
-            ),
-            content=ft.Column(
-                [
-                    ft.Text(
-                        "Productos cuyo stock actual es menor o igual al mínimo de seguridad establecido:",
-                        size=12,
-                        color=self.secundario,
-                    ),
-                    ft.Divider(height=1),
-                    lista,
-                ],
-                tight=True,
-                width=680,
-            ),
-            actions=[
-                self.boton_dialogo("Cerrar", lambda _e: self.page.pop_dialog()),
-                self.boton_dialogo(
-                    "Generar pedido Excel",
-                    lambda _e: (self.page.pop_dialog(), self.generar_pedido_fabrica()),
-                ),
-                self.boton_dialogo(
-                    "Cargar pedido fábrica",
-                    lambda _e: (self.page.pop_dialog(), self.mostrar_ingreso_fabrica()),
-                ),
-            ],
-        )
-        self.page.show_dialog(dialogo)
+        mostrar_detalle_quiebre(self, criticos)
 
     def seleccionar_informe(self, ruta: Path) -> None:
         self.informe_seleccionado = ruta
@@ -1703,10 +1590,17 @@ class InterfazFlet:
                 e = ext.lstrip(".").lower()
                 if e not in ext_limpias:
                     ext_limpias.append(e)
+            es_movil = self.es_pantalla_movil
+            tipo_selector = (
+                ft.FilePickerFileType.ANY
+                if (es_movil or not ext_limpias)
+                else ft.FilePickerFileType.CUSTOM
+            )
+            ext_selector = None if (es_movil or not ext_limpias) else ext_limpias
             seleccionados = await self.file_picker.pick_files(
                 dialog_title=titulo,
-                file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=ext_limpias,
+                file_type=tipo_selector,
+                allowed_extensions=ext_selector,
                 allow_multiple=True,
                 with_data=True,
                 cancel_upload_on_window_blur=False,
@@ -1720,9 +1614,15 @@ class InterfazFlet:
 
         carpeta_destino.mkdir(parents=True, exist_ok=True)
         guardados: list[Path] = []
+        rechazados: list[str] = []
         try:
             for item in seleccionados:
                 nombre_limpio = Path(item.name).name
+                if ext_limpias:
+                    ext_item = Path(nombre_limpio).suffix.lstrip(".").lower()
+                    if ext_item not in ext_limpias:
+                        rechazados.append(nombre_limpio)
+                        continue
                 destino = carpeta_destino / nombre_limpio
                 if item.bytes and len(item.bytes) > 0:
                     destino.write_bytes(item.bytes)
@@ -1740,12 +1640,64 @@ class InterfazFlet:
             self.notificar(f"Error al guardar el archivo subido:\n{error}")
             return []
 
+        if rechazados and not guardados:
+            formatos_str = ", ".join(f".{x}" for x in ext_limpias)
+            self.notificar(
+                f"El archivo seleccionado ({', '.join(rechazados)}) no tiene un formato permitido ({formatos_str})."
+            )
+            return []
+
         if guardados:
             if al_terminar is not None:
                 al_terminar(guardados)
             self.actualizar_estado()
             self.sincronizar_sesiones()
         return guardados
+
+    def mostrar_manual_usuario(self, _evento: ft.Event | None = None) -> None:
+        """Abre directamente la documentación oficial en PDF correspondiente al rol del usuario activo."""
+        if self.usuario_actual is None:
+            return
+
+        role = (self.usuario_actual.role or "operador").strip().lower()
+        mapa_archivos = {
+            "operador": "Manual_Operador.pdf",
+            "administrador": "Manual_Administrador.pdf",
+            "master": "Manual_Master.pdf",
+            "consulta": "Manual_Consulta.pdf",
+        }
+        nombre_archivo = mapa_archivos.get(role, "Manual_Operador.pdf")
+        doc_dir = Path(application_root()) / "Documentacion"
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        ruta_pdf = doc_dir / nombre_archivo
+
+        # Si el archivo aún no existe en disco, autogenerarlo al vuelo
+        if not ruta_pdf.exists():
+            try:
+                from Documentacion.generar_manual_pdf import generar_todos_los_manuales
+                generar_todos_los_manuales(doc_dir)
+            except Exception as exc_gen:
+                logger.warning("No se pudo autogenerar la documentación: %s", exc_gen)
+
+        if not ruta_pdf.exists():
+            self.notificar(f"No se encontró el manual oficial: {nombre_archivo}")
+            return
+
+        # En modo Web: abrir inline en nueva pestaña usando launch_url con cache-busting
+        if getattr(self.page, "web", False):
+            ts = int(ruta_pdf.stat().st_mtime)
+            url_doc = f"/documentacion/{nombre_archivo}?v={ts}"
+            try:
+                self.page.launch_url(url_doc)
+            except Exception:
+                self.abrir_informe(ruta_especifica=ruta_pdf)
+            return
+
+        # En modo escritorio nativo: abrir con el visor PDF predeterminado del sistema
+        try:
+            os.startfile(ruta_pdf)  # type: ignore[attr-defined]
+        except OSError as error:
+            self.notificar(f"No se pudo abrir el manual:\n{error}")
 
     def abrir_informe(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
         ruta = ruta_especifica or self.ruta_informe()
@@ -1817,75 +1769,25 @@ class InterfazFlet:
         mostrar_dialogo_configuracion_smtp(self)
 
     def confirmar_restaurar(self, _evento: ft.Event) -> None:
-        if not self.exigir_roles("administrador"):
-            return
-        fechas = self.menu.fechas_descuento_disponibles()
-        if not fechas:
-            self.notificar(
-                "No hay documentos archivados asociados a informes de descuento."
-            )
-            return
-        seleccion_fecha = ft.Dropdown(
-            label="Fecha de descuento",
-            value=fechas[0],
-            options=[
-                ft.DropdownOption(
-                    key=fecha,
-                    text=datetime.strptime(fecha, "%Y-%m-%d").strftime("%d/%m/%Y"),
-                )
-                for fecha in fechas
-            ],
-            width=250,
-        )
-        self.seleccion_fecha_restauracion = seleccion_fecha
-        dialogo = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Restaurar documentos"),
-            content=ft.Column(
-                [
-                    ft.Text(
-                        "Selecciona la fecha de descuento de los documentos "
-                        "que quieres restaurar. Si ya existe un archivo con el "
-                        "mismo nombre en pendientes, será reemplazado."
-                    ),
-                    seleccion_fecha,
-                ],
-                tight=True,
-                spacing=12,
-            ),
-            actions=[
-                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
-                self.boton_dialogo("Restaurar", self.restaurar),
-            ],
-        )
-        self.page.show_dialog(dialogo)
+        confirmar_restaurar(self, _evento)
 
-    async def restaurar(self, _evento: ft.Event) -> None:
-        if not self.exigir_roles("administrador"):
-            return
-        if self.seleccion_fecha_restauracion is None:
-            self.notificar("No se cargó la selección de fecha.")
-            return
-        fecha = self.seleccion_fecha_restauracion.value
-        if not fecha:
-            self.notificar("Selecciona una fecha de descuento.")
-            return
-        self.page.pop_dialog()
-        await self.ejecutar_tarea(
-            "Restauración de documentos",
-            lambda: self.menu.restaurar_para_pruebas(fecha),
-        )
+    async def restaurar(self, _evento: ft.Event | None = None) -> None:
+        await restaurar_documentos(self, _evento)
 
     def mostrar_gestion_usuarios(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_gestion_usuarios(self)
 
     def mostrar_gestion_clientes(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
         mostrar_dialogo_gestion_clientes(self)
 
     def mostrar_crear_pedido(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
         mostrar_dialogo_crear_pedido(self)
 
     def mostrar_historial_pedidos(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
         mostrar_historial_pedidos(self, _evento)
 
     def mostrar_escaner_qr_despacho(
@@ -2065,15 +1967,21 @@ class InterfazFlet:
         mostrar_ingreso_fabrica(self, _evento)
 
     def mostrar_descuento_mercado_full(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
         mostrar_descuento_mercado_full(self, _evento)
 
     def mostrar_descuento_mercado_libre(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
         mostrar_descuento_mercado_libre(self, _evento)
 
     def mostrar_notificaciones_admin(self, _evento: ft.Event | None = None) -> None:
         mostrar_notificaciones_admin(self, _evento)
 
     def mostrar_stock_fisico_operario(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
         mostrar_stock_fisico_operario(self, _evento)
 
     def mostrar_comparativa_stock_fisico_admin(self, _evento: ft.Event | None = None) -> None:
@@ -2084,14 +1992,6 @@ class InterfazFlet:
 
 async def main(page: ft.Page) -> None:
     setattr(page, "_interfaz_flet", InterfazFlet(page))
-
-
-def _puerto_local_activo(port: int) -> bool:
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.4):
-            return True
-    except OSError:
-        return False
 
 
 def iniciar(
@@ -2106,315 +2006,17 @@ def iniciar(
     con_tray: bool = True,
     **kwargs,
 ) -> None:
-    import logging
-    import sys
-    import webbrowser
-
-    if ocultar_consola and sys.platform == "win32":
-        try:
-            import ctypes
-            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-            if hwnd:
-                ctypes.windll.user32.ShowWindow(hwnd, 0)
-        except Exception:
-            pass
-
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, "w", encoding="utf-8")
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, "w", encoding="utf-8")
-
-    configurar_logging()
-    try:
-        iniciar_planificador()
-    except Exception:
-        pass
-
-    esquema = "https" if https else "http"
-    os.environ["STOCKAGENT_PORT"] = str(port)
-    os.environ["STOCKAGENT_SCHEME"] = esquema
-
-    cert_path_final: Path | None = None
-    key_path_final: Path | None = None
-    if modo_web and https:
-        try:
-            cert_path_final, key_path_final = asegurar_certificado_ssl(
-                Path(ssl_certfile) if ssl_certfile else None,
-                Path(ssl_keyfile) if ssl_keyfile else None,
-            )
-            logger.info("Certificado SSL preparado para HTTPS: %s", cert_path_final)
-        except Exception as exc_ssl:
-            logger.warning("No se pudo preparar certificado SSL, continuando en HTTP: %s", exc_ssl)
-            https = False
-            esquema = "http"
-            os.environ["STOCKAGENT_SCHEME"] = "http"
-
-    if modo_web:
-        # Si ya hay una instancia de StockAgent escuchando en este puerto,
-        # abrir directamente el navegador hacia la instancia activa (si abrir_navegador es True).
-        if not hasattr(ft.run, "_mock_name") and _puerto_local_activo(port):
-            url_activa = f"{esquema}://127.0.0.1:{port}"
-            if abrir_navegador:
-                print(f"[INFO] Servidor activo detectado en {url_activa}. Abriendo navegador...")
-                webbrowser.open(url_activa)
-            else:
-                print(f"[INFO] Servidor activo detectado en {url_activa}.")
-            return
-
-        # Limpiar FLET_SERVER_IP=127.0.0.1 inyectado por el runtime hook de PyInstaller
-        os.environ.pop("FLET_SERVER_IP", None)
-        # Asegurar nivel de log compatible con uvicorn (evita 'fatal')
-        flet_logger = logging.getLogger("flet")
-        if flet_logger.getEffectiveLevel() in (logging.CRITICAL, logging.NOTSET):
-            flet_logger.setLevel(logging.WARNING)
-
-        # En Windows, 0.0.0.0 escucha en todas las placas de red pero los clientes
-        # locales (navegador / Flet View / CLI) deben abrir 127.0.0.1 en lugar de 0.0.0.0
-        try:
-            import flet.app as _flet_app
-            import flet.utils as _flet_utils
-
-            _orig_open = getattr(_flet_app, "_orig_open_in_browser", getattr(_flet_app, "open_in_browser", None))
-            if _orig_open:
-                setattr(_flet_app, "_orig_open_in_browser", _orig_open)
-
-            _browser_opened = False
-
-            def _open_local_browser(url: str) -> None:
-                nonlocal _browser_opened
-                if not abrir_navegador:
-                    return
-                if _browser_opened:
-                    return
-                _browser_opened = True
-                url_local = url.replace("://0.0.0.0:", "://127.0.0.1:")
-                if https and url_local.startswith("http://"):
-                    url_local = "https://" + url_local[len("http://"):]
-                if _orig_open:
-                    _orig_open(url_local)
-                else:
-                    webbrowser.open(url_local)
-
-            _flet_app.open_in_browser = _open_local_browser
-            _flet_utils.open_in_browser = _open_local_browser
-        except Exception:
-            pass
-
-        try:
-            import flet_web
-            import flet_web.fastapi
-            import flet_web.fastapi.serve_fastapi_web_app as _sfa
-            import uvicorn
-            from starlette.responses import FileResponse
-
-            if https and cert_path_final and key_path_final:
-                _orig_uv_init = getattr(uvicorn.Config, "_orig_init", uvicorn.Config.__init__)
-                setattr(uvicorn.Config, "_orig_init", _orig_uv_init)
-
-                def _https_uv_init(self_cfg, *u_args, **u_kwargs):
-                    u_kwargs.setdefault("ssl_certfile", str(cert_path_final))
-                    u_kwargs.setdefault("ssl_keyfile", str(key_path_final))
-                    _orig_uv_init(self_cfg, *u_args, **u_kwargs)
-
-                uvicorn.Config.__init__ = _https_uv_init
-
-            _orig_serve = getattr(
-                _sfa, "_orig_serve_fastapi_web_app", _sfa.serve_fastapi_web_app
-            )
-            setattr(_sfa, "_orig_serve_fastapi_web_app", _orig_serve)
-
-            async def _serve_local_url(*args, **kwargs):
-                if kwargs.get("url_host") in ("0.0.0.0", "*", "", None):
-                    kwargs["url_host"] = "127.0.0.1"
-                elif len(args) >= 4 and args[3] in ("0.0.0.0", "*", "", None):
-                    args = (*args[:3], "127.0.0.1", *args[4:])
-
-                assets_path = Path(obtener_directorio_assets())
-                ico_path = assets_path / "favicon.ico"
-                png_path = assets_path / "favicon.png"
-                sw_path = assets_path / "sw.js"
-                manifest_path = assets_path / "manifest.json"
-                offline_path = assets_path / "offline.html"
-                scanner_path = assets_path / "scanner.html"
-                scanner_js = assets_path / "js" / "scanner.js"
-                scanner_css = assets_path / "css" / "scanner.css"
-
-                if not hasattr(flet_web.fastapi.FastAPI, "_orig_init"):
-                    orig_init = flet_web.fastapi.FastAPI.__init__
-                    setattr(flet_web.fastapi.FastAPI, "_orig_init", orig_init)
-
-                    def custom_fastapi_init(self, *a, **kw):
-                        orig_init(self, *a, **kw)
-                        if ico_path.exists():
-                            @self.get("/favicon.ico")
-                            async def _serve_favicon_ico():
-                                return FileResponse(
-                                    str(ico_path),
-                                    media_type="image/x-icon",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if png_path.exists():
-                            @self.get("/favicon.png")
-                            async def _serve_favicon_png():
-                                return FileResponse(
-                                    str(png_path),
-                                    media_type="image/png",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if sw_path.exists():
-                            @self.get("/sw.js")
-                            @self.get("/service-worker.js")
-                            async def _serve_sw():
-                                return FileResponse(
-                                    str(sw_path),
-                                    media_type="application/javascript",
-                                    headers={
-                                        "Service-Worker-Allowed": "/",
-                                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                                    },
-                                )
-                        if manifest_path.exists():
-                            @self.get("/manifest.json")
-                            async def _serve_manifest():
-                                return FileResponse(
-                                    str(manifest_path),
-                                    media_type="application/manifest+json",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if offline_path.exists():
-                            @self.get("/offline.html")
-                            async def _serve_offline():
-                                return FileResponse(
-                                    str(offline_path),
-                                    media_type="text/html",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if scanner_path.exists():
-                            @self.get("/scanner.html")
-                            async def _serve_scanner():
-                                return FileResponse(
-                                    str(scanner_path),
-                                    media_type="text/html",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if scanner_js.exists():
-                            @self.get("/js/scanner.js")
-                            async def _serve_scanner_js():
-                                return FileResponse(
-                                    str(scanner_js),
-                                    media_type="application/javascript",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-                        if scanner_css.exists():
-                            @self.get("/css/scanner.css")
-                            async def _serve_scanner_css():
-                                return FileResponse(
-                                    str(scanner_css),
-                                    media_type="text/css",
-                                    headers={"Cache-Control": "no-cache, must-revalidate"},
-                                )
-
-                    flet_web.fastapi.FastAPI.__init__ = custom_fastapi_init
-
-                handle = await _orig_serve(*args, **kwargs)
-                for _ in range(100):
-                    if getattr(handle.server, "started", False) or handle.serve_task.done():
-                        break
-                    await asyncio.sleep(0.05)
-                return handle
-
-            _sfa.serve_fastapi_web_app = _serve_local_url
-
-            import flet_web.fastapi.flet_app as _ffa
-
-            if hasattr(_ffa, "FletApp"):
-                if not hasattr(_ffa.FletApp, "_orig_send_loop"):
-                    _orig_send_loop = getattr(_ffa.FletApp, "_FletApp__send_loop", None)
-                    if _orig_send_loop:
-                        setattr(_ffa.FletApp, "_orig_send_loop", _orig_send_loop)
-
-                        async def _clean_send_loop(self):
-                            try:
-                                await _orig_send_loop(self)
-                            except Exception as e:
-                                c_name = e.__class__.__name__
-                                if any(k in c_name for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")):
-                                    pass
-                                else:
-                                    raise
-
-                        setattr(_ffa.FletApp, "_FletApp__send_loop", _clean_send_loop)
-
-                if not hasattr(_ffa.FletApp, "_orig_handle"):
-                    _orig_handle = _ffa.FletApp.handle
-                    setattr(_ffa.FletApp, "_orig_handle", _orig_handle)
-
-                    async def _clean_handle(self, websocket):
-                        try:
-                            await _orig_handle(self, websocket)
-                        except Exception as e:
-                            c_name = e.__class__.__name__
-                            if any(k in c_name for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")):
-                                pass
-                            else:
-                                raise
-
-                    _ffa.FletApp.handle = _clean_handle
-        except Exception:
-            pass
-
-        ip_local = obtener_ip_local()
-        ip_tailscale = obtener_ip_tailscale()
-        print("=" * 70)
-        print(f"  STOCK AGENT - SERVIDOR WEB MULTI-EQUIPO ({esquema.upper()})")
-        print("=" * 70)
-        print(f"  -> Acceso Local (esta PC):        {esquema}://127.0.0.1:{port}")
-        print(f"  -> Acceso Red LAN (misma red):    {esquema}://{ip_local}:{port}")
-        if ip_tailscale:
-            print(f"  -> Acceso Remoto (Tailscale VPN): {esquema}://{ip_tailscale}:{port}")
-        else:
-            print(f"  -> Acceso Remoto Seguro (VPN):    {esquema}://<IP_TAILSCALE>:{port} (via Tailscale)")
-        if https and cert_path_final:
-            print(f"  -> Certificado SSL activo:        {cert_path_final}")
-        print("  Mantén esta consola abierta mientras el servidor esté en uso.")
-        print("=" * 70)
-        assets_dir = obtener_directorio_assets()
-        os.environ["FLET_ASSETS_DIR"] = assets_dir
-
-        tray_service = None
-        if con_tray:
-            try:
-                from .tray_icon import iniciar_icono_bandeja
-
-                tray_service = iniciar_icono_bandeja(
-                    port=port,
-                    host=host,
-                    https=https,
-                )
-            except Exception as exc_tray:
-                logger.warning("No se pudo iniciar icono en bandeja del sistema: %s", exc_tray)
-
-        try:
-            ft.run(
-                main,
-                view=ft.AppView.WEB_BROWSER,
-                host=host,
-                port=port,
-                name="",
-                assets_dir=assets_dir,
-                no_cdn=False,
-                web_renderer=ft.WebRenderer.AUTO,
-            )
-        finally:
-            if tray_service:
-                tray_service.detener()
-    else:
-        assets_dir = obtener_directorio_assets()
-        ft.run(
-            main,
-            view=ft.AppView.FLET_APP,
-            name="Control de Inventario Depósito Pasteur",
-            assets_dir=assets_dir,
-            no_cdn=False,
-            web_renderer=ft.WebRenderer.AUTO,
-        )
+    """Inicia el servidor web ASGI / FastAPI o la aplicación en modo ventana."""
+    return iniciar_servidor_web(
+        entrypoint_main=main,
+        modo_web=modo_web,
+        host=host,
+        port=port,
+        https=https,
+        ssl_certfile=ssl_certfile,
+        ssl_keyfile=ssl_keyfile,
+        ocultar_consola=ocultar_consola,
+        abrir_navegador=abrir_navegador,
+        con_tray=con_tray,
+        **kwargs,
+    )

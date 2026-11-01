@@ -47,6 +47,17 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
     ]
 
     # =========================================================================
+    # SECCIÓN SUPERIOR: DOCUMENTACIÓN Y MANUALES POR ROL
+    # =========================================================================
+    controls.extend(
+        [
+            ft.Text("DOCUMENTACIÓN", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+            interfaz.boton("Manual de Uso", ft.Icons.MENU_BOOK, interfaz.mostrar_manual_usuario),
+            ft.Divider(height=18, color=interfaz.borde),
+        ]
+    )
+
+    # =========================================================================
     # ROL MASTER: Seguridad, Auditoría Forense y Resguardo Técnico
     # =========================================================================
     if interfaz.usuario_actual.role == "master":
@@ -58,6 +69,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("RESGUARDO Y CONTINUIDAD", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
+                interfaz.boton("Restaurar documentos", ft.Icons.RESTORE, interfaz.confirmar_restaurar),
                 interfaz.boton("Archivado Histórico", ft.Icons.AUTO_DELETE, interfaz.mostrar_dialogo_archivo_historico),
 
                 ft.Divider(height=18, color=interfaz.borde),
@@ -83,6 +95,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 interfaz.boton("Cargar / Armar Pedido", ft.Icons.POST_ADD, interfaz.mostrar_crear_pedido),
                 interfaz.boton("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
+                interfaz.boton("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
                 interfaz.boton("Sincronizar Mercado Libre (API)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
                 interfaz.boton("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                 interfaz.boton("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
@@ -122,7 +135,6 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                 interfaz.boton("Mercado Libre API (Sync)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
                 interfaz.boton("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
-                interfaz.boton("Restaurar documentos", ft.Icons.RESTORE, interfaz.confirmar_restaurar),
 
                 # 3. Analítica, Métricas y Optimización de Picking
                 ft.Divider(height=18, color=interfaz.borde),

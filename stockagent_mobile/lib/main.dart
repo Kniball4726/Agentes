@@ -8,7 +8,7 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Forzar barra de navegación y estado con estilo oscuro
+  // Barra de navegación y estado en estilo oscuro coherente con StockAgent
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,11 +19,11 @@ void main() async {
   );
 
   final storageService = await StorageService.init();
-  final bool tieneConfiguracion = storageService.hasValidConfig();
+  final bool yaConfigurado = storageService.hasValidConfig();
 
   runApp(StockAgentMobileApp(
     storageService: storageService,
-    iniciarEnConfiguracion: !tieneConfiguracion,
+    iniciarEnConfiguracion: !yaConfigurado,
   ));
 }
 
