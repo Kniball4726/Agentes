@@ -675,6 +675,14 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
     resultado_parseo: list[ResultadoRemito | None] = [None]
     items_a_descontar: dict[str, int] = {}
 
+    btn_confirmar = ft.Button(
+        "Confirmar y Descontar",
+        icon=ft.Icons.CHECK_CIRCLE,
+        bgcolor=ROJO,
+        color=ft.Colors.WHITE,
+        disabled=True,
+    )
+
     lista_previsualizacion = ft.ListView(
         expand=True,
         spacing=4,
@@ -687,10 +695,32 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
     )
     banner_no_encontrados = ft.Container(visible=False)
 
+    def limpiar_vista(_e: ft.Event | None = None) -> None:
+        archivo_seleccionado[0] = None
+        resultado_parseo[0] = None
+        items_a_descontar.clear()
+        lista_previsualizacion.controls.clear()
+        banner_no_encontrados.visible = False
+        selector_archivo.value = None
+        resumen_texto.value = (
+            "Selecciona o sube un archivo .docx de Mercado Libre para previsualizar los productos a descontar."
+        )
+        resumen_texto.color = interfaz.secundario
+        btn_confirmar.disabled = True
+        interfaz.page.update()
+
     def cargar_previsualizacion_docx(arch: Path) -> None:
         lista_previsualizacion.controls.clear()
         items_a_descontar.clear()
         banner_no_encontrados.visible = False
+        btn_confirmar.disabled = True
+
+        if not arch or not arch.exists():
+            resumen_texto.value = "El archivo seleccionado no se encuentra en el disco."
+            resumen_texto.color = ft.Colors.RED_400
+            interfaz.page.update()
+            return
+
         sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
         productos_catalogo = [
             (codigo, nombre) for _, codigo, nombre, _ in sm.productos_base
@@ -777,6 +807,9 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                     spacing=8,
                 ),
             )
+            btn_confirmar.disabled = True
+        else:
+            btn_confirmar.disabled = False
 
         for cod, cant in items_a_descontar.items():
             nom = sm.catalogo.get(cod, ("", "Producto no encontrado", 0))[1]
@@ -803,7 +836,28 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
             )
         interfaz.page.update()
 
-    archivos_pendientes: list[Path] = sorted(list(carpeta_ml.glob("*.docx")))
+    dest_archivado = (
+        getattr(interfaz.menu, "carpeta_descontados", None) or (
+            getattr(interfaz.menu, "base_dir", Path(".")) / "Descuentos" / "descontados"
+        )
+    ) / "MercadoLibre"
+    dest_archivado.mkdir(parents=True, exist_ok=True)
+
+    # Limpiar automáticamente archivos que ya fueron procesados previamente para evitar bloqueos
+    archivos_pendientes: list[Path] = []
+    for arch_cand in sorted(list(carpeta_ml.glob("*.docx"))):
+        h = calcular_hash_archivo(arch_cand)
+        if h and interfaz.order_store.buscar_pedido_por_hash(h):
+            try:
+                dest_file = dest_archivado / arch_cand.name
+                if not dest_file.exists() or arch_cand.resolve() != dest_file.resolve():
+                    shutil.move(str(arch_cand), str(dest_file))
+                else:
+                    arch_cand.unlink(missing_ok=True)
+            except Exception:
+                pass
+        else:
+            archivos_pendientes.append(arch_cand)
 
     opciones_dropdown = [
         ft.dropdown.Option(arch.name) for arch in archivos_pendientes
@@ -818,6 +872,9 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
 
     def cambiar_archivo_dropdown(_e: ft.Event) -> None:
         nombre = selector_archivo.value
+        if not nombre:
+            limpiar_vista()
+            return
         for arch in archivos_pendientes:
             if arch.name == nombre:
                 archivo_seleccionado[0] = arch
@@ -833,11 +890,10 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
     def al_subir_docx(guardados: list[Path]) -> None:
         if not guardados:
             return
-        nombres_existentes = {a.name for a in archivos_pendientes}
-        for g in guardados:
-            if g.name not in nombres_existentes:
-                archivos_pendientes.append(g)
-                nombres_existentes.add(g.name)
+        # Sincronizar pendientes con la carpeta
+        archivos_disco = sorted(list(carpeta_ml.glob("*.docx")))
+        archivos_pendientes.clear()
+        archivos_pendientes.extend(archivos_disco)
         selector_archivo.options = [
             ft.dropdown.Option(a.name) for a in archivos_pendientes
         ]
@@ -853,12 +909,45 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                 carpeta_destino=carpeta_ml,
                 extensiones=["docx"],
                 titulo="Seleccionar pedido de Mercado Libre (.docx)",
-                al_terminar=al_subir_docx,
             )
             if guardados:
                 al_subir_docx(guardados)
         except Exception as err:
             interfaz.notificar(f"Error al subir archivo de Mercado Libre: {err}")
+
+    def descartar_archivo_seleccionado(_e: ft.Event) -> None:
+        arch = archivo_seleccionado[0]
+        if not arch:
+            interfaz.notificar("No hay ningún archivo seleccionado para descartar.")
+            return
+        try:
+            carpeta_descartados = carpeta_ml / "descartados"
+            carpeta_descartados.mkdir(parents=True, exist_ok=True)
+            dest = carpeta_descartados / arch.name
+            if arch.exists():
+                if dest.exists() and arch.resolve() != dest.resolve():
+                    dest.unlink()
+                if arch.resolve() != dest.resolve():
+                    shutil.move(str(arch), str(dest))
+        except Exception as err:
+            interfaz.notificar(f"No se pudo descartar el archivo: {err}")
+            return
+
+        if arch in archivos_pendientes:
+            archivos_pendientes.remove(arch)
+        selector_archivo.options = [
+            ft.dropdown.Option(a.name) for a in archivos_pendientes
+        ]
+        if archivos_pendientes:
+            siguiente = archivos_pendientes[0]
+            archivo_seleccionado[0] = siguiente
+            selector_archivo.value = siguiente.name
+            cargar_previsualizacion_docx(siguiente)
+        else:
+            limpiar_vista()
+        interfaz.actualizar_estado()
+        interfaz.page.update()
+        interfaz.notificar(f"Archivo {arch.name} descartado de pendientes.")
 
     async def confirmar_descuento_ml(_e: ft.Event) -> None:
         if not archivo_seleccionado[0] or not items_a_descontar:
@@ -866,6 +955,10 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
             return
 
         arch = archivo_seleccionado[0]
+        if not arch.exists():
+            interfaz.notificar(f"El archivo {arch.name} ya no existe en la carpeta de pendientes.")
+            return
+
         hash_doc = calcular_hash_archivo(arch)
         if hash_doc:
             dup = interfaz.order_store.buscar_pedido_por_hash(hash_doc)
@@ -918,6 +1011,7 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
             except Exception:
                 pass
 
+            sin_coincidencia_ml = list(res.descripciones_sin_coincidencia) if res else []
             interfaz.order_store.registrar_pedido(
                 nota_pedido=nota_ml,
                 numero_pedido=nota_ml,
@@ -933,20 +1027,28 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                 archivo_descuento=pdf_nom,
                 items=items_descontados,
                 archivo_hash=hash_doc,
+                items_sin_coincidencia=sin_coincidencia_ml,
             )
 
             dest_archivado = interfaz.menu.carpeta_descontados / "MercadoLibre"
             dest_archivado.mkdir(parents=True, exist_ok=True)
             try:
-                shutil.move(str(arch), str(dest_archivado / arch.name))
+                dest_final = dest_archivado / arch.name
+                if dest_final.exists() and arch.resolve() != dest_final.resolve():
+                    dest_final.unlink()
+                if arch.exists() and arch.resolve() != dest_final.resolve():
+                    shutil.move(str(arch), str(dest_final))
             except Exception:
                 pass
 
             interfaz.actualizar_listas()
             print(f"[OK] Mercado Libre descontado: {nota_ml} | Cliente: {cliente_ml} | Items: {resumen_items} | PDF: {pdf_nom}")
 
-        await interfaz.ejecutar_tarea(f"Descuento Mercado Libre ({arch.name})", ejecutar_descuento_ml)
-        interfaz.notificar(f"Se descontaron exitosamente los productos de Mercado Libre ({arch.name}).")
+        exito = await interfaz.ejecutar_tarea(f"Descuento Mercado Libre ({arch.name})", ejecutar_descuento_ml)
+        if exito:
+            interfaz.notificar(f"Se descontaron exitosamente los productos de Mercado Libre ({arch.name}).")
+
+    btn_confirmar.on_click = confirmar_descuento_ml
 
     dialogo = ft.AlertDialog(
         modal=True,
@@ -977,10 +1079,20 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
                                 color=interfaz.texto,
                                 on_click=subir_desde_pc,
                             ),
+                            ft.IconButton(
+                                icon=ft.Icons.CLEAR_ALL,
+                                tooltip="Limpiar vista previa",
+                                on_click=limpiar_vista,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DELETE_OUTLINE,
+                                tooltip="Descartar este archivo de pendientes",
+                                on_click=descartar_archivo_seleccionado,
+                            ),
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         wrap=bool(getattr(interfaz, "es_pantalla_movil", False)),
-                        spacing=8,
+                        spacing=6,
                     ),
                     resumen_texto,
                     banner_no_encontrados,
@@ -992,13 +1104,7 @@ def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = No
             ),
         ),
         actions=[
-            ft.Button(
-                "Confirmar y Descontar",
-                icon=ft.Icons.CHECK_CIRCLE,
-                bgcolor=ROJO,
-                color=ft.Colors.WHITE,
-                on_click=confirmar_descuento_ml,
-            ),
+            btn_confirmar,
             interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
         ],
     )

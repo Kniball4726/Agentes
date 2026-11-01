@@ -8,6 +8,7 @@ from ...backup_manager import crear_backup_sistema
 from ...canjes_parser import parsear_canje_excel
 from ...consolidator import ItemConsolidado
 from ...dispatch_manifest import generar_hoja_ruta_pdf
+from ...mercado_libre_parser import parsear_pedido_mercado_libre
 from ...paths import application_root
 from ...remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo, parsear_remito
 from ...stock_manager import StockManager as _DefaultStockManager
@@ -315,6 +316,9 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                                 if ped.nota_pedido not in items_consolidados[cod_n].remitos_origen:
                                     items_consolidados[cod_n].remitos_origen.append(ped.nota_pedido)
 
+            sm_cls = _get_stock_manager_cls()
+            stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
+
             pedidos_doc = []
             for p in pedidos_pendientes:
                 items_db = interfaz.order_store.obtener_items_pedido(p.id)
@@ -327,17 +331,58 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                     )
                     for cod, desc, cant in items_db
                 ]
-                if not items_p:
-                    arch_p = application_root() / "data" / "pedidos_archivos" / p.nombre_archivo
-                    if arch_p.exists():
-                        try:
-                            if p.tipo_archivo == "pdf":
-                                res_p = parsear_remito(arch_p)
-                            else:
-                                res_p = parsear_canje_excel(arch_p)
-                            items_p = res_p.items
-                        except Exception:
-                            pass
+                sin_coincidencia_p: list[tuple[str, str]] = []
+                if hasattr(interfaz.order_store, "obtener_items_sin_coincidencia"):
+                    try:
+                        sin_coincidencia_p = interfaz.order_store.obtener_items_sin_coincidencia(p.id)
+                    except Exception:
+                        sin_coincidencia_p = []
+
+                arch_p = application_root() / "data" / "pedidos_archivos" / p.nombre_archivo
+                if not arch_p.exists():
+                    candidatos = [
+                        interfaz.menu.carpeta_descontados / "MercadoLibre" / p.nombre_archivo,
+                        interfaz.menu.carpeta_descontados / "Mayoristas" / p.nombre_archivo,
+                        interfaz.menu.carpeta_descontados / "Canjes" / p.nombre_archivo,
+                        interfaz.menu.carpeta_descontados / "Fabrica" / p.nombre_archivo,
+                        interfaz.menu.carpeta_descontados / p.nombre_archivo,
+                    ]
+                    for cand in candidatos:
+                        if cand.exists():
+                            arch_p = cand
+                            break
+
+                if arch_p.exists():
+                    try:
+                        sufijo = arch_p.suffix.lower()
+                        if sufijo == ".pdf" or p.tipo_archivo == "pdf":
+                            res_doc = parsear_remito(arch_p)
+                            if not sin_coincidencia_p:
+                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
+                            if not items_p:
+                                items_p = res_doc.items
+                        elif sufijo == ".docx" or p.tipo_archivo == "docx":
+                            prods_cat = [(c, n) for _, c, n, _ in stock_mgr.productos_base]
+                            res_doc = parsear_pedido_mercado_libre(arch_p, prods_cat)
+                            if not sin_coincidencia_p:
+                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
+                            if not items_p:
+                                items_p = res_doc.items
+                        elif sufijo in (".xlsx", ".xls") or p.tipo_archivo == "excel":
+                            res_doc = parsear_canje_excel(arch_p)
+                            if not sin_coincidencia_p:
+                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
+                            if not items_p:
+                                items_p = res_doc.items
+                    except Exception as e:
+                        print(f"[AVISO] Error al re-parsear {arch_p.name} para cierre: {e}")
+
+                if sin_coincidencia_p and hasattr(interfaz.order_store, "guardar_items_sin_coincidencia"):
+                    try:
+                        interfaz.order_store.guardar_items_sin_coincidencia(p.id, sin_coincidencia_p)
+                    except Exception:
+                        pass
+
                 pedidos_doc.append(
                     ResultadoRemito(
                         archivo=p.nombre_archivo,
@@ -347,12 +392,10 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                         articulos_declarados=p.articulos_descontados,
                         articulos_extraidos=p.articulos_descontados,
                         items=items_p,
+                        descripciones_sin_coincidencia=sin_coincidencia_p,
                         verificacion_ok=True,
                     )
                 )
-
-            sm_cls = _get_stock_manager_cls()
-            stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
             rep = stock_mgr.aplicar_descuentos(
                 items_consolidados=items_consolidados,
                 carpeta_destino=interfaz.menu.carpeta_descuentos,

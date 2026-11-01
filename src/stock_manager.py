@@ -731,7 +731,7 @@ class StockManager:
         productos_sin_coincidencia.extend(
             (
                 "",
-                documento.archivo,
+                documento.numero_remito or documento.archivo,
                 descripcion,
                 motivo,
             )

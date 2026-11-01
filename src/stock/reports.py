@@ -428,7 +428,7 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
             t_cat = Table(
                 contenido_cat,
                 colWidths=anchos_catalogo,
-                repeatRows=min(3, len(contenido_cat)),
+                repeatRows=min(2, len(contenido_cat)),
                 hAlign="LEFT",
                 splitByRow=1,
             )
@@ -443,9 +443,10 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
                 else hoja.max_row + 1
             )
 
-            ancho_col1 = 2.4 * cm
-            ancho_col2 = ancho_util - ancho_col1
-            anchos_pedidos = [ancho_col1, ancho_col2]
+            ancho_col1 = 3.2 * cm
+            ancho_col2 = 8.0 * cm
+            ancho_col3 = max(2.0 * cm, ancho_util - ancho_col1 - ancho_col2)
+            anchos_pedidos = [ancho_col1, ancho_col2, ancho_col3]
 
             contenido_ped = []
             estilos_ped = [
@@ -458,16 +459,14 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
 
             idx_ped = 0
             for num_f in range(fila_inicio_pedidos, fin_pedidos):
-                c1 = hoja.cell(num_f, 1)
-                c2 = hoja.cell(num_f, 2)
-                t1 = formatear_valor(c1)
-                t2 = formatear_valor(c2)
+                celdas_fila = [hoja.cell(num_f, c) for c in (1, 2, 3)]
+                textos_fila = [formatear_valor(c) for c in celdas_fila]
 
-                if not t1 and not t2:
+                if all(not t for t in textos_fila):
                     continue
 
                 fila_elems = []
-                for col_idx, c in enumerate([c1, c2]):
+                for col_idx, c in enumerate(celdas_fila):
                     align_str = c.alignment.horizontal or "left"
                     align_code = _ALINEACIONES_PDF.get(align_str, 0)
                     font_name = "Helvetica-Bold" if c.font and c.font.bold else "Helvetica"
@@ -511,12 +510,12 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
             for r_m in hoja.merged_cells.ranges:
                 if fila_inicio_pedidos <= r_m.min_row < fin_pedidos:
                     min_c = r_m.min_col - 1
-                    max_c = min(r_m.max_col - 1, 1)
+                    max_c = min(r_m.max_col - 1, 2)
                     r_target_min = None
                     r_target_max = None
                     cur_i = 0
                     for nf in range(fila_inicio_pedidos, fin_pedidos):
-                        row_empty = not formatear_valor(hoja.cell(nf, 1)) and not formatear_valor(hoja.cell(nf, 2))
+                        row_empty = all(not formatear_valor(hoja.cell(nf, c)) for c in (1, 2, 3))
                         if not row_empty:
                             if nf == r_m.min_row:
                                 r_target_min = cur_i
@@ -539,9 +538,11 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
 
         if fila_inicio_no_descontados is not None:
             elementos.append(Spacer(1, 14))
-            ancho_col1 = 2.4 * cm
-            ancho_col2 = ancho_util - ancho_col1
-            anchos_nd = [ancho_col1, ancho_col2]
+            ancho_col1 = 2.0 * cm
+            ancho_col2 = 3.8 * cm
+            ancho_col3 = 6.4 * cm
+            ancho_col4 = max(2.0 * cm, ancho_util - ancho_col1 - ancho_col2 - ancho_col3)
+            anchos_nd = [ancho_col1, ancho_col2, ancho_col3, ancho_col4]
 
             contenido_nd = []
             estilos_nd = [
@@ -554,16 +555,14 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
 
             idx_nd = 0
             for num_f in range(fila_inicio_no_descontados, hoja.max_row + 1):
-                c1 = hoja.cell(num_f, 1)
-                c2 = hoja.cell(num_f, 2)
-                t1 = formatear_valor(c1)
-                t2 = formatear_valor(c2)
+                celdas_fila = [hoja.cell(num_f, c) for c in (1, 2, 3, 4)]
+                textos_fila = [formatear_valor(c) for c in celdas_fila]
 
-                if not t1 and not t2:
+                if all(not t for t in textos_fila):
                     continue
 
                 fila_elems = []
-                for col_idx, c in enumerate([c1, c2]):
+                for col_idx, c in enumerate(celdas_fila):
                     align_str = c.alignment.horizontal or "left"
                     align_code = _ALINEACIONES_PDF.get(align_str, 0)
                     font_name = "Helvetica-Bold" if c.font and c.font.bold else "Helvetica"
@@ -607,12 +606,12 @@ def guardar_informe_pdf(libro: openpyxl.Workbook, ruta: Path) -> None:
             for r_m in hoja.merged_cells.ranges:
                 if r_m.min_row >= fila_inicio_no_descontados:
                     min_c = r_m.min_col - 1
-                    max_c = min(r_m.max_col - 1, 1)
+                    max_c = min(r_m.max_col - 1, 3)
                     r_target_min = None
                     r_target_max = None
                     cur_i = 0
                     for nf in range(fila_inicio_no_descontados, hoja.max_row + 1):
-                        row_empty = not formatear_valor(hoja.cell(nf, 1)) and not formatear_valor(hoja.cell(nf, 2))
+                        row_empty = all(not formatear_valor(hoja.cell(nf, c)) for c in (1, 2, 3, 4))
                         if not row_empty:
                             if nf == r_m.min_row:
                                 r_target_min = cur_i

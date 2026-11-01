@@ -468,6 +468,10 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 (d.codigo, d.nombre_producto, d.cantidad_descontada)
                 for d in reporte.reporte_stock.descuentos_aplicados
             ]
+            sin_coincidencia_doc = []
+            if reporte and reporte.documentos_verificados:
+                for doc in reporte.documentos_verificados:
+                    sin_coincidencia_doc.extend(doc.descripciones_sin_coincidencia)
             interfaz.order_store.registrar_pedido(
                 nota_pedido=remito,
                 numero_pedido=num_ped,
@@ -484,6 +488,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 archivo_descuento=pdf_nom,
                 items=items_descontados,
                 archivo_hash=hash_comprobante,
+                items_sin_coincidencia=sin_coincidencia_doc,
             )
             interfaz.actualizar_listas()
             interfaz.reproducir_sonido("exito")

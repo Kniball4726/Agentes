@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 from contextlib import closing, contextmanager
@@ -284,6 +285,8 @@ class OrderStore:
             if "numero_guia" not in columnas_existentes:
                 connection.execute("ALTER TABLE pedidos ADD COLUMN numero_guia TEXT NOT NULL DEFAULT ''")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_numero_guia ON pedidos(numero_guia)")
+            if "items_sin_coincidencia" not in columnas_existentes:
+                connection.execute("ALTER TABLE pedidos ADD COLUMN items_sin_coincidencia TEXT NOT NULL DEFAULT '[]'")
 
             columnas_cierres = {
                 r["name"] for r in connection.execute("PRAGMA table_info(cierres_jornada)").fetchall()
@@ -688,6 +691,7 @@ class OrderStore:
         items: list[tuple[str, str, int]] | None = None,
         archivo_hash: str = "",
         numero_guia: str = "",
+        items_sin_coincidencia: list[tuple[str, str]] | None = None,
     ) -> Pedido:
         nota_pedido = nota_pedido.strip()
         numero_pedido = numero_pedido.strip()
@@ -719,8 +723,8 @@ class OrderStore:
                     INSERT INTO pedidos (
                         nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                         tipo_archivo, nombre_archivo, agregado, articulos_descontados, resumen_items,
-                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia, items_sin_coincidencia
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         nota_pedido,
@@ -738,6 +742,7 @@ class OrderStore:
                         archivo_descuento,
                         archivo_hash,
                         (numero_guia or "").strip(),
+                        json.dumps(items_sin_coincidencia or [], ensure_ascii=False),
                     ),
                 )
                 nuevo_id = cursor.lastrowid
@@ -1028,6 +1033,28 @@ class OrderStore:
             accion="ANULAR_PEDIDO",
             detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
         )
+
+    def obtener_items_sin_coincidencia(self, pedido_id: int) -> list[tuple[str, str]]:
+        """Recupera los productos no coincidentes/no descontados registrados para un pedido."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT items_sin_coincidencia FROM pedidos WHERE id = ?", (pedido_id,)
+            ).fetchone()
+        if not row or not row["items_sin_coincidencia"]:
+            return []
+        try:
+            items = json.loads(row["items_sin_coincidencia"])
+            return [(str(desc), str(mot)) for desc, mot in items]
+        except Exception:
+            return []
+
+    def guardar_items_sin_coincidencia(self, pedido_id: int, items: list[tuple[str, str]]) -> None:
+        """Actualiza los productos sin coincidencia para un pedido."""
+        with self._connect() as connection, connection:
+            connection.execute(
+                "UPDATE pedidos SET items_sin_coincidencia = ? WHERE id = ?",
+                (json.dumps(items or [], ensure_ascii=False), pedido_id),
+            )
 
     def obtener_items_pedido(self, pedido_id: int) -> list[tuple[str, str, int]]:
         """Devuelve los ítems asociados a un pedido: [(codigo, descripcion, cantidad), ...]."""
