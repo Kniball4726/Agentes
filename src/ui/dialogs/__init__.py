@@ -17,7 +17,11 @@ from .dlg_productos import (
     mostrar_dialogo_formulario_producto,
 )
 from .dlg_escaner import mostrar_dialogo_escaner_qr_despacho
-from .dlg_cierre import mostrar_dialogo_cierre_jornada
+from .dlg_cierre import (
+    mostrar_dialogo_cierre_jornada,
+    mostrar_dialogo_cierres_operarios,
+    mostrar_detalle_pedidos_cierre,
+)
 from .dlg_pedidos import (
     mostrar_dialogo_crear_pedido,
     mostrar_dialogo_confirmar_anulacion_pedido,
@@ -76,6 +80,8 @@ __all__ = [
     "mostrar_dialogo_escaner_qr_despacho",
     # Cierre de Jornada
     "mostrar_dialogo_cierre_jornada",
+    "mostrar_dialogo_cierres_operarios",
+    "mostrar_detalle_pedidos_cierre",
     # Pedidos
     "mostrar_dialogo_crear_pedido",
     "mostrar_dialogo_confirmar_anulacion_pedido",

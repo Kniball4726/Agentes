@@ -55,7 +55,11 @@ class TestFase5Features(unittest.TestCase):
         self.assertTrue(sw_path.exists(), "No se encontró assets/sw.js")
 
         content = sw_path.read_text(encoding="utf-8")
-        self.assertTrue("CACHE_NAME = 'stockagent-pwa-v1'" in content or "CACHE_NAME = 'stockagent-pwa-v2'" in content)
+        self.assertTrue(
+            "CACHE_NAME = 'stockagent-pwa-v1'" in content
+            or "CACHE_NAME = 'stockagent-pwa-v2'" in content
+            or "CACHE_NAME = 'stockagent-pwa-v3'" in content
+        )
         self.assertIn("addEventListener('install'", content)
         self.assertIn("addEventListener('activate'", content)
         self.assertIn("addEventListener('fetch'", content)

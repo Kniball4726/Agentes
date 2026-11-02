@@ -470,7 +470,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(cast(ft.IconButton, fila_acciones_movil.controls[3]).icon, ft.Icons.REFRESH)
             # Todos los 18 comandos siguen disponibles para el usuario
             # 22 comandos de administración disponibles (Telegram y SMTP reservados a Master)
-            self.assertEqual(len(interfaz.controles_tarea), 21)
+            self.assertEqual(len(interfaz.controles_tarea), 22)
             # Botón flotante más compacto
             self.assertEqual(interfaz.boton_chat_flotante.width, 110)
             self.assertFalse(interfaz.lista_pedidos_preparados.expand)

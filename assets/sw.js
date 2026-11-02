@@ -3,7 +3,7 @@
  * Soporte Offline-First y Resiliencia ante Microcortes de Red WiFi en Depósito.
  */
 
-const CACHE_NAME = 'stockagent-pwa-v2';
+const CACHE_NAME = 'stockagent-pwa-v3';
 
 const STATIC_ASSETS = [
   '/manifest.json',

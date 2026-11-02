@@ -146,7 +146,7 @@ class FletGuiTests(unittest.TestCase):
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
         # 22 comandos para administrador (Telegram y SMTP reservados a Master)
-        self.assertEqual(len(interfaz.controles_tarea), 21)
+        self.assertEqual(len(interfaz.controles_tarea), 22)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")

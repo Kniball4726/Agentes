@@ -105,6 +105,7 @@ from .ui.dialogs import (
     mostrar_descuento_mercado_libre,
     mostrar_dialogo_backup,
     mostrar_dialogo_cierre_jornada,
+    mostrar_dialogo_cierres_operarios,
     mostrar_dialogo_compartir_cierre,
     mostrar_dialogo_configuracion_smtp,
     mostrar_dialogo_confirmar_anulacion_pedido,
@@ -1801,6 +1802,11 @@ class InterfazFlet:
 
     def mostrar_cierre_jornada(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_cierre_jornada(self)
+
+    def mostrar_historial_cierres_admin(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles("administrador", "master"):
+            return
+        mostrar_dialogo_cierres_operarios(self)
 
     def mostrar_acceso_admin(self, _evento: ft.Event) -> None:
         if not self.exigir_roles("administrador"):

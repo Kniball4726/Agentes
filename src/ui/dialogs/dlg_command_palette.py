@@ -27,6 +27,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Gestionar Productos", "Catálogo maestro y existencias en Productos.xlsx", ft.Icons.ADD_BOX, ft.Colors.BLUE_400, interfaz.mostrar_gestion_productos),
             ("Métricas y Rendimiento", "Dashboard ejecutivo, rotación y volumen", ft.Icons.INSIGHTS, ft.Colors.PURPLE_400, interfaz.mostrar_dashboard_metricas),
             ("Historial de Pedidos", "Supervisión, reimpresión y rótulos en lote", ft.Icons.RECEIPT_LONG, ft.Colors.AMBER_400, interfaz.mostrar_historial_pedidos),
+            ("Cierres de Operarios", "Historial descendente de cierres creados por operarios", ft.Icons.FACT_CHECK, ft.Colors.ORANGE_400, interfaz.mostrar_historial_cierres_admin),
             ("Ajustar Stock / Fábrica", "Ingresos de mercadería y remitos de fábrica", ft.Icons.INVENTORY_2, ft.Colors.GREEN_400, interfaz.mostrar_ingreso_fabrica),
             ("Copia de Seguridad", "Respaldos .ZIP y espejo en red / nube", ft.Icons.BACKUP, ROJO, interfaz.mostrar_dialogo_backup),
             ("Comparativa Stock Físico", "Contraste de conteos físicos contra inventario", ft.Icons.COMPARE_ARROWS, ft.Colors.TEAL_400, interfaz.mostrar_comparativa_stock_fisico_admin),

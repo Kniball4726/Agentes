@@ -131,6 +131,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("VENTAS Y DESPACHOS", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
+                interfaz.boton("Cierres de Operarios", ft.Icons.FACT_CHECK, interfaz.mostrar_historial_cierres_admin),
                 interfaz.boton("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                 interfaz.boton("Mercado Libre API (Sync)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
