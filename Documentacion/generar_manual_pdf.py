@@ -605,13 +605,13 @@ def agregar_portada_iso_upel(
         ],
         [
             Paragraph("<b>Elaborado por:</b>", est["meta_bold"]),
-            Paragraph("Ingeniería de Software & Logística", est["meta"]),
+            Paragraph("Gregory Rodriguez", est["meta"]),
             Paragraph("<b>Revisado por:</b>", est["meta_bold"]),
-            Paragraph("Aseguramiento de Calidad (QA / ISO)", est["meta"]),
+            Paragraph("&nbsp;", est["meta"]),
         ],
         [
             Paragraph("<b>Aprobado por:</b>", est["meta_bold"]),
-            Paragraph("Gerencia de Operaciones y TI", est["meta"]),
+            Paragraph("&nbsp;", est["meta"]),
             Paragraph("<b>Clasificación de Seguridad:</b>", est["meta_bold"]),
             Paragraph("Información Interna Confidencial", est["meta"]),
         ],
@@ -639,7 +639,7 @@ def agregar_portada_iso_upel(
         ("v1.0.0", "15/01/2026", "Dev Team", "Lanzamiento inicial en arquitectura monopuesto de escritorio.", "Gerencia"),
         ("v1.5.0", "10/05/2026", "Logística / TI", "Incorporación de Mercado Libre DOCX, Rótulos QR continuos y SQLite WAL.", "Operaciones"),
         ("v2.0.0", "18/08/2026", "Dev Team", "Servidor LAN HTTPS Multi-equipo, PWA offline-first y cliente móvil Flutter nativo.", "Dirección TI"),
-        (f"v{version}", datetime.now().strftime("%d/%m/%Y"), "Dev Team", "Flujogramas BPMN 2.0 (Bizagi), Firmas ISO 9001 §7.5.2, Gestión Cambio POE-SGC-01 y Acta Inducción.", "Dirección TI"),
+        (f"v{version}", datetime.now().strftime("%d/%m/%Y"), "Gregory Rodriguez", "Manuales procedimentales botón por botón, auditoría de Cierres de Operarios descendente y nuevas hojas de ruta.", ""),
     ]
     for r_v, r_f, r_r, r_d, r_a in filas_rev:
         tabla_rev.append([
@@ -2555,31 +2555,13 @@ def construir_pdf(ruta_destino: Path) -> Path:
 
 
 def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> dict[str, Path]:
-    """Genera todos los manuales normalizados bajo ISO 9001:2015, ISO/IEC/IEEE 26514, ISO 27001, BPMN 2.0 y APA/UPEL."""
-    base_dir = Path(directorio_destino) if directorio_destino else Path("Documentacion")
-    base_dir.mkdir(parents=True, exist_ok=True)
-
-    rutas = {
-        "operador": base_dir / "Manual_Operador.pdf",
-        "administrador": base_dir / "Manual_Administrador.pdf",
-        "master": base_dir / "Manual_Master.pdf",
-        "consulta": base_dir / "Manual_Consulta.pdf",
-        "general": base_dir / "Manual_General.pdf",
-        "maestro": base_dir / "Manual_Maestro_Imprimible.pdf",
-    }
-
-    construir_manual_operador(rutas["operador"])
-    construir_manual_administrador(rutas["administrador"])
-    construir_manual_master(rutas["master"])
-    construir_manual_consulta(rutas["consulta"])
-    construir_manual_maestro_imprimible(rutas["general"])
-    construir_manual_maestro_imprimible(rutas["maestro"])
-
-    # Enlace adicional por retrocompatibilidad
-    ruta_legacy = base_dir / "Manual_de_Uso_StockAgent.pdf"
-    construir_manual_maestro_imprimible(ruta_legacy)
-
-    return rutas
+    """Genera todos los manuales de procedimiento y uso botón por botón en formato PDF."""
+    try:
+        from .manuales_procedimientos import generar_todos_los_manuales as _generar_proc
+        return _generar_proc(directorio_destino)
+    except (ImportError, ValueError):
+        from manuales_procedimientos import generar_todos_los_manuales as _generar_proc
+        return _generar_proc(directorio_destino)
 
 
 if __name__ == "__main__":

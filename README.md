@@ -12,6 +12,7 @@
    - [Parámetros de Línea de Comandos y Variables de Entorno](#parámetros-de-línea-de-comandos-y-variables-de-entorno)
    - [Progressive Web App (PWA) y Arquitectura Resiliente Offline-First](#progressive-web-app-pwa-y-arquitectura-resiliente-offline-first)
 2. [Manual de Usuario por Roles](#2-manual-de-usuario-por-roles)
+   - [Centro de Documentación y Botón "Manual de Uso" (SOPs por Botón)](#centro-de-documentación-y-botón-manual-de-uso-en-la-barra-lateral)
    - [Gestión de Perfil de Usuario ("Mi Perfil")](#gestión-de-perfil-de-usuario-mi-perfil)
    - [Autenticación, Seguridad y Bloqueo de Cuentas](#autenticación-seguridad-y-bloqueo-de-cuentas)
    - [Rol Master (`Desarrollo`)](#rol-master-desarrollo)
@@ -175,13 +176,35 @@ flowchart TD
 
 ### Centro de Documentación y Botón "Manual de Uso" en la Barra Lateral
 
-Para asegurar que cada miembro del equipo cuente con asistencia inmediata y documentación oficial acorde a su nivel de autorización, **la barra lateral de navegación presenta en primer lugar la sección 'DOCUMENTACIÓN' con el botón directo 'Manual de Uso':**
+Para asegurar que cada miembro del equipo cuente con asistencia inmediata y documentación oficial estandarizada acorde a su nivel de autorización, **la barra lateral de navegación presenta en primer lugar la sección 'DOCUMENTACIÓN' con el botón directo 'Manual de Uso'**:
 
-* **Acceso Contextual por Rol:** Al presionar **'Manual de Uso'**, el sistema detecta de forma automática el perfil del usuario activo y abre el PDF oficial correspondiente a su rol:
-  * **Operador:** Abre directamente `Documentacion/Manual_Operador.pdf` (preparación de pedidos, remitos, canjes, Mercado Libre Full, rótulos QR, despacho y cierre).
-  * **Administrador:** Abre directamente `Documentacion/Manual_Administrador.pdf` (catálogo maestro, ajustes de fábrica, analítica de picking, comparativas de stock y gestión IAM).
-  * **Master:** Abre directamente `Documentacion/Manual_Master.pdf` (IAM global, auditoría forense inmutable, salud del servidor, rollback documental y backups).
-  * **Consulta:** Abre directamente `Documentacion/Manual_Consulta.pdf` (búsqueda de stock, lectura de informes y restricciones).
+* **Estructura Normalizada por Procedimientos Operativos Estándar (SOP - Botón a Botón):**
+  A partir de la versión **v3.0.0**, cada manual abandona el formato genérico y se estructura de manera modular y exhaustiva con **Fichas de Procedimiento Oficiales** que cubren el 100% de los botones e interactivos disponibles en el menú lateral de cada rol. Cada ficha contiene:
+  1. **Encabezado y Metadatos:** Nombre del comando, icono del sistema, sección de pertenencia y atajo de teclado (`Ctrl + K` / `F2`).
+  2. **Propósito y Alcance (Qué hace):** Definición clara del objetivo operativo o administrativo en el flujo de trabajo.
+  3. **Requisitos y Perfil Autorizado:** Precondiciones, rol con permisos y reglas de segregación de funciones (*Separation of Duties - SoD*).
+  4. **Procedimiento Paso a Paso (Cómo se hace):** Guía secuencial numerada desde la invocación del comando hasta la confirmación de la tarea.
+  5. **Salidas y Documentos Emitidos:** Impacto transaccional en SQLite, archivos emitidos (PDF, Excel, Word), etiquetas QR y notificaciones.
+  6. **Manejo de Errores, Excepciones y Buenas Prácticas:** Advertencias de seguridad, prevención de bloqueos y acciones correctivas.
+
+* **Control de Versiones y Responsabilidad Documental Institucional:**
+  Todos los manuales PDF generados incorporan en su portada formal dos tablas de control de calidad bajo normas ISO/BPM:
+  * **Tabla 1 (Control Documental):**
+    * **Elaborado por:** `Gregory Rodriguez`
+    * **Revisado por:** ` ` *(Espacio en blanco reservado para firma de supervisión institucional)*
+    * **Aprobado por:** ` ` *(Espacio en blanco reservado para firma de gerencia o dirección general)*
+  * **Tabla 2 (Historial de Versiones y Trazabilidad):**
+    * `v1.0.0`: Versión inicial monolítica con arquitectura LAN y persistencia SQLite.
+    * `v2.0.0`: Segregación estricta de funciones IAM (SoD), credenciales cifradas y PWA offline.
+    * `v3.0.0`: Reestructuración integral botón a botón por fichas SOP para cada rol, módulo de auditoría de cierres descendente para administradores y visor documental Zero-Cache.
+
+* **Manuales Oficiales Generados por Rol:**
+  * **Manual del Operador (`Manual_Operador.pdf`):** Cubre los 13 comandos operativos de depósito: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Sincronizar Mercado Libre (API)*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
+  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los 21 comandos de supervisión: *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios* y *Manual de Uso*.
+  * **Manual Master (`Manual_Master.pdf`):** Cubre los 8 comandos técnicos de infraestructura: *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP*, *Alertas Telegram*, *Mercado Libre API (Credenciales)*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
+  * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los 4 comandos de consulta y lectura: *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
+  * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo con todos los procedimientos y la matriz SoD unificada.
+
 * **Visualización Dinámica e Inmediata (Zero-Cache):**
   * **Modo Web / Red Local:** El servidor expone el endpoint seguro `/documentacion/{archivo}` y abre el PDF en una pestaña del navegador con visualización directa (*inline*) y control de versiones dinámico (`?v=timestamp`). Cada vez que la documentación es actualizada en el servidor, **los cambios se reflejan de inmediato para todos los usuarios sin necesidad de limpiar la caché del navegador ni reiniciar la aplicación**.
   * **Modo Escritorio Nativo:** Abre el documento PDF directamente en el visor predeterminado del sistema operativo (Edge, Adobe Acrobat, Chrome, etc.).
@@ -263,7 +286,7 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
 Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
 
 * **📦 Stock y Catálogo:** Gestión de catálogo maestro, ajustes de stock físico / ingresos de fábrica, comparativa de discrepancias, sincronización atómica con `Productos.xlsx` y generación automática de pedidos a fábrica.
-* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST) y Mercado Full (con restauración documental delegada con exclusividad al rol Master por normativa SoD).
+* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), auditoría histórica de Cierres de Operarios (en orden cronológico descendente con desglose modal de pedidos, regeneración de hojas de ruta de transporte y exportaciones a PDF/Excel/Email), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST) y Mercado Full (con restauración documental delegada con exclusividad al rol Master por normativa SoD).
 * **📊 Analítica y Picking:** Dashboard ejecutivo de métricas de rendimiento, estadísticas de salida, radar predictivo de anomalías de demanda y mapa de calor de depósito con matriz de rotación ABC (Slotting).
 * **📄 Informes:** Apertura y descarga de reportes, envío directo por correo electrónico y comunicación por WhatsApp Web.
 * **🛡️ Sistema y Resguardo:** Copias de seguridad automáticas `.zip`, archivado histórico cronológico y alertas proactivas por Bot de Telegram.
@@ -296,6 +319,18 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. **Para Modificar un Pedido (Exclusivo Operador):** La edición directa está reservada a los operarios en turno. El administrador puede consultar el detalle completo con el botón `ℹ️` o proceder al desarme con restitución de stock mediante `Desarmar pedido`.
   4. **Para Desarmar un Pedido:** Presionar el botón ámbar **"Desarmar pedido"** (icono de carrito retirado / reposición), verificar la lista detallada de artículos y cantidades que se devolverán al depósito, ingresar el motivo opcional y presionar **"Desarmar y Devolver Stock"**. El sistema actualizará el stock al instante.
   5. **Para Anular un Pedido:** Presionar el botón rojo **"Anular"** (icono de cancelar), ingresar el motivo y confirmar.
+
+#### 4. Cierres de Operarios: Auditoría de Cierres de Turno de Operarios (Descendente)
+* **Qué hace:** Proporciona al Administrador una vista centralizada, completa y ordenada de forma **estrictamente cronológica descendente** (del cierre más reciente al más antiguo) de todas las jornadas operativas cerradas por los operarios de depósito. Resuelve la necesidad de supervisión y trazabilidad post-despacho mediante:
+  * **Tarjetas KPI Consolidadas:** Resumen global en cabecera con *Total Cierres*, *Pedidos Totales*, *Unidades Descontadas* y *Bultos Despachados*.
+  * **Buscador y Filtrado en Tiempo Real:** Permite localizar de inmediato cualquier cierre por ID, responsable/operario, fecha (`AAAA-MM-DD` o `DD/MM/AAAA`) o rango temporal.
+  * **Desglose Modal de Pedidos ("Ver Pedidos"):** Botón en cada fila que abre un modal con el detalle exhaustivo de todos los pedidos asociados a dicho cierre: N° de remito, cliente, transporte, armador, bultos y fecha/hora de carga.
+  * **Regeneración Documental Directa:** Acceso con 1 clic para abrir o reimprimir la **Hoja de Ruta de Despacho (PDF)**, el informe oficial de cierre **PDF** (`Cierre_Descuento_*.pdf`), la planilla consolidada **Excel** (`.xls`) y el botón para **Compartir por Correo Electrónico**.
+* **Cómo se hace:**
+  1. En la sección **Ventas y Despachos** del menú lateral (o presionando `Ctrl + K` / `F2` en la paleta de comandos), hacer clic en **"Cierres de Operarios"**.
+  2. Inspeccionar los indicadores KPI superiores y utilizar la barra de búsqueda para filtrar por operario o fecha.
+  3. En la tarjeta o fila del cierre deseado, presionar el botón azul **"Ver Pedidos"** para inspeccionar los pedidos que conformaron dicha jornada.
+  4. Utilizar los botones directos para visualizar la **Hoja de Ruta**, abrir el consolidado **PDF**, descargar el archivo **Excel** o despachar el informe por **Email**.
 
 #### 4. Copias de Seguridad y Respaldo Espejo en Red / Nube (NAS / Drive / OneDrive)
 * **Qué hace:** Genera un respaldo íntegro comprimido `.zip` en la carpeta `data/backups/`, resguardando las bases SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`), usuarios, notificaciones y el catálogo maestro `Productos.xlsx`. Mantiene automáticamente una rotación de las últimas 30 copias.
@@ -550,6 +585,7 @@ La siguiente matriz detalla de forma oficial la distribución de responsabilidad
 | **Consulta y Reimpresión de Comprobantes** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | Visualización y reimpresión de comprobantes PDF, Excel y Word originales. |
 | **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4 sin desperdicio. |
 | **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Consolidación diaria de pedidos, cierre contable y emisión de hojas de ruta de transporte. |
+| **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta de turnos anteriores. |
 | **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
 | **Ajuste de Stock y Entrada de Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Modificación de existencias por recepción mayorista reservada a supervisión. |
 | **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
@@ -1153,8 +1189,8 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
 
-* **Total de pruebas:** 191 pruebas unitarias automatizadas distribuidas en 27 módulos.
-* **Tasa de éxito:** 100% aprobadas (`191 passed in 29.89s - OK`).
+* **Total de pruebas:** 225 pruebas unitarias automatizadas distribuidas en 36 módulos.
+* **Tasa de éxito:** 100% aprobadas (`225 passed in 28.33s - OK`).
 
 #### Módulos de Prueba Adicionales
 21. `tests/test_realtime_stock_and_cierre.py`:
@@ -1168,6 +1204,15 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
 23. `tests/test_operability_enhancements.py`:
     - Generación de Hojas de Ruta de despacho individuales filtradas por empresa de transporte / chofer.
     - Encabezado responsivo con menú desplegable de usuario (*Dropdown* de cuenta, perfil y cierre de sesión).
+24. `tests/test_cierres_operarios_admin.py`:
+    - Auditoría histórica de cierres de operarios en orden cronológico estrictamente descendente.
+    - Cálculo de métricas consolidadas (Total Cierres, Pedidos, Unidades Descontadas y Bultos Despachados).
+    - Desglose modal interactivo de pedidos vinculados a cada cierre de operario ("Ver Pedidos").
+    - Regeneración y apertura de Hoja de Ruta (PDF), informe consolidado PDF y planilla Excel.
+25. `tests/test_manuales_procedimientos.py`:
+    - Compilación desatendida y programática de manuales SOP en formato PDF para los 4 roles.
+    - Generación modular botón a botón con estructura exhaustiva de Fichas de Procedimiento.
+    - Verificación formal de metadatos de calidad en portada: Elaborado por Gregory Rodriguez, Revisado por / Aprobado por en blanco para firmas institucionales, e historial de versión v3.0.0.
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:
