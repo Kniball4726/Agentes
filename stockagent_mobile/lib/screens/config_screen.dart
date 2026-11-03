@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/connection_guide_card.dart';
 import '../widgets/server_brand_header.dart';
 import '../widgets/status_banner.dart';
-import 'app_screen.dart';
+import 'login_screen.dart';
 
 class ConfigScreen extends StatefulWidget {
   final StorageService storageService;
@@ -121,7 +121,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     } else {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => AppScreen(storageService: widget.storageService),
+          builder: (_) => LoginScreen(storageService: widget.storageService),
         ),
       );
     }

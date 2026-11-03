@@ -326,6 +326,25 @@ def iniciar_servidor_web(
                             self.add_middleware(_RegistroConexionesMiddleware)
                         except Exception as exc_mw:
                             logger.warning("No se pudo activar el aviso de conexiones: %s", exc_mw)
+
+                        try:
+                            from starlette.middleware.cors import CORSMiddleware
+                            self.add_middleware(
+                                CORSMiddleware,
+                                allow_origins=["*"],
+                                allow_credentials=True,
+                                allow_methods=["*"],
+                                allow_headers=["*"],
+                            )
+                        except Exception as exc_cors:
+                            logger.warning("No se pudo activar CORS en la API: %s", exc_cors)
+
+                        try:
+                            from .api import api_v1_router
+                            self.include_router(api_v1_router)
+                            logger.info("Endpoints REST API (/api/v1) montados exitosamente.")
+                        except Exception as exc_api:
+                            logger.error("Error al montar router de API REST: %s", exc_api, exc_info=True)
                         if ico_path.exists():
                             @self.get("/favicon.ico")
                             async def _serve_favicon_ico():
