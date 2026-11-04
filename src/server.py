@@ -416,7 +416,9 @@ def iniciar_servidor_web(
                                 )
 
                         # Repositorio local de actualizaciones OTA para la app móvil
-                        dist_movil_path = Path(application_root()) / "dist_movil"
+                        dist_movil_path = Path(application_root()) / "stockagent_mobile" / "dist_movil"
+                        if not dist_movil_path.exists():
+                            dist_movil_path = Path(application_root()) / "dist_movil"
                         apk_file_path = dist_movil_path / "StockAgent.apk"
                         version_json_path = dist_movil_path / "version.json"
 

@@ -1970,6 +1970,8 @@ class InterfazFlet:
         generar_pedido_fabrica(self, _evento)
 
     def mostrar_ingreso_fabrica(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
         mostrar_ingreso_fabrica(self, _evento)
 
     def mostrar_descuento_mercado_full(self, _evento: ft.Event | None = None) -> None:

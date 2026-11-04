@@ -93,20 +93,23 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
             [
                 ft.Text("PEDIDOS EN TIEMPO REAL", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Cargar / Armar Pedido", ft.Icons.POST_ADD, interfaz.mostrar_crear_pedido),
-                interfaz.boton("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                 interfaz.boton("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
-                interfaz.boton("Sincronizar Mercado Libre (API)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
-                interfaz.boton("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
-                interfaz.boton("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
+
+                ft.Divider(height=18, color=interfaz.borde),
+                ft.Text("CLIENTES", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+                interfaz.boton("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
 
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("CONTROL DE DEPÓSITO", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+                interfaz.boton("Ingreso de Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
                 interfaz.boton("Inventario en Vivo (Escáner)", ft.Icons.DOCUMENT_SCANNER, interfaz.mostrar_dialogo_inventario_vivo),
                 interfaz.boton("Cierre de Jornada", ft.Icons.TASK_ALT, interfaz.mostrar_cierre_jornada),
 
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("INFORMES", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+                interfaz.boton("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
+                interfaz.boton("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                 interfaz.boton("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
                 interfaz.boton("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
                 interfaz.boton("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
@@ -134,7 +137,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 interfaz.boton("Cierres de Operarios", ft.Icons.FACT_CHECK, interfaz.mostrar_historial_cierres_admin),
                 interfaz.boton("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
                 interfaz.boton("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
-                interfaz.boton("Mercado Libre API (Sync)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
+                interfaz.boton("Sincronizar Mercado Libre (API)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
                 interfaz.boton("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
 
                 # 3. Analítica, Métricas y Optimización de Picking

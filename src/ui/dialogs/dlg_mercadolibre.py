@@ -17,7 +17,7 @@ from ..theme import ROJO
 
 def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> None:
     """Ventana para sincronizar desatendidamente pedidos de Mercado Libre y configurar la API."""
-    if not interfaz.exigir_roles("operador", "administrador", "master"):
+    if not interfaz.exigir_roles("administrador", "master"):
         return
 
     cfg = cargar_config_mercadolibre()

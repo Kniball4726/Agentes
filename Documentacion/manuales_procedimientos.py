@@ -186,6 +186,25 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
 
     agregar_ficha_boton(
         story, est,
+        nombre_boton="Ingreso de Fábrica",
+        icono_str="[📥]",
+        modulo="CONTROL DE DEPÓSITO",
+        proposito_funcional="Recepción y registro ágil de mercadería entrante de fábrica mediante lector de código de barras o SKU, con soporte de bultos por lotes múltiplos de 12 y ajustes unitarios (+ / -).",
+        datos_modificados="Incremento atómico de existencias en 'productos.sqlite3' y sincronización automática en 'Productos.xlsx'. Asiento en el historial 'stock_movements' (tipo 'ingreso_fabrica') y registro en la auditoría con trazabilidad del operario.",
+        pasos_procedimiento=[
+            "Pulsar <b>'Ingreso de Fábrica'</b> en la sección CONTROL DE DEPÓSITO.",
+            "Configurar la cantidad por bulto/lectura: pulsar los botones rápidos de múltiplos de 12 (<b>[ 12 ]</b>, <b>[ 24 ]</b>, <b>[ 36 ]</b>, <b>[ 48 ]</b>, <b>[ 60 ]</b>, <b>[ 120 ]</b>) o usar los botones de ajuste fino <b>'+'</b> y <b>'−'</b> si entran unidades sueltas no múltiplos de 12 (ej. 13 o 14 un.).",
+            "Posicionar la pistola lectora sobre el código de barras o escribir el código/SKU y presionar Enter (o el botón 'Ingresar').",
+            "El sistema emite un bip de confirmación sonoro y muestra en pantalla el producto, el stock actual en depósito y el nuevo stock proyectado con el ingreso.",
+            "Revisar la lista de productos escaneados: cada fila cuenta con controles rápidos para sumar o restar bultos completos (<b>[-12]</b> / <b>[+12]</b>) o unidades (<b>[-1]</b> / <b>[+1]</b>), y botón para descartar ítems.",
+            "Pulsar <b>'Confirmar Ingreso a Depósito'</b> para impactar de inmediato el nuevo saldo en el inventario maestro.",
+        ],
+        resultado_obtenido="Mercadería ingresada y asentada de forma inmediata en las existencias digitales del depósito, lista para despachar o armar pedidos.",
+        validaciones_advertencias="El rol Operador únicamente suma ingresos de mercadería (la opción de sobrescribir stock queda bloqueada por seguridad para prevenir alteraciones accidentales del inventario global). Si el código escaneado no existe, sonará un tono acústico de error.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
         nombre_boton="Cargar / Armar Pedido",
         icono_str="[➕]",
         modulo="PEDIDOS EN TIEMPO REAL",
@@ -257,22 +276,6 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         validaciones_advertencias="Verificar que el saldo en depósito central cubra la totalidad de las unidades solicitadas por Full antes de confirmar.",
     )
 
-    agregar_ficha_boton(
-        story, est,
-        nombre_boton="Sincronizar Mercado Libre (API)",
-        icono_str="[☁️]",
-        modulo="PEDIDOS EN TIEMPO REAL",
-        proposito_funcional="Establece enlace directo con los servidores de Mercado Libre mediante API para descargar y descontar órdenes de venta recientes en línea.",
-        datos_modificados="Descarga órdenes de venta y actualiza automáticamente los saldos de stock disponibles.",
-        pasos_procedimiento=[
-            "Pulsar <b>'Sincronizar Mercado Libre (API)'</b>.",
-            "Pulsar <b>'Consultar Órdenes Recientes'</b> para solicitar a la API las ventas de las últimas 24 horas.",
-            "Seleccionar las órdenes pendientes de procesamiento.",
-            "Hacer clic en <b>'Descontar Seleccionadas'</b>.",
-        ],
-        resultado_obtenido="Sincronización en tiempo real sin necesidad de descargar planillas manuales.",
-        validaciones_advertencias="Requiere que el usuario Master haya configurado previamente las credenciales API válidas (Token y Secret).",
-    )
 
     agregar_ficha_boton(
         story, est,
@@ -481,17 +484,17 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         nombre_boton="Ajustar stock / Fábrica",
         icono_str="[📥]",
         modulo="STOCK Y CATÁLOGO",
-        proposito_funcional="Registra el ingreso de mercadería enviada desde proveedores o fábrica mediante planillas Excel o ajuste manual, y asienta mermas, roturas o devoluciones.",
-        datos_modificados="Incrementa o decrementa la existencia física en <code>productos</code> y asienta el movimiento en <code>stock_movements</code>.",
+        proposito_funcional="Gestión integral de ingresos de fábrica y ajustes de inventario: admite escaneo rápido con pistola lectora de códigos de barra (lotes x12 y steppers unitarios +/-), procesamiento en lote de archivos de remito (.xlsx, .xls, .pdf) y corrección manual con opción de sobrescritura de stock.",
+        datos_modificados="Incremento, decremento o fijación exacta de existencias en 'productos.sqlite3' y 'Productos.xlsx'. Trazabilidad completa en 'stock_movements' y auditoría.",
         pasos_procedimiento=[
-            "Pulsar <b>'Ajustar stock / Fábrica'</b>.",
-            "Para ingreso por remito de fábrica: seleccionar la planilla .xlsx o .pdf enviada por el fabricante y presionar <b>'Importar Entrada'</b>.",
-            "Para ajuste manual: seleccionar el producto, ingresar la cantidad (+ para ingreso, - para merma/rotura).",
-            "Indicar obligatoriamente el motivo del ajuste en el campo de texto justificativo.",
-            "Pulsar <b>'Aplicar Ajuste'</b>.",
+            "Pulsar <b>'Ajustar stock / Fábrica'</b> en el panel lateral.",
+            "<b>Pestaña Escáner / Carga Rápida:</b> Usar la pistola lectora o SKU, preconfigurando la botonera de lotes de 12 ([ 12 ], [ 24 ], [ 36 ], etc.) o los botones +/- para cantidades libres.",
+            "<b>Pestaña Por Archivo (Fábrica):</b> Procesar de forma automática comprobantes Excel o PDF colocados en la carpeta 'Descuentos/Fabrica'.",
+            "<b>Opción 'Sobrescribir stock' (Exclusivo Administrador):</b> Permite forzar el inventario al valor exacto ingresado en lugar de sumar, para regularizaciones o arqueos extraordinarios.",
+            "Presionar <b>'Aplicar a stock'</b> o <b>'Confirmar Ingreso a Depósito'</b> para persistir los cambios.",
         ],
-        resultado_obtenido="Actualización inmediata de inventario y generación del comprobante de ajuste de stock.",
-        validaciones_advertencias="Todo ajuste manual negativo requiere motivo justificado para fines de auditoría interna.",
+        resultado_obtenido="Actualización inmediata y segura del catálogo de productos y existencias físicas en depósito.",
+        validaciones_advertencias="La opción de sobrescribir stock altera el saldo total; utilizar con precaución únicamente en conciliaciones respaldadas por inventario físico.",
     )
 
     agregar_ficha_boton(

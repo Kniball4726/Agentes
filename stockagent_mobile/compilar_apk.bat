@@ -2,7 +2,7 @@
 chcp 65001 > nul
 setlocal
 title Compilar APK - StockAgent Movil
-cd /d "%~dp0stockagent_mobile"
+cd /d "%~dp0"
 
 echo ==================================================================
 echo   COMPILADOR DE APK PARA ANDROID - STOCK AGENT MOVIL (FLUTTER)

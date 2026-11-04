@@ -660,6 +660,39 @@ class FletGuiTests(unittest.TestCase):
             mock_startfile.assert_called_once()
             self.assertIn("Manual_Operador.pdf", str(mock_startfile.call_args[0][0]))
 
+    def test_sidebar_operador_organizacion_ambitos_e_informes(self):
+        """Verifica la distribución del menú del operario:
+        - 'Gestión de Clientes' en su propio ámbito / sección 'CLIENTES'.
+        - 'Historial de Pedidos' e 'Imprimir Descuento' ubicados en la sección 'INFORMES'.
+        """
+        interfaz, _, _ = self.crear_interfaz(role="operador")
+        controles = interfaz._sidebar_controls()
+
+        secciones = []
+        botones_por_seccion: dict[str, list[str]] = {}
+        seccion_actual = "INICIO"
+        botones_por_seccion[seccion_actual] = []
+
+        for c in controles:
+            if isinstance(c, ft.Text) and c.value and c.weight == ft.FontWeight.BOLD:
+                seccion_actual = c.value
+                secciones.append(seccion_actual)
+                botones_por_seccion[seccion_actual] = []
+            elif isinstance(c, ft.Button) and hasattr(c, "content"):
+                botones_por_seccion[seccion_actual].append(c.content)
+
+        self.assertIn("CLIENTES", secciones)
+        self.assertIn("INFORMES", secciones)
+        self.assertIn("PEDIDOS EN TIEMPO REAL", secciones)
+
+        self.assertIn("Gestión de Clientes", botones_por_seccion["CLIENTES"])
+        self.assertNotIn("Gestión de Clientes", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
+
+        self.assertIn("Historial de Pedidos", botones_por_seccion["INFORMES"])
+        self.assertIn("Imprimir Descuento", botones_por_seccion["INFORMES"])
+        self.assertNotIn("Historial de Pedidos", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
+        self.assertNotIn("Imprimir Descuento", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
+
 
 if __name__ == "__main__":
     unittest.main()

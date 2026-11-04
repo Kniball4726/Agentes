@@ -2,7 +2,7 @@
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
 title StockAgent - Servidor para App Movil (HTTP Red Local)
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 rem ------------------------------------------------------------------
 rem Analizar parametros recibidos

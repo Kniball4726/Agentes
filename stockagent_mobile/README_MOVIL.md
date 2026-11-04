@@ -64,7 +64,7 @@ Para permitir la conexión por red local:
    ```bat
    compilar_apk.bat
    ```
-2. El instalador quedará generado en `dist_movil\StockAgent.apk`.
+2. El instalador quedará generado en `stockagent_mobile\dist_movil\StockAgent.apk`.
 3. Pásalo a tu celular (WhatsApp, cable USB o Telegram) e instálalo.
 4. Al abrir la app:
    * Ingresa la IP de la PC (ej: `192.168.100.19`).

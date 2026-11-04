@@ -199,7 +199,7 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
     * `v3.0.0`: Reestructuración integral botón a botón por fichas SOP para cada rol, módulo de auditoría de cierres descendente para administradores y visor documental Zero-Cache.
 
 * **Manuales Oficiales Generados por Rol:**
-  * **Manual del Operador (`Manual_Operador.pdf`):** Cubre los 13 comandos operativos de depósito: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Sincronizar Mercado Libre (API)*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
+  * **Manual del Operador (`Manual_Operador.pdf`):** Cubre los 13 comandos operativos de depósito: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
   * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los 21 comandos de supervisión: *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios* y *Manual de Uso*.
   * **Manual Master (`Manual_Master.pdf`):** Cubre los 8 comandos técnicos de infraestructura: *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP*, *Alertas Telegram*, *Mercado Libre API (Credenciales)*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
   * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los 4 comandos de consulta y lectura: *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
@@ -526,8 +526,13 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 * **Descuento Mercado Libre Full:**
   * Habilitado directamente en el menú lateral del operario mediante **"Descontar Mercado Full"**.
   * Permite al personal de depósito procesar de forma inmediata planillas de despacho Full de Mercado Libre, validando la disponibilidad de stock y descontando al instante en SQLite y `Productos.xlsx` sin requerir asistencia o intervención de la administración.
-* **Sincronización Mercado Libre (API REST):**
-  * Botón directo **"Sincronizar Mercado Libre (API)"** para consultar y descontar pedidos pagados en tiempo real directo desde los servidores de Mercado Libre, sin tener que descargar o arrastrar archivos a la plataforma.
+* **Ingreso de Fábrica (Escáner Rápido y Lotes Múltiplos de 12):**
+  * Habilitado directamente en el menú lateral del operario mediante **"Ingreso de Fábrica"** dentro de la sección *CONTROL DE DEPÓSITO*.
+  * **Lectura Continua con Pistola o SKU:** Reconocimiento instantáneo de códigos de barra (EAN-13) y SKUs de catálogo con autofoco y feedback auditivo (`bip` de éxito o tono de error).
+  * **Botonera de Lotes Múltiplos de 12:** Botones de acceso directo rápido `[ 12 ]`, `[ 24 ]`, `[ 36 ]`, `[ 48 ]`, `[ 60 ]`, `[ 120 ]` para preconfigurar el tamaño de caja/bulto recibido de fábrica sin teclear números.
+  * **Ajuste Unitario Fino (+ / −):** Controles `+` y `−` para ajustar la cantidad a ingresar cuando entran lotes con unidades sueltas no múltiplos de 12 (ej. 13 o 14 unidades).
+  * **Tabla Dinámica con Ajuste por Bulto y Unidad:** Cada fila escaneada dispone de controles rápidos `[-12]`, `[-1]`, `[+1]`, `[+12]` y `[🗑]` para sumar o restar cajas o unidades sueltas directamente en la lista.
+  * **Protección Estricta de Inventario (SoD):** El rol operador opera exclusivamente en modo de suma atómica al stock (la opción de sobrescribir stock queda oculta), garantizando que no se altere el inventario total ante errores operativos.
 * **Historial de Pedidos:**
   * **Despacho Masivo en Lote:** Casillas de verificación (checkboxes) por pedido y botón de 1 clic `Seleccionar Visibles` con barra flotante de acciones:
     - `[ Despachar Seleccionados ]`: Cambia en lote a estado **DESPACHADO** todos los pedidos tildados al subir al transporte.
@@ -580,13 +585,14 @@ La siguiente matriz detalla de forma oficial la distribución de responsabilidad
 | **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Master desacoplado de la operativa diaria; operadores y administradores procesan comprobantes. |
 | **Descuento Mercado Libre (DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Gestión operativa de ventas online habilitada para depósito y gerencia. |
 | **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | **Novedad:** Operadores y Administradores pueden descontar lotes de Mercado Full de forma ágil. |
-| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Sincronización de órdenes y descuento en tiempo real para agilizar el picking. |
+| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización y descuento de ventas online reservada a administradores. |
 | **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque y discrepancias entre operarios y supervisores. |
 | **Desarmar Pedido y Restituir Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Retorno atómico de unidades físicas al inventario ante cancelaciones o rechazos. |
 | **Consulta y Reimpresión de Comprobantes** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | Visualización y reimpresión de comprobantes PDF, Excel y Word originales. |
 | **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4 sin desperdicio. |
 | **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Consolidación diaria de pedidos, cierre contable y emisión de hojas de ruta de transporte. |
 | **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta de turnos anteriores. |
+| **Ingreso de Fábrica (Recepción de Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | **Novedad:** Escáner rápido con lotes de 12 y steppers +/-. Operador solo suma; Admin puede además sobrescribir y procesar archivos. |
 | **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
 | **Ajuste de Stock y Entrada de Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Modificación de existencias por recepción mayorista reservada a supervisión. |
 | **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
@@ -850,11 +856,12 @@ StockAgent/
 │   │   └── app/src/main/AndroidManifest.xml # Permisos de red, cámara y cleartext
 │   ├── ios/                           # Configuración nativa Apple iOS
 │   │   └── Runner/Info.plist          # Permisos de red local y cámara
+│   ├── dist_movil/                    # Instalador oficial StockAgent.apk y version.json
+│   ├── compilar_apk.bat               # Compilador con 1 clic de APK Release para Android
+│   ├── iniciar_servidor_movil.bat     # Servidor HTTP limpio para teléfonos en LAN
+│   ├── iniciar_servidor_movil_en_segundo_plano.vbs # Servidor móvil silencioso sin ventana de consola
 │   ├── pubspec.yaml                   # Dependencias oficiales de Flutter
 │   └── README_MOVIL.md                # Manual operativo del cliente móvil
-├── compilar_apk.bat                   # Compilador con 1 clic de APK Release para Android
-├── iniciar_servidor_movil.bat         # Servidor HTTP limpio para teléfonos en LAN
-├── iniciar_servidor_movil_en_segundo_plano.vbs # Servidor móvil silencioso sin ventana de consola
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
@@ -1364,9 +1371,9 @@ A diferencia de empaquetar un intérprete de Python completo dentro del teléfon
 
 Los sistemas operativos móviles modernos (Android 9+ e iOS) aplican políticas de seguridad estrictas que bloquean de forma agresiva los certificados SSL autofirmados locales. 
 
-Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `iniciar_servidor_movil.bat`:
+Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `stockagent_mobile/iniciar_servidor_movil.bat`:
 
-* **Ejecución Silenciosa / Segundo Plano:** Al hacer doble clic en `iniciar_servidor_movil.bat` o `iniciar_servidor_movil_en_segundo_plano.vbs`, el servidor se ejecuta sin dejar abierta ninguna ventana de consola negra, alojándose en la bandeja del sistema junto al reloj.
+* **Ejecución Silenciosa / Segundo Plano:** Al hacer doble clic en `stockagent_mobile/iniciar_servidor_movil.bat` o `stockagent_mobile/iniciar_servidor_movil_en_segundo_plano.vbs`, el servidor se ejecuta sin dejar abierta ninguna ventana de consola negra, alojándose en la bandeja del sistema junto al reloj.
 * **Modo HTTP Plano (`--http`):** Inicia el servidor web en `http://0.0.0.0:8550`, permitiendo que los WebViews y navegadores móviles se conecten fluidamente sin pantallas rojas de advertencia ni interrupción de WebSockets (`/ws`).
 * **Verificación de Firewall Automática:** Valida y crea la regla de entrada TCP en el Firewall de Windows para el puerto 8550 en perfiles de red privada y de dominio.
 * **Información de Red Clara:** Muestra de forma destacada la IP local exacta a ingresar en el teléfono (ej: `http://192.168.1.50:8550`).
@@ -1377,15 +1384,15 @@ Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `ini
 
 Para generar el instalador final de Android sin interactuar con comandos complejos de Gradle o consola:
 
-1. Ejecuta haciendo doble clic:
+1. Ejecuta haciendo doble clic en:
    ```cmd
-   compilar_apk.bat
+   stockagent_mobile\compilar_apk.bat
    ```
 2. El script ejecuta las siguientes etapas automatizadas:
    * **Detección inteligente de Flutter:** Localiza `flutter.bat` en el `PATH` o en rutas típicas (`C:\flutter`, `C:\src\flutter`, `%LOCALAPPDATA%\flutter`). Si no está presente, indica la guía oficial de descarga.
    * **Resolución de paquetes:** Ejecuta `flutter pub get` descargando `flutter_inappwebview`, `shared_preferences` y `http`.
    * **Compilación Release:** Genera el binario optimizado ARM/x86 mediante `flutter build apk --release`.
-   * **Distribución:** Copia el instalador a `dist_movil\StockAgent.apk` y abre la carpeta automáticamente en el Explorador de Windows.
+   * **Distribución:** Copia el instalador a `stockagent_mobile\dist_movil\StockAgent.apk` y abre la carpeta automáticamente en el Explorador de Windows.
 
 #### Instalación en el Teléfono Android:
 1. Envía el archivo `StockAgent.apk` al celular (mediante cable USB, WhatsApp, Telegram o red compartida).
@@ -1409,7 +1416,7 @@ sequenceDiagram
     Dev->>Bat: Ejecuta compilación
     Bat->>Bat: Incrementa versionCode en pubspec.yaml (+1)
     Bat->>Bat: Compila StockAgent.apk en modo release
-    Bat->>Srv: Publica APK y version.json en dist_movil/
+    Bat->>Srv: Publica APK y version.json en stockagent_mobile/dist_movil/
     App->>Srv: Al iniciar consulta GET /api/version
     Srv-->>App: Retorna {"version_code": 2, "apk_url": "/api/apk"}
     Note over App: Detecta versión remota > local

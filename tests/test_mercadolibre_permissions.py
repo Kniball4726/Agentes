@@ -1,6 +1,7 @@
 """Tests unitarios para la segregación de funciones (SoD) en Mercado Libre API:
 - Rol Master: acceso completo a la configuración de credenciales (App ID, Client Secret, Tokens).
-- Roles Administrador y Operador: acceso a sincronización y descuento de ventas sin exponer credenciales.
+- Rol Administrador: acceso a sincronización y descuento de ventas sin exponer credenciales.
+- Rol Operador: acceso denegado (operación reservada a la administración).
 """
 from unittest.mock import MagicMock
 import flet as ft
@@ -30,7 +31,7 @@ def test_dialogo_ml_solo_master_ve_credenciales():
     # El contenido debe ser un Container directo con vista_ordenes, no un ft.Tabs con credenciales
     assert not isinstance(dialogo_admin.content.content, ft.Tabs)
 
-    # 2. Caso Operador: tampoco debe tener la pestaña de credenciales
+    # 2. Caso Operador: acceso denegado (reservado a Administrador y Master)
     dialogo_operador = None
     def capturar_dialogo_op(d):
         nonlocal dialogo_operador
@@ -41,12 +42,11 @@ def test_dialogo_ml_solo_master_ve_credenciales():
         id=3, username="operador1", role="operador",
         active=True, must_change_password=False, nombre="Operario", email="op@empresa.com"
     )
-    interfaz_operador.exigir_roles.return_value = True
+    interfaz_operador.exigir_roles.side_effect = lambda *roles: "operador" in roles
     interfaz_operador.page.show_dialog = capturar_dialogo_op
 
     mostrar_dialogo_mercadolibre(interfaz_operador)
-    assert dialogo_operador is not None
-    assert not isinstance(dialogo_operador.content.content, ft.Tabs)
+    assert dialogo_operador is None
 
     # 3. Caso Master: SÍ debe tener ft.Tabs con la pestaña de Credenciales
     dialogo_master = None
