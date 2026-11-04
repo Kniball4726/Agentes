@@ -354,13 +354,14 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Si se realiza un ajuste manual, indicar el código del artículo y la cantidad (+ para ingreso, - para egreso).
   4. Revisar la previsualización del impacto y presionar **"Confirmar Entrada / Ajuste"**.
 
-#### 7. Descuento Mercado Libre Full y Mercado Libre (DOCX)
-* **Qué hace:** Procesa comprobantes de Mercado Libre (formato Full o documentos `.docx`), emparejando descripciones con los códigos del catálogo y descontando las unidades del stock general con validación antiduplicados (SHA-256).
+#### 7. Descuento Mercado Libre (Pistoleo en Vivo y DOCX) y Mercado Full
+* **Qué hace:** Procesa ventas y paquetes de Mercado Libre bajo dos modalidades complementarias:
+  * **Modo Escáner / Pistoleo en Vivo:** Permite registrar y empacar producto por producto con pistola lectora de códigos de barras (reconociendo códigos EAN-13 de empaque o SKU interno) con feedback auditivo inmediato, control de cantidades en pantalla y confirmación atómica al cerrar el paquete.
+  * **Modo Archivo (.docx):** Procesa comprobantes `.docx` o formatos Full emparejando descripciones con los códigos del catálogo y descontando las unidades del stock general con validación antiduplicados (SHA-256).
 * **Cómo se hace:**
-  1. Ingresar a **"Descontar Mercado Libre Full"** o **"Descontar Mercado Libre (DOCX)"**.
-  2. Seleccionar el comprobante a procesar mediante el selector de archivos.
-  3. Revisar el reporte previo en pantalla: el sistema marcará en verde las coincidencias exactas y alertará si hay artículos sin stock suficiente o descripciones no identificadas.
-  4. Hacer clic en **"Confirmar Descuento"** para aplicar la rebaja en el catálogo y generar el comprobante PDF.
+  1. Ingresar a **"Descontar Mercado Libre"** en la barra lateral.
+  2. **Opción A (Pistoleo en Vivo):** Posicionar la pistola lectora sobre el producto y escanear (o tipear el SKU y presionar Enter). El producto se agregará a la lista del paquete con pitido de confirmación. Al terminar de empacar, opcionalmente indicar número de guía/envío y presionar **"Confirmar y Descontar"**. El stock se descuenta en SQLite y `Productos.xlsx`, se genera el comprobante y se ofrece la impresión inmediata de rótulos A4 o térmicos.
+  3. **Opción B (Archivo DOCX):** Cambiar a la pestaña "Cargar Archivo (.docx)", seleccionar el comprobante, revisar el reporte previo y presionar **"Confirmar y Descontar"**.
 
 #### 8. Comparativa de Stock Físico
 * **Qué hace:** Contrasta una planilla de recuento físico realizada en las estanterías del depósito contra las existencias registradas en el sistema, clasificando cada producto como `COINCIDE`, `FALTANTE` o `SOBRANTE`.
@@ -832,7 +833,8 @@ StockAgent/
 │           ├── dlg_cierre.py          # Cierre de jornada y generación de hoja de ruta
 │           ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
 │           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
-│           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full/DOCX y stock físico
+│           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full y stock físico
+│           ├── dlg_mercadolibre_descuento.py # Descuento Mercado Libre (Pistoleo en Vivo con lector y carga DOCX)
 │           ├── dlg_quiebre.py         # Detección temprana y visualización de productos en quiebre
 │           ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
 │           └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
@@ -903,6 +905,12 @@ Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo,
    * **Carga Inmediata de Catálogo:** `StockManager` comprueba de forma atómica si SQLite ya posee la importación inicial (`is_template_imported()`). De ser así, recupera el catálogo y los metadatos de columnas en `< 2 ms`, sin instanciar `openpyxl` ni bloquear el archivo `Productos.xlsx` en disco.
    * **Cierre Seguro de Descriptores en Parsers:** Se encapsuló la lectura de libros en `canjes_parser.py`, `mercado_full_parser.py` y `factory_parser.py` bajo bloques `try ... finally: wb.close()` garantizando la liberación inmediata de manejadores de archivo en Windows.
    * **Protección de Auditoría Concurrente:** `ProductStore.enrich_latest_movements()` incluye guardas atómicas para evitar sobreescrituras accidentales de metadatos cuando múltiples operarios descuentan inventario en paralelo.
+
+8. **Arquitectura Modular de Descuento Mercado Libre (`dlg_mercadolibre_descuento.py`):**
+   * **Separación en Componentes Autónomos:** Se desacopló la lógica de Mercado Libre desde `dlg_stock_ops.py` en dos clases especializadas e independientes:
+     - `MercadoLibreScannerComponent`: Gestiona el buffer en memoria de escaneo en vivo con pistola de códigos de barras (EAN-13 o SKU), feedback acústico (Web Audio API / winsound), validación de quiebres en tiempo real y el ciclo de vida del despacho atómico.
+     - `MercadoLibreDocxComponent`: Administra la detección de comprobantes `.docx` en disco, la subida asistida desde la PC, la deducción criptográfica contra duplicados y la previsualización de coincidencias de catálogo.
+   * **Contrato Estable y Fachada:** `mostrar_descuento_mercado_libre` actúa como ensamblador de la vista dual de pestañas (`ft.Tabs`), re-exportándose transparentemente desde `dlg_stock_ops.py` y `src/ui/dialogs/__init__.py` para preservar 100% la compatibilidad con todas las vistas y pruebas unitarias existentes.
 
 ### Esquema de Bases de Datos SQLite
 

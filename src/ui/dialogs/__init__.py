@@ -53,6 +53,10 @@ from .dlg_stock_ops import (
     mostrar_stock_fisico_operario,
     mostrar_comparativa_stock_fisico_admin,
 )
+from .dlg_mercadolibre_descuento import (
+    MercadoLibreScannerComponent,
+    MercadoLibreDocxComponent,
+)
 from .dlg_inventario_vivo import mostrar_dialogo_inventario_vivo
 from .dlg_command_palette import mostrar_command_palette
 from .dlg_quiebre import actualizar_alerta_quiebre, mostrar_detalle_quiebre
@@ -107,6 +111,8 @@ __all__ = [
     "mostrar_ingreso_fabrica",
     "mostrar_descuento_mercado_full",
     "mostrar_descuento_mercado_libre",
+    "MercadoLibreScannerComponent",
+    "MercadoLibreDocxComponent",
     "mostrar_stock_fisico_operario",
     "mostrar_comparativa_stock_fisico_admin",
     "mostrar_dialogo_inventario_vivo",

@@ -226,17 +226,18 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         nombre_boton="Descontar Mercado Libre",
         icono_str="[🏪]",
         modulo="PEDIDOS EN TIEMPO REAL",
-        proposito_funcional="Procesa archivos de ventas generados en la plataforma de Mercado Libre para descontar el stock de las publicaciones vendidas de forma directa.",
-        datos_modificados="Decrementa las existencias en SQLite y Productos.xlsx. Registra el movimiento en la auditoría del turno.",
+        proposito_funcional="Gestiona la salida y despacho de mercadería de Mercado Libre bajo dos modalidades: armado de paquetes en vivo ítem por ítem con pistola lectora de códigos de barra (EAN-13 o SKU) con feedback auditivo, o mediante la carga tradicional de comprobantes (.docx).",
+        datos_modificados="Deducción atómica inmediata en SQLite ('productos.sqlite3') y en la planilla maestra 'Productos.xlsx'. Creación del pedido con tipo 'docx' en la base de datos de órdenes y generación del documento de respaldo con hash SHA-256.",
         pasos_procedimiento=[
-            "Pulsar el botón <b>'Descontar Mercado Libre'</b>.",
-            "Seleccionar el archivo de ventas (.pdf o .xlsx) exportado de Mercado Libre.",
-            "El motor parsea los SKUs y títulos de las publicaciones reconociendo los productos equivalentes.",
-            "Revisar el listado de artículos y cantidades que serán descontadas.",
-            "Presionar <b>'Confirmar Descuento'</b>.",
+            "Pulsar el botón <b>'Descontar Mercado Libre'</b> en la barra lateral.",
+            "<b>Modo Escáner en Vivo (Predeterminado):</b> Posicionar el lector óptico sobre el código de barras (EAN-13) o tipear el SKU y presionar Enter. Cada lectura emite un pitido de confirmación y suma la unidad al paquete.",
+            "Revisar la lista en pantalla: ajustar cantidades con los botones '+' y '-' o descartar artículos si hubo una equivocación antes de confirmar.",
+            "Opcionalmente escanear o escribir el N° de Envío / Guía de Mercado Libre y el nombre del destinatario.",
+            "Presionar <b>'Confirmar y Descontar'</b>. El sistema descontará el stock en vivo y ofrecerá la impresión con 1 clic de los rótulos térmicos o A4.",
+            "<b>Modo Archivo DOCX:</b> Cambiar a la pestaña 'Cargar Archivo (.docx)', seleccionar el comprobante recibido de Mercado Libre y confirmar la deducción en lote.",
         ],
-        resultado_obtenido="Generación de comprobante en PDF de descuento de Mercado Libre y actualización de existencias.",
-        validaciones_advertencias="Si un SKU de Mercado Libre no coincide con el catálogo interno, el sistema alertará del ítem sin coincidencia para su revisión manual.",
+        resultado_obtenido="Stock descontado con exactitud unitaria, comprobante oficial guardado en 'data/pedidos_archivos/' y pedido sumado al panel en vivo del turno para el Cierre de Jornada.",
+        validaciones_advertencias="Si el producto escaneado no existe en el catálogo, sonará una señal acústica de error y la lista no se modificará. Si el saldo restante queda en quiebre (<= 0), el sistema advertirá en color ámbar.",
     )
 
     agregar_ficha_boton(
@@ -610,15 +611,17 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         nombre_boton="Descontar Mercado Libre / Full / API",
         icono_str="[🏪]",
         modulo="VENTAS Y DESPACHOS",
-        proposito_funcional="Supervisión y ejecución de descuentos de canales de venta electrónicos (Mercado Libre tradicional, envíos a centros Full y sincronización API en vivo).",
-        datos_modificados="Decrementos de stock en catálogo y asientos contables de pedidos.",
+        proposito_funcional="Supervisión y ejecución de descuentos de canales de venta electrónicos: Mercado Libre con pistola de códigos de barras ítem por ítem o archivos DOCX, envíos a centros Mercado Full y enlace desatendido con la API oficial.",
+        datos_modificados="Decrementos atómicos de stock en SQLite y Productos.xlsx, trazabilidad en auditoría forense y asientos contables de pedidos.",
         pasos_procedimiento=[
-            "Seleccionar el botón correspondiente según el canal (Mercado Libre, Mercado Full o Mercado Libre API).",
-            "Cargar el comprobante o conectar con la API.",
-            "Verificar las publicaciones y confirmar la deducción de existencias.",
+            "Seleccionar el canal deseado: 'Descontar Mercado Libre' (Pistoleo / DOCX), 'Descontar Mercado Full' o 'Sincronizar Mercado Libre (API)'.",
+            "Para Mercado Libre: armar el paquete escaneando los artículos en vivo o seleccionar un archivo .docx recibido.",
+            "Para Mercado Full: procesar la planilla oficial de bodega central.",
+            "Para API: descargar órdenes desatendidas y descontar en bloque con un clic.",
+            "Confirmar la operación y verificar la deducción inmediata en el inventario maestro.",
         ],
-        resultado_obtenido="Informes de descuento específicos por canal de comercialización.",
-        validaciones_advertencias="Garantiza que las ventas web no generen sobreventas de stock en depósito físico.",
+        resultado_obtenido="Actualización en tiempo real del stock, generación de comprobantes oficiales y registro de métricas de la jornada.",
+        validaciones_advertencias="Garantiza que las ventas web no generen sobreventas de stock en depósito físico y previene duplicaciones mediante hashes criptográficos.",
     )
 
     # SECCIÓN 3: ANALÍTICA Y PICKING
