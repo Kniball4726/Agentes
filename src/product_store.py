@@ -807,8 +807,13 @@ class ProductStore:
             ).fetchone()
 
     def _unused_raw(self, code: str):
+        return self._query_producto_raw(code)
+
+    def _deprecated_stub(self):
+
+
         return None
-        if False:
+        pass
 
 
 
