@@ -129,7 +129,8 @@ def parsear_pedido_mercado_libre(
 ) -> ResultadoRemito:
     """Procesa líneas de producto numeradas y usa su número inicial como cantidad."""
     path = Path(ruta_docx)
-    documento = Document(str(path))
+    with open(path, "rb") as _f_docx:
+        documento = Document(_f_docx)
     descripciones_catalogo: Dict[str, List[str]] = {}
     for codigo, nombre in productos_catalogo:
         if nombre:

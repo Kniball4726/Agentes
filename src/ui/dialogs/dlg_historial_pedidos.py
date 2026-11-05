@@ -330,14 +330,100 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     pedidos_visibles: list[Pedido] = []
     pedidos_seleccionados: set[int] = set()
     filtro_rapido_activo = "todos"  # "todos", "hoy", "pendientes", "despachados"
+    pagina_actual = 1
+    tamano_pagina = 25
+    total_paginas_global = 1
+
+    texto_pagina_info = ft.Text("Pág. 1 de 1", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto)
+    texto_rango_info = ft.Text("", size=11, color=interfaz.secundario)
+
+    def _ir_a_pagina(num: int) -> None:
+        nonlocal pagina_actual
+        if 1 <= num <= total_paginas_global:
+            pagina_actual = num
+            actualizar_vista(campo_busqueda.value or "")
+
+    def _cambiar_tamano_pagina(e: Any) -> None:
+        nonlocal tamano_pagina, pagina_actual
+        try:
+            tamano_pagina = int(e.control.value)
+        except Exception:
+            tamano_pagina = 25
+        pagina_actual = 1
+        actualizar_vista(campo_busqueda.value or "")
+
+    btn_pag_primera = ft.IconButton(
+        icon=ft.Icons.FIRST_PAGE,
+        icon_size=18,
+        tooltip="Primera página",
+        on_click=lambda _e: _ir_a_pagina(1),
+    )
+    btn_pag_anterior = ft.IconButton(
+        icon=ft.Icons.NAVIGATE_BEFORE,
+        icon_size=18,
+        tooltip="Página anterior",
+        on_click=lambda _e: _ir_a_pagina(pagina_actual - 1),
+    )
+    btn_pag_siguiente = ft.IconButton(
+        icon=ft.Icons.NAVIGATE_NEXT,
+        icon_size=18,
+        tooltip="Página siguiente",
+        on_click=lambda _e: _ir_a_pagina(pagina_actual + 1),
+    )
+    btn_pag_ultima = ft.IconButton(
+        icon=ft.Icons.LAST_PAGE,
+        icon_size=18,
+        tooltip="Última página",
+        on_click=lambda _e: _ir_a_pagina(total_paginas_global),
+    )
+    dropdown_tamano = ft.Dropdown(
+        dense=True,
+        options=[
+            ft.dropdown.Option("15", "15 por pág."),
+            ft.dropdown.Option("25", "25 por pág."),
+            ft.dropdown.Option("50", "50 por pág."),
+            ft.dropdown.Option("100", "100 por pág."),
+        ],
+        value="25",
+        width=135,
+        content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+        on_change=_cambiar_tamano_pagina,
+    )
+
+    barra_paginacion = ft.Container(
+        bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_50,
+        border=ft.Border.all(1, ft.Colors.BLUE_GREY_700 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_200),
+        border_radius=8,
+        padding=ft.Padding.symmetric(horizontal=12, vertical=4),
+        content=ft.Row(
+            [
+                texto_rango_info,
+                ft.Row(
+                    [
+                        btn_pag_primera,
+                        btn_pag_anterior,
+                        texto_pagina_info,
+                        btn_pag_siguiente,
+                        btn_pag_ultima,
+                        dropdown_tamano,
+                    ],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+    )
 
     def recargar_y_actualizar() -> None:
-        nonlocal pedidos
+        nonlocal pedidos, pagina_actual
+        pagina_actual = 1
         pedidos = interfaz.order_store.listar_pedidos(limit=400)
         actualizar_vista(campo_busqueda.value or "")
 
     def actualizar_vista(termino: str = "") -> None:
-        nonlocal pedidos_visibles
+        nonlocal pedidos_visibles, total_paginas_global, pagina_actual
         hoy_str = datetime.now().strftime("%Y-%m-%d")
 
         candidatos = []
@@ -354,10 +440,23 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             candidatos.append(p)
 
         filtrados = [p for p in candidatos if coincide(p, termino)]
+        total_items = len(filtrados)
+        total_paginas_global = max(1, (total_items + tamano_pagina - 1) // tamano_pagina)
+        if pagina_actual > total_paginas_global:
+            pagina_actual = total_paginas_global
+        if pagina_actual < 1:
+            pagina_actual = 1
+
+        btn_pag_primera.disabled = (pagina_actual <= 1)
+        btn_pag_anterior.disabled = (pagina_actual <= 1)
+        btn_pag_siguiente.disabled = (pagina_actual >= total_paginas_global)
+        btn_pag_ultima.disabled = (pagina_actual >= total_paginas_global)
+        texto_pagina_info.value = f"Pág. {pagina_actual} de {total_paginas_global}"
         pedidos_visibles = filtrados
         items_lista.controls.clear()
 
         if not filtrados:
+            barra_paginacion.visible = False
             if not pedidos:
                 items_lista.controls.append(
                     ft.Container(
@@ -386,14 +485,20 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                 interfaz.page.update()
             return
 
+        barra_paginacion.visible = True
+        inicio_idx = (pagina_actual - 1) * tamano_pagina
+        fin_idx = min(inicio_idx + tamano_pagina, total_items)
+        pedidos_pagina = filtrados[inicio_idx:fin_idx]
+        pedidos_visibles = pedidos_pagina
+        texto_rango_info.value = f"Mostrando {inicio_idx + 1}–{fin_idx} de {total_items} pedidos"
         texto_contador.value = (
-            f"Mostrando {len(filtrados)} de {len(pedidos)} pedidos"
+            f"Pág. {pagina_actual}/{total_paginas_global} ({inicio_idx + 1}–{fin_idx} de {total_items})"
             if termino.strip()
-            else f"Total: {len(pedidos)} pedidos"
+            else f"Total: {total_items} pedidos · Pág. {pagina_actual}/{total_paginas_global}"
         )
 
         pedidos_por_fecha: dict[str, list[Pedido]] = {}
-        for p in filtrados:
+        for p in pedidos_pagina:
             f_clave = p.created_at[:10] if p.created_at else "Sin fecha"
             pedidos_por_fecha.setdefault(f_clave, []).append(p)
 
@@ -923,10 +1028,12 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         border_color=interfaz.borde,
         color=interfaz.texto,
         expand=True,
-        on_change=lambda e: actualizar_vista(campo_busqueda.value or ""),
+        on_change=lambda e: (_ir_a_pagina(1) if pagina_actual != 1 else actualizar_vista(campo_busqueda.value or "")),
     )
 
     def limpiar_busqueda(_e: ft.Event) -> None:
+        nonlocal pagina_actual
+        pagina_actual = 1
         campo_busqueda.value = ""
         actualizar_vista("")
 
@@ -938,7 +1045,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         interfaz.imprimir_rotulos_lote(candidatos)
 
     def cambiar_filtro_rapido(nuevo_filtro: str) -> None:
-        nonlocal filtro_rapido_activo
+        nonlocal filtro_rapido_activo, pagina_actual
+        pagina_actual = 1
         filtro_rapido_activo = nuevo_filtro
         actualizar_botones_filtro()
         actualizar_vista(campo_busqueda.value or "")
@@ -1041,6 +1149,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                     barra_busqueda,
                     ft.Divider(height=10, color=interfaz.borde),
                     items_lista,
+                    barra_paginacion,
                 ],
                 expand=True,
                 spacing=6,

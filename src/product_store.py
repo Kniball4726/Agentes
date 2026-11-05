@@ -1,6 +1,8 @@
 """SQLite persistence for catalog products and their report ordering."""
 
 import sqlite3
+import threading
+import time
 from contextlib import closing
 from pathlib import Path
 from typing import Callable, Iterable
@@ -12,7 +14,35 @@ class ProductStore:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._cache_sku: dict[str, sqlite3.Row] = {}
+        self._cache_barcode: dict[str, sqlite3.Row] = {}
+        self._cache_data_version: int | None = None
+        self._cache_ts: float = 0.0
+        self._cache_ttl: float = 15.0
+        self._cache_lock = threading.Lock()
         self._initialize()
+
+    def invalidar_cache(self) -> None:
+        """Invalida inmediatamente el caché en memoria de productos."""
+        with self._cache_lock:
+            self._cache_sku.clear()
+            self._cache_barcode.clear()
+            self._cache_data_version = None
+            self._cache_ts = 0.0
+
+    def _es_cache_valido(self, connection: sqlite3.Connection | None = None) -> bool:
+        """Verifica vigencia del caché en memoria por TTL y SQLite PRAGMA data_version."""
+        ahora = time.monotonic()
+        if ahora - self._cache_ts > self._cache_ttl:
+            return False
+        if connection is not None and self._cache_data_version is not None:
+            try:
+                dv = connection.execute("PRAGMA data_version").fetchone()[0]
+                if dv != self._cache_data_version:
+                    return False
+            except Exception:
+                return False
+        return True
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=10)
@@ -613,6 +643,7 @@ class ProductStore:
                         cambios_fila,
                     )
                 connection.commit()
+                self.invalidar_cache()
                 return orden, referencia["display_name"]
             except BaseException:
                 connection.rollback()
@@ -626,7 +657,11 @@ class ProductStore:
                     ) from error
                 raise
 
-    def update_product(
+    def update_product(self, *args, **kwargs):
+        self.invalidar_cache()
+        return self._update_product_inner(*args, **kwargs)
+
+    def _update_product_inner(
         self,
         old_code: str,
         new_code: str,
@@ -733,7 +768,50 @@ class ProductStore:
                 raise
 
     def get_product(self, code: str) -> sqlite3.Row | None:
-        """Obtiene un producto por su código interno (SKU)."""
+        """Obtiene un producto por su código interno (SKU) con soporte de caché en memoria."""
+        code_limpio = (code or "").strip()
+        if not code_limpio:
+            return None
+        with self._cache_lock:
+            if self._es_cache_valido() and code_limpio in self._cache_sku:
+                return self._cache_sku[code_limpio]
+
+        with closing(self._connect()) as connection:
+            dv = connection.execute("PRAGMA data_version").fetchone()[0]
+            row = connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion
+                FROM products
+                WHERE code = ?
+                """,
+                (code_limpio,),
+            ).fetchone()
+
+            with self._cache_lock:
+                if not self._es_cache_valido(connection):
+                    self._cache_sku.clear()
+                    self._cache_barcode.clear()
+                self._cache_sku[code_limpio] = row
+                if row and row["cod_barras"]:
+                    self._cache_barcode[str(row["cod_barras"]).strip()] = row
+                self._cache_data_version = dv
+                self._cache_ts = time.monotonic()
+            return row
+
+    def _query_producto_raw(self, code: str) -> sqlite3.Row | None:
+        """Consulta directa a SQLite sin pasar por el caché."""
+        with closing(self._connect()) as conn:
+            return conn.execute(
+                "SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion FROM products WHERE code = ?",
+                (code.strip(),),
+            ).fetchone()
+
+    def _unused_raw(self, code: str):
+        return None
+        if False:
+
+
+
         with closing(self._connect()) as connection:
             return connection.execute(
                 """
@@ -741,7 +819,7 @@ class ProductStore:
                 FROM products
                 WHERE code = ?
                 """,
-                (code.strip(),),
+
             ).fetchone()
 
     def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:
@@ -751,9 +829,42 @@ class ProductStore:
                 "UPDATE products SET ubicacion = ? WHERE code = ?",
                 (ubicacion.strip().upper(), code.strip()),
             )
+            self.invalidar_cache()
             return cur.rowcount > 0
 
     def get_product_by_barcode(self, cod_barras: str) -> sqlite3.Row | None:
+        """Obtiene un producto por su código de barras con soporte de caché en memoria."""
+        barras = (cod_barras or "").strip()
+        if not barras:
+            return None
+        with self._cache_lock:
+            if self._es_cache_valido() and barras in self._cache_barcode:
+                return self._cache_barcode[barras]
+
+        with closing(self._connect()) as connection:
+            dv = connection.execute("PRAGMA data_version").fetchone()[0]
+            row = connection.execute(
+                """
+                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion
+                FROM products
+                WHERE cod_barras = ? AND cod_barras != ''
+                LIMIT 1
+                """,
+                (barras,),
+            ).fetchone()
+
+            with self._cache_lock:
+                if not self._es_cache_valido(connection):
+                    self._cache_sku.clear()
+                    self._cache_barcode.clear()
+                self._cache_barcode[barras] = row
+                if row and row["code"]:
+                    self._cache_sku[str(row["code"]).strip()] = row
+                self._cache_data_version = dv
+                self._cache_ts = time.monotonic()
+            return row
+
+    def _query_barcode_raw(self, cod_barras: str) -> sqlite3.Row | None:
         """Obtiene un producto por su código de barras (EAN-13, QR, Code-128, etc.)."""
         barras = cod_barras.strip()
         if not barras:
@@ -770,6 +881,16 @@ class ProductStore:
             ).fetchone()
 
     def find_product_by_code_or_barcode(self, query: str) -> sqlite3.Row | None:
+        """Busca primero por código interno (SKU), luego por código de barras con caché en memoria."""
+        val = (query or "").strip()
+        if not val:
+            return None
+        prod = self.get_product(val)
+        if prod is not None:
+            return prod
+        return self.get_product_by_barcode(val)
+
+    def _find_product_raw(self, query: str) -> sqlite3.Row | None:
         """Busca primero por código interno (SKU), luego por código de barras."""
         val = query.strip()
         if not val:
@@ -798,6 +919,7 @@ class ProductStore:
             ).fetchone()
 
     def set_product_barcode(self, code: str, cod_barras: str) -> None:
+        self.invalidar_cache()
         """Asigna o actualiza el código de barras de un producto."""
         with closing(self._connect()) as connection, connection:
             connection.execute(
@@ -806,6 +928,7 @@ class ProductStore:
             )
 
     def set_product_active(self, code: str, active: bool) -> None:
+        self.invalidar_cache()
         with closing(self._connect()) as connection, connection:
             cursor = connection.execute(
                 "UPDATE products SET active = ? WHERE code = ?",
@@ -818,6 +941,7 @@ class ProductStore:
         self, code: str, stock_minimo: int, stock_maximo: int
     ) -> None:
         """Actualiza los límites de stock mínimo y máximo de un producto."""
+        self.invalidar_cache()
         if stock_minimo < 0 or stock_maximo < stock_minimo:
             raise ValueError(
                 "El stock mínimo debe ser >= 0 y el máximo debe ser >= mínimo."
@@ -1217,7 +1341,11 @@ class ProductStore:
                 params,
             ).fetchall()
 
-    def update_stocks(
+    def update_stocks(self, *args, **kwargs) -> int:
+        self.invalidar_cache()
+        return self._update_stocks_inner(*args, **kwargs)
+
+    def _update_stocks_inner(
         self,
         stocks: dict[str, int],
         synchronize_template: Callable[[], list[int]] | None = None,

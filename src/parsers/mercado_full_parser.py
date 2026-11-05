@@ -29,7 +29,8 @@ def parsear_archivo_mercado_full(ruta_archivo: str | Path) -> Tuple[Dict[str, in
     items_crudos: List[Tuple[str, str, int]] = []
 
     if ext == ".xls":
-        libro = xlrd.open_workbook(str(path))
+        with open(path, "rb") as _f_xls:
+            libro = xlrd.open_workbook(file_contents=_f_xls.read())
         hoja = libro.sheet_by_index(0)
 
         col_cod = -1

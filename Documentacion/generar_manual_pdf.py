@@ -868,6 +868,8 @@ def agregar_tarjeta_referencia_rapida(story: list, est: dict):
         [Paragraph("<b>Beep 880 Hz (Agudo)</b>", est["td_apa_bold_center"]), Paragraph("Transacción confirmada y stock descontado exitosamente.", est["td_apa"]), Paragraph("Confirmación acústica en depósito ruidoso.", est["td_apa"])],
         [Paragraph("<b>Beep 440 Hz (Medio)</b>", est["td_apa_bold_center"]), Paragraph("Advertencia operativa: artículo en stock mínimo o cercano a quiebre.", est["td_apa"]), Paragraph("Descuento de pedidos y alertas.", est["td_apa"])],
         [Paragraph("<b>Beep 220 Hz (Grave)</b>", est["td_apa_bold_center"]), Paragraph("Error crítico: Hash SHA-256 duplicado o comprobante ya ingresado.", est["td_apa"]), Paragraph("Filtro anti-duplicados.", est["td_apa"])],
+        [Paragraph("<b>[ ↩️ ] Deshacer</b>", est["td_apa_bold_center"]), Paragraph("Revierte la última unidad escaneada sin desarmar el lote.", est["td_apa"]), Paragraph("Escáner en vivo Mercado Libre.", est["td_apa"])],
+        [Paragraph("<b>Semáforo LED</b>", est["td_apa_bold_center"]), Paragraph("Verde (&lt;50ms), Amarillo (50-200ms) o Rojo (Desconectado / Offline).", est["td_apa"]), Paragraph("Monitor de conectividad en cabecera.", est["td_apa"])],
     ]
     t_rapida = Table(data_rapida, colWidths=[3.2 * cm, 7.8 * cm, 4.5 * cm])
     aplicar_estilo_tabla_apa(t_rapida, len(data_rapida))

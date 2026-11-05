@@ -6,6 +6,30 @@ import flet as ft
 from ..theme import ROJO
 
 
+def _crear_boton_cierre_jornada(interfaz: Any) -> ft.Button:
+    btn = interfaz.boton("Cierre de Jornada", ft.Icons.TASK_ALT, interfaz.mostrar_cierre_jornada)
+    interfaz.btn_cierre_jornada = btn
+    if not hasattr(interfaz, "botones_cierre_jornada") or interfaz.botones_cierre_jornada is None:
+        interfaz.botones_cierre_jornada = []
+    if btn not in interfaz.botones_cierre_jornada:
+        interfaz.botones_cierre_jornada.append(btn)
+    total_p = 0
+    if hasattr(interfaz, "order_store") and interfaz.order_store:
+        try:
+            conteo_init = interfaz.order_store.contar_pedidos_pendientes_cierre_por_tipo()
+            total_p = int(conteo_init.get("total", 0))
+        except Exception:
+            total_p = 0
+    btn.disabled = (total_p == 0)
+    btn.content = f"Cierre de Jornada ({total_p})" if total_p > 0 else "Cierre de Jornada"
+    btn.tooltip = (
+        "No hay pedidos pendientes de cierre"
+        if total_p == 0
+        else f"{total_p} pedido(s) pendiente(s) de cierre"
+    )
+    return btn
+
+
 def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
     """Genera la lista de controles para el panel lateral organizados profesionalmente por rol y funcionalidad."""
     assert interfaz.usuario_actual is not None
@@ -104,7 +128,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ft.Text("CONTROL DE DEPÓSITO", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                 interfaz.boton("Ingreso de Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
                 interfaz.boton("Inventario en Vivo (Escáner)", ft.Icons.DOCUMENT_SCANNER, interfaz.mostrar_dialogo_inventario_vivo),
-                interfaz.boton("Cierre de Jornada", ft.Icons.TASK_ALT, interfaz.mostrar_cierre_jornada),
+                _crear_boton_cierre_jornada(interfaz),
 
                 ft.Divider(height=18, color=interfaz.borde),
                 ft.Text("INFORMES", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
@@ -192,4 +216,104 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
             ),
         ]
     )
+    return controls
+
+
+def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
+    """Genera la lista de controles para el panel de navegación en barra horizontal (Arriba / Abajo)."""
+    assert interfaz.usuario_actual is not None
+    logo_path = Path(__file__).resolve().parent.parent.parent / "img" / "ultratech.png"
+    logo_bytes = logo_path.read_bytes() if logo_path.exists() else b""
+
+    def _boton_h(texto: str, icono: ft.IconData, accion: Any) -> ft.Button:
+        btn = interfaz.boton(texto, icono, accion, ancho=None)
+        btn.height = 34
+        return btn
+
+    controls: list[ft.Control] = [
+        ft.Row(
+            [
+                ft.Container(
+                    width=28,
+                    height=28,
+                    border_radius=8,
+                    bgcolor=ft.Colors.RED_50,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Image(src=logo_bytes, width=28, height=28, fit=ft.BoxFit.CONTAIN),
+                ),
+                ft.Text("StockAgent", size=14, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                ft.Container(
+                    content=ft.Text(f"{interfaz.usuario_actual.role}".upper(), size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    bgcolor=ROJO,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                    border_radius=4,
+                ),
+            ],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        ft.VerticalDivider(width=16, color=interfaz.borde),
+        _boton_h("Manual de Uso", ft.Icons.MENU_BOOK, interfaz.mostrar_manual_usuario),
+    ]
+
+    rol = interfaz.usuario_actual.role
+    if rol == "master":
+        controls.extend([
+            _boton_h("Registro de Auditoría", ft.Icons.SECURITY, interfaz.mostrar_registro_auditoria),
+            _boton_h("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
+            _boton_h("Restaurar documentos", ft.Icons.RESTORE, interfaz.confirmar_restaurar),
+            _boton_h("Archivado Histórico", ft.Icons.AUTO_DELETE, interfaz.mostrar_dialogo_archivo_historico),
+            _boton_h("Configuración SMTP", ft.Icons.SETTINGS_APPLICATIONS, interfaz.mostrar_configuracion_smtp),
+            _boton_h("Alertas Telegram", ft.Icons.SEND, interfaz.mostrar_configuracion_telegram),
+            _boton_h("Mercado Libre API", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
+            _boton_h("Gestionar usuarios", ft.Icons.MANAGE_ACCOUNTS, interfaz.mostrar_gestion_usuarios),
+        ])
+    elif rol == "operador":
+        btn_cierre = _crear_boton_cierre_jornada(interfaz)
+        btn_cierre.width = None
+        btn_cierre.height = 34
+        controls.extend([
+            _boton_h("Cargar / Armar Pedido", ft.Icons.POST_ADD, interfaz.mostrar_crear_pedido),
+            _boton_h("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
+            _boton_h("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
+            _boton_h("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
+            _boton_h("Ingreso de Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
+            _boton_h("Inventario en Vivo", ft.Icons.DOCUMENT_SCANNER, interfaz.mostrar_dialogo_inventario_vivo),
+            btn_cierre,
+            _boton_h("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
+            _boton_h("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
+            _boton_h("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
+            _boton_h("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
+            _boton_h("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
+        ])
+    elif rol == "administrador":
+        controls.extend([
+            _boton_h("Gestionar productos", ft.Icons.ADD_BOX, interfaz.mostrar_gestion_productos),
+            _boton_h("Ajustar stock / Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
+            _boton_h("Comparativa stock físico", ft.Icons.COMPARE_ARROWS, interfaz.mostrar_comparativa_stock_fisico_admin),
+            _boton_h("Sincronizar con Excel", ft.Icons.SYNC, interfaz.sincronizar_catalogo_excel),
+            _boton_h("Generar pedido fábrica", ft.Icons.FACT_CHECK, interfaz.generar_pedido_fabrica),
+            _boton_h("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
+            _boton_h("Cierres de Operarios", ft.Icons.FACT_CHECK, interfaz.mostrar_historial_cierres_admin),
+            _boton_h("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
+            _boton_h("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
+            _boton_h("Sincronizar Mercado Libre", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
+            _boton_h("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
+            _boton_h("Métricas y Rendimiento", ft.Icons.INSIGHTS, interfaz.mostrar_dashboard_metricas),
+            _boton_h("Estadísticas de salida", ft.Icons.BAR_CHART, interfaz.mostrar_estadisticas),
+            _boton_h("Radar de anomalías", ft.Icons.AUTO_GRAPH, interfaz.mostrar_dialogo_anomalias),
+            _boton_h("Heatmap y Picking", ft.Icons.GRID_VIEW_ROUNDED, interfaz.mostrar_dialogo_heatmap),
+            _boton_h("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
+            _boton_h("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
+            _boton_h("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
+            _boton_h("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
+            _boton_h("Gestionar usuarios", ft.Icons.GROUP, interfaz.mostrar_gestion_usuarios),
+        ])
+    else:
+        controls.extend([
+            _boton_h("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
+            _boton_h("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
+            _boton_h("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
+        ])
+
     return controls

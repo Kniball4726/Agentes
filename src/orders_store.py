@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 from contextlib import closing, contextmanager
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator, Literal
@@ -386,6 +387,25 @@ class OrderStore:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pedidos_bloqueos (
+                    pedido_id INTEGER PRIMARY KEY,
+                    usuario TEXT NOT NULL,
+                    bloqueado_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transacciones_procesadas (
+                    tx_id TEXT PRIMARY KEY,
+                    accion TEXT NOT NULL,
+                    detalle TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
         sig_after = self._db_signature()
         if sig_after is not None:
@@ -1565,6 +1585,94 @@ class OrderStore:
                 (usr_limpio, usr_limpio),
             ).fetchone()
             return int(row["total"]) if row else 0
+
+    # ==========================
+    # CONTROL DE CONCURRENCIA Y BLOQUEOS (SOFT-LOCKING)
+    # ==========================
+
+    def adquirir_bloqueo_pedido(
+        self, pedido_id: int, usuario: str, expiracion_minutos: int = 5
+    ) -> tuple[bool, str, str]:
+        """Intenta adquirir el bloqueo de edición de un pedido.
+        
+        Devuelve (éxito, usuario_bloqueo, fecha_bloqueo).
+        Si el bloqueo expiró (más de expiracion_minutos), se sobreescribe automáticamente.
+        """
+        limite = (datetime.now() - timedelta(minutes=expiracion_minutos)).isoformat()
+        with self._connect() as connection, connection:
+            # Limpiar bloqueos expirados
+            connection.execute(
+                "DELETE FROM pedidos_bloqueos WHERE bloqueado_at < ?", (limite,)
+            )
+            # Consultar bloqueo existente
+            row = connection.execute(
+                "SELECT usuario, bloqueado_at FROM pedidos_bloqueos WHERE pedido_id = ?",
+                (pedido_id,),
+            ).fetchone()
+            if row is not None:
+                usr_act = str(row["usuario"] or "")
+                if usr_act.lower() != usuario.lower():
+                    return False, usr_act, str(row["bloqueado_at"] or "")
+
+            # Adquirir o renovar bloqueo
+            ahora = datetime.now().isoformat()
+            connection.execute(
+                """
+                INSERT INTO pedidos_bloqueos (pedido_id, usuario, bloqueado_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(pedido_id) DO UPDATE SET
+                    usuario = excluded.usuario,
+                    bloqueado_at = excluded.bloqueado_at
+                """,
+                (pedido_id, usuario, ahora),
+            )
+            return True, usuario, ahora
+
+    def liberar_bloqueo_pedido(self, pedido_id: int, usuario: str | None = None) -> None:
+        """Libera el bloqueo de un pedido. Si se especifica usuario, solo libera si coincide."""
+        with self._connect() as connection, connection:
+            if usuario:
+                connection.execute(
+                    "DELETE FROM pedidos_bloqueos WHERE pedido_id = ? AND LOWER(usuario) = LOWER(?)",
+                    (pedido_id, usuario.strip()),
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM pedidos_bloqueos WHERE pedido_id = ?",
+                    (pedido_id,),
+                )
+
+    def consultar_bloqueo_pedido(
+        self, pedido_id: int, expiracion_minutos: int = 5
+    ) -> tuple[str, str] | None:
+        """Verifica si un pedido está bloqueado actualmente por otro usuario."""
+        limite = (datetime.now() - timedelta(minutes=expiracion_minutos)).isoformat()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT usuario, bloqueado_at FROM pedidos_bloqueos WHERE pedido_id = ? AND bloqueado_at >= ?",
+                (pedido_id, limite),
+            ).fetchone()
+            if row is not None:
+                return str(row["usuario"] or ""), str(row["bloqueado_at"] or "")
+            return None
+
+    def registrar_transaccion_idempotente(self, tx_id: str, accion: str, detalle: str = "") -> bool:
+        """Registra una transacción por UUID. Devuelve True si es nueva, o False si ya fue procesada."""
+        if not tx_id:
+            return True
+        with self._connect() as connection, connection:
+            limite = (datetime.now() - timedelta(hours=1)).isoformat()
+            connection.execute(
+                "DELETE FROM transacciones_procesadas WHERE created_at < ?", (limite,)
+            )
+            try:
+                connection.execute(
+                    "INSERT INTO transacciones_procesadas (tx_id, accion, detalle) VALUES (?, ?, ?)",
+                    (tx_id, accion, detalle),
+                )
+                return True
+            except sqlite3.IntegrityError:
+                return False
 
     def marcar_mensajes_leidos(self, usuario: str) -> None:
         usr_limpio = usuario.strip()

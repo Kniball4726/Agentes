@@ -289,6 +289,9 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
     )
 
     async def ejecutar_cierre(_e: ft.Event) -> None:
+        if getattr(ejecutar_cierre, "_en_curso", False):
+            return
+        ejecutar_cierre._en_curso = True
         if not pedidos_pendientes:
             interfaz.notificar("No hay pedidos pendientes para cerrar.")
             return
@@ -522,7 +525,10 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
             resultado_cierre["alerta_resumen_notif"] = alerta_resumen_notif
             resultado_cierre["alerta_texto_correo"] = alerta_texto_correo
 
-        exito = await interfaz.ejecutar_tarea("Cierre de Jornada", tarea_cierre)
+        try:
+            exito = await interfaz.ejecutar_tarea("Cierre de Jornada", tarea_cierre)
+        finally:
+            ejecutar_cierre._en_curso = False
         if not exito:
             return
 
@@ -558,6 +564,9 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         )
         if alerta_resumen_notif:
             mensaje_exito += f"\n⚠️ {alerta_resumen_notif}"
+        usr_nom = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario"
+        interfaz.reproducir_sonido("cierre")
+        interfaz.sincronizar_sesiones(aviso_colaborativo=f"✅ {usr_nom} realizó el Cierre de Jornada #{cierre_id} ({resumen_p})")
         interfaz.notificar(mensaje_exito)
 
     vista_pendientes = ft.Container(

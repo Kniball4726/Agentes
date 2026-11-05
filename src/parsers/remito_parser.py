@@ -57,11 +57,23 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
     Parsea un remito en formato PDF extrayendo sus metadatos y detalle de artículos.
     """
     path = Path(ruta_pdf)
-    reader = _get_pdf_reader()(str(path))
-    
     full_text = ""
-    for page in reader.pages:
-        full_text += (page.extract_text() or "") + "\n"
+
+    with open(path, "rb") as _f_pdf:
+        reader = _get_pdf_reader()(_f_pdf)
+        for page in reader.pages:
+            full_text += (page.extract_text() or "") + "\n"
+    
+    
+        if hasattr(reader, "close"):
+            try:
+                reader.close()
+            except Exception:
+                pass
+    
+
+
+
 
     # 1. Extracción de Metadatos
     num_match = re.search(r'(\d{4}-\d{8})', full_text)

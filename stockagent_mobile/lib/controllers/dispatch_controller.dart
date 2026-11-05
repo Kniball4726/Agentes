@@ -31,6 +31,8 @@ class DispatchController extends ChangeNotifier {
 
   final List<ScanRecord> historial = [];
   List<OrderDispatch> pedidosActivos = [];
+  final List<Map<String, dynamic>> colaOffline = [];
+  bool sincronizandoOffline = false;
 
   DispatchController({
     required this.apiService,
@@ -103,6 +105,79 @@ class DispatchController extends ChangeNotifier {
         HapticFeedback.heavyImpact();
       }
     } catch (e) {
+      final ahora = DateTime.now();
+      final horaStr =
+          '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}:${ahora.second.toString().padLeft(2, '0')}';
+      final String? estadoDestino =
+          modoSeleccionado == 'auto' ? null : modoSeleccionado;
+
+      colaOffline.add({
+        'codigo': codigo,
+        'targetState': estadoDestino,
+        'hora': horaStr,
+      });
+
+      HapticFeedback.mediumImpact();
+      historial.insert(
+        0,
+        ScanRecord(
+          hora: horaStr,
+          exito: true,
+          mensaje: '⚡ Red offline: $codigo guardado en cola local (${colaOffline.length} en buffer)',
+        ),
+      );
+    } finally {
+      isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<int> sincronizarColaOffline() async {
+    if (colaOffline.isEmpty || sincronizandoOffline) return 0;
+    sincronizandoOffline = true;
+    notifyListeners();
+
+    int sincronizados = 0;
+    try {
+      final itemsAEnviar = List<Map<String, dynamic>>.from(colaOffline);
+      final resultados = await apiService.scanDispatchBatch(itemsAEnviar);
+
+      for (int i = 0; i < resultados.length; i++) {
+        final res = resultados[i];
+        final it = itemsAEnviar[i];
+        final ahora = DateTime.now();
+        final horaStr =
+            '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}:${ahora.second.toString().padLeft(2, '0')}';
+
+        historial.insert(
+          0,
+          ScanRecord(
+            hora: horaStr,
+            exito: res.ok,
+            mensaje: '🔄 Sincronizado offline [${it['codigo']}]: ${res.mensaje}',
+            pedido: res.pedido,
+          ),
+        );
+        if (res.ok) {
+          sincronizados++;
+        }
+      }
+
+      colaOffline.clear();
+      HapticFeedback.lightImpact();
+      await cargarPedidos();
+    } catch (e) {
+      HapticFeedback.heavyImpact();
+    } finally {
+      sincronizandoOffline = false;
+      notifyListeners();
+    }
+    return sincronizados;
+  }
+
+  void _legacy_close() {
+    try {
+      const e = "";
       HapticFeedback.heavyImpact();
       final ahora = DateTime.now();
       final horaStr =

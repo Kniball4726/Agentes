@@ -144,6 +144,21 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
         ]
         if interfaz.usuario_actual.role == "administrador":
             controles_titulo_movil.append(interfaz.contenedor_notificaciones)
+        dot_conexion_movil = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_400, size=8),
+                    ft.Text("En línea", size=10, color=ft.Colors.GREEN_400 if interfaz.modo_oscuro else ft.Colors.GREEN_700, weight=ft.FontWeight.W_500),
+                ],
+                spacing=4,
+            ),
+            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+            border_radius=10,
+            bgcolor=ft.Colors.GREEN_900 if interfaz.modo_oscuro else ft.Colors.GREEN_50,
+            tooltip="Conectado al servidor local de StockAgent",
+        )
+        interfaz.semaforo_conexion_movil = dot_conexion_movil
+        controles_titulo_movil.append(dot_conexion_movil)
 
         return ft.Column(
             [
@@ -202,12 +217,52 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
         on_click=interfaz.mostrar_command_palette,
     )
 
-    fila_acciones: list[ft.Control] = []
+    semaforo_conexion = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_400, size=9),
+                ft.Text("En línea", size=11, color=ft.Colors.GREEN_400 if interfaz.modo_oscuro else ft.Colors.GREEN_700, weight=ft.FontWeight.W_500),
+            ],
+            spacing=5,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+        border_radius=16,
+        border=ft.Border.all(1, ft.Colors.GREEN_800 if interfaz.modo_oscuro else ft.Colors.GREEN_300),
+        bgcolor=ft.Colors.GREEN_900 if interfaz.modo_oscuro else ft.Colors.GREEN_50,
+        tooltip="Conectado al servidor local de StockAgent y sincronizado",
+    )
+
+    pos_actual = getattr(interfaz, "posicion_sidebar", "izquierda")
+
+    def _item_dock(label: str, pos_key: str, icon_data: ft.IconData) -> ft.PopupMenuItem:
+        activo = (pos_actual == pos_key)
+        return ft.PopupMenuItem(
+            icon=ft.Icons.CHECK if activo else icon_data,
+            content=ft.Text(f"{label} (Activo)" if activo else label, weight=ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL),
+            on_click=lambda _e, k=pos_key: interfaz.cambiar_posicion_sidebar(k),
+        )
+
+    boton_dock = ft.PopupMenuButton(
+        icon=ft.Icons.VIEW_SIDEBAR_OUTLINED if pos_actual != "oculto" else ft.Icons.FULLSCREEN,
+        tooltip=f"Posición de barra de menú: {pos_actual.capitalize()} (Clic para mover)",
+        items=[
+            _item_dock("Barra a la Izquierda", "izquierda", ft.Icons.DOCK),
+            _item_dock("Barra a la Derecha", "derecha", ft.Icons.DOCK),
+            _item_dock("Barra Arriba (Horizontal)", "arriba", ft.Icons.HORIZONTAL_SPLIT),
+            _item_dock("Barra Abajo (Horizontal)", "abajo", ft.Icons.HORIZONTAL_SPLIT),
+            _item_dock("Ocultar Barra (Pantalla Completa)", "oculto", ft.Icons.FULLSCREEN),
+        ],
+    )
+
+    interfaz.semaforo_conexion = semaforo_conexion
+    fila_acciones: list[ft.Control] = [semaforo_conexion]
     if interfaz.usuario_actual.role == "administrador":
         fila_acciones.append(interfaz.contenedor_notificaciones)
     fila_acciones.extend(
         [
             boton_buscar,
+            boton_dock,
             boton_tema,
             menu_usuario,
             interfaz.boton(

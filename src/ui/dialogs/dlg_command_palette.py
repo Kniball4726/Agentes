@@ -12,7 +12,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
 
     rol = interfaz.usuario_actual.role
 
-    # Acciones y accesos rápidos según el rol del usuario
+    # Acciones y accesos rápidos según el rol del usuario (100% de los módulos disponibles)
     accesos_rapidos = []
     if rol == "operador":
         accesos_rapidos.extend([
@@ -23,6 +23,12 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Historial de Pedidos", "Buscar, reimprimir y ver pedidos del turno", ft.Icons.RECEIPT_LONG, ft.Colors.AMBER_400, interfaz.mostrar_historial_pedidos),
             ("Imprimir Descuento", "Consultar y reimprimir comprobantes de descuento", ft.Icons.PRINT, ft.Colors.CYAN_400, interfaz.mostrar_imprimir_descuentos),
             ("Gestión de Clientes", "Directorio y consulta de clientes", ft.Icons.PEOPLE_ALT, ft.Colors.TEAL_400, interfaz.mostrar_gestion_clientes),
+            ("Descontar Mercado Libre", "Escaneo rápido de paquetes y etiquetas ML", ft.Icons.STOREFRONT, ft.Colors.AMBER_600, interfaz.mostrar_descuento_mercado_libre),
+            ("Descontar Mercado Full", "Procesamiento de envíos Mercado Libre Full", ft.Icons.LOCAL_SHIPPING, ft.Colors.ORANGE_400, interfaz.mostrar_descuento_mercado_full),
+            ("Abrir Informe", "Descargar o visualizar el último informe generado", ft.Icons.OPEN_IN_NEW, ft.Colors.INDIGO_400, interfaz.abrir_informe),
+            ("Compartir por Correo", "Enviar informes de stock por correo electrónico", ft.Icons.EMAIL, ft.Colors.BLUE_300, interfaz.compartir_correo),
+            ("WhatsApp Web", "Compartir remitos o estado de pedidos por WhatsApp", ft.Icons.CHAT, ft.Colors.GREEN_600, interfaz.compartir_whatsapp),
+            ("Manual de Uso", "Documentación oficial del operario en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
         ])
     elif rol == "administrador":
         accesos_rapidos.extend([
@@ -33,6 +39,20 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Ajustar Stock / Fábrica", "Ingresos de mercadería y remitos de fábrica", ft.Icons.INVENTORY_2, ft.Colors.GREEN_400, interfaz.mostrar_ingreso_fabrica),
             ("Copia de Seguridad", "Respaldos .ZIP y espejo en red / nube", ft.Icons.BACKUP, ROJO, interfaz.mostrar_dialogo_backup),
             ("Comparativa Stock Físico", "Contraste de conteos físicos contra inventario", ft.Icons.COMPARE_ARROWS, ft.Colors.TEAL_400, interfaz.mostrar_comparativa_stock_fisico_admin),
+            ("Sincronizar con Excel", "Volcar catálogo SQLite a Productos.xlsx", ft.Icons.SYNC, ft.Colors.LIGHT_BLUE_400, interfaz.sincronizar_catalogo_excel),
+            ("Generar Pedido Fábrica (Excel)", "Cálculo de sugerido y planilla de reposición", ft.Icons.FACT_CHECK, ft.Colors.AMBER_400, interfaz.generar_pedido_fabrica),
+            ("Gestión de Clientes", "Directorio y consulta de clientes mayoristas", ft.Icons.PEOPLE_ALT, ft.Colors.TEAL_400, interfaz.mostrar_gestion_clientes),
+            ("Descontar Mercado Libre", "Escaneo rápido de paquetes y etiquetas ML", ft.Icons.STOREFRONT, ft.Colors.AMBER_600, interfaz.mostrar_descuento_mercado_libre),
+            ("Sincronizar Mercado Libre (API)", "Conexión y credenciales de Mercado Libre", ft.Icons.CLOUD_SYNC, ft.Colors.AMBER_600, interfaz.mostrar_sincronizacion_mercadolibre),
+            ("Descontar Mercado Full", "Procesamiento de envíos Mercado Libre Full", ft.Icons.LOCAL_SHIPPING, ft.Colors.ORANGE_400, interfaz.mostrar_descuento_mercado_full),
+            ("Estadísticas de Salida", "Gráficos de ventas y flujo histórico de bultos", ft.Icons.BAR_CHART, ft.Colors.BLUE_GREY_400, interfaz.mostrar_estadisticas),
+            ("Radar de Anomalías", "Detección estadística de saltos bruscos y desvíos", ft.Icons.AUTO_GRAPH, ft.Colors.RED_400, interfaz.mostrar_dialogo_anomalias),
+            ("Heatmap y Picking", "Distribución en planta y optimización de recorrido", ft.Icons.GRID_VIEW_ROUNDED, ft.Colors.PINK_400, interfaz.mostrar_dialogo_heatmap),
+            ("Abrir Informe", "Descargar o visualizar informes y balances", ft.Icons.OPEN_IN_NEW, ft.Colors.INDIGO_400, interfaz.abrir_informe),
+            ("Compartir por Correo", "Enviar informes y balances por correo", ft.Icons.EMAIL, ft.Colors.BLUE_300, interfaz.compartir_correo),
+            ("WhatsApp Web", "Compartir balances o remitos vía WhatsApp", ft.Icons.CHAT, ft.Colors.GREEN_600, interfaz.compartir_whatsapp),
+            ("Gestionar Usuarios", "Control de cuentas y credenciales IAM", ft.Icons.GROUP, ft.Colors.BLUE_400, interfaz.mostrar_gestion_usuarios),
+            ("Manual de Uso", "Documentación oficial del administrador en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
         ])
     elif rol == "master":
         accesos_rapidos.extend([
@@ -41,6 +61,28 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Gestionar Usuarios", "Control de cuentas y credenciales IAM", ft.Icons.MANAGE_ACCOUNTS, ft.Colors.BLUE_400, interfaz.mostrar_gestion_usuarios),
             ("Configuración SMTP", "Servidor de correo para reportes", ft.Icons.SETTINGS_APPLICATIONS, ft.Colors.TEAL_400, interfaz.mostrar_configuracion_smtp),
             ("Alertas Telegram", "Configuración de bot de avisos proactivos", ft.Icons.SEND, ft.Colors.CYAN_400, interfaz.mostrar_configuracion_telegram),
+            ("Restaurar Documentos", "Recuperación de base de datos desde copias de seguridad", ft.Icons.RESTORE, ft.Colors.DEEP_ORANGE_400, interfaz.confirmar_restaurar),
+            ("Archivado Histórico", "Archivar pedidos antiguos y compactar base de datos", ft.Icons.AUTO_DELETE, ft.Colors.BROWN_400, interfaz.mostrar_dialogo_archivo_historico),
+            ("Mercado Libre API (Credenciales)", "Configuración OAuth y sincronización API", ft.Icons.CLOUD_SYNC, ft.Colors.AMBER_600, interfaz.mostrar_sincronizacion_mercadolibre),
+            ("Manual de Uso", "Documentación oficial del usuario master en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
+        ])
+    else:
+        accesos_rapidos.extend([
+            ("Abrir Informe", "Descargar o visualizar informes y balances", ft.Icons.OPEN_IN_NEW, ft.Colors.INDIGO_400, interfaz.abrir_informe),
+            ("Compartir por Correo", "Enviar informes por correo", ft.Icons.EMAIL, ft.Colors.BLUE_300, interfaz.compartir_correo),
+            ("WhatsApp Web", "Compartir informes vía WhatsApp", ft.Icons.CHAT, ft.Colors.GREEN_600, interfaz.compartir_whatsapp),
+            ("Manual de Uso", "Documentación oficial de consulta en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
+        ])
+
+    accesos_rapidos.extend([
+        ("Mover Barra: A la Izquierda", "Ubicar el panel de menú en el lateral izquierdo", ft.Icons.DOCK, ft.Colors.LIGHT_BLUE_300, lambda: getattr(interfaz, "cambiar_posicion_sidebar", lambda _p: None)("izquierda")),
+        ("Mover Barra: A la Derecha", "Ubicar el panel de menú en el lateral derecho", ft.Icons.DOCK, ft.Colors.LIGHT_BLUE_300, lambda: getattr(interfaz, "cambiar_posicion_sidebar", lambda _p: None)("derecha")),
+        ("Mover Barra: Arriba (Horizontal)", "Ubicar el menú superior de forma horizontal", ft.Icons.HORIZONTAL_SPLIT, ft.Colors.TEAL_300, lambda: getattr(interfaz, "cambiar_posicion_sidebar", lambda _p: None)("arriba")),
+        ("Mover Barra: Abajo (Horizontal)", "Ubicar el menú inferior de forma horizontal", ft.Icons.HORIZONTAL_SPLIT, ft.Colors.TEAL_300, lambda: getattr(interfaz, "cambiar_posicion_sidebar", lambda _p: None)("abajo")),
+        ("Ocultar Barra (Pantalla Completa)", "Modo enfoque sin barra lateral (usa F2 o el header)", ft.Icons.FULLSCREEN, ft.Colors.AMBER_300, lambda: getattr(interfaz, "cambiar_posicion_sidebar", lambda _p: None)("oculto")),
+        ("Alternar Modo Claro / Oscuro", "Cambiar entre apariencia diurna y nocturna", ft.Icons.DARK_MODE, ft.Colors.PURPLE_300, interfaz.alternar_tema),
+        ("Abrir Asistente / Chat de Equipo", "Panel interactivo de consultas y chat interno", ft.Icons.SMART_TOY, ft.Colors.GREEN_300, interfaz.alternar_chat_flotante),
+        ("Actualizar Todo (Refrescar)", "Recargar pedidos, contadores y métricas", ft.Icons.REFRESH, ft.Colors.ORANGE_300, interfaz.actualizar_estado),
         ])
 
     resultados_lista = ft.ListView(expand=True, spacing=6, height=360)
@@ -328,9 +370,9 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.TERMINAL, color=ROJO, size=20),
-                ft.Text("Buscador Rápido Global", weight=ft.FontWeight.BOLD, size=15),
+                ft.Text("Menú Rápido y Buscador Global", weight=ft.FontWeight.BOLD, size=15),
                 ft.Container(
-                    content=ft.Text("Ctrl + K", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    content=ft.Text("F2 / Ctrl+K", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     bgcolor=ROJO,
                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                     border_radius=4,

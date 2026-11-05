@@ -129,6 +129,18 @@ class EscanearDespachoResponse(BaseModel):
     pedido: Optional[PedidoDetalleResponse] = None
 
 
+class EscanearLoteRequest(BaseModel):
+    items: List[EscanearDespachoRequest] = Field(..., description="Lista de escaneos acumulados offline")
+
+
+class EscanearLoteResponse(BaseModel):
+    ok: bool
+    total_procesados: int
+    exitosos: int
+    fallidos: int
+    resultados: List[EscanearDespachoResponse]
+
+
 class ListarPedidosResponse(BaseModel):
     total: int
     pedidos: List[PedidoDetalleResponse]

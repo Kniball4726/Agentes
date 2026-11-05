@@ -151,7 +151,7 @@ class TrayIconServidor:
         self.on_exit = on_exit
 
         self.ip_local = _obtener_ip_local()
-        self.url_local = f"{self.esquema}://127.0.0.1:{self.port}"
+        self.url_local = f"{self.esquema}://localhost:{self.port}"
         self.ip_tailscale = _obtener_ip_tailscale()
         self.url_red = f"{self.esquema}://{self.ip_local}:{self.port}"
         self.url_remoto = f"{self.esquema}://{self.ip_tailscale}:{self.port}" if self.ip_tailscale else None

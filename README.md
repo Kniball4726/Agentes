@@ -734,15 +734,54 @@ Cuando finaliza el turno de despacho:
 
 ---
 
-## 4. Control de Concurrencia y Navegación Web
+## 4. Control de Concurrencia, Rendimiento y Roadmap de Diseño Activo
 
-Para garantizar una experiencia ágil y sin inconsistencias en entornos multi-usuario:
+Para garantizar una experiencia ágil, robusta y sin inconsistencias en entornos multi-usuario y depósitos con alta concurrencia, StockAgent implementa una suite integral de diseño activo organizada en 4 fases consolidadas:
+
+### 4.1 Principios de Concurrencia y Navegación Web
 
 * **Apertura Limpia en Navegador:** Al ejecutar `iniciar_servidor_web.bat`, el sistema inicia el servidor HTTPS en el puerto 8550 y abre **una única pestaña limpia** en el navegador predeterminado.
 * **Libre navegación en múltiples pestañas:** Los usuarios pueden tener abiertas varias pestañas para consultar stock, revisar el catálogo o ver el historial de forma simultánea.
 * **Bloqueo atómico al procesar:** Cuando una pestaña dispara un descuento o procesamiento, el sistema activa un bloqueo global transitorio (`PROCESAMIENTO_GLOBAL_ACTIVO`). Si otra pestaña o terminal intenta procesar en ese mismo instante, se le notifica amablemente:
   > *"Hay una operación de procesamiento de stock en curso desde otra sesión o pestaña. Por seguridad en los archivos, espera a que finalice."*
 * **Single Instance Robusto y Libre de Bloqueos:** Tanto `main.py` como `iniciar_servidor_web.bat` verifican el estado del puerto mediante sondeo TCP directo (`socket.create_connection`), descartando falsos positivos provocados por conexiones cerradas en estado `TIME_WAIT` o `CLOSE_WAIT`. Si ya existe una instancia respondiendo en el puerto 8550, abre inmediatamente el navegador predeterminado hacia ella y finaliza el lanzador en menos de 0.05 segundos sin colgar la consola; en caso contrario, inicia el servicio web y el icono del System Tray con enlace local y de red LAN.
+
+### 4.2 Fase 1: Feedback Háptico/Acústico, Badges Dinámicos y Toasts Colaborativos
+* **Motor Web Audio API Polifónico (`audio_manager.py`):** Síntesis pura en el navegador cliente sin descargar archivos `.mp3` ni bloqueos de red. Emite tonos sinusoidales limpios y armónicos:
+  * *Éxito / Escaneo válido:* 880 Hz / 1200 Hz (`sine`, 0.12s) para agilizar el ritmo de pistoleo.
+  * *Error / Ítem inexistente:* 220 Hz / 150 Hz (`sawtooth`, 0.25s) para alerta inmediata.
+  * *Alerta / Advertencia:* 440 Hz (`triangle`, 0.18s).
+* **Badges Dinámicos en Tiempo Real:** Los botones clave de la interfaz actualizan sus títulos con contadores vivos (ej. `Cierre de Jornada (N)`), permitiendo al operario saber de un vistazo cuántos pedidos restan consolidar sin abrir el diálogo.
+* **Toasts Colaborativos:** Notificaciones contextuales (`SnackBar`) que alertan al personal de almacén sobre eventos concurrentes (despachos confirmados, bloqueos o sincronizaciones).
+
+### 4.3 Fase 2: Concurrencia Avanzada, Soft-Locking, Idempotencia y Deshacer
+* **Soft-Locking con Concesión Temporal (Lease/TTL):** En la base de datos `pedidos.sqlite3` (`pedidos_bloqueos`), cuando un operario o administrador edita un pedido, se genera una concesión temporal de 5 minutos con su usuario y sesión. Si otro puesto intenta editarlo en paralelo, se le notifica quién lo tiene en edición y cuándo expira el bloqueo, evitando colisiones sin bloqueos permanentes o huérfanos.
+* **Idempotencia Criptográfica (`transacciones_procesadas`):** Registro de claves de idempotencia SHA-256 para cada remito o comprobante procesado. En caso de micro-cortes de red LAN o doble clic accidental, el sistema detecta la transacción repetida y retorna el comprobante previo sin duplicar descuentos de stock.
+* **Deshacer Último Escaneo (Undo):** En el módulo de escaneo de Mercado Libre, el operario cuenta con el botón `[ ↩️ Deshacer Último ]`, permitiendo revertir inmediatamente la última lectura errónea sin desarmar ni re-escanear el lote completo.
+
+### 4.4 Inter-Fase: Docking Adaptativo del Sidebar y Paleta de Comandos F2 / Ctrl+K
+* **Docking Multi-Posición (`docking_manager.py`):** El panel de navegación lateral puede anclarse libremente en 5 configuraciones según el flujo físico de trabajo o la orientación de pantalla del operario:
+  * `left`: Barra lateral izquierda clásica.
+  * `right`: Lateral derecho (ideal para terminales táctiles con mano derecha dominante).
+  * `top`: Barra superior tipo cinta de opciones (Ribbon).
+  * `bottom`: Barra inferior apilada.
+  * `hidden`: Pantalla completa maximizada para lectura continua de pedidos o monitores de empaque.
+* **Paleta de Comandos Rápida (F2 / Ctrl+K):** Menú rápido flotante con filtro en tiempo real que mapea y expone todos los módulos, botones y funciones permitidas para el rol activo (Operador, Administrador, Master o Consulta), navegable 100% por teclado.
+
+### 4.5 Fase 3: Optimización de Rendimiento, Paginación, Caché SKU y Demonio Heartbeat
+* **Paginación Inteligente del Historial:** La tabla de pedidos soporta paginación en servidor (`page_size = 10, 25, 50, 100`), evitando caídas de rendimiento o saturación de DOM cuando existen miles de comprobantes archivados.
+* **Caché en Memoria de Códigos de Barra y SKU:** `StockManager` indexa en memoria las tablas de productos y equivalencias EAN-13/SKU, logrando tiempos de respuesta de `< 1 ms` por pistoleo de escáner.
+* **Demonio Heartbeat de Conectividad LAN (`network_heartbeat.py`):** Tarea asíncrona en segundo plano que sondea la base de datos SQLite cada 12 segundos, computa la latencia de red y actualiza un semáforo visual en el encabezado:
+  * 🟢 **Verde (<50 ms):** Conexión LAN excelente.
+  * 🟡 **Amarillo (50-200 ms):** Latencia moderada o congestión Wi-Fi.
+  * 🔴 **Rojo (>200 ms o timeout):** Pérdida de enlace con notificación persistente para prevenir operaciones inconsistentes.
+
+### 4.6 Fase 4: Ergonomía Móvil "Thumb Zone", Cola de Escaneo Offline y Desacoplamiento Nativo
+* **Barra de Navegación "Thumb Zone" Móvil (`mobile_nav.py`):** En resoluciones móviles (< 768px), la interfaz conmuta automáticamente a una barra inferior `ft.NavigationBar` situada en la zona ergonómica del pulgar, dando acceso con 1 toque a los 5 destinos críticos: Pedidos, Escanear ML, Fábrica, Cierre y Chat.
+* **Buffer de Escaneo Offline y Despacho en Lote (`colaOffline`):** En el cliente móvil Flutter (`stockagent_mobile`), los escaneos en zonas muertas de Wi-Fi de depósito se almacenan en un buffer local seguro con vibración háptica; al restablecerse la conectividad, el banner de advertencia ofrece sincronizar el lote completo mediante el endpoint batch `/api/v1/despacho/escanear-lote`.
+* **Herramientas de Despliegue Rápido de PWA y Móvil:**
+  * `crear_acceso_directo_cliente.bat`: Genera un acceso directo en el escritorio de Windows para lanzar la interfaz web en modo aplicación nativa sin barra de direcciones (`--app=http://<IP>:8550`).
+  * `exportar_stockagent_mobile.bat`: Script de desacoplamiento automático para extraer el proyecto Flutter móvil como repositorio independiente listo para compilar APKs de producción.
 
 ---
 
@@ -824,7 +863,12 @@ StockAgent/
 │       │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
 │       │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
 │       │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
-│       │   └── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
+│       │   ├── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
+│       │   ├── audio_manager.py       # Motor acústico Web Audio API y sintetizador polifónico
+│       │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y semáforo visual
+│       │   ├── mobile_nav.py          # Barra de navegación inferior 'Thumb Zone' para móviles
+│       │   ├── docking_manager.py     # Gestor de docking del sidebar (izq/der/arriba/abajo/oculto)
+│       │   └── print_labels.py        # Despachador de impresión térmica y A4 de rótulos QR
 │       └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
 │           ├── __init__.py            # Re-exportación unificada de diálogos
 │           ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
@@ -864,6 +908,8 @@ StockAgent/
 │   └── README_MOVIL.md                # Manual operativo del cliente móvil
 ├── crear_exe.bat                      # Script de compilación a .exe independiente
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
+├── crear_acceso_directo_cliente.bat   # Generador de acceso directo de escritorio (PWA App Mode)
+├── exportar_stockagent_mobile.bat     # Extractor limpio del cliente móvil nativo Flutter
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
 ├── detener_servidor.bat               # Detención rápida del servidor y liberación de puerto
 ├── configurar_inicio_automatico.bat   # Alta de inicio automático con Windows
@@ -918,6 +964,13 @@ Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo,
      - `MercadoLibreScannerComponent`: Gestiona el buffer en memoria de escaneo en vivo con pistola de códigos de barras (EAN-13 o SKU), feedback acústico (Web Audio API / winsound), validación de quiebres en tiempo real y el ciclo de vida del despacho atómico.
      - `MercadoLibreDocxComponent`: Administra la detección de comprobantes `.docx` en disco, la subida asistida desde la PC, la deducción criptográfica contra duplicados y la previsualización de coincidencias de catálogo.
    * **Contrato Estable y Fachada:** `mostrar_descuento_mercado_libre` actúa como ensamblador de la vista dual de pestañas (`ft.Tabs`), re-exportándose transparentemente desde `dlg_stock_ops.py` y `src/ui/dialogs/__init__.py` para preservar 100% la compatibilidad con todas las vistas y pruebas unitarias existentes.
+
+9. **Desacoplamiento Modular de Componentes UI (`src/ui/components/`):**
+   * **`audio_manager.py`:** Encapsula la síntesis Web Audio API en el navegador del cliente y la invocación nativa en Windows (`winsound`), aislando el feedback auditivo sin dependencias de archivos estáticos.
+   * **`network_heartbeat.py`:** Implementa el demonio asíncrono de sondeo LAN (12 segundos), cálculo de latencia de red, semáforos visuales (verde/amarillo/rojo) y dispatch de notificaciones colaborativas.
+   * **`mobile_nav.py`:** Desacopla la lógica de la barra de navegación "Thumb Zone" para dispositivos móviles, gestionando sus 5 destinos y el enrutamiento visual.
+   * **`docking_manager.py`:** Orquesta la adaptación reactiva del layout de pantalla completa según las 5 orientaciones de docking del sidebar (`left`, `right`, `top`, `bottom`, `hidden`).
+   * **`print_labels.py`:** Centraliza el renderizado y apertura de documentos PDF de rótulos con código QR para impresión en rollo térmico continuo (100x150 mm) y hojas estándar A4.
 
 ### Esquema de Bases de Datos SQLite
 

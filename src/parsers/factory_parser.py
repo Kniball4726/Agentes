@@ -23,7 +23,8 @@ def parsear_pedido_fabrica_excel(ruta_excel: str | Path) -> Tuple[Dict[str, int]
     items_crudos: List[Tuple[str, str, int]] = []
 
     if path.suffix.lower() == ".xls":
-        libro = xlrd.open_workbook(str(path))
+        with open(path, "rb") as _f_xls:
+            libro = xlrd.open_workbook(file_contents=_f_xls.read())
         hoja = libro.sheet_by_index(0)
         
         # Detectar columnas

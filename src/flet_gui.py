@@ -90,6 +90,16 @@ from .ui.components import (
     construir_encabezado,
     construir_panel_metricas,
     construir_panel_informes_actividad,
+    reproducir_sonido_web,
+    actualizar_estado_conexion_ui,
+    iniciar_heartbeat_red_daemon,
+    construir_navigation_bar_movil,
+    manejar_cambio_navegacion_movil,
+    aplicar_posicion_sidebar_ui,
+    cambiar_posicion_sidebar_ui,
+    imprimir_rotulos_termicos_pedido_ui,
+    imprimir_rotulos_pedido_ui,
+    imprimir_rotulos_lote_ui,
 )
 from .ui.dialogs import (
     compartir_correo,
@@ -225,6 +235,8 @@ class InterfazFlet:
         self.informe_seleccionado: Path | None = None
         self.seleccion_fecha_restauracion: ft.Dropdown | None = None
         self.controles_tarea: list[ft.Button] = []
+        self.btn_cierre_jornada: ft.Button | None = None
+        self.botones_cierre_jornada: list[ft.Button] = []
         self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
         self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
         self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
@@ -272,7 +284,14 @@ class InterfazFlet:
         self.banner_alerta_quiebre = ft.Container(visible=False)
         self.contenedor_notificaciones = ft.Container()
         self.file_picker = ft.FilePicker()
+        self.posicion_sidebar = "izquierda"
+        self.semaforo_conexion: ft.Container | None = None
+        self.semaforo_conexion_movil: ft.Container | None = None
+        self._estado_red_actual: str = "online"
+        self._heartbeat_activo: bool = True
+        self._heartbeat_iniciado: bool = False
         self.chat_visible = False
+
         self.ventana_chat_flotante: ft.Container | None = None
         self.boton_chat_flotante: ft.FloatingActionButton | None = None
         self.ultima_actividad: datetime = datetime.now()
@@ -528,6 +547,8 @@ class InterfazFlet:
         mostrar_configuracion_inicial(self, error=error)
 
     def cerrar_sesion(self, _evento: ft.Event | None = None) -> None:
+        self._heartbeat_activo = False
+        self._heartbeat_iniciado = False
         if self.usuario_actual is not None:
             try:
                 self.order_store.registrar_auditoria(
@@ -540,6 +561,9 @@ class InterfazFlet:
             logger.info("Sesión cerrada manualmente por %s", self.usuario_actual.username)
         self.usuario_actual = None
         self.controles_tarea.clear()
+        if hasattr(self, "botones_cierre_jornada") and self.botones_cierre_jornada is not None:
+            self.botones_cierre_jornada.clear()
+        self.btn_cierre_jornada = None
         self.conversacion.controls.clear()
         self.ventana_chat_flotante = None
         self.mostrar_inicio_sesion()
@@ -592,6 +616,46 @@ class InterfazFlet:
             return False
         return True
 
+    def _sidebar_horizontal_controls(self) -> list[ft.Control]:
+        from .ui.components.sidebar import construir_sidebar_horizontal_controls
+        return construir_sidebar_horizontal_controls(self)
+
+    def cambiar_posicion_sidebar(self, nueva_posicion: str) -> None:
+        """Cambia la ubicación del menú (izquierda, derecha, arriba, abajo, oculto) y reconstruye la vista."""
+        if nueva_posicion in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
+            self.posicion_sidebar = nueva_posicion
+            self.construir()
+            nombre_pos = {
+                "izquierda": "a la izquierda",
+                "derecha": "a la derecha",
+                "arriba": "en barra superior (horizontal)",
+                "abajo": "en barra inferior (horizontal)",
+                "oculto": "oculto (pantalla completa · usa F2 para módulos)"
+            }.get(nueva_posicion, nueva_posicion)
+            try:
+                snack = ft.SnackBar(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.DOCK, color=ft.Colors.WHITE, size=16),
+                            ft.Text(f"Menú ubicado {nombre_pos}. Atajo rápido: F2 o Ctrl+K.", color=ft.Colors.WHITE, size=12),
+                        ],
+                        spacing=8,
+                    ),
+                    bgcolor=ROJO,
+                    duration=2500,
+                )
+                self.page.show_dialog(snack)
+                self.page.update()
+            except Exception:
+                pass
+
+    def _aplicar_posicion_sidebar(self, dashboard: ft.Control, sidebar: ft.Control) -> None:
+        aplicar_posicion_sidebar_ui(self, dashboard, sidebar)
+
+    def _al_cambiar_navegacion_movil(self, e: Any) -> None:
+        """Acceso rápido inferior (Thumb Zone) para operarios con una sola mano en depósito."""
+        manejar_cambio_navegacion_movil(self, e)
+
     def _sidebar_controls(self) -> list[ft.Control]:
         return construir_sidebar_controls(self)
 
@@ -602,7 +666,11 @@ class InterfazFlet:
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
         self.controles_tarea.clear()
+        if hasattr(self, "botones_cierre_jornada") and self.botones_cierre_jornada is not None:
+            self.botones_cierre_jornada.clear()
+        self.btn_cierre_jornada = None
         self.chat_visible = False
+
         self.page.floating_action_button = None
         if hasattr(self.page, "overlay") and self.page.overlay is not None:
             self.page.overlay.clear()
@@ -628,6 +696,8 @@ class InterfazFlet:
             )
         elif hasattr(self.page, "drawer"):
             self.page.drawer = None
+
+        self.page.navigation_bar = construir_navigation_bar_movil(self) if es_movil else None
 
         dashboard_controls: list[ft.Control] = [
             self.encabezado(),
@@ -678,6 +748,9 @@ class InterfazFlet:
                 )
             )
 
+        if not es_movil and "sidebar" in locals():
+            self._aplicar_posicion_sidebar(dashboard, sidebar)
+
         ventana_chat = self.crear_ventana_chat_flotante()
         if not hasattr(self.page, "overlay") or self.page.overlay is None:
             self.page.overlay = []
@@ -712,6 +785,7 @@ class InterfazFlet:
             )
         self.actualizar_estado()
         self.refrescar_usuarios_chat_equipo()
+        self._iniciar_heartbeat_red()
         self.cargar_mensajes_equipo()
         self.actualizar_badge_chat()
 
@@ -791,6 +865,7 @@ class InterfazFlet:
     def sincronizar_sesiones(
         self,
         notificar_chat: tuple[str, str, str] | None = None,
+        aviso_colaborativo: str | None = None,
     ) -> None:
         """Actualiza en tiempo real otras sesiones abiertas en el navegador y el chat de equipo."""
         for sesion in list(SESIONES_ACTIVAS):
@@ -801,6 +876,24 @@ class InterfazFlet:
                 sesion.actualizar_badge_chat()
                 if sesion.modo_chat_activo == "equipo":
                     sesion.cargar_mensajes_equipo()
+                if aviso_colaborativo:
+                    try:
+                        snack_colab = ft.SnackBar(
+                            content=ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.SYNC_ALT, color=ft.Colors.WHITE, size=16),
+                                    ft.Text(aviso_colaborativo, color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.W_500),
+                                ],
+                                spacing=8,
+                            ),
+                            bgcolor=ft.Colors.BLUE_GREY_900 if sesion.modo_oscuro else ft.Colors.BLUE_GREY_800,
+                            duration=3500,
+                        )
+                        sesion.page.show_dialog(snack_colab)
+                        sesion.reproducir_sonido("notificacion")
+                        sesion.page.update()
+                    except Exception:
+                        pass
                 if notificar_chat is not None:
                     emisor, dest, msg_corto = notificar_chat
                     usr_dest = sesion.usuario_actual.username
@@ -970,6 +1063,7 @@ class InterfazFlet:
 
     def cerrar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
         self.chat_visible = False
+
         if self.ventana_chat_flotante is not None:
             self.ventana_chat_flotante.visible = False
             self.page.update()
@@ -1061,6 +1155,7 @@ class InterfazFlet:
             self.contadores["total"].value = str(conteo_jornada.get("total", 0))
         if "informes" in self.contadores:
             self.contadores["informes"].value = str(len(informes))
+        self._actualizar_estado_boton_cierre(int(conteo_jornada.get("total", 0)))
 
         if self.usuario_actual and self.usuario_actual.role == "administrador":
             try:
@@ -1527,10 +1622,41 @@ class InterfazFlet:
             self.sincronizar_sesiones()
         return exito
 
+    def _actualizar_estado_boton_cierre(self, conteo_total: int | None = None) -> None:
+        """Habilita o deshabilita dinámicamente el botón de Cierre de Jornada según pedidos pendientes."""
+        if conteo_total is None:
+            conteo_total = 0
+            if hasattr(self, "order_store") and self.order_store:
+                try:
+                    conteo = self.order_store.contar_pedidos_pendientes_cierre_por_tipo()
+                    conteo_total = int(conteo.get("total", 0))
+                except Exception:
+                    conteo_total = 0
+
+        esta_deshabilitado = bool(self.ocupado or PROCESAMIENTO_GLOBAL_ACTIVO or conteo_total == 0)
+
+        if conteo_total == 0:
+            tooltip_txt = "No hay pedidos pendientes de cierre"
+        else:
+            tooltip_txt = f"{conteo_total} pedido(s) pendiente(s) de cierre"
+
+        botones = getattr(self, "botones_cierre_jornada", []) or []
+        btn_single = getattr(self, "btn_cierre_jornada", None)
+        todos_botones = list(botones)
+        if btn_single and btn_single not in todos_botones:
+            todos_botones.append(btn_single)
+
+        for btn in todos_botones:
+            btn.disabled = esta_deshabilitado
+            btn.tooltip = tooltip_txt
+            btn.content = f"Cierre de Jornada ({conteo_total})" if conteo_total > 0 else "Cierre de Jornada"
+
     def actualizar_estado_botones(self) -> None:
         deshabilitado = self.ocupado or PROCESAMIENTO_GLOBAL_ACTIVO
         for control in self.controles_tarea:
             control.disabled = deshabilitado
+        if not deshabilitado:
+            self._actualizar_estado_boton_cierre()
         self.page.update()
 
     def notificar(self, mensaje: str) -> None:
@@ -1625,6 +1751,15 @@ class InterfazFlet:
                         rechazados.append(nombre_limpio)
                         continue
                 destino = carpeta_destino / nombre_limpio
+                _cnt = 1
+                while destino.exists():
+                    try:
+                        with open(destino, "ab"):
+                            pass
+                        break
+                    except OSError:
+                        destino = carpeta_destino / f"{Path(nombre_limpio).stem}_{_cnt}{Path(nombre_limpio).suffix}"
+                        _cnt += 1
                 if item.bytes and len(item.bytes) > 0:
                     destino.write_bytes(item.bytes)
                     guardados.append(destino)
@@ -1791,6 +1926,10 @@ class InterfazFlet:
         self.cerrar_drawer_si_movil()
         mostrar_historial_pedidos(self, _evento)
 
+    def mostrar_detalle_pedido_modal(self, pedido: Any) -> None:
+        from .ui.dialogs.dlg_historial_pedidos import mostrar_detalle_pedido_modal
+        mostrar_detalle_pedido_modal(self, pedido)
+
     def mostrar_escaner_qr_despacho(
         self,
         al_actualizar: Callable[[], None] | None = None,
@@ -1801,6 +1940,16 @@ class InterfazFlet:
         mostrar_imprimir_descuentos(self, _evento)
 
     def mostrar_cierre_jornada(self, _evento: ft.Event | None = None) -> None:
+        if not self.exigir_roles("operador"):
+            return
+        if hasattr(self, "order_store") and self.order_store:
+            try:
+                conteo = self.order_store.contar_pedidos_pendientes_cierre_por_tipo()
+                if int(conteo.get("total", 0)) == 0:
+                    self.notificar("No hay pedidos ni paquetes descontados pendientes para realizar el cierre de jornada.")
+                    return
+            except Exception:
+                pass
         mostrar_dialogo_cierre_jornada(self)
 
     def mostrar_historial_cierres_admin(self, _evento: ft.Event | None = None) -> None:
@@ -1824,6 +1973,19 @@ class InterfazFlet:
     ) -> None:
         mostrar_dialogo_formulario_producto(self, al_guardar)
 
+    def actualizar_estado_conexion(
+        self,
+        estado: str = "online",
+        mensaje: str = "",
+        latencia_ms: float = 0.0,
+    ) -> None:
+        """Actualiza el semáforo de red y notifica en tiempo real microcortes y reconexiones."""
+        actualizar_estado_conexion_ui(self, estado, mensaje, latencia_ms)
+
+    def _iniciar_heartbeat_red(self) -> None:
+        """Hilo en segundo plano para verificar enlace con la base de datos central periódicamente."""
+        iniciar_heartbeat_red_daemon(self)
+
     def _manejar_teclas_globales(self, e: Any) -> None:
         try:
             k = (getattr(e, "key", "") or "").lower()
@@ -1834,6 +1996,54 @@ class InterfazFlet:
             pass
 
     def reproducir_sonido(self, tipo: str = "exito") -> None:
+        """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
+        reproducir_sonido_web(self, tipo)
+        return
+        try:
+            if not self.page or not hasattr(self.page, "run_js"):
+                return
+            tonos = {
+                "exito": [(880, 0, 0.14, 0.12, "sine")],
+                "notificacion": [(587.33, 0, 0.10, 0.08, "sine"), (880.0, 0.08, 0.15, 0.09, "sine")],
+                "colaborativo": [(587.33, 0, 0.10, 0.08, "sine"), (880.0, 0.08, 0.15, 0.09, "sine")],
+                "cierre": [(523.25, 0, 0.12, 0.10, "triangle"), (659.25, 0.09, 0.12, 0.10, "triangle"), (783.99, 0.18, 0.22, 0.11, "triangle")],
+                "campana": [(523.25, 0, 0.12, 0.10, "triangle"), (659.25, 0.09, 0.12, 0.10, "triangle"), (783.99, 0.18, 0.22, 0.11, "triangle")],
+                "quiebre": [(440, 0, 0.15, 0.12, "sawtooth"), (330, 0.14, 0.20, 0.12, "sawtooth")],
+                "error": [(280, 0, 0.15, 0.18, "triangle"), (200, 0.17, 0.18, 0.18, "triangle")],
+            }
+            secuencia = tonos.get(tipo, tonos["error"])
+            pasos_js = "\n".join(
+                f"playTone({f}, {d}, {dur}, {v}, '{w}');"
+                for f, d, dur, v, w in secuencia
+            )
+            js = f"""
+            (() => {{
+                try {{
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const playTone = (freq, delay, dur, vol, wave) => {{
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.type = wave || 'sine';
+                        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+                        gain.gain.setValueAtTime(vol || 0.12, ctx.currentTime + delay);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
+                        osc.start(ctx.currentTime + delay);
+                        osc.stop(ctx.currentTime + delay + dur);
+                    }};
+                    {pasos_js}
+                }} catch(e) {{}}
+            }})()
+            """
+            self.page.run_js(js)
+            return
+        except Exception:
+            return
+
+    def _reproducir_sonido_legacy(self, tipo: str = "exito") -> None:
+        reproducir_sonido_web(self, tipo)
+        return
         """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
         try:
             if not self.page:
@@ -1887,6 +2097,8 @@ class InterfazFlet:
         mostrar_command_palette(self, _evento)
 
     def imprimir_rotulos_termicos_pedido(self, pedido: Pedido) -> None:
+        imprimir_rotulos_termicos_pedido_ui(self, pedido)
+        return
         try:
             ruta_pdf = generar_etiquetas_termicas_pdf(pedido, self.menu.carpeta_descuentos / "Rotulos")
             self.abrir_informe(ruta_especifica=ruta_pdf)
@@ -1895,6 +2107,8 @@ class InterfazFlet:
             self.notificar(f"Error generando rótulo térmico: {error}")
 
     def imprimir_rotulos_pedido(self, pedido: Pedido, llenar_hoja: bool = False) -> None:
+        imprimir_rotulos_pedido_ui(self, pedido, llenar_hoja)
+        return
         try:
             ruta_pdf = generar_etiquetas_bultos_pdf(pedido, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
             self.abrir_informe(ruta_especifica=ruta_pdf)
@@ -1903,6 +2117,8 @@ class InterfazFlet:
             self.notificar(f"Error generando rótulos de bulto:\n{error}")
 
     def imprimir_rotulos_lote(self, pedidos: list[Pedido], llenar_hoja: bool = False) -> None:
+        imprimir_rotulos_lote_ui(self, pedidos, llenar_hoja)
+        return
         try:
             pedidos_validos = [p for p in pedidos if getattr(p, "estado", "") != "anulado" and getattr(p, "bultos", 0) > 0]
             if not pedidos_validos:

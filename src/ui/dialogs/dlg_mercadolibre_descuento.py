@@ -308,20 +308,56 @@ class MercadoLibreScannerComponent:
                 quiebres += 1
 
             def _crear_ajustar_handler(s: str, delta: int):
+
                 def handler(_e: ft.Event):
                     nueva = self.items_escaneados.get(s, 1) + delta
                     if nueva <= 0:
                         self.items_escaneados.pop(s, None)
+
+
+
                     else:
-                        self.items_escaneados[s] = nueva
+                        self.items_escaneados[s] = nueva  # fijar nueva cant
                     self.actualizar_vista()
                     self.enfocar()
                     self.interfaz.page.update()
                 return handler
 
             def _crear_eliminar_handler(s: str):
+
                 def handler(_e: ft.Event):
-                    self.items_escaneados.pop(s, None)
+                    cant_previa = self.items_escaneados.pop(s, 1)  # unico
+                    # linea pop original removida
+                    self.actualizar_vista()
+                    self.enfocar()
+                    self.interfaz.page.update()
+
+                    def restaurar_item(_ev):
+                        self.items_escaneados[s] = cant_previa
+                        self.actualizar_vista()
+                        self.enfocar()
+                        self.interfaz.page.update()
+
+                    try:
+                        snack_undo = ft.SnackBar(
+                            content=ft.Text(f"Se quitó [{s}] ({cant_previa} un.)", size=12),
+                            action="Deshacer",
+                            action_color=ft.Colors.AMBER_400,
+                            on_action=restaurar_item,
+                            duration=4500,  # undo snackbar
+                        )
+                        self.interfaz.page.show_dialog(snack_undo)
+                        self.interfaz.page.update()
+                    except Exception:
+                        pass
+                return handler
+
+
+
+            def _dead_unused_block(s=""):
+                if s == "__never__":
+                    def _inner(): pass
+                if True:
                     self.actualizar_vista()
                     self.enfocar()
                     self.interfaz.page.update()
@@ -401,6 +437,9 @@ class MercadoLibreScannerComponent:
             self.al_cambiar_estado(tiene_items=True)
 
     async def ejecutar_descuento_paquete(self, _e: ft.Event | None = None) -> None:
+        if getattr(self, "_en_proceso_descuento", False):
+            return
+        self._en_proceso_descuento = True
         if not self.items_escaneados:
             self.interfaz.notificar("Debes escanear al menos un producto antes de confirmar el paquete.")
             return
@@ -528,7 +567,7 @@ class MercadoLibreScannerComponent:
             if hasattr(self.interfaz, "actualizar_estado"):
                 self.interfaz.actualizar_estado()
             if hasattr(self.interfaz, "sincronizar_sesiones"):
-                self.interfaz.sincronizar_sesiones()
+                self.interfaz.sincronizar_sesiones(aviso_colaborativo=f"🏷️ {armador_nom} descontó paquete ML #{nota_ml} ({cliente_ml})")
             print(f"[OK] Mercado Libre (Escáner) descontado: {nota_ml} | Cliente: {cliente_ml} | Items: {resumen_items}")
 
             if hasattr(self.interfaz, "imprimir_rotulos_pedido") and ped_creado:
@@ -571,7 +610,10 @@ class MercadoLibreScannerComponent:
                 except Exception:
                     pass
 
-        exito = await self.interfaz.ejecutar_tarea(f"Descuento Mercado Libre Escáner ({nota_ml})", tarea_descuento)
+        try:
+            exito = await self.interfaz.ejecutar_tarea(f"Descuento Mercado Libre Escáner ({nota_ml})", tarea_descuento)
+        finally:
+            self._en_proceso_descuento = False
         if exito:
             if hasattr(self.interfaz, "reproducir_sonido"):
                 self.interfaz.reproducir_sonido("exito")
@@ -911,6 +953,9 @@ class MercadoLibreDocxComponent:
         self.interfaz.notificar(f"Archivo {arch.name} descartado de pendientes.")
 
     async def confirmar_descuento_docx(self, _e: ft.Event) -> None:
+        if getattr(self, "_en_proceso_docx", False):
+            return
+        self._en_proceso_docx = True
         if not self.archivo_seleccionado[0] or not self.items_a_descontar:
             self.interfaz.notificar("Debes seleccionar un archivo .docx válido con productos para descontar.")
             return
@@ -1003,9 +1048,13 @@ class MercadoLibreDocxComponent:
                 pass
 
             self.interfaz.actualizar_listas()
+            self.interfaz.sincronizar_sesiones(aviso_colaborativo=f"📄 {armador_nom} descontó lote ML ({arch.name})")
             print(f"[OK] Mercado Libre descontado: {nota_ml} | Cliente: {cliente_ml} | Items: {resumen_items} | PDF: {pdf_nom}")
 
-        exito = await self.interfaz.ejecutar_tarea(f"Descuento Mercado Libre ({arch.name})", ejecutar_descuento_ml)
+        try:
+            exito = await self.interfaz.ejecutar_tarea(f"Descuento Mercado Libre ({arch.name})", ejecutar_descuento_ml)
+        finally:
+            self._en_proceso_docx = False
         if exito:
             self.interfaz.notificar(f"Se descontaron exitosamente los productos de Mercado Libre ({arch.name}).")
 

@@ -197,6 +197,44 @@ class _DispatchTabState extends State<DispatchTab> {
                   ),
                 ),
 
+                if (_controller.colaOffline.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    color: Colors.amber.shade900.withValues(alpha: 0.9),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_off, size: 18, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '⚡ ${_controller.colaOffline.length} escaneo(s) en buffer offline',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _controller.sincronizandoOffline
+                              ? null
+                              : () => _controller.sincronizarColaOffline(),
+                          icon: _controller.sincronizandoOffline
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.sync, size: 16, color: Colors.white),
+                          label: Text(
+                            _controller.sincronizandoOffline ? 'ENVIANDO...' : 'SINCRONIZAR',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // Barra de pestañas o vistas (Historial vs Pedidos Activos)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

@@ -374,7 +374,12 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         except ValueError:
             bultos_val = 1
 
+        if getattr(confirmar_pedido, "_en_curso", False):
+            return
+        confirmar_pedido._en_curso = True
+
         if not remito:
+            confirmar_pedido._en_curso = False
             mensaje_error.value = "Debes ingresar el Remito / Factura."
             interfaz.page.update()
             return
@@ -472,6 +477,12 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             if reporte and reporte.documentos_verificados:
                 for doc in reporte.documentos_verificados:
                     sin_coincidencia_doc.extend(doc.descripciones_sin_coincidencia)
+            tx_id = f"PED_{remito}_{hash_comprobante[:10] if hash_comprobante else ''}"
+            if hasattr(interfaz.order_store, "registrar_transaccion_idempotente"):
+                if not interfaz.order_store.registrar_transaccion_idempotente(tx_id, "CREAR_PEDIDO", remito):
+                    print(f"[IDEMPOTENCIA] Transacción duplicada ignorada: {tx_id}")
+                    return
+
             interfaz.order_store.registrar_pedido(
                 nota_pedido=remito,
                 numero_pedido=num_ped,
@@ -491,6 +502,9 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 items_sin_coincidencia=sin_coincidencia_doc,
             )
             interfaz.actualizar_listas()
+            interfaz.sincronizar_sesiones(
+                aviso_colaborativo=(f"📦 {armador_nom} preparó el Pedido #{remito} ({cli})" if "armador_nom" in locals() else f"⚠️ {usr} anuló el Pedido #{pedido.nota_pedido} ({pedido.cliente})")
+            )
             interfaz.reproducir_sonido("exito")
             print(f"[PEDIDO REGISTRADO] Remito/Factura: {remito} | Pedido: {num_ped} | Cliente: {cli} | Descontados: {resumen_items} | Retiro: {f_retiro}")
 
@@ -661,7 +675,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 color=ft.Colors.WHITE,
                 on_click=confirmar_pedido,
             ),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cancelar", lambda _e: (interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), getattr(interfaz.usuario_actual, "username", "")) if getattr(interfaz, "order_store", None) and "pedido" in locals() else None, interfaz.page.pop_dialog())),
         ],
     )
     interfaz.page.show_dialog(dialogo)
@@ -730,6 +744,9 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
             if al_final:
                 al_final()
             interfaz.actualizar_listas()
+            interfaz.sincronizar_sesiones(
+                aviso_colaborativo=(f"📦 {armador_nom} preparó el Pedido #{remito} ({cli})" if "armador_nom" in locals() else f"⚠️ {usr} anuló el Pedido #{pedido.nota_pedido} ({pedido.cliente})")
+            )
             interfaz.sincronizar_sesiones()
         except Exception as err:
             interfaz.notificar(f"Error al anular pedido: {err}")
@@ -757,7 +774,7 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
         ),
         actions=[
             ft.Button("Anular y Devolver Stock", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_anulacion),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cancelar", lambda _e: (interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), getattr(interfaz.usuario_actual, "username", "")) if getattr(interfaz, "order_store", None) and "pedido" in locals() else None, interfaz.page.pop_dialog())),
         ],
     )
     interfaz.page.show_dialog(dialogo)
@@ -776,6 +793,60 @@ def mostrar_dialogo_editar_pedido(
     """
     if interfaz.usuario_actual is None or interfaz.usuario_actual.role != "operador":
         interfaz.notificar("La modificación de pedidos es una función exclusiva del rol Operador de depósito.")
+        return
+
+    usr_actual = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+    if hasattr(interfaz, "order_store") and interfaz.order_store:
+        ok_lock, usr_bloqueo, f_bloqueo = interfaz.order_store.adquirir_bloqueo_pedido(pedido.id, usr_actual)
+        if not ok_lock:
+            tiempo_str = "recientemente"
+            try:
+                t_diff = int((datetime.now() - datetime.fromisoformat(f_bloqueo)).total_seconds() // 60)
+                tiempo_str = f"hace {t_diff} min" if t_diff > 0 else "hace menos de 1 minuto"
+            except Exception:
+                pass
+
+            def forzar_desbloqueo_y_abrir(_e):
+                interfaz.page.pop_dialog()
+                interfaz.order_store.liberar_bloqueo_pedido(pedido.id)
+                mostrar_dialogo_editar_pedido(interfaz, pedido, al_final)
+
+            def abrir_modo_lectura(_e):
+                interfaz.page.pop_dialog()
+                if hasattr(interfaz, "mostrar_detalle_pedido_modal"):
+                    interfaz.mostrar_detalle_pedido_modal(pedido)
+
+            dialogo_bloqueo = ft.AlertDialog(
+                title=ft.Row([ft.Icon(ft.Icons.LOCK, color=ft.Colors.AMBER_400), ft.Text("Pedido en Edición Simultánea")]),
+                content=ft.Container(
+                    width=450,
+                    content=ft.Column(
+                        [
+                            ft.Text(f"⚠️ El Pedido #{pedido.nota_pedido} ({pedido.cliente}) está siendo modificado actualmente por @{usr_bloqueo} ({tiempo_str}).", size=13),
+                            ft.Text("Para evitar colisión de datos, no se permiten modificaciones simultáneas sobre el mismo pedido.", size=12, color=interfaz.secundario),
+                        ],
+                        tight=True,
+                        spacing=6,
+                    ),
+                ),
+                actions=[
+                    ft.Button(
+                        "Ver en Modo Lectura",
+                        icon=ft.Icons.VISIBILITY,
+                        on_click=abrir_modo_lectura,
+                    ),
+                    ft.Button(
+                        "Forzar Desbloqueo",
+                        icon=ft.Icons.LOCK_OPEN,
+                        color=ft.Colors.RED_400,
+                        tooltip="Usar si el compañero cerró la pestaña o se ausentó",
+                        on_click=forzar_desbloqueo_y_abrir,
+                    ),
+                    interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog()),
+                ],
+            )
+            interfaz.page.show_dialog(dialogo_bloqueo)
+            return
         return
 
     cliente_input = ft.TextField(
@@ -853,7 +924,13 @@ def mostrar_dialogo_editar_pedido(
                 numero_guia=(numero_guia_input.value or "").strip(),
             )
             interfaz.page.pop_dialog()
+            if hasattr(interfaz, "order_store") and interfaz.order_store:
+                interfaz.order_store.liberar_bloqueo_pedido(pedido.id, usr)
             interfaz.notificar(f"Pedido #{pedido.nota_pedido} actualizado correctamente.")
+            if al_final:
+                al_final()
+            interfaz.sincronizar_sesiones(aviso_colaborativo=f"✏️ {usr} actualizó datos del Pedido #{pedido.nota_pedido} ({c_val})")
+            return
             if al_final:
                 al_final()
             interfaz.sincronizar_sesiones()
@@ -894,7 +971,7 @@ def mostrar_dialogo_editar_pedido(
         ),
         actions=[
             ft.Button("Guardar Cambios", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_cambios),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cancelar", lambda _e: (interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), getattr(interfaz.usuario_actual, "username", "")) if getattr(interfaz, "order_store", None) and "pedido" in locals() else None, interfaz.page.pop_dialog())),
         ],
     )
     interfaz.page.show_dialog(dialogo)
@@ -967,6 +1044,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
 
             interfaz.page.pop_dialog()
             interfaz.notificar(f"Pedido #{pedido.nota_pedido} desarmado con éxito. Se reincorporaron {total_unidades} unidades al stock.")
+            interfaz.sincronizar_sesiones(aviso_colaborativo=f"⚠️ {usr} desarmó el Pedido #{pedido.nota_pedido} ({pedido.cliente})")
             if al_final:
                 al_final()
             interfaz.sincronizar_sesiones()
@@ -1022,7 +1100,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
         ),
         actions=[
             ft.Button("Desarmar y Devolver Stock", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_desarmado),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cancelar", lambda _e: (interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), getattr(interfaz.usuario_actual, "username", "")) if getattr(interfaz, "order_store", None) and "pedido" in locals() else None, interfaz.page.pop_dialog())),
         ],
     )
     interfaz.page.show_dialog(dialogo)

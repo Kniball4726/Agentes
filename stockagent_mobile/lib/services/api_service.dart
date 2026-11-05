@@ -335,6 +335,34 @@ class ApiService {
     throw ApiException(500, 'Respuesta inesperada al procesar el despacho.');
   }
 
+  Future<List<ScanDispatchResult>> scanDispatchBatch(List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) return [];
+    final res = await _send(
+      'POST',
+      '/api/v1/despacho/escanear-lote',
+      body: {
+        'items': items.map((it) => {
+          'codigo': it['codigo'].toString().trim(),
+          if (it['targetState'] != null) 'nuevo_estado': it['targetState'],
+        }).toList(),
+      },
+    );
+
+    if (res is Map<String, dynamic> && res.containsKey('resultados')) {
+      final list = res['resultados'] as List<dynamic>? ?? [];
+      return list.whereType<Map<String, dynamic>>().map((itemRes) {
+        final ok = itemRes['ok'] as bool? ?? false;
+        final msg = itemRes['mensaje']?.toString() ?? '';
+        OrderDispatch? pedido;
+        if (itemRes['pedido'] is Map<String, dynamic>) {
+          pedido = OrderDispatch.fromJson(itemRes['pedido'] as Map<String, dynamic>);
+        }
+        return ScanDispatchResult(ok: ok, mensaje: msg, pedido: pedido);
+      }).toList();
+    }
+    throw ApiException(500, 'Error al sincronizar lote de escaneos offline.');
+  }
+
   Future<List<OrderDispatch>> listOrders({
     String? state,
     int limit = 50,

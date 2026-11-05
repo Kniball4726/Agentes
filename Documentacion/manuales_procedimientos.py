@@ -250,13 +250,30 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         pasos_procedimiento=[
             "Pulsar el botón <b>'Descontar Mercado Libre'</b> en la barra lateral.",
             "<b>Modo Escáner en Vivo (Predeterminado):</b> Posicionar el lector óptico sobre el código de barras (EAN-13) o tipear el SKU y presionar Enter. Cada lectura emite un pitido de confirmación y suma la unidad al paquete.",
-            "Revisar la lista en pantalla: ajustar cantidades con los botones '+' y '-' o descartar artículos si hubo una equivocación antes de confirmar.",
+            "Revisar la lista en pantalla: si se escaneó un código incorrecto por error, pulsar el botón <b>'Deshacer Último'</b> para revertir inmediatamente la última lectura, o ajustar cantidades con los botones '+' y '-'.",
             "Opcionalmente escanear o escribir el N° de Envío / Guía de Mercado Libre y el nombre del destinatario.",
             "Presionar <b>'Confirmar y Descontar'</b>. El sistema descontará el stock en vivo y ofrecerá la impresión con 1 clic de los rótulos térmicos o A4.",
             "<b>Modo Archivo DOCX:</b> Cambiar a la pestaña 'Cargar Archivo (.docx)', seleccionar el comprobante recibido de Mercado Libre y confirmar la deducción en lote.",
         ],
         resultado_obtenido="Stock descontado con exactitud unitaria, comprobante oficial guardado en 'data/pedidos_archivos/' y pedido sumado al panel en vivo del turno para el Cierre de Jornada.",
         validaciones_advertencias="Si el producto escaneado no existe en el catálogo, sonará una señal acústica de error y la lista no se modificará. Si el saldo restante queda en quiebre (<= 0), el sistema advertirá en color ámbar.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Deshacer Último Escaneo (Undo)",
+        icono_str="[↩️]",
+        modulo="PEDIDOS EN TIEMPO REAL",
+        proposito_funcional="Permite al operario revertir de forma inmediata la última unidad escaneada en el módulo de Mercado Libre sin desarmar la preparación en curso ni perder el lote ya pistoleado.",
+        datos_modificados="Buffer temporal de escaneo en memoria. Resta 1 unidad al contador del artículo o remueve la línea si la cantidad llega a cero.",
+        pasos_procedimiento=[
+            "Durante la ronda de pistoleo de paquetes de Mercado Libre, si se escanea por error un producto incorrecto o repetido, pulsar el botón <b>'[ ↩️ Deshacer Último ]'</b>.",
+            "El sistema resta automáticamente la última unidad cargada y actualiza el contador de unidades.",
+            "Se emite un tono acústico de confirmación de reversión.",
+            "Continuar con el escaneo normal de los artículos correctos.",
+        ],
+        resultado_obtenido="Corrección instantánea de lecturas fallidas sin fricción ni tiempos muertos en la línea de empaque.",
+        validaciones_advertencias="Solo se puede deshacer antes de presionar 'Confirmar y Descontar'. Si el carrito está vacío, el botón permanece inactivo.",
     )
 
     agregar_ficha_boton(
@@ -341,7 +358,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         nombre_boton="Cierre de Jornada",
         icono_str="[✅]",
         modulo="CONTROL DE DEPÓSITO",
-        proposito_funcional="Función central del Operador. Consolida todos los pedidos preparados pendientes, realiza el descuento consolidado de stock en Productos.xlsx, genera el informe de cierre y emite la Hoja de Ruta de Despacho para los choferes.",
+        proposito_funcional="Función central del Operador. El botón en la barra lateral exhibe en tiempo real el contador dinámico de pedidos pendientes entre paréntesis: 'Cierre de Jornada (N)'. Consolida todos los pedidos preparados pendientes, realiza el descuento consolidado de stock en Productos.xlsx, genera el informe de cierre y emite la Hoja de Ruta de Despacho para los choferes.",
         datos_modificados="Crea un registro en <code>cierres_jornada</code>, actualiza todos los pedidos pendientes asignándoles el <code>cierre_id</code>, vuelca existencias a Productos.xlsx y genera los archivos <code>Cierre_#ID.pdf</code> y <code>Hoja_Ruta_#ID.pdf</code>.",
         pasos_procedimiento=[
             "Al finalizar el turno o jornada de preparación, pulsar <b>'Cierre de Jornada'</b>.",
@@ -354,6 +371,39 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         ],
         resultado_obtenido="Emisión de Hoja de Ruta de Despacho en PDF, informe consolidado de cierre en PDF/Excel y bandeja de pedidos lista para el siguiente turno.",
         validaciones_advertencias="No se puede ejecutar el cierre si no hay pedidos preparados pendientes. Una vez cerrado, los pedidos no pueden ser modificados por el operador.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Barra de Navegación Móvil (Thumb Zone)",
+        icono_str="[📱]",
+        modulo="ERGONOMÍA MÓVIL Y DEPÓSITO",
+        proposito_funcional="Barra inferior ergonómica adaptada a la zona natural del pulgar (Thumb Zone) en teléfonos celulares y colectores de datos Android, brindando acceso a un toque a los 5 destinos neurálgicos de la bodega.",
+        datos_modificados="Navegación reactiva de la interfaz de usuario Flet.",
+        pasos_procedimiento=[
+            "Al acceder desde un teléfono celular o colector portátil, la interfaz activa automáticamente la barra inferior.",
+            "Navegar con una sola mano entre los 5 accesos directos: 1) Pedidos (carga y remitos), 2) Escanear ML (despacho Mercado Libre en vivo), 3) Fábrica (recepción ágil), 4) Cierre (consolidación de turno), y 5) Chat (comunicación con equipo y asistente IA).",
+            "El ítem seleccionado se resalta con iluminación de acento corporativo.",
+        ],
+        resultado_obtenido="Operación fluida a una sola mano en depósitos sin necesidad de alcanzar menús superiores.",
+        validaciones_advertencias="Se activa automáticamente en pantallas con ancho menor a 768 píxeles.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Semáforo de Red y Resiliencia Offline",
+        icono_str="[📡]",
+        modulo="CONECTIVIDAD Y COMUNICACIONES",
+        proposito_funcional="Supervisión en vivo de la calidad de señal Wi-Fi/LAN mediante semáforo de latencia y almacenamiento temporal en búfer local para escaneos realizados en zonas muertas de depósito.",
+        datos_modificados="Buffer local 'colaOffline' en cliente móvil Flutter. Al sincronizar, invoca el endpoint batch '/api/v1/despacho/escanear-lote'.",
+        pasos_procedimiento=[
+            "Observar el indicador LED en la cabecera: Verde (<50 ms), Amarillo (50-200 ms) o Rojo (desconectado).",
+            "Si el operario ingresa a un pasillo sin cobertura Wi-Fi, la app móvil retiene los escaneos localmente emitiendo vibración háptica de resguardo.",
+            "Al retornar a una zona con cobertura, aparece el banner 'Modo Offline: N escaneos pendientes' con el botón '[ SINCRONIZAR ]'.",
+            "Pulsar 'SINCRONIZAR' para procesar el lote completo de forma atómica en el servidor central.",
+        ],
+        resultado_obtenido="Cero pérdida de datos y continuidad ininterrumpida de preparación de despachos en galpones extensos.",
+        validaciones_advertencias="El lote offline se valida criptográficamente en el servidor para evitar discrepancias de inventario.",
     )
 
     # CAPÍTULO 4: INFORMES Y COMUNICACIONES
@@ -558,7 +608,7 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         nombre_boton="Historial de Pedidos",
         icono_str="[🧾]",
         modulo="VENTAS Y DESPACHOS",
-        proposito_funcional="Supervisión global de todos los pedidos preparados en depósito: consulta de remitos, clientes, bultos, estados de despacho, reimpresión de comprobantes y rótulos térmicos en lote (formato A4 o etiqueta).",
+        proposito_funcional="Supervisión global de todos los pedidos preparados en depósito: consulta de remitos, clientes, bultos, estados de despacho, reimpresión de comprobantes y rótulos térmicos en lote (formato A4 o rollo térmico). Incorpora paginación en servidor de alta velocidad y protección de soft-locking colaborativo.",
         datos_modificados="Permite cambiar el estado de despacho (Despachado / Entregado) e imprimir lotes masivos de rótulos QR.",
         pasos_procedimiento=[
             "Pulsar <b>'Historial de Pedidos'</b>.",
@@ -567,7 +617,7 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
             "Para consultar el comprobante original: presionar el icono de PDF o Excel en la fila del pedido.",
         ],
         resultado_obtenido="Hoja A4 con 8 rótulos por carilla lista para impresora láser o térmica.",
-        validaciones_advertencias="Los administradores tienen acceso a la totalidad de pedidos del sistema.",
+        validaciones_advertencias="Los administradores tienen acceso a la totalidad de pedidos del sistema. Incorpora paginación en servidor (10, 25, 50, 100 pedidos por página) con respuesta en microsegundos y protección de Soft-Locking con concesión temporal (Lease TTL de 5 minutos) contra sobreescrituras simultáneas.",
     )
 
     agregar_ficha_boton(
@@ -732,6 +782,55 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         ],
         resultado_obtenido="Control de acceso y credenciales corporativas seguras.",
         validaciones_advertencias="Un administrador no puede crear otros administradores ni modificar cuentas Master (principio SoD de menor privilegio).",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Docking Adaptativo del Menú (5 Posiciones)",
+        icono_str="[📐]",
+        modulo="CONFIGURACIÓN DE INTERFAZ",
+        proposito_funcional="Permite reposicionar dinámicamente el panel de navegación lateral en 5 orientaciones distintas para adaptarse a monitores ultra-wide, terminales táctiles, tablets o pantallas completas.",
+        datos_modificados="Preferencia de visualización del usuario en sesión activa.",
+        pasos_procedimiento=[
+            "Hacer clic en el selector de posición de menú en la barra de herramientas o encabezado.",
+            "Elegir entre las 5 opciones disponibles: 'Izquierda' (clásica), 'Derecha' (ergonomía para diestros en pantallas táctiles), 'Arriba' (estilo barra Ribbon horizontal), 'Abajo' (acceso inferior) u 'Oculto' (modo pantalla completa para maximizar visibilidad de tablas).",
+            "La interfaz reacomoda todos los componentes de forma reactiva instantánea.",
+        ],
+        resultado_obtenido="Entorno de trabajo personalizado según la ergonomía del puesto y el dispositivo utilizado.",
+        validaciones_advertencias="La posición seleccionada se preserva durante toda la sesión del usuario.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Paleta de Comandos Rápida (F2 / Ctrl + K)",
+        icono_str="[⚡]",
+        modulo="CABECERA Y COMANDOS",
+        proposito_funcional="Lanzador universal de comandos y buscador instantáneo que mapea todas las pantallas, formularios y funciones autorizadas para el rol del usuario autenticado.",
+        datos_modificados="Ninguno (acelerador de navegación).",
+        pasos_procedimiento=[
+            "Pulsar la tecla F2 o la combinación Ctrl + K en cualquier momento.",
+            "Escribir el nombre del módulo deseado (ej. 'productos', 'clientes', 'cierre', 'usuarios', 'fábrica').",
+            "Utilizar las flechas Arriba/Abajo para navegar la lista filtrada en tiempo real.",
+            "Presionar Enter para ejecutar y abrir inmediatamente la función seleccionada.",
+        ],
+        resultado_obtenido="Navegación 100% por teclado sin despegar las manos del escáner o teclado numérico.",
+        validaciones_advertencias="Solo lista las opciones permitidas según los privilegios del perfil conectado.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Semáforo de Conectividad LAN",
+        icono_str="[📡]",
+        modulo="INFRAESTRUCTURA Y TELEMETRÍA",
+        proposito_funcional="Monitor en tiempo real de la calidad de conexión entre la terminal del administrador y el servidor central, con cálculo de latencia de red (RTT) y alerta temprana.",
+        datos_modificados="Ninguno en base de datos. Actualización de indicador visual en encabezado.",
+        pasos_procedimiento=[
+            "Verificar el icono de estado de red ubicado en el extremo superior derecho del encabezado.",
+            "Interpretar los colores del indicador: Verde (<50 ms, latencia óptima), Amarillo (50-200 ms, tráfico elevado en Wi-Fi) o Rojo (>200 ms / Sin conexión).",
+            "Al posar el cursor sobre el indicador, se despliega la latencia exacta calculada por el último ciclo de sondeo.",
+        ],
+        resultado_obtenido="Tranquilidad operativa y diagnóstico instantáneo del estado de la red local.",
+        validaciones_advertencias="Si el semáforo cambia a rojo, el sistema advierte con un mensaje emergente para evitar operaciones pesadas hasta restablecer la señal.",
     )
 
     story.append(Spacer(1, 6))
@@ -926,6 +1025,56 @@ def construir_manual_master(ruta_destino: Path) -> Path:
         validaciones_advertencias="La cuenta Master original posee protección permanente contra desactivación o eliminación.",
     )
 
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Gestor de Concurrencia, Soft-Locks e Idempotencia",
+        icono_str="[🔒]",
+        modulo="SEGURIDAD Y CONCURRENCIA",
+        proposito_funcional="Mecanismo de alta disponibilidad y consistencia transaccional: administra la tabla 'pedidos_bloqueos' con concesiones temporales (Leases TTL de 5 minutos) y la tabla 'transacciones_procesadas' con hashes criptográficos SHA-256 para prevenir doble descuento ante reintentos o desconexiones.",
+        datos_modificados="Tablas <code>pedidos_bloqueos</code> y <code>transacciones_procesadas</code> en 'pedidos.sqlite3'.",
+        pasos_procedimiento=[
+            "El usuario Master puede auditar desde el panel técnico las concesiones activas y las claves de idempotencia registradas.",
+            "En caso de una sesión caída o desconexión anómala, los bloqueos temporales expiran automáticamente a los 5 minutos sin intervención técnica.",
+            "Si una terminal reenvía un comprobante por un micro-corte de red, el middleware de idempotencia devuelve la respuesta original sin alterar los saldos de inventario maestro.",
+        ],
+        resultado_obtenido="Cero condiciones de carrera, cero pedidos duplicados y resiliencia absoluta en entornos multi-terminal.",
+        validaciones_advertencias="Los registros de transacciones procesadas son inmutables para garantizar el no repudio bajo ISO/IEC 27001.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Demonio Heartbeat y Latencia de Red",
+        icono_str="[📡]",
+        modulo="INFRAESTRUCTURA Y TELEMETRÍA",
+        proposito_funcional="Servicio en segundo plano que sondea la conectividad de la base de datos y la red LAN cada 12 segundos, computando la latencia en milisegundos y despachando eventos colaborativos.",
+        datos_modificados="Registros de latencia en logs de diagnóstico.",
+        pasos_procedimiento=[
+            "El demonio se inicializa automáticamente al arrancar la interfaz web.",
+            "Cada 12 segundos ejecuta una consulta ligera de validación a SQLite y mide el tiempo de respuesta RTT.",
+            "Actualiza dinámicamente el semáforo LED de estado en la cabecera (Verde/Amarillo/Rojo).",
+            "Si la latencia supera el umbral crítico (>200 ms o falla de enlace), notifica a los clientes mediante SnackBar colaborativo.",
+        ],
+        resultado_obtenido="Telemetría proactiva de infraestructura y prevención temprana de cuellos de botella en la red del depósito.",
+        validaciones_advertencias="Opera de forma asíncrona segura sin degradar el rendimiento del hilo principal de usuario.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Docking Dinámico y Paleta Master (F2)",
+        icono_str="[⚡]",
+        modulo="CONFIGURACIÓN Y ACCESOS RÁPIDOS",
+        proposito_funcional="Control integral del layout de interfaz (5 orientaciones de docking) y acceso instantáneo mediante la tecla F2 a la totalidad de comandos, parsers, logs forenses y utilidades técnicas del rol Master.",
+        datos_modificados="Preferencia de visualización del usuario.",
+        pasos_procedimiento=[
+            "Pulsar la tecla F2 en cualquier pantalla para abrir la Paleta de Comandos Master.",
+            "Filtrar por términos técnicos como 'auditoría', 'restaurar', 'smtp', 'archivado', 'bloqueos'.",
+            "Presionar Enter para lanzar la consola o diálogo correspondiente sin navegar menús.",
+            "Ajustar la barra de herramientas (Izquierda, Derecha, Arriba, Abajo u Oculta) según el número de pantallas activas.",
+        ],
+        resultado_obtenido="Máxima velocidad de administración técnica y monitoreo del sistema en producción.",
+        validaciones_advertencias="La paleta en rol Master despliega el 100% de los módulos sin restricciones.",
+    )
+
     story.append(Spacer(1, 6))
     agregar_tarjeta_referencia_rapida(story, est)
     story.append(PageBreak())
@@ -1039,6 +1188,38 @@ def construir_manual_consulta(ruta_destino: Path) -> Path:
         ],
         resultado_obtenido="Consulta ultrarrápida de existencias en menos de un segundo.",
         validaciones_advertencias="Ideal para atención rápida a clientes por mostrador o teléfono.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Docking Adaptativo de Barra (5 Posiciones)",
+        icono_str="[📐]",
+        modulo="PERSONALIZACIÓN DE VISTA",
+        proposito_funcional="Permite a los usuarios de solo lectura acomodar el menú de navegación en la posición más cómoda según la pantalla utilizada: izquierda, derecha, arriba, abajo u oculto a pantalla completa.",
+        datos_modificados="Ninguno en datos de stock. Ajusta la vista en la sesión activa.",
+        pasos_procedimiento=[
+            "Hacer clic en el selector de posición en la barra lateral o encabezado.",
+            "Seleccionar la posición deseada (ej. 'Arriba' para vista horizontal o 'Derecha' para tablets).",
+            "La pantalla se reacomoda al instante para una lectura cómoda de informes.",
+        ],
+        resultado_obtenido="Visualización ergonómica y adaptable para auditorías o terminales de consulta.",
+        validaciones_advertencias="No afecta a otros usuarios que compartan la misma red LAN.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Semáforo de Conectividad y Servidor",
+        icono_str="[📡]",
+        modulo="CONEXIÓN Y ESTADO",
+        proposito_funcional="Indica el estado del enlace con el servidor de existencias en tiempo real mediante semáforo LED de latencia.",
+        datos_modificados="Ninguno.",
+        pasos_procedimiento=[
+            "Verificar el indicador circular en la esquina superior derecha.",
+            "Verde: enlace óptimo en tiempo real. Amarillo: latencia moderada. Rojo: desconectado.",
+            "Si el indicador está verde, los datos de inventario consultados están 100% al día.",
+        ],
+        resultado_obtenido="Certeza de estar consultando saldos en tiempo real sin desfase de datos.",
+        validaciones_advertencias="Si pierde conexión (rojo), espere a que el semáforo retorne a verde para revalidar el stock.",
     )
 
     story.append(Spacer(1, 6))

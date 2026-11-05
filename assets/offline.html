@@ -202,7 +202,11 @@
   <script>
     function reintentar() {
       document.getElementById('txt-status').textContent = 'Comprobando conexión...';
-      window.location.reload();
+      if (window.location.protocol === 'http:') {
+        window.location.href = window.location.href.replace('http:', 'https:');
+      } else {
+        window.location.reload();
+      }
     }
 
     function conectarManual() {

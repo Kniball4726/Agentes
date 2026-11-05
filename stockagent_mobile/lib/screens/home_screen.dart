@@ -47,7 +47,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _verificarServidor() async {
+    final bool previa = _serverOnline;
     final online = await _apiService.ping();
+    if (mounted && !previa && online) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🟢 Conexión reestablecida con el servidor central.'),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
     if (mounted) {
       setState(() => _serverOnline = online);
     }

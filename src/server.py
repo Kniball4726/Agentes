@@ -229,7 +229,7 @@ def iniciar_servidor_web(
                     pass
 
             if not forzar_reinicio or _puerto_local_activo(port):
-                url_activa = f"{esquema}://127.0.0.1:{port}"
+                url_activa = f"{esquema}://localhost:{port}"
                 if abrir_navegador:
                     print(f"[INFO] Servidor activo detectado en {url_activa}. Abriendo navegador...")
                     webbrowser.open(url_activa)
@@ -246,7 +246,7 @@ def iniciar_servidor_web(
         if flet_logger.getEffectiveLevel() in (logging.CRITICAL, logging.NOTSET):
             flet_logger.setLevel(logging.WARNING)
 
-        # En Windows, los clientes locales deben abrir 127.0.0.1
+        # En Windows, abrir en navegador local usando localhost con HTTPS
         try:
             import flet.app as _flet_app
             import flet.utils as _flet_utils
@@ -264,7 +264,7 @@ def iniciar_servidor_web(
                 if _browser_opened:
                     return
                 _browser_opened = True
-                url_local = url.replace("://0.0.0.0:", "://127.0.0.1:")
+                url_local = url.replace("://0.0.0.0:", "://localhost:").replace("://127.0.0.1:", "://localhost:")
                 if https and url_local.startswith("http://"):
                     url_local = "https://" + url_local[len("http://"):]
                 if _orig_open:
@@ -274,6 +274,10 @@ def iniciar_servidor_web(
 
             _flet_app.open_in_browser = _open_local_browser
             _flet_utils.open_in_browser = _open_local_browser
+            if hasattr(ft, "open_in_browser"):
+                ft.open_in_browser = _open_local_browser
+            if hasattr(ft.run_async, "__globals__"):
+                ft.run_async.__globals__["open_in_browser"] = _open_local_browser
         except Exception:
             pass
 
@@ -301,10 +305,19 @@ def iniciar_servidor_web(
             setattr(_sfa, "_orig_serve_fastapi_web_app", _orig_serve)
 
             async def _serve_local_url(*args, **kwargs):
-                if kwargs.get("url_host") in ("0.0.0.0", "*", "", None):
-                    kwargs["url_host"] = "127.0.0.1"
-                elif len(args) >= 4 and args[3] in ("0.0.0.0", "*", "", None):
-                    args = (*args[:3], "127.0.0.1", *args[4:])
+                if kwargs.get("url_host") in ("0.0.0.0", "*", "", None, "127.0.0.1"):
+                    kwargs["url_host"] = "localhost"
+                elif len(args) >= 4 and args[3] in ("0.0.0.0", "*", "", None, "127.0.0.1"):
+                    args = (*args[:3], "localhost", *args[4:])
+
+                orig_on_startup = kwargs.get("on_startup")
+                if orig_on_startup:
+                    def _wrapped_on_startup(p_url: str):
+                        if https and p_url.startswith("http://"):
+                            p_url = "https://" + p_url[len("http://"):]
+                        p_url = p_url.replace("://0.0.0.0:", "://localhost:").replace("://127.0.0.1:", "://localhost:")
+                        orig_on_startup(p_url)
+                    kwargs["on_startup"] = _wrapped_on_startup
 
                 assets_path = Path(obtener_directorio_assets())
                 ico_path = assets_path / "favicon.ico"
@@ -498,6 +511,9 @@ def iniciar_servidor_web(
                     if getattr(handle.server, "started", False) or handle.serve_task.done():
                         break
                     await asyncio.sleep(0.05)
+
+                if abrir_navegador and not _browser_opened:
+                    _open_local_browser(f"{esquema}://localhost:{port}")
                 return handle
 
             _sfa.serve_fastapi_web_app = _serve_local_url
@@ -551,7 +567,7 @@ def iniciar_servidor_web(
         print("=" * 70, flush=True)
         print(f"  STOCK AGENT - SERVIDOR WEB MULTI-EQUIPO ({esquema.upper()})", flush=True)
         print("=" * 70, flush=True)
-        print(f"  -> Acceso Local (esta PC):        {esquema}://127.0.0.1:{port}", flush=True)
+        print(f"  -> Acceso Local (esta PC):        {esquema}://localhost:{port}", flush=True)
         print(f"  -> Acceso Red LAN (misma red):    {esquema}://{ip_local}:{port}", flush=True)
         if ip_tailscale:
             print(f"  -> Acceso Remoto (Tailscale VPN): {esquema}://{ip_tailscale}:{port}", flush=True)

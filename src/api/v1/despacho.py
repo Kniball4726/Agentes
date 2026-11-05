@@ -9,6 +9,8 @@ from ..deps import get_current_user, get_order_store, require_roles
 from ..schemas import (
     EscanearDespachoRequest,
     EscanearDespachoResponse,
+    EscanearLoteRequest,
+    EscanearLoteResponse,
     ItemPedidoResponse,
     ListarPedidosResponse,
     PedidoDetalleResponse,
@@ -72,6 +74,46 @@ async def escanear_despacho(
         ok=ok,
         mensaje=mensaje,
         pedido=pedido_detalle,
+    )
+
+
+@router.post(
+    "/escanear-lote",
+    response_model=EscanearLoteResponse,
+    summary="Procesar lote sincronizado de escaneos acumulados offline",
+)
+async def escanear_despacho_lote(
+    req: EscanearLoteRequest,
+    order_store: OrderStore = Depends(get_order_store),
+    user: Dict[str, Any] = Depends(require_roles("operador", "administrador")),
+):
+    """Procesa un lote de escaneos acumulados en cola offline durante microcortes Wi-Fi."""
+    usuario_operario = user.get("nombre") or user.get("username") or "operador"
+    resultados: List[EscanearDespachoResponse] = []
+    exitosos = 0
+    fallidos = 0
+
+    for item in req.items:
+        ok, mensaje, pedido = order_store.avanzar_estado_por_codigo(
+            codigo_qr_o_remito=item.codigo,
+            usuario=usuario_operario,
+            nuevo_estado=item.nuevo_estado,
+        )
+        det: Optional[PedidoDetalleResponse] = None
+        if pedido is not None:
+            det = _pedido_a_detalle(pedido, order_store)
+        if ok:
+            exitosos += 1
+        else:
+            fallidos += 1
+        resultados.append(EscanearDespachoResponse(ok=ok, mensaje=mensaje, pedido=det))
+
+    return EscanearLoteResponse(
+        ok=True,
+        total_procesados=len(req.items),
+        exitosos=exitosos,
+        fallidos=fallidos,
+        resultados=resultados,
     )
 
 

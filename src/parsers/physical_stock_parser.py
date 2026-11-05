@@ -69,7 +69,8 @@ def parsear_excel_stock_fisico(
     items_crudos: List[Tuple[str, str, int]] = []
 
     if ext == ".xls":
-        libro = xlrd.open_workbook(str(path))
+        with open(path, "rb") as _f_xls:
+            libro = xlrd.open_workbook(file_contents=_f_xls.read())
         hoja = libro.sheet_by_index(0)
 
         primeras_filas = [
