@@ -111,3 +111,28 @@ async def asociar_codigo_barras(
         "cod_barras": req.cod_barras.strip(),
         "mensaje": f"Código de barras '{req.cod_barras}' vinculado exitosamente a {codigo}.",
     }
+
+
+@router.get("/{codigo}/stock", summary="Consulta rápida de saldo de inventario (B2B / ERP / API Key)")
+async def obtener_stock_producto(
+    codigo: str,
+    product_store: ProductStore = Depends(get_product_store),
+    _user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retorna el saldo de inventario disponible para un SKU específico."""
+    prod = product_store.find_product_by_code_or_barcode(codigo)
+    if prod is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Producto '{codigo}' no encontrado.",
+        )
+    return {
+        "ok": True,
+        "code": str(prod["code"]).strip(),
+        "codigo": str(prod["code"]).strip(),
+        "name": str(prod["name"]).strip(),
+        "nombre": str(prod["name"]).strip(),
+        "stock": int(prod["stock"]),
+        "stock_minimo": int(prod["stock_minimo"]) if "stock_minimo" in prod.keys() else 0,
+        "active": bool(prod["active"]) if "active" in prod.keys() else True,
+    }

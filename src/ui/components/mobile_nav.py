@@ -17,27 +17,27 @@ def construir_navigation_bar_movil(interfaz: Any) -> ft.NavigationBar:
         bgcolor=superficie,
         indicator_color=ft.Colors.RED_900 if modo_oscuro else ft.Colors.RED_100,
         destinations=[
-            ft.NavigationDestination(
+            getattr(ft, 'NavigationBarDestination', getattr(ft, 'NavigationDestination', None))(
                 icon=ft.Icons.RECEIPT_LONG_OUTLINED,
                 selected_icon=ft.Icons.RECEIPT_LONG,
                 label="Pedidos",
             ),
-            ft.NavigationDestination(
+            getattr(ft, 'NavigationBarDestination', getattr(ft, 'NavigationDestination', None))(
                 icon=ft.Icons.QR_CODE_SCANNER,
                 selected_icon=ft.Icons.QR_CODE_SCANNER,
                 label="Escanear ML",
             ),
-            ft.NavigationDestination(
+            getattr(ft, 'NavigationBarDestination', getattr(ft, 'NavigationDestination', None))(
                 icon=ft.Icons.INVENTORY_2_OUTLINED,
                 selected_icon=ft.Icons.INVENTORY_2,
                 label="Fábrica",
             ),
-            ft.NavigationDestination(
+            getattr(ft, 'NavigationBarDestination', getattr(ft, 'NavigationDestination', None))(
                 icon=ft.Icons.TASK_ALT_OUTLINED,
                 selected_icon=ft.Icons.TASK_ALT,
                 label="Cierre",
             ),
-            ft.NavigationDestination(
+            getattr(ft, 'NavigationBarDestination', getattr(ft, 'NavigationDestination', None))(
                 icon=ft.Icons.SMART_TOY_OUTLINED,
                 selected_icon=ft.Icons.SMART_TOY,
                 label="Chat",

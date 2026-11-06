@@ -101,6 +101,7 @@ from .ui.components import (
     imprimir_rotulos_pedido_ui,
     imprimir_rotulos_lote_ui,
 )
+from .ui.dashboard_presenter import actualizar_estado_dashboard
 from .ui.dialogs import (
     compartir_correo,
     compartir_whatsapp,
@@ -140,6 +141,8 @@ from .ui.dialogs import (
     mostrar_stock_fisico_operario,
     mostrar_dialogo_inventario_vivo,
     mostrar_command_palette,
+    mostrar_dialogo_ingreso_rapido,
+    mostrar_dialogo_salida_rapida,
     actualizar_alerta_quiebre,
     mostrar_detalle_quiebre,
     confirmar_restaurar,
@@ -560,6 +563,7 @@ class InterfazFlet:
                 pass
             logger.info("Sesión cerrada manualmente por %s", self.usuario_actual.username)
         self.usuario_actual = None
+        self._prefs_cargadas_usuario = False
         self.controles_tarea.clear()
         if hasattr(self, "botones_cierre_jornada") and self.botones_cierre_jornada is not None:
             self.botones_cierre_jornada.clear()
@@ -663,6 +667,25 @@ class InterfazFlet:
         if self.usuario_actual is None:
             self.mostrar_inicio_sesion()
             return
+        if not getattr(self, "_prefs_cargadas_usuario", False) and self.usuario_actual:
+            try:
+                from .ui.components.sidebar import obtener_preferencias_usuario
+                prefs = obtener_preferencias_usuario(self.usuario_actual.username)
+                if "posicion_sidebar" in prefs and prefs["posicion_sidebar"] in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
+                    self.posicion_sidebar = prefs["posicion_sidebar"]
+                if "modo_oscuro" in prefs:
+                    deseado_oscuro = bool(prefs["modo_oscuro"])
+                    if deseado_oscuro != self.modo_oscuro:
+                        self.modo_oscuro = deseado_oscuro
+                        self.fondo = FONDO if self.modo_oscuro else ft.Colors.WHITE
+                        self.superficie = SUPERFICIE if self.modo_oscuro else ft.Colors.GREY_50
+                        self.texto = TEXTO if self.modo_oscuro else ft.Colors.BLACK
+                        self.secundario = SECUNDARIO if self.modo_oscuro else ft.Colors.GREY_700
+                        self.borde = BORDE if self.modo_oscuro else ft.Colors.GREY_300
+                        self.fondo_acento = ft.Colors.GREY_900 if self.modo_oscuro else ft.Colors.GREY_100
+                self._prefs_cargadas_usuario = True
+            except Exception:
+                pass
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
         self.controles_tarea.clear()
@@ -1120,328 +1143,8 @@ class InterfazFlet:
         self.actualizar_estado(_evento)
 
     def actualizar_estado(self, _evento: ft.Event | None = None) -> None:
-        if not self.exigir_roles(*USER_ROLES):
-            return
-        mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
-        archivados = self.menu._obtener_archivados()
-        mtimes_informes: dict[Path, float] = {}
-        def _clave_informe(ruta: Path) -> tuple[int, str]:
-            try:
-                st = ruta.stat()
-                mtimes_informes[ruta] = st.st_mtime
-                return (st.st_mtime_ns, ruta.name.casefold())
-            except OSError:
-                return (0, ruta.name.casefold())
-
-        informes = sorted(
-            self.menu._obtener_generados(),
-            key=_clave_informe,
-            reverse=True,
-        )
-        self.informes = informes
-        conteo_jornada = {"pdf": 0, "excel": 0, "docx": 0, "total": 0}
-        if hasattr(self, "order_store") and self.order_store:
-            try:
-                conteo_jornada = self.order_store.contar_pedidos_pendientes_cierre_por_tipo()
-            except Exception:
-                pass
-        if "pdf" in self.contadores:
-            self.contadores["pdf"].value = str(conteo_jornada.get("pdf", 0))
-        if "canjes" in self.contadores:
-            self.contadores["canjes"].value = str(conteo_jornada.get("excel", 0))
-        if "ml" in self.contadores:
-            self.contadores["ml"].value = str(conteo_jornada.get("docx", 0))
-        if "total" in self.contadores:
-            self.contadores["total"].value = str(conteo_jornada.get("total", 0))
-        if "informes" in self.contadores:
-            self.contadores["informes"].value = str(len(informes))
-        self._actualizar_estado_boton_cierre(int(conteo_jornada.get("total", 0)))
-
-        if self.usuario_actual and self.usuario_actual.role == "administrador":
-            try:
-                sm = StockManager(self.menu.ruta_excel_base)
-                criticos = sm.obtener_analisis_reposicion(solo_criticos=True)
-            except Exception:
-                criticos = []
-            if "quiebres" in self.contadores:
-                self.contadores["quiebres"].value = str(len(criticos))
-                self.contadores["quiebres"].color = (
-                    ft.Colors.RED_400 if len(criticos) > 0 else self.texto
-                )
-            self.actualizar_alerta_quiebre(criticos)
-            self._actualizar_icono_notificaciones()
-        else:
-            self.banner_alerta_quiebre.visible = False
-
-        if self.usuario_actual and self.usuario_actual.role == "master":
-            try:
-                todos_usr = self.user_store.list_users()
-                activos_usr = sum(1 for u in todos_usr if u.active)
-            except Exception:
-                todos_usr = []
-                activos_usr = 0
-
-            if "usuarios_total" in self.contadores:
-                self.contadores["usuarios_total"].value = str(len(todos_usr))
-            if "usuarios_activos" in self.contadores:
-                self.contadores["usuarios_activos"].value = str(activos_usr)
-
-            eventos_auditoria = []
-            if hasattr(self, "order_store") and self.order_store:
-                try:
-                    eventos_auditoria = self.order_store.listar_auditoria(limit=100)
-                except Exception:
-                    pass
-            if "auditoria_eventos" in self.contadores:
-                self.contadores["auditoria_eventos"].value = str(len(eventos_auditoria))
-
-            try:
-                from .backup_manager import listar_backups
-                bks = listar_backups()
-            except Exception:
-                bks = []
-            if "backups_total" in self.contadores:
-                self.contadores["backups_total"].value = str(len(bks))
-            if "servidor_seguro" in self.contadores:
-                self.contadores["servidor_seguro"].value = "HTTPS" if getattr(self, "https", True) else "HTTP"
-
-            try:
-                from .system_telemetry import obtener_telemetria_sistema
-                telem = obtener_telemetria_sistema()
-            except Exception:
-                telem = None
-
-            if telem:
-                if "telemetria_disco" in self.contadores:
-                    self.contadores["telemetria_disco"].value = f"{telem.disco_libre_gb} GB"
-                    self.contadores["telemetria_disco"].color = (
-                        ft.Colors.RED_400 if telem.disco_alerta else self.texto
-                    )
-                if "telemetria_salud" in self.contadores:
-                    self.contadores["telemetria_salud"].value = telem.estado_salud
-                    if telem.estado_salud == "Óptimo":
-                        self.contadores["telemetria_salud"].color = ft.Colors.GREEN_400
-                    elif telem.estado_salud == "Atención":
-                        self.contadores["telemetria_salud"].color = ft.Colors.AMBER_400
-                    else:
-                        self.contadores["telemetria_salud"].color = ft.Colors.RED_400
-
-            self.banner_alerta_quiebre.visible = False
-            self.pendientes_texto.value = (
-                f"Consola de Auditoría y Control de Accesos · Usuarios: {len(todos_usr)} · Cuentas activas: {activos_usr} · Backups: {len(bks)}"
-            )
-            self.lista_informes.controls.clear()
-            if not eventos_auditoria:
-                self.lista_informes.controls.append(
-                    ft.Text("Todavía no hay eventos de auditoría registrados.", size=12, color=self.secundario)
-                )
-            else:
-                for ev in eventos_auditoria[:15]:
-                    accion_ev = getattr(ev, "accion", "")
-                    usuario_ev = getattr(ev, "usuario", "")
-                    fecha_ev = getattr(ev, "fecha", "")
-                    detalle_ev = getattr(ev, "detalle", "")
-
-                    if "LOGIN" in accion_ev or "AUTH" in accion_ev:
-                        icono_ev = ft.Icons.LOGIN
-                        color_ev = ft.Colors.GREEN_400
-                    elif "LOCK" in accion_ev or "BLOQUEO" in accion_ev or "ANULAR" in accion_ev:
-                        icono_ev = ft.Icons.LOCK
-                        color_ev = ft.Colors.RED_400
-                    elif "RESET" in accion_ev or "USER" in accion_ev:
-                        icono_ev = ft.Icons.MANAGE_ACCOUNTS
-                        color_ev = ft.Colors.BLUE_400
-                    elif "BACKUP" in accion_ev:
-                        icono_ev = ft.Icons.BACKUP
-                        color_ev = ft.Colors.PURPLE_400
-                    else:
-                        icono_ev = ft.Icons.SECURITY
-                        color_ev = ROJO
-
-                    self.lista_informes.controls.append(
-                        ft.ListTile(
-                            leading=ft.Icon(icono_ev, color=color_ev, size=19),
-                            title=ft.Text(f"[{accion_ev}] @{usuario_ev}", size=12, color=self.texto, weight=ft.FontWeight.W_500),
-                            subtitle=ft.Text(f"{detalle_ev} · {fecha_ev}", size=10, color=self.secundario),
-                        )
-                    )
-        else:
-            total_descontados = conteo_jornada.get("total", 0)
-            total_archivados = sum(map(len, archivados))
-            self.pendientes_texto.value = (
-                f"Jornada en curso: {total_descontados} pedido(s) descontado(s) · Archivados: {total_archivados} · Informes: {len(informes)}"
-            )
-
-            # Actualizar tarjeta izquierda: Pedidos preparados en tiempo real (descendiente)
-            pedidos_pendientes_turno = self.order_store.listar_pedidos_pendientes_cierre()
-            # Orden descendiente (el más reciente primero)
-            pedidos_pendientes_turno.sort(key=lambda p: p.id, reverse=True)
-            total_bultos_turno = sum(p.bultos for p in pedidos_pendientes_turno)
-            fecha_hoy_str = datetime.now().strftime("%A %d/%m/%Y").capitalize()
-
-            self.header_pedidos_fecha.value = fecha_hoy_str
-            self.header_pedidos_subtitulo.value = (
-                f"{len(pedidos_pendientes_turno)} pedido(s) preparados en el turno actual"
-                if pedidos_pendientes_turno
-                else "Turno activo · Sin pedidos pendientes"
-            )
-            self.header_pedidos_bultos.value = f"📦 {total_bultos_turno} bultos preparados"
-
-            self.lista_pedidos_preparados.controls.clear()
-            if not pedidos_pendientes_turno:
-                self.lista_pedidos_preparados.controls.append(
-                    ft.Container(
-                        padding=20,
-                        alignment=ft.Alignment.CENTER,
-                        content=ft.Column(
-                            [
-                                ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=32, color=ft.Colors.GREEN_400),
-                                ft.Text("No hay pedidos pendientes de cierre.", size=12, color=self.secundario),
-                                ft.Text("Los pedidos que cargues aparecerán aquí en tiempo real.", size=11, color=self.secundario),
-                            ],
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            spacing=4,
-                        ),
-                    )
-                )
-            else:
-                for ped in pedidos_pendientes_turno:
-                    hora_c = ped.created_at[11:16] if ped.created_at and len(ped.created_at) >= 16 else ""
-                    num_p = f"Pedido #{ped.numero_pedido} · " if getattr(ped, "numero_pedido", "") else ""
-                    titulo_card = f"{num_p}Remito: {ped.nota_pedido}"
-
-                    def abrir_modificar_o_ver(p_obj=ped):
-                        if self.usuario_actual and self.usuario_actual.role == "operador":
-                            self.mostrar_dialogo_editar_pedido(p_obj, al_final=self.actualizar_listas)
-                        elif self.usuario_actual and self.usuario_actual.role == "administrador":
-                            self.mostrar_detalle_pedido_modal(p_obj)
-
-                    card_pedido = ft.Container(
-                        bgcolor=self.superficie,
-                        border=ft.Border.all(1, self.borde),
-                        border_radius=8,
-                        padding=ft.Padding.symmetric(horizontal=10, vertical=8),
-                        ink=True,
-                        tooltip="Clic para abrir y modificar este pedido" if (self.usuario_actual and self.usuario_actual.role == "operador") else "Clic para ver detalle del pedido",
-                        on_click=lambda _e, p_obj=ped: abrir_modificar_o_ver(p_obj),
-                        content=ft.Row(
-                            [
-                                ft.Row(
-                                    [
-                                        ft.Container(
-                                            content=ft.Icon(ft.Icons.INVENTORY_2, size=18, color=ROJO),
-                                            bgcolor=ft.Colors.RED_50,
-                                            padding=6,
-                                            border_radius=6,
-                                        ),
-                                        ft.Column(
-                                            [
-                                                ft.Row(
-                                                    [
-                                                        ft.Text(titulo_card, weight=ft.FontWeight.BOLD, size=12, color=self.texto),
-                                                        ft.Container(
-                                                            content=ft.Text(f"{ped.bultos} bulto(s)", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                                                            bgcolor=ft.Colors.BLUE_GREY_700,
-                                                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                                                            border_radius=10,
-                                                        ),
-                                                    ],
-                                                    spacing=6,
-                                                ),
-                                                ft.Text(f"Cliente: {ped.cliente} · {ped.logistica}", size=11, color=self.secundario),
-                                                ft.Text(f"Artículos: {ped.resumen_items or f'{ped.articulos_descontados} un.'}", size=10, color=ft.Colors.GREEN_400),
-                                            ],
-                                            spacing=2,
-                                            expand=True,
-                                        ),
-                                    ],
-                                    spacing=8,
-                                    expand=True,
-                                ),
-                                ft.Column(
-                                    [
-                                        ft.Text(hora_c, size=10, color=self.secundario, weight=ft.FontWeight.W_500),
-                                        *(
-                                            [
-                                                ft.IconButton(
-                                                    icon=ft.Icons.EDIT_OUTLINED,
-                                                    icon_size=16,
-                                                    tooltip="Modificar pedido",
-                                                    icon_color=ft.Colors.BLUE_400,
-                                                    on_click=lambda _e, p_obj=ped: self.mostrar_dialogo_editar_pedido(p_obj, al_final=self.actualizar_listas),
-                                                )
-                                            ]
-                                            if (self.usuario_actual and self.usuario_actual.role == "operador")
-                                            else []
-                                        ),
-                                    ],
-                                    horizontal_alignment=ft.CrossAxisAlignment.END,
-                                    spacing=2,
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                    )
-                    self.lista_pedidos_preparados.controls.append(card_pedido)
-            self.lista_informes.controls.clear()
-            if not informes:
-                self.lista_informes.controls.append(
-                    ft.Text("Todavía no hay informes.", size=12, color=self.secundario)
-                )
-            else:
-                for ruta in informes[:30]:
-                    es_fabrica = ruta.name.startswith("Pedido_Fabrica")
-                    es_comparativa = ruta.name.startswith("Comparativa_Stock_Fisico")
-                    if es_comparativa:
-                        icono = ft.Icons.COMPARE_ARROWS
-                        color_icono = ft.Colors.BLUE_400
-                        tipo_txt = "Comparativa stock físico"
-                    elif es_fabrica:
-                        icono = ft.Icons.INVENTORY_2
-                        color_icono = ft.Colors.AMBER_400
-                        tipo_txt = "Pedido a fábrica"
-                    else:
-                        icono = ft.Icons.DESCRIPTION
-                        color_icono = ROJO
-                        tipo_txt = "Informe de descuentos"
-                    try:
-                        ts = mtimes_informes.get(ruta)
-                        if ts is None:
-                            ts = ruta.stat().st_mtime
-                        mtime = datetime.fromtimestamp(ts)
-                        fecha_fmt = mtime.strftime("%d/%m/%Y %H:%M")
-                    except Exception:
-                        fecha_fmt = ""
-
-                    subtitulo_txt = f"{tipo_txt} · {fecha_fmt}" if fecha_fmt else tipo_txt
-
-                    subtitulo = ft.Text(
-                        subtitulo_txt,
-                        size=10,
-                        color=ft.Colors.BLUE_300
-                        if (es_comparativa and self.modo_oscuro)
-                        else (
-                            ft.Colors.BLUE_700
-                            if es_comparativa
-                            else (
-                                ft.Colors.AMBER_300
-                                if (es_fabrica and self.modo_oscuro)
-                                else (ft.Colors.AMBER_700 if es_fabrica else self.secundario)
-                            )
-                        ),
-                    )
-                    self.lista_informes.controls.append(
-                        ft.ListTile(
-                            leading=ft.Icon(icono, color=color_icono, size=19),
-                            title=ft.Text(ruta.name, size=12, color=self.texto, weight=ft.FontWeight.W_500),
-                            subtitle=subtitulo,
-                            on_click=lambda _e, archivo=ruta: self.seleccionar_informe(archivo),
-                        )
-                    )
-        self.actualizar_badge_chat()
-        if self.page.controls:
-            self.page.update()
+        """Actualiza y sincroniza en tiempo real todos los indicadores y listas del Dashboard."""
+        actualizar_estado_dashboard(self, _evento)
 
     def actualizar_alerta_quiebre(self, criticos: list | None = None) -> None:
         actualizar_alerta_quiebre(self, criticos)
@@ -1650,6 +1353,25 @@ class InterfazFlet:
             btn.disabled = esta_deshabilitado
             btn.tooltip = tooltip_txt
             btn.content = f"Cierre de Jornada ({conteo_total})" if conteo_total > 0 else "Cierre de Jornada"
+
+        try:
+            from .ui.components.sidebar import actualizar_puntos_pendientes_sidebar
+            actualizar_puntos_pendientes_sidebar(self)
+        except Exception:
+            pass
+        badge_sec = getattr(self, "badge_seccion_cierre", None)
+        badge_txt = getattr(self, "badge_texto_cierre", None)
+        if badge_sec is not None:
+            badge_sec.visible = (conteo_total > 0)
+        if badge_txt is not None:
+            badge_txt.value = str(conteo_total)
+
+        badge_h_sec = getattr(self, "badge_h_seccion_cierre", None)
+        badge_h_txt = getattr(self, "badge_h_texto_cierre", None)
+        if badge_h_sec is not None:
+            badge_h_sec.visible = (conteo_total > 0)
+        if badge_h_txt is not None:
+            badge_h_txt.value = str(conteo_total)
 
     def actualizar_estado_botones(self) -> None:
         deshabilitado = self.ocupado or PROCESAMIENTO_GLOBAL_ACTIVO
@@ -1998,138 +1720,21 @@ class InterfazFlet:
     def reproducir_sonido(self, tipo: str = "exito") -> None:
         """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
         reproducir_sonido_web(self, tipo)
-        return
-        try:
-            if not self.page or not hasattr(self.page, "run_js"):
-                return
-            tonos = {
-                "exito": [(880, 0, 0.14, 0.12, "sine")],
-                "notificacion": [(587.33, 0, 0.10, 0.08, "sine"), (880.0, 0.08, 0.15, 0.09, "sine")],
-                "colaborativo": [(587.33, 0, 0.10, 0.08, "sine"), (880.0, 0.08, 0.15, 0.09, "sine")],
-                "cierre": [(523.25, 0, 0.12, 0.10, "triangle"), (659.25, 0.09, 0.12, 0.10, "triangle"), (783.99, 0.18, 0.22, 0.11, "triangle")],
-                "campana": [(523.25, 0, 0.12, 0.10, "triangle"), (659.25, 0.09, 0.12, 0.10, "triangle"), (783.99, 0.18, 0.22, 0.11, "triangle")],
-                "quiebre": [(440, 0, 0.15, 0.12, "sawtooth"), (330, 0.14, 0.20, 0.12, "sawtooth")],
-                "error": [(280, 0, 0.15, 0.18, "triangle"), (200, 0.17, 0.18, 0.18, "triangle")],
-            }
-            secuencia = tonos.get(tipo, tonos["error"])
-            pasos_js = "\n".join(
-                f"playTone({f}, {d}, {dur}, {v}, '{w}');"
-                for f, d, dur, v, w in secuencia
-            )
-            js = f"""
-            (() => {{
-                try {{
-                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    const playTone = (freq, delay, dur, vol, wave) => {{
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
-                        osc.type = wave || 'sine';
-                        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-                        gain.gain.setValueAtTime(vol || 0.12, ctx.currentTime + delay);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
-                        osc.start(ctx.currentTime + delay);
-                        osc.stop(ctx.currentTime + delay + dur);
-                    }};
-                    {pasos_js}
-                }} catch(e) {{}}
-            }})()
-            """
-            self.page.run_js(js)
-            return
-        except Exception:
-            return
 
     def _reproducir_sonido_legacy(self, tipo: str = "exito") -> None:
         reproducir_sonido_web(self, tipo)
-        return
-        """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
-        try:
-            if not self.page:
-                return
-            if tipo == "exito":
-                js = """
-                (() => {
-                    try {
-                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
-                        osc.type = 'sine';
-                        osc.frequency.setValueAtTime(880, ctx.currentTime);
-                        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
-                        osc.start();
-                        osc.stop(ctx.currentTime + 0.14);
-                    } catch(e) {}
-                })()
-                """
-            else:
-                js = """
-                (() => {
-                    try {
-                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                        const playTone = (freq, delay, dur) => {
-                            const osc = ctx.createOscillator();
-                            const gain = ctx.createGain();
-                            osc.connect(gain);
-                            gain.connect(ctx.destination);
-                            osc.type = 'triangle';
-                            osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-                            gain.gain.setValueAtTime(0.18, ctx.currentTime + delay);
-                            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
-                            osc.start(ctx.currentTime + delay);
-                            osc.stop(ctx.currentTime + delay + dur);
-                        };
-                        playTone(280, 0, 0.15);
-                        playTone(200, 0.17, 0.18);
-                    } catch(e) {}
-                })()
-                """
-            if hasattr(self.page, "run_js"):
-                self.page.run_js(js)
-        except Exception:
-            pass
 
     def mostrar_command_palette(self, _evento: ft.Event | None = None) -> None:
         mostrar_command_palette(self, _evento)
 
     def imprimir_rotulos_termicos_pedido(self, pedido: Pedido) -> None:
         imprimir_rotulos_termicos_pedido_ui(self, pedido)
-        return
-        try:
-            ruta_pdf = generar_etiquetas_termicas_pdf(pedido, self.menu.carpeta_descuentos / "Rotulos")
-            self.abrir_informe(ruta_especifica=ruta_pdf)
-            self.notificar(f"Rótulo térmico para {pedido.bultos} bulto(s) generado con éxito ({ruta_pdf.name}).")
-        except Exception as error:
-            self.notificar(f"Error generando rótulo térmico: {error}")
 
     def imprimir_rotulos_pedido(self, pedido: Pedido, llenar_hoja: bool = False) -> None:
         imprimir_rotulos_pedido_ui(self, pedido, llenar_hoja)
-        return
-        try:
-            ruta_pdf = generar_etiquetas_bultos_pdf(pedido, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
-            self.abrir_informe(ruta_especifica=ruta_pdf)
-            self.notificar(f"Rótulos para {pedido.bultos} bulto(s) generados con éxito ({ruta_pdf.name}).")
-        except Exception as error:
-            self.notificar(f"Error generando rótulos de bulto:\n{error}")
 
     def imprimir_rotulos_lote(self, pedidos: list[Pedido], llenar_hoja: bool = False) -> None:
         imprimir_rotulos_lote_ui(self, pedidos, llenar_hoja)
-        return
-        try:
-            pedidos_validos = [p for p in pedidos if getattr(p, "estado", "") != "anulado" and getattr(p, "bultos", 0) > 0]
-            if not pedidos_validos:
-                self.notificar("No hay pedidos válidos con bultos para generar rótulos.")
-                return
-            ruta_pdf = generar_etiquetas_lote_pedidos_pdf(pedidos_validos, self.menu.carpeta_descuentos, llenar_hoja=llenar_hoja)
-            self.abrir_informe(ruta_especifica=ruta_pdf)
-            total_bultos = sum(p.bultos for p in pedidos_validos)
-            self.notificar(f"Rótulos para {len(pedidos_validos)} pedido(s) ({total_bultos} bultos) generados en A4 ({ruta_pdf.name}).")
-        except Exception as error:
-            self.notificar(f"Error generando lote de rótulos:\n{error}")
 
     def confirmar_anulacion_pedido(self, pedido: Pedido, al_final: Callable[[], None] | None = None) -> None:
         mostrar_dialogo_confirmar_anulacion_pedido(self, pedido, al_final)
@@ -2210,6 +1815,14 @@ class InterfazFlet:
 
     def mostrar_comparativa_stock_fisico_admin(self, _evento: ft.Event | None = None) -> None:
         mostrar_comparativa_stock_fisico_admin(self, _evento)
+
+    def mostrar_dialogo_ingreso_rapido(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_dialogo_ingreso_rapido(self, _evento)
+
+    def mostrar_dialogo_salida_rapida(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_dialogo_salida_rapida(self, _evento)
 
     def mostrar_dialogo_inventario_vivo(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_inventario_vivo(self, _evento)

@@ -387,7 +387,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         value="25",
         width=135,
         content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-        on_change=_cambiar_tamano_pagina,
+        on_select=_cambiar_tamano_pagina,
     )
 
     barra_paginacion = ft.Container(

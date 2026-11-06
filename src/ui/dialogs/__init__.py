@@ -61,6 +61,13 @@ from .dlg_inventario_vivo import mostrar_dialogo_inventario_vivo
 from .dlg_command_palette import mostrar_command_palette
 from .dlg_quiebre import actualizar_alerta_quiebre, mostrar_detalle_quiebre
 from .dlg_restaurar import confirmar_restaurar, restaurar_documentos
+from .dlg_preferencias import mostrar_dialogo_preferencias
+from .dlg_movimientos_rapidos import (
+    mostrar_dialogo_ingreso_rapido,
+    mostrar_dialogo_salida_rapida,
+    MotivoIngresoRapido,
+    MotivoSalidaRapida,
+)
 
 __all__ = [
     # Auth & Profile
@@ -69,6 +76,7 @@ __all__ = [
     "mostrar_cambiar_mi_clave",
     "mostrar_mi_perfil",
     "mostrar_configuracion_inicial",
+    "mostrar_dialogo_preferencias",
     # Clientes & Usuarios
     "mostrar_dialogo_gestion_clientes",
     "mostrar_dialogo_gestion_usuarios",
@@ -117,4 +125,8 @@ __all__ = [
     "mostrar_comparativa_stock_fisico_admin",
     "mostrar_dialogo_inventario_vivo",
     "mostrar_command_palette",
+    "mostrar_dialogo_ingreso_rapido",
+    "mostrar_dialogo_salida_rapida",
+    "MotivoIngresoRapido",
+    "MotivoSalidaRapida",
 ]

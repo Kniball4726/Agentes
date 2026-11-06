@@ -121,8 +121,8 @@ class TestCierresOperariosAdmin(unittest.TestCase):
         from src.ui.components.sidebar import construir_sidebar_controls
         controles = construir_sidebar_controls(self.interfaz)
         textos_botones = [
-            c.content for c in controles
-            if isinstance(c, ft.Button) and hasattr(c, "content")
+            b.content for c in controles for b in ([c] if isinstance(c, ft.Button) else getattr(c, "controls", []) or []) if hasattr(b, "content")
+            if True
         ]
         self.assertIn("Cierres de Operarios", textos_botones)
 

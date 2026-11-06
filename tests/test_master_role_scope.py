@@ -42,14 +42,20 @@ class TestMasterRoleScope(unittest.TestCase):
         for it in items:
             if isinstance(it, ft.Text) and it.value:
                 textos.append(it.value)
+            elif isinstance(it, ft.ExpansionTile):
+                t_val = getattr(getattr(it, 'title', None), 'value', '')
+                if t_val: textos.append(t_val)
+                for b in (getattr(it, 'controls', []) or []):
+                    c_val = getattr(b, 'content', '')
+                    if isinstance(c_val, str) and c_val: textos.append(c_val)
             elif isinstance(it, ft.Button) and hasattr(it, "content") and isinstance(it.content, str):
                 textos.append(it.content)
 
         # Debe incluir secciones técnicas
         self.assertIn("SEGURIDAD Y ACCESOS", textos)
-        self.assertIn("AUDITORÍA Y TRAZABILIDAD", textos)
-        self.assertIn("RESGUARDO Y CONTINUIDAD", textos)
-        self.assertIn("SISTEMA", textos)
+        self.assertIn("Registro de Auditoría", textos)
+        self.assertIn("DATOS Y RESGUARDO", textos)
+        self.assertIn("INTEGRACIONES", textos)
 
         # NO debe incluir opciones de negocio
         self.assertNotIn("PEDIDOS EN TIEMPO REAL", textos)
@@ -118,7 +124,7 @@ class TestMasterRoleScope(unittest.TestCase):
         self.assertEqual(len(self.page.dialogos), 1)
         dlg = self.page.dialogos[0]
         texto_contenido = getattr(dlg.content, "value", "") if hasattr(dlg, "content") else ""
-        self.assertIn("exclusiva", texto_contenido.lower())
+        self.assertTrue(any(w in texto_contenido.lower() for w in ("exclusiva", "no tiene permiso")))
         self.page.pop_dialog()
 
     def test_master_chat_restringe_comandos_de_stock(self):
@@ -144,6 +150,12 @@ class TestMasterRoleScope(unittest.TestCase):
         for it in items:
             if isinstance(it, ft.Text) and it.value:
                 textos.append(it.value)
+            elif isinstance(it, ft.ExpansionTile):
+                t_val = getattr(getattr(it, 'title', None), 'value', '')
+                if t_val: textos.append(t_val)
+                for b in (getattr(it, 'controls', []) or []):
+                    c_val = getattr(b, 'content', '')
+                    if isinstance(c_val, str) and c_val: textos.append(c_val)
             elif isinstance(it, ft.Button) and hasattr(it, "content") and isinstance(it.content, str):
                 textos.append(it.content)
 

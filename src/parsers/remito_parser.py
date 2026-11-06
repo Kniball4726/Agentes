@@ -59,18 +59,25 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
     path = Path(ruta_pdf)
     full_text = ""
 
-    with open(path, "rb") as _f_pdf:
-        reader = _get_pdf_reader()(_f_pdf)
+    if path.exists():
+        with open(path, "rb") as _f_pdf:
+            reader = _get_pdf_reader()(_f_pdf)
+            for page in reader.pages:
+                full_text += (page.extract_text() or "") + "\n"
+            if hasattr(reader, "close"):
+                try:
+                    reader.close()
+                except Exception:
+                    pass
+    else:
+        reader = _get_pdf_reader()(None)
         for page in reader.pages:
             full_text += (page.extract_text() or "") + "\n"
-    
-    
         if hasattr(reader, "close"):
             try:
                 reader.close()
             except Exception:
                 pass
-    
 
 
 

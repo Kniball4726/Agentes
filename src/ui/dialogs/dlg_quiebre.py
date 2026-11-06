@@ -44,6 +44,17 @@ def actualizar_alerta_quiebre(interfaz: Any, criticos: list | None = None) -> No
                 )
             except Exception:
                 pass
+            try:
+                from ...webhook_manager import despachar_evento_webhook
+                despachar_evento_webhook("QUIEBRE_STOCK", {
+                    "codigo": cod_c,
+                    "nombre": str(item.get("name", "")).strip(),
+                    "stock_actual": int(item.get("stock", 0)),
+                    "stock_minimo": int(item.get("stock_minimo", item.get("min_stock", 0))),
+                    "estado": "AGOTADO" if int(item.get("stock", 0)) <= 0 else "CRITICO",
+                })
+            except Exception:
+                pass
 
     interfaz.banner_alerta_quiebre.visible = True
     interfaz.banner_alerta_quiebre.bgcolor = (

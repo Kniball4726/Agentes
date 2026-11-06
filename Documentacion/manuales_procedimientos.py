@@ -180,8 +180,91 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
     ))
     story.append(Spacer(1, 4))
 
-    # CAPÍTULO 2: PEDIDOS EN TIEMPO REAL
-    story.append(Paragraph("2. Módulo: PEDIDOS EN TIEMPO REAL (Botón por Botón)", est["h1"]))
+    # CAPÍTULO 2: BOTONERA DE ACCESO RÁPIDO (ACCESOS DIRECTOS DEL OPERADOR)
+    story.append(Paragraph("2. Botonera de Acceso Rápido (Entrada, Salida, Cargar Pedido y Mercado Libre)", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+    story.append(Paragraph(
+        "Ubicada de forma permanente en la cabecera superior del menú de navegación (fuera de las categorías tipo acordeón), "
+        "la <b>Botonera de Acceso Rápido</b> reúne las 4 operaciones más frecuentes del operario: registro inmediato de movimientos "
+        "de stock (Entrada/Salida con pistola lectora y justificación obligatoria) y procesamiento prioritario de remitos mayoristas "
+        "y órdenes de Mercado Libre, acelerando la operatoria diaria del depósito.",
+        est["body_sangria"],
+    ))
+    story.append(Spacer(1, 4))
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Entrada Rápida",
+        icono_str="[➕ Entrada]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Recepción instantánea de mercadería por devoluciones de clientes, transferencias o ajustes, con escaneo rápido y motivo tipificado obligatorio.",
+        datos_modificados="Incremento de stock en catálogo, SQLite ('productos.sqlite3') y 'Productos.xlsx'. Registro en 'stock_movements' (tipo 'ingreso_rapido') con motivo justificado, y asiento inmutable en 'logs_auditoria'.",
+        pasos_procedimiento=[
+            "Hacer clic en el botón verde <b>'Entrada'</b> en la cabecera del menú lateral (o presionar Ctrl+K / F2 y seleccionar '⚡ Entrada Rápida').",
+            "Escanear el código de barras con la pistola o tipear el código SKU y presionar Enter.",
+            "Comprobar en pantalla la ficha técnica del producto identificado, su stock actual y la proyección del stock resultante.",
+            "Indicar la cantidad a ingresar con el teclado o los botones rápidos (<b>+1</b>, <b>+5</b>, <b>+10</b>, <b>+50</b>).",
+            "Seleccionar el motivo obligatorio en el desplegable (<i>Devolución de Cliente</i>, <i>Movimiento Interno</i>, <i>Sobrante de Inventario / Ajuste</i>, <i>Muestra / Ingreso Especial</i>).",
+            "Completar observaciones adicionales opcionales y presionar <b>'Confirmar Entrada'</b>.",
+        ],
+        resultado_obtenido="Aumento atómico e inmediato del stock disponible con trazabilidad forense del operario actuante.",
+        validaciones_advertencias="El campo de motivo es de selección obligatoria. Si el producto escaneado no existe en el catálogo, se alertará en rojo.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Salida Rápida",
+        icono_str="[➖ Salida]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Baja inmediata de stock por roturas, mermas, muestras comerciales, consumo interno o devoluciones a proveedores, con justificación obligatoria.",
+        datos_modificados="Decremento de stock en catálogo, SQLite ('productos.sqlite3') y 'Productos.xlsx'. Registro en 'stock_movements' (tipo 'salida_rapida') con motivo justificado, y asiento inmutable en 'logs_auditoria'.",
+        pasos_procedimiento=[
+            "Hacer clic en el botón ámbar <b>'Salida'</b> en la cabecera del menú lateral (o presionar Ctrl+K / F2 y seleccionar '⚡ Salida Rápida').",
+            "Escanear el código de barras con la pistola o tipear el código SKU y presionar Enter.",
+            "Comprobar en la tarjeta del producto el stock actual y la proyección resultante tras la baja.",
+            "Indicar la cantidad a egresar con el teclado o los pulsadores rápidos.",
+            "Seleccionar el motivo obligatorio (<i>Rotura / Merma / Dañado</i>, <i>Muestra Comercial / Exhibición</i>, <i>Consumo / Uso Interno</i>, <i>Devolución a Proveedor</i>, <i>Faltante / Ajuste de Inventario</i>).",
+            "Opcionalmente ingresar detalle en observaciones y pulsar <b>'Confirmar Salida'</b>.",
+        ],
+        resultado_obtenido="Descuento atómico del inventario físico con registro en auditoría forense y notificación visual al operario.",
+        validaciones_advertencias="Requiere seleccionar un motivo obligatorio. Si la salida dejaría el stock en saldo negativo, el sistema resaltará el stock resultante en rojo preventivo.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="📄 Cargar Pedido",
+        icono_str="[➕ Pedido]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Acceso directo de alta prioridad para escanear y cargar remitos mayoristas o confeccionar pedidos de preparación inmediata.",
+        datos_modificados="Abre el diálogo modal de carga de remitos, parsea PDF o escaneo, reserva bultos y prepara el despacho en SQLite.",
+        pasos_procedimiento=[
+            "Pulsar el botón azul 'Cargar Pedido' ubicado en la botonera superior.",
+            "Adjuntar el remito PDF o ingresar manualmente el número de nota de pedido.",
+            "Comprobar el desglose de artículos extraídos y verificar que la logística y bultos estén asignados.",
+            "Confirmar la carga para que el pedido quede listo para preparación.",
+        ],
+        resultado_obtenido="Registro ágil del pedido sin necesidad de desplegar el menú de Preparación y Despacho.",
+        validaciones_advertencias="Valida la unicidad del número de pedido y la concordancia de existencias.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="🛍️ Mercado Libre",
+        icono_str="[🛒 MeLi]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Acceso directo prioritario para escanear y descontar etiquetas de paquetes de Mercado Libre y Mercado Envíos.",
+        datos_modificados="Descuenta automáticamente el stock de los ítems de la orden y asienta el registro en SQLite y auditoría.",
+        pasos_procedimiento=[
+            "Pulsar el botón ámbar 'Mercado Libre' en la cabecera.",
+            "Escanear el código de barras o QR de la etiqueta de envío de Mercado Libre.",
+            "Verificar los artículos descontados en pantalla y la emisión de confirmación acústica.",
+        ],
+        resultado_obtenido="Procesamiento exprés de paquetes de e-commerce con mínimo esfuerzo manual.",
+        validaciones_advertencias="Requiere que los códigos de producto de Mercado Libre estén catalogados en el maestro.",
+    )
+
+    # CAPÍTULO 3: PEDIDOS EN TIEMPO REAL
+    story.append(Paragraph("3. Módulo: PEDIDOS EN TIEMPO REAL (Botón por Botón)", est["h1"]))
     story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
 
     agregar_ficha_boton(
@@ -456,7 +539,95 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
         validaciones_advertencias="Requiere conexión a Internet y sesión activa en WhatsApp Web.",
     )
 
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Ingreso Rápido (+ Stock)",
+        icono_str="[📥+]",
+        modulo="ACCESO RÁPIDO OPERADOR (BOTONERA DÚO)",
+        proposito_funcional="Permite registrar ingresos inmediatos de mercadería al inventario (devoluciones de clientes, transferencias de sucursales, compras directas o ajustes positivos) mediante escaneo de código de barras o búsqueda rápida por SKU.",
+        datos_modificados="Incrementa el stock físico y disponible en 'Productos.xlsx', asienta la transacción en la tabla 'movimientos_stock' de pedidos.sqlite3, genera registro de auditoría y despacha evento asíncrono vía webhook ('MOVIMIENTO_RAPIDO').",
+        pasos_procedimiento=[
+            "Pulsar el botón 'Ingreso Rápido' en la botonera superior o presionar el atajo asignado.",
+            "Seleccionar el motivo de ingreso en el selector desplegable (ej. 'Devolución de Cliente', 'Transferencia Interna', 'Ajuste de Inventario').",
+            "Activar la casilla 'Modo pistoleo continuo (automático)' si se desea escanear productos de forma ininterrumpida sin pulsar confirmar.",
+            "Pistolear el código de barras o ingresar el SKU y pulsar Enter.",
+            "El sistema emite señal acústica de éxito, suma la cantidad especificada y mantiene el foco listo para el siguiente producto.",
+        ],
+        resultado_obtenido="Incremento inmediato y atómico del inventario sin necesidad de cargar remitos ni generar planillas complejas.",
+        validaciones_advertencias="Exige seleccionar un motivo obligatorio para garantizar la trazabilidad contable y operativa.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Salida Rápida (- Stock)",
+        icono_str="[📤-]",
+        modulo="ACCESO RÁPIDO OPERADOR (BOTONERA DÚO)",
+        proposito_funcional="Permite registrar egresos inmediatos de inventario (roturas, mermas de depósito, consumo interno, muestras comerciales, devoluciones a proveedor o ajustes negativos) con justificación obligatoria.",
+        datos_modificados="Descuenta el stock en 'Productos.xlsx', asienta el movimiento en SQLite ('movimientos_stock'), registra auditoría y despacha webhook de movimiento.",
+        pasos_procedimiento=[
+            "Pulsar 'Salida Rápida' en la cabecera del operador.",
+            "Seleccionar el motivo de egreso correspondiente (ej. 'Rotura / Merma', 'Consumo Interno', 'Muestra Comercial').",
+            "Activar 'Modo pistoleo continuo' para escaneo continuo de unidades dañadas o retiradas.",
+            "Escanear el código de barras o tipear el código de producto.",
+            "Verificar la confirmación sonora y visual del descuento.",
+        ],
+        resultado_obtenido="Ajuste negativo en tiempo real con auditoría de usuario y motivo.",
+        validaciones_advertencias="Valida que el stock disponible sea suficiente antes de autorizar el descuento.",
+    )
+
     # CAPÍTULO 5: TECLADO Y ATAJOS
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Impresión Térmica Directa (Spooler Windows)",
+        icono_str="[🖨️]",
+        modulo="CONFIGURACIÓN / PREFERENCIAS DE USUARIO",
+        proposito_funcional="Habilita el envío directo de rótulos de despacho y etiquetas térmicas (100x150 mm) al Spooler de impresión de Windows sin abrir el visor de PDF externo, reduciendo el tiempo de etiquetado a milisegundos.",
+        datos_modificados="Persiste la preferencia en SQLite ('user_preferences') asociando la impresora térmica del sistema elegida.",
+        pasos_procedimiento=[
+            "Abrir 'Preferencias de Usuario' desde la barra lateral o avatar.",
+            "Activar el interruptor 'Impresión directa al Spooler de Windows'.",
+            "Seleccionar en la lista desplegable la impresora de etiquetas instalada (ej. Zebra, Honeywell, Sato o Xprinter).",
+            "Al generar cualquier rótulo o lote de bultos, el documento se envía directamente a la cola de impresión física.",
+        ],
+        resultado_obtenido="Impresión instantánea en un solo clic con fallback automático al visor PDF ante fallas mecánicas de la impresora.",
+        validaciones_advertencias="Requiere que la impresora cuente con sus controladores correctamente instalados en Windows.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Gestor de Webhooks y Eventos Salientes",
+        icono_str="[🔗]",
+        modulo="INTEGRACIONES / SISTEMAS EXTERNOS",
+        proposito_funcional="Permite suscribir sistemas externos (ERPs, bots de mensajería, dashboards gerenciales o plataformas de e-commerce) a eventos en tiempo real: 'QUIEBRE_STOCK', 'CIERRE_JORNADA' y 'MOVIMIENTO_RAPIDO'.",
+        datos_modificados="Crea registros en 'data/webhooks.json' y dispara hilos asíncronos en background sin bloquear la interfaz de usuario.",
+        pasos_procedimiento=[
+            "Acceder a la sección de Webhooks desde Configuración de Integraciones.",
+            "Indicar la URL destino HTTPS del sistema receptor.",
+            "Marcar los eventos a los que se desea suscribir el endpoint.",
+            "Pulsar 'Probar Webhook' para verificar conectividad con un payload PING_TEST.",
+            "Pulsar 'Guardar Webhook' para activar el despacho automático.",
+        ],
+        resultado_obtenido="Notificación HTTP POST en tiempo real cada vez que ocurre un quiebre de stock, cierre de jornada o movimiento rápido.",
+        validaciones_advertencias="Los despachos se ejecutan con timeout estricto para proteger la estabilidad operativa.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Gestión de API Keys B2B / ERP",
+        icono_str="[🔑]",
+        modulo="SEGURIDAD Y ACCESOS",
+        proposito_funcional="Permite emitir, auditar y revocar claves de acceso programático ('sk_live_...') para que sistemas satélite consulten stock y datos sin exponer credenciales de usuarios humanos.",
+        datos_modificados="Registra las claves en la tabla 'api_keys' de usuarios.sqlite3 con hash SHA-256 unidireccional y timestamp de último uso.",
+        pasos_procedimiento=[
+            "Ingresar a la consola de API Keys con perfil Administrador o Master.",
+            "Pulsar 'Generar Nueva API Key', indicando el nombre del cliente ERP y el rol asignado.",
+            "Copiar la clave en pantalla (solo se visualiza una única vez al crearla).",
+            "Para revocar accesos vencidos o comprometidos, pulsar 'Revocar Clave' en la lista.",
+        ],
+        resultado_obtenido="Integración segura vía cabecera HTTP 'X-API-Key' protegida contra ataques de fuerza bruta por rate limiting.",
+        validaciones_advertencias="Nunca comparta ni exponga claves API en repositorios públicos ni canales desprotegidos.",
+    )
+
     story.append(Spacer(1, 6))
     agregar_tarjeta_referencia_rapida(story, est)
     story.append(PageBreak())
@@ -507,8 +678,50 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
     ))
     story.append(Spacer(1, 4))
 
+    # BOTONERA DÚO EXPRESS (CABECERA)
+    story.append(Paragraph("2. Botonera Dúo Express (Entrada y Salida Rápida)", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+    story.append(Paragraph(
+        "Acceso directo superior para el registro rápido de entradas y salidas de stock con escáner, "
+        "justificación obligatoria por catálogo de motivos (Enum) y trazabilidad inmutable en auditoría.",
+        est["body_sangria"],
+    ))
+    story.append(Spacer(1, 4))
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Entrada Rápida",
+        icono_str="[➕ Entrada]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Recepción express de productos por devoluciones de clientes, transferencias o sobrantes con escáner y motivo obligatorio.",
+        datos_modificados="Actualización de inventario en SQLite, catálogo y 'Productos.xlsx'. Historial 'stock_movements' y 'logs_auditoria'.",
+        pasos_procedimiento=[
+            "Pulsar el botón verde <b>'Entrada'</b> en la cabecera.",
+            "Escanear código de barras o SKU y seleccionar cantidad.",
+            "Elegir motivo tipificado obligatorio y presionar 'Confirmar Entrada'.",
+        ],
+        resultado_obtenido="Incremento inmediato en existencias y registro en auditoría.",
+        validaciones_advertencias="Motivo y cantidad obligatorios.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Salida Rápida",
+        icono_str="[➖ Salida]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Egreso express por roturas, mermas, muestras comerciales, consumo interno o devoluciones a proveedores con motivo obligatorio.",
+        datos_modificados="Descuento en SQLite y 'Productos.xlsx'. Asiento en 'stock_movements' y 'logs_auditoria'.",
+        pasos_procedimiento=[
+            "Pulsar el botón ámbar <b>'Salida'</b> en la cabecera.",
+            "Escanear código de barras o SKU y seleccionar cantidad.",
+            "Elegir motivo tipificado obligatorio y presionar 'Confirmar Salida'.",
+        ],
+        resultado_obtenido="Baja inmediata de stock con trazabilidad.",
+        validaciones_advertencias="Motivo obligatorio y alerta si el saldo queda en negativo.",
+    )
+
     # SECCIÓN 1: STOCK Y CATÁLOGO
-    story.append(Paragraph("2. Módulo: STOCK Y CATÁLOGO (Botón por Botón)", est["h1"]))
+    story.append(Paragraph("3. Módulo: STOCK Y CATÁLOGO (Botón por Botón)", est["h1"]))
     story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
 
     agregar_ficha_boton(

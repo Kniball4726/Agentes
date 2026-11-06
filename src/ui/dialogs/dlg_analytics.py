@@ -88,30 +88,56 @@ def mostrar_dashboard_metricas(interfaz: Any, _e: ft.Event | None = None) -> Non
             spacing=8,
         )
 
-        filas_logistica = ft.Column(spacing=4)
+        filas_logistica = ft.Column(spacing=6)
         for log, cant, bultos in m["distribucion_logistica"]:
             porc = (cant / m["total_pedidos"] * 100) if m["total_pedidos"] > 0 else 0
             filas_logistica.controls.append(
-                ft.Row(
+                ft.Column(
                     [
-                        ft.Text(log, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto),
-                        ft.Text(f"{cant} ped. ({porc:.0f}%)", size=11, color=interfaz.secundario),
-                        ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                        ft.Row(
+                            [
+                                ft.Text(log, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto),
+                                ft.Text(f"{cant} ped. ({porc:.0f}%)", size=11, color=interfaz.secundario),
+                                ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
+                        ft.ProgressBar(
+                            value=max(0.01, min(1.0, porc / 100.0)),
+                            color=ROJO,
+                            bgcolor=ft.Colors.GREY_800 if interfaz.modo_oscuro else ft.Colors.GREY_200,
+                            height=4,
+                            border_radius=2,
+                        ),
                     ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    spacing=2,
                 )
             )
 
-        filas_armadores = ft.Column(spacing=4)
+        filas_armadores = ft.Column(spacing=6)
+        max_ped_arm = max([cant for _, cant, _ in m["rendimiento_armadores"]], default=1) or 1
         for arm, cant, bultos in m["rendimiento_armadores"]:
+            ratio_arm = cant / max_ped_arm
             filas_armadores.controls.append(
-                ft.Row(
+                ft.Column(
                     [
-                        ft.Text(arm, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto),
-                        ft.Text(f"{cant} ped.", size=11, color=interfaz.secundario),
-                        ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                        ft.Row(
+                            [
+                                ft.Text(arm, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto),
+                                ft.Text(f"{cant} ped.", size=11, color=interfaz.secundario),
+                                ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
+                        ft.ProgressBar(
+                            value=max(0.01, min(1.0, ratio_arm)),
+                            color=ft.Colors.BLUE_500,
+                            bgcolor=ft.Colors.GREY_800 if interfaz.modo_oscuro else ft.Colors.GREY_200,
+                            height=4,
+                            border_radius=2,
+                        ),
                     ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    spacing=2,
                 )
             )
 

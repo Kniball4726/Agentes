@@ -4,8 +4,10 @@ import hashlib
 import hmac
 import os
 import re
+import secrets
 import sqlite3
 import time
+from datetime import datetime
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -138,6 +140,42 @@ class UserStore:
                     first_failed_at REAL NOT NULL DEFAULT 0,
                     locked_until REAL NOT NULL DEFAULT 0
                 )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    username TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    nombre TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    last_active REAL NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_api_sessions_last_active ON api_sessions(last_active)
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_hash TEXT PRIMARY KEY,
+                    client_name TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'operador',
+                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+                    created_at TEXT NOT NULL,
+                    last_used TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)
                 """
             )
             self._migrar_columnas(connection)
@@ -840,3 +878,113 @@ class UserStore:
             created_at=str(row["created_at"] or "") if "created_at" in keys and row["created_at"] is not None else "",
             updated_at=str(row["updated_at"] or "") if "updated_at" in keys and row["updated_at"] is not None else "",
         )
+
+    # --- Gestión de Sesiones Persistentes y API Keys ---
+
+    def create_api_session(
+        self,
+        token_hash: str,
+        user_id: int,
+        username: str,
+        role: str,
+        nombre: str = "",
+        email: str = "",
+        created_at: float | None = None,
+        last_active: float | None = None,
+    ) -> None:
+        """Persiste una sesión de usuario con hash seguro del token."""
+        ahora = time.time()
+        c_at = created_at if created_at is not None else ahora
+        l_act = last_active if last_active is not None else ahora
+        with self._connect() as connection, connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO api_sessions (
+                    token_hash, user_id, username, role, nombre, email, created_at, last_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (token_hash, user_id, username, role, nombre, email, c_at, l_act),
+            )
+
+    def get_api_session(self, token_hash: str) -> dict | None:
+        """Recupera una sesión persistida por su hash de token."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT user_id, username, role, nombre, email, created_at, last_active
+                FROM api_sessions WHERE token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def update_api_session_activity(self, token_hash: str, last_active: float | None = None) -> None:
+        """Actualiza la marca de última actividad de una sesión."""
+        with self._connect() as connection, connection:
+            l_act = last_active if last_active is not None else time.time()
+            connection.execute(
+                "UPDATE api_sessions SET last_active = ? WHERE token_hash = ?",
+                (l_act, token_hash),
+            )
+
+    def revoke_api_session(self, token_hash: str) -> bool:
+        """Revoca y elimina permanentemente una sesión activa."""
+        with self._connect() as connection, connection:
+            cur = connection.execute("DELETE FROM api_sessions WHERE token_hash = ?", (token_hash,))
+            return cur.rowcount > 0
+
+    def cleanup_expired_api_sessions(self, max_age_seconds: float) -> int:
+        """Limpia de SQLite sesiones que superaron el tiempo máximo de inactividad."""
+        limite = time.time() - max_age_seconds
+        with self._connect() as connection, connection:
+            cur = connection.execute("DELETE FROM api_sessions WHERE last_active < ?", (limite,))
+            return cur.rowcount
+
+    def create_api_key(self, client_name: str, role: str = "operador") -> tuple[str, str]:
+        """Genera una clave API estática para integración externa (ej: B2B/ERP).
+        
+        Retorna (raw_key, key_hash).
+        """
+        raw_key = f"sk_live_{secrets.token_urlsafe(32)}"
+        key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+        ahora = datetime.now().isoformat(sep=" ", timespec="seconds")
+        with self._connect() as connection, connection:
+            connection.execute(
+                "INSERT INTO api_keys (key_hash, client_name, role, active, created_at) VALUES (?, ?, ?, 1, ?)",
+                (key_hash, client_name.strip(), role, ahora),
+            )
+        return raw_key, key_hash
+
+    def validate_api_key(self, raw_key: str) -> dict | None:
+        """Valida una API Key externa contra su hash en base de datos."""
+        if not raw_key:
+            return None
+        key_hash = hashlib.sha256(raw_key.strip().encode("utf-8")).hexdigest()
+        with self._connect() as connection, connection:
+            row = connection.execute(
+                "SELECT key_hash, client_name, role, active FROM api_keys WHERE key_hash = ? AND active = 1",
+                (key_hash,),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE key_hash = ?",
+                    (key_hash,),
+                )
+                return dict(row)
+        return None
+
+    def list_api_keys(self) -> list[dict]:
+        """Lista todas las claves API registradas para control del administrador."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT key_hash, client_name, role, active, created_at, last_used FROM api_keys ORDER BY created_at DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def revoke_api_key(self, key_hash: str) -> bool:
+        """Revoca de forma inmediata una clave API."""
+        with self._connect() as connection, connection:
+            cur = connection.execute("UPDATE api_keys SET active = 0 WHERE key_hash = ?", (key_hash,))
+            return cur.rowcount > 0

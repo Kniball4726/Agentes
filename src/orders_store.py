@@ -144,6 +144,7 @@ class OrderStore:
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
             connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = NORMAL")
             connection.execute("PRAGMA temp_store = MEMORY")

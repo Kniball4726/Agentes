@@ -21,6 +21,7 @@
    - [Rol Consulta](#rol-consulta)
    - [Matriz Oficial de Permisos por Rol (IAM / SoD)](#matriz-oficial-de-permisos-por-rol-iam--sod)
 3. [Módulo de Carga Directa y Panel de Control de la Jornada](#3-módulo-de-carga-directa-y-panel-de-control-de-la-jornada)
+   - [Botonera de Acceso Rápido: Entrada, Salida, Cargar Pedido y Mercado Libre](#botonera-dúo-ingreso-y-salida-rápida-con-pistoleo-continuo)
    - [Métricas en Tiempo Real de la Jornada](#métricas-en-tiempo-real-de-la-jornada)
    - [Formulario de Carga y Descuento Individual](#formulario-de-carga-y-descuento-individual)
    - [Módulo de Inventario en Vivo con Escáner Móvil y PC](#módulo-de-inventario-en-vivo-con-escáner-móvil-y-pc)
@@ -509,6 +510,15 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
 
 Diseñado para el personal de preparación de pedidos, empaquetado y despacho en el depósito. Su interfaz está optimizada para la agilidad operativa:
 
+* **⚡ Botonera Dúo Express (Entrada Rápida y Salida Rápida):**
+  - **Ubicación Permanente Superior:** Dos botones accesibles en la parte superior del menú (por fuera de las categorías tipo acordeón) para que el operario registre movimientos inmediatos con un solo clic.
+  - **Entrada Rápida (Verde):** Permite ingresar mercadería escaneando el código de barras o ingresando el SKU, seleccionando obligatoriamente un motivo tipificado (Enum): `Devolución de Cliente`, `Movimiento Interno`, `Sobrante de Inventario / Ajuste` o `Muestra / Ingreso Especial`.
+  - **Salida Rápida (Ámbar):** Permite dar de baja productos por `Rotura / Merma / Dañado`, `Muestra Comercial / Exhibición`, `Consumo / Uso Interno`, `Devolución a Proveedor` o `Faltante / Ajuste de Inventario`.
+  - **Escaneo Óptico Continuo:** Soporta pistolas lectoras USB/Bluetooth con autofoco y disparo en Enter.
+  - **Tarjeta en Vivo y Proyección:** Muestra el nombre del artículo, código SKU, código de barras, stock actual y el nuevo saldo proyectado en tiempo real.
+  - **Ajuste Rápido de Cantidades:** Stepper `[-]` / `[+]` y botones de incremento rápido `+1`, `+5`, `+10` y `+50`.
+  - **Trazabilidad Forense Total:** Impacto atómico en SQLite y `Productos.xlsx`, registro en el historial `stock_movements` y auditoría inmutable en `logs_auditoria` con el nombre identificador del operario y las observaciones ingresadas.
+
 * **Carga y Armado de Pedidos en Tiempo Real:**
   * Formulario rápido para procesar comprobantes individuales (PDF de remito o Excel de canje).
   * **Campo de Cliente con Buscador y Alta Automática:** Actúa como buscador interactivo en vivo al escribir un nombre; muestra sugerencias coincidentes y si el cliente no aparece, se da de alta automáticamente en el sistema sin interrumpir la carga.
@@ -634,6 +644,30 @@ sequenceDiagram
     UI->>Core: Genera Informe Oficial y Hoja de Ruta de Despacho (PDF)
     UI->>Dash: Resetea contadores del panel a 0 para el próximo turno
 ```
+
+### Botonera de Acceso Rápido: Entrada, Salida, Cargar Pedido y Mercado Libre
+
+StockAgent incorpora en la cabecera permanente de navegación 4 accesos directos prioritarios para el operario (y perfiles de gestión), ubicados por fuera de los acordeones habituales para resolver las tareas operativas más repetitivas del depósito con máxima agilidad:
+
+1. **Ingreso Rápido (`+` Stock Verde):**
+   * **Propósito:** Registrar entradas inmediatas por devoluciones de clientes, transferencias entre sucursales, compras locales de urgencia o ajustes de inventario positivos.
+   * **Motivo Obligatorio:** Menú desplegable con tipificaciones operativas (`Devolución de Cliente`, `Transferencia Interna`, `Ajuste de Inventario`, `Devolución de Garantía`).
+   * **Modo Pistoleo Continuo (Hands-Free):** Al activar este interruptor, el operador puede pistolear productos sucesivamente con el escáner de mano. El sistema reconoce el código de barras, confirma la transacción con señal sonora de éxito, actualiza el saldo en tiempo real y devuelve el foco al campo de texto de forma automática, sin requerir clics ni confirmaciones manuales.
+
+2. **Salida Rápida (`-` Stock Rojo):**
+   * **Propósito:** Registrar egresos inmediatos por roturas/mermas de depósito, consumo interno, muestras comerciales entregadas a clientes, devoluciones a proveedor o ajustes negativos.
+   * **Motivo Obligatorio:** Selector desplegable con opciones trazables (`Rotura / Merma`, `Consumo Interno`, `Muestra Comercial`, `Ajuste de Inventario`, `Devolución a Proveedor`).
+   * **Seguridad y Validación:** Comprueba que exista existencia disponible suficiente antes de asentar el descuento atómico.
+
+3. **Cargar Pedido (`📄+` Azul):**
+   * **Propósito:** Acceso de un clic para abrir la ventana modal de carga de remitos mayoristas o armado manual de pedidos, parsear archivos PDF o escanear comprobantes de preparación.
+
+4. **Descontar Mercado Libre (`🛍️` Amarillo Oro):**
+   * **Propósito:** Acceso instantáneo para escanear y procesar etiquetas y órdenes de compra de Mercado Libre con descuento atómico del inventario maestro.
+
+Todos los movimientos impactan inmediatamente en `Productos.xlsx`, registran trazabilidad completa en la base de datos transaccional SQLite y despachan webhooks asíncronos para notificar a sistemas satélite.
+
+---
 
 ### Métricas en Tiempo Real de la Jornada
 
@@ -972,6 +1006,23 @@ Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo,
    * **`docking_manager.py`:** Orquesta la adaptación reactiva del layout de pantalla completa según las 5 orientaciones de docking del sidebar (`left`, `right`, `top`, `bottom`, `hidden`).
    * **`print_labels.py`:** Centraliza el renderizado y apertura de documentos PDF de rótulos con código QR para impresión en rollo térmico continuo (100x150 mm) y hojas estándar A4.
 
+10. **Refactorización y Desacoplamiento Modular del Dashboard (`src/ui/dashboard_presenter.py`):**
+    * Se extrajo toda la lógica de presentación, conteo en tiempo real, renderizado de auditoría forense para el rol Master, armado de tarjetas de pedidos preparados y listado de comprobantes generados hacia `dashboard_presenter.py`.
+    * La clase `InterfazFlet` queda reducida a un orquestador limpio y reactivo, eliminando más de 300 líneas de código monolítico y mejorando la testeabilidad unitaria.
+
+11. **Botonera Dúo Express y Movimientos Rápidos de Stock (`dlg_movimientos_rapidos.py`):**
+    * **Entrada Rápida y Salida Rápida:** Dos accesos superiores inmediatos fuera de las categorías tipo acordeón para operadores, administradores y master.
+    * **Justificación Tipificada (Enums Obligatorios):**
+      - `MotivoIngresoRapido`: `Devolución de Cliente`, `Movimiento Interno`, `Sobrante de Inventario / Ajuste`, `Muestra / Ingreso Especial`.
+      - `MotivoSalidaRapida`: `Rotura / Merma / Dañado`, `Muestra Comercial / Exhibición`, `Consumo / Uso Interno`, `Devolución a Proveedor`, `Faltante / Ajuste de Inventario`.
+    * **Impacto Transaccional Inmediato:** Actualización concurrente de inventario en SQLite (`products`), catálogo en memoria, sincronización con `Productos.xlsx`, registro en `stock_movements` y auditoría forense inmutable en `logs_auditoria`.
+
+12. **Persistencia Desacoplada de Preferencias (`src/ui/user_preferences.py`):**
+    * Módulo independiente para guardar y recuperar preferencias de interfaz por usuario (modo oscuro/claro, orientación del docking del menú, sección abierta por defecto), evitando referencias circulares entre el Sidebar y los diálogos modales.
+
+13. **Indicadores Reactivos de Tareas Pendientes (`●`):**
+    * Puntos rojos dinámicos en los títulos de categoría del menú acordeón y en la barra horizontal, que alertan inmediatamente al operario o supervisor sobre pedidos pendientes de cierre o tareas pendientes.
+
 ### Esquema de Bases de Datos SQLite
 
 #### `data/productos.sqlite3`
@@ -1229,6 +1280,49 @@ StockAgent permite acceder y operar de forma remota desde cualquier PC, notebook
 
 ---
 
+### Endurecimiento de Seguridad y API REST v1 (Enterprise Grade)
+
+La API REST v1 y el servidor web han sido blindados con controles de seguridad perimetral y criptográfica avanzada:
+
+1. **Persistencia Criptográfica de Sesiones (`api_sessions` en SQLite):**
+   * Los tokens de sesión nunca se guardan en texto plano en la base de datos; se indexan y almacenan calculando su digest unidireccional SHA-256 (`token_hash`).
+   * Las sesiones sobreviven a reinicios del servidor sin degradar la memoria caché en caliente.
+2. **Sistema de Claves de Integración API Keys (`X-API-Key`):**
+   * Emisión de claves estáticas con prefijo seguro `sk_live_...` para conectar ERPs, scripts satélite y plataformas B2B.
+   * Endpoints exclusivos para administradores (`POST /api/v1/auth/api-keys`, `GET /api/v1/auth/api-keys`, `DELETE /api/v1/auth/api-keys/{key_hash}`).
+   * Registro del último uso (`last_used`) y revocación instantánea a nivel de base de datos.
+3. **Consulta de Stock para ERPs (`GET /api/v1/productos/{codigo}/stock`):**
+   * Endpoint de ultra-alta velocidad para validar existencias de productos por SKU o código de barras escaneado mediante `X-API-Key` o token Bearer.
+4. **Protección Contra Fuerza Bruta por IP (Rate Limiting en `/login`):**
+   * Umbral estricto de máximo 10 intentos por minuto por dirección IP de origen, respondiendo con código HTTP `429 Too Many Requests` ante ráfagas maliciosas.
+5. **CORS Restringido a Redes Privadas y Encabezados de Seguridad:**
+   * Restricción mediante expresión regular para admitir únicamente orígenes confiables: localhost (`127.0.0.1`), LAN privada RFC 1918 (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) y Tailscale VPN (`100.x.x.x`).
+   * Inyección automática de cabeceras HTTP de protección: `X-Content-Type-Options: nosniff` y `X-Frame-Options: SAMEORIGIN` (prevención de Clickjacking y MIME sniffing).
+6. **Integridad Referencial en SQLite:**
+   * Aplicación sistemática de `PRAGMA foreign_keys = ON` en todas las conexiones a bases de datos transaccionales.
+
+---
+
+### Impresión Térmica Directa al Spooler de Windows
+
+Para eliminar demoras en la línea de despacho de bultos:
+* **Detección Automática de Impresoras:** Consulta nativa al subsistema `Win32_Printer` de Windows mediante CIM/PowerShell para listar impresoras térmicas conectadas (Zebra, Honeywell, Sato, Xprinter).
+* **Envío Directo al Spooler:** Despacho transparente del PDF de etiquetas (100x150 mm) a la cola de impresión física sin abrir visores externos.
+* **Configurable por Operario:** Activación en un clic desde el diálogo de Preferencias de Usuario con fallback automático al visor tradicional si la impresora estuviera fuera de línea.
+
+---
+
+### Gestor de Webhooks y Automatización de Eventos Salientes
+
+Permite integrar StockAgent con ERPs externos, canales de Discord/Slack o servidores de monitoreo:
+* **Eventos Soportados:**
+  * `QUIEBRE_STOCK`: Disparado cuando un producto alcanza saldo crítico o se agota durante el despacho o arqueo.
+  * `CIERRE_JORNADA`: Notifica la finalización del turno con el consolidado de pedidos, bultos y archivos de hoja de ruta generados.
+  * `MOVIMIENTO_RAPIDO`: Notifica ingresos o egresos directos de la botonera dúo.
+* **Despacho Asíncrono en Background:** Los envíos HTTP POST corren en hilos desacoplados con timeout estricto, garantizando cero impacto en la latencia de la interfaz gráfica.
+
+---
+
 ### Protección Integral Contra Ataques Maliciosos y Seguridad del Sistema
 
 StockAgent implementa una arquitectura de seguridad por capas conforme a estándares de la industria (**OWASP Top 10, NIST y CIS Controls**):
@@ -1281,6 +1375,20 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
     - Compilación desatendida y programática de manuales SOP en formato PDF para los 4 roles.
     - Generación modular botón a botón con estructura exhaustiva de Fichas de Procedimiento.
     - Verificación formal de metadatos de calidad en portada: Elaborado por Gregory Rodriguez, Revisado por / Aprobado por en blanco para firmas institucionales, e historial de versión v3.0.0.
+26. `tests/test_security_api_keys.py`:
+    - Persistencia de sesiones SQLite con hash SHA-256 e inmunidad a reinicios de caché en memoria.
+    - Ciclo de vida completo de API Keys (`create_api_key`, `validate_api_key`, `list_api_keys`, `revoke_api_key`).
+    - Autenticación segura mediante encabezado `X-API-Key` y endpoints administrativos de gestión.
+    - Endpoint B2B `GET /api/v1/productos/{codigo}/stock`.
+    - Limitador de tasa por IP en `/api/v1/auth/login` (HTTP 429).
+    - Habilitación forzosa de claves foráneas `PRAGMA foreign_keys = ON`.
+27. `tests/test_webhook_manager.py`:
+    - Registro, consulta y eliminación de suscripciones a eventos de webhooks en `data/webhooks.json`.
+    - Prueba de conectividad ping y despacho asíncrono en background ante quiebres de stock.
+28. `tests/test_modo_continuo_printing.py`:
+    - Enumeración de impresoras físicas de Windows vía PowerShell/CIM.
+    - Enrutamiento directo al spooler de impresión con verbo `printto`.
+    - Integración de preferencias de usuario con conmutación inteligente y fallback.
 
 #### Módulos de Prueba
 1. `tests/test_flet_gui.py`:

@@ -146,7 +146,7 @@ class FletGuiTests(unittest.TestCase):
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
         # 22 comandos para administrador (Telegram y SMTP reservados a Master)
-        self.assertEqual(len(interfaz.controles_tarea), 22)
+        self.assertEqual(len(interfaz.controles_tarea), 26)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -291,7 +291,7 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertEqual(menu.procesamientos, [])
         self.assertEqual(len(page.dialogos), 1)
-        self.assertEqual(len(interfaz.controles_tarea), 5)
+        self.assertEqual(len(interfaz.controles_tarea), 8)
 
     def test_admin_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="administrador")
@@ -674,7 +674,24 @@ class FletGuiTests(unittest.TestCase):
         botones_por_seccion[seccion_actual] = []
 
         for c in controles:
-            if isinstance(c, ft.Text) and c.value and c.weight == ft.FontWeight.BOLD:
+            if isinstance(c, ft.ExpansionTile):
+                titulo_sec = ""
+                if isinstance(c.title, ft.Text):
+                    titulo_sec = c.title.value or ""
+                elif hasattr(c.title, "controls"):
+                    for sub_t in c.title.controls:
+                        if isinstance(sub_t, ft.Text) and sub_t.value:
+                            titulo_sec = sub_t.value
+                            break
+                if titulo_sec:
+                    seccion_actual = titulo_sec
+                    secciones.append(seccion_actual)
+                    botones_por_seccion[seccion_actual] = []
+                    for btn in (c.controls or []):
+                        if isinstance(btn, ft.Button) and hasattr(btn, "content"):
+                            val = btn.content if isinstance(btn.content, str) else getattr(btn.content, "value", "")
+                            botones_por_seccion[seccion_actual].append(val)
+            elif isinstance(c, ft.Text) and c.value and c.weight == ft.FontWeight.BOLD:
                 seccion_actual = c.value
                 secciones.append(seccion_actual)
                 botones_por_seccion[seccion_actual] = []
@@ -683,15 +700,15 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertIn("CLIENTES", secciones)
         self.assertIn("INFORMES", secciones)
-        self.assertIn("PEDIDOS EN TIEMPO REAL", secciones)
+        self.assertIn("PREPARACIÓN Y DESPACHO", secciones)
 
         self.assertIn("Gestión de Clientes", botones_por_seccion["CLIENTES"])
-        self.assertNotIn("Gestión de Clientes", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
+        self.assertNotIn("Gestión de Clientes", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
 
         self.assertIn("Historial de Pedidos", botones_por_seccion["INFORMES"])
-        self.assertIn("Imprimir Descuento", botones_por_seccion["INFORMES"])
-        self.assertNotIn("Historial de Pedidos", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
-        self.assertNotIn("Imprimir Descuento", botones_por_seccion["PEDIDOS EN TIEMPO REAL"])
+        self.assertIn("Imprimir Descuento", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
+        self.assertNotIn("Historial de Pedidos", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
+        self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("CLIENTES", []))
 
 
 if __name__ == "__main__":

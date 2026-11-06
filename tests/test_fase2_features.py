@@ -96,7 +96,7 @@ class TestFase2Features(unittest.TestCase):
                 "notificar_seguridad": True,
                 "notificar_cierre": True,
             }, tmp_root)
-            with patch("src.telegram_notifier.enviar_mensaje_telegram") as mock_send:
+            with patch("src.integrations.telegram_notifier.enviar_mensaje_telegram", return_value=True) as mock_send, patch("src.telegram_notifier.enviar_mensaje_telegram", return_value=True):
                 self.assertTrue(notificar_quiebre_stock_telegram("100", "Prod", 0, 5, tmp_root))
                 self.assertTrue(notificar_seguridad_bloqueo_telegram("operario1", root_path=tmp_root))
                 self.assertTrue(notificar_cierre_jornada_telegram("Admin", 10, 20, 50, tmp_root))

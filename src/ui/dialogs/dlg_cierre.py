@@ -517,6 +517,30 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
             except Exception as ex_bk:
                 print(f"Error en backup automático: {ex_bk}")
 
+            try:
+                from ...webhook_manager import despachar_evento_webhook
+                despachar_evento_webhook("CIERRE_JORNADA", {
+                    "cierre_id": cierre_id,
+                    "usuario": interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
+                    "resumen_pedidos": resumen_p,
+                    "total_quiebres": len(art_quiebre) if 'art_quiebre' in locals() else 0,
+                    "total_criticos": len(art_criticos) if 'art_criticos' in locals() else 0,
+                    "hoja_ruta": hoja_ruta_pdf.name if hoja_ruta_pdf else None,
+                    "archivo_pdf": pdf_path.name if pdf_path else None,
+                    "archivo_excel": xls_path.name if xls_path else None,
+                })
+                if 'art_quiebre' in locals() and art_quiebre:
+                    for r_q in art_quiebre:
+                        despachar_evento_webhook("QUIEBRE_STOCK", {
+                            "codigo": r_q.codigo,
+                            "nombre": r_q.nombre_producto,
+                            "stock_actual": r_q.stock_nuevo,
+                            "origen": f"Cierre #{cierre_id}",
+                            "estado": "AGOTADO" if r_q.stock_nuevo <= 0 else "CRITICO",
+                        })
+            except Exception as ex_wh:
+                print(f"Error despachando webhook de cierre: {ex_wh}")
+
             resultado_cierre["cierre_id"] = cierre_id
             resultado_cierre["pdf_path"] = pdf_path
             resultado_cierre["xls_path"] = xls_path

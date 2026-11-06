@@ -344,11 +344,18 @@ def iniciar_servidor_web(
                             from starlette.middleware.cors import CORSMiddleware
                             self.add_middleware(
                                 CORSMiddleware,
-                                allow_origins=["*"],
+                                allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|100\.\d+\.\d+\.\d+)(:\d+)?$",
                                 allow_credentials=True,
                                 allow_methods=["*"],
                                 allow_headers=["*"],
                             )
+
+                            @self.middleware("http")
+                            async def _security_headers_middleware(request, call_next):
+                                response = await call_next(request)
+                                response.headers["X-Content-Type-Options"] = "nosniff"
+                                response.headers["X-Frame-Options"] = "SAMEORIGIN"
+                                return response
                         except Exception as exc_cors:
                             logger.warning("No se pudo activar CORS en la API: %s", exc_cors)
 
