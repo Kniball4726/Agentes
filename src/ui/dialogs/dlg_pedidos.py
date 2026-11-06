@@ -797,7 +797,15 @@ def mostrar_dialogo_editar_pedido(
 
     usr_actual = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
     if hasattr(interfaz, "order_store") and interfaz.order_store:
-        ok_lock, usr_bloqueo, f_bloqueo = interfaz.order_store.adquirir_bloqueo_pedido(pedido.id, usr_actual)
+        try:
+            res_lock = interfaz.order_store.adquirir_bloqueo_pedido(pedido.id, usr_actual)
+            if isinstance(res_lock, tuple) and len(res_lock) >= 3:
+                ok_lock, usr_bloqueo, f_bloqueo = res_lock[0], res_lock[1], res_lock[2]
+            else:
+                ok_lock, usr_bloqueo, f_bloqueo = bool(res_lock), usr_actual, ""
+        except Exception:
+            ok_lock, usr_bloqueo, f_bloqueo = True, usr_actual, ""
+
         if not ok_lock:
             tiempo_str = "recientemente"
             try:
@@ -847,7 +855,6 @@ def mostrar_dialogo_editar_pedido(
             )
             interfaz.page.show_dialog(dialogo_bloqueo)
             return
-        return
 
     cliente_input = ft.TextField(
         label="Cliente *",
@@ -925,20 +932,27 @@ def mostrar_dialogo_editar_pedido(
             )
             interfaz.page.pop_dialog()
             if hasattr(interfaz, "order_store") and interfaz.order_store:
-                interfaz.order_store.liberar_bloqueo_pedido(pedido.id, usr)
+                try:
+                    interfaz.order_store.liberar_bloqueo_pedido(pedido.id, usr)
+                except Exception:
+                    pass
             interfaz.notificar(f"Pedido #{pedido.nota_pedido} actualizado correctamente.")
             if al_final:
                 al_final()
             interfaz.sincronizar_sesiones(aviso_colaborativo=f"✏️ {usr} actualizó datos del Pedido #{pedido.nota_pedido} ({c_val})")
             return
-            if al_final:
-                al_final()
-            interfaz.sincronizar_sesiones()
         except Exception as err:
             error_msg.value = f"Error al actualizar: {err}"
             error_msg.visible = True
             if interfaz.page:
                 interfaz.page.update()
+
+    def al_cerrar_dialogo(_e=None):
+        if hasattr(interfaz, "order_store") and interfaz.order_store:
+            try:
+                interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), usr_actual)
+            except Exception:
+                pass
 
     dialogo = ft.AlertDialog(
         title=ft.Row(
@@ -971,8 +985,9 @@ def mostrar_dialogo_editar_pedido(
         ),
         actions=[
             ft.Button("Guardar Cambios", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_cambios),
-            interfaz.boton_dialogo("Cancelar", lambda _e: (interfaz.order_store.liberar_bloqueo_pedido(getattr(pedido, "id", 0), getattr(interfaz.usuario_actual, "username", "")) if getattr(interfaz, "order_store", None) and "pedido" in locals() else None, interfaz.page.pop_dialog())),
+            interfaz.boton_dialogo("Cancelar", lambda _e: (al_cerrar_dialogo(), interfaz.page.pop_dialog())),
         ],
+        on_dismiss=al_cerrar_dialogo,
     )
     interfaz.page.show_dialog(dialogo)
 

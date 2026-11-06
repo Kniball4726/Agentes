@@ -53,8 +53,10 @@ def renderizar_auditoria_master(interfaz: Any, eventos_auditoria: list[Any]) -> 
         interfaz.lista_informes.controls.append(
             ft.ListTile(
                 leading=ft.Icon(icono_ev, color=color_ev, size=19),
-                title=ft.Text(f"[{accion_ev}] @{usuario_ev}", size=12, color=interfaz.texto, weight=ft.FontWeight.W_500),
-                subtitle=ft.Text(f"{detalle_ev} · {fecha_ev}", size=10, color=interfaz.secundario),
+                title=ft.Text(f"[{accion_ev}] @{usuario_ev}", size=12, color=interfaz.texto, weight=ft.FontWeight.W_500, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                subtitle=ft.Text(f"{detalle_ev} · {fecha_ev}", size=10, color=interfaz.secundario, no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                dense=True,
+                content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
             )
         )
 
@@ -210,6 +212,9 @@ def renderizar_informes_generados(interfaz: Any, informes: list[Path], mtimes_in
         subtitulo = ft.Text(
             subtitulo_txt,
             size=10,
+            no_wrap=True,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
             color=ft.Colors.BLUE_300
             if (es_comparativa and interfaz.modo_oscuro)
             else (
@@ -225,8 +230,19 @@ def renderizar_informes_generados(interfaz: Any, informes: list[Path], mtimes_in
         interfaz.lista_informes.controls.append(
             ft.ListTile(
                 leading=ft.Icon(icono, color=color_icono, size=19),
-                title=ft.Text(ruta.name, size=12, color=interfaz.texto, weight=ft.FontWeight.W_500),
+                title=ft.Text(
+                    ruta.name,
+                    size=12,
+                    color=interfaz.texto,
+                    weight=ft.FontWeight.W_500,
+                    no_wrap=True,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    tooltip=ruta.name,
+                ),
                 subtitle=subtitulo,
+                dense=True,
+                content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
                 on_click=lambda _e, archivo=ruta: interfaz.seleccionar_informe(archivo),
                 trailing=ft.Row(
                     [
@@ -245,7 +261,8 @@ def renderizar_informes_generados(interfaz: Any, informes: list[Path], mtimes_in
                             on_click=lambda _e, r=ruta: interfaz.abrir_carpeta_informe(ruta_especifica=r),
                         ),
                     ],
-                    spacing=2,
+                    spacing=0,
+                    tight=True,
                     alignment=ft.MainAxisAlignment.END,
                 ),
             )

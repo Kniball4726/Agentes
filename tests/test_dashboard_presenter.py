@@ -107,6 +107,45 @@ class TestDashboardPresenter(unittest.TestCase):
         self.assertEqual(self.interfaz.contadores["total"].value, "6")
         self.interfaz._actualizar_estado_boton_cierre.assert_called_with(6)
 
+    def test_renderizar_informes_generados_formato_en_linea(self):
+        """Verifica que los informes se muestren en línea con tight=True y no_wrap."""
+        ruta_informe = Path("Remito_0001-00024922_20261105_145238.pdf")
+        mtimes = {ruta_informe: 1730825558.0}
+
+        renderizar_informes_generados(self.interfaz, [ruta_informe], mtimes)
+
+        self.assertEqual(len(self.interfaz.lista_informes.controls), 1)
+        tile = self.interfaz.lista_informes.controls[0]
+        self.assertIsInstance(tile, ft.ListTile)
+        self.assertEqual(tile.title.value, ruta_informe.name)
+        self.assertTrue(tile.title.no_wrap)
+        self.assertEqual(tile.title.max_lines, 1)
+        self.assertEqual(tile.title.overflow, ft.TextOverflow.ELLIPSIS)
+        self.assertTrue(tile.subtitle.no_wrap)
+        self.assertTrue(tile.trailing.tight)
+
+    def test_renderizar_pedidos_preparados_boton_editar_operador(self):
+        """Verifica que para un operador aparezca el botón de editar pedido."""
+        ped = MagicMock()
+        ped.id = 101
+        ped.numero_pedido = "10"
+        ped.nota_pedido = "0001-00024922"
+        ped.cliente = "Distribuidora JBM"
+        ped.logistica = "Centro de distribución"
+        ped.bultos = 1
+        ped.created_at = "2026-11-06 17:07:00"
+        ped.resumen_items = "1 productos (3 un.)"
+        ped.articulos_descontados = 3
+
+        renderizar_pedidos_preparados_turno(self.interfaz, [ped])
+
+        self.assertEqual(len(self.interfaz.lista_pedidos_preparados.controls), 1)
+        card = self.interfaz.lista_pedidos_preparados.controls[0]
+        col_der = card.content.controls[1]
+        botones = [c for c in col_der.controls if isinstance(c, ft.IconButton)]
+        self.assertEqual(len(botones), 1)
+        self.assertEqual(botones[0].icon, ft.Icons.EDIT_OUTLINED)
+
 
 if __name__ == "__main__":
     unittest.main()
