@@ -90,6 +90,7 @@ from .ui.components import (
     construir_encabezado,
     construir_panel_metricas,
     construir_panel_informes_actividad,
+    construir_panel_acceso_rapido,
     reproducir_sonido_web,
     actualizar_estado_conexion_ui,
     iniciar_heartbeat_red_daemon,
@@ -119,6 +120,10 @@ from .ui.dialogs import (
     mostrar_dialogo_cierres_operarios,
     mostrar_dialogo_compartir_cierre,
     mostrar_dialogo_configuracion_smtp,
+    mostrar_dialogo_api_master,
+    mostrar_gestion_api_keys,
+    mostrar_estado_api,
+    mostrar_sesiones_api,
     mostrar_dialogo_confirmar_anulacion_pedido,
     mostrar_dialogo_confirmar_desarmar_pedido,
     mostrar_dialogo_crear_pedido,
@@ -143,6 +148,8 @@ from .ui.dialogs import (
     mostrar_command_palette,
     mostrar_dialogo_ingreso_rapido,
     mostrar_dialogo_salida_rapida,
+    mostrar_dialogo_ver_stock,
+    mostrar_dialogo_informes,
     actualizar_alerta_quiebre,
     mostrar_detalle_quiebre,
     confirmar_restaurar,
@@ -726,6 +733,7 @@ class InterfazFlet:
             self.encabezado(),
             self.banner_alerta_quiebre,
             self.panel_metricas(),
+            self.panel_acceso_rapido(),
             self.panel_informes_actividad(),
             self.estado_tarea,
         ]
@@ -1075,6 +1083,9 @@ class InterfazFlet:
     def panel_metricas(self) -> ft.Control:
         return construir_panel_metricas(self)
 
+    def panel_acceso_rapido(self) -> ft.Control:
+        return construir_panel_acceso_rapido(self)
+
     def panel_informes_actividad(self) -> ft.Control:
         return construir_panel_informes_actividad(self)
 
@@ -1407,8 +1418,13 @@ class InterfazFlet:
             return None
         if self.informe_seleccionado and self.informe_seleccionado.exists():
             return self.informe_seleccionado
+        if not self.informes and getattr(self, "menu", None) and hasattr(self.menu, "_obtener_generados"):
+            try:
+                self.informes = self.menu._obtener_generados()
+            except Exception:
+                self.informes = []
         if self.informes:
-            self.informe_seleccionado = self.informes[0]
+            self.informe_seleccionado = self.informes[-1]
             return self.informe_seleccionado
         self.notificar("Todavía no hay informes generados.")
         return None
@@ -1520,6 +1536,7 @@ class InterfazFlet:
         role = (self.usuario_actual.role or "operador").strip().lower()
         mapa_archivos = {
             "operador": "Manual_Operador.pdf",
+            "picker": "Manual_Picker.pdf",
             "administrador": "Manual_Administrador.pdf",
             "master": "Manual_Master.pdf",
             "consulta": "Manual_Consulta.pdf",
@@ -1558,8 +1575,32 @@ class InterfazFlet:
             self.notificar(f"No se pudo abrir el manual:\n{error}")
 
     def abrir_informe(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
-        ruta = ruta_especifica or self.ruta_informe()
-        if ruta is None:
+        if ruta_especifica is None:
+            if getattr(self, "menu", None) and hasattr(self.menu, "_obtener_generados"):
+                try:
+                    self.informes = self.menu._obtener_generados()
+                except Exception:
+                    pass
+            if not self.informes:
+                self.notificar("Todavía no hay informes generados.")
+                return
+            mostrar_dialogo_informes(self)
+            return
+
+        ruta = Path(ruta_especifica)
+        if not ruta.exists():
+            self.notificar(f"No se encontró el archivo de informe:\n{ruta.name}")
+            return
+        if getattr(self.page, "web", False):
+            import time
+            ts = int(time.time())
+            url_descarga = f"/descargas/informes/{ruta.name}?v={ts}"
+            try:
+                self.page.launch_url(url_descarga)
+                return
+            except Exception as exc:
+                logger.warning("Fallo al abrir url de descarga (%s), intentando fallback", exc)
+        if False:
             return
         if getattr(self.page, "web", False):
             if hasattr(self.page, "run_task"):
@@ -1571,12 +1612,39 @@ class InterfazFlet:
                     pass
             return
         try:
-            os.startfile(ruta)  # type: ignore[attr-defined]
+            if sys.platform == "win32":
+                os.startfile(str(ruta.resolve()))  # type: ignore[attr-defined]
+            else:
+                import webbrowser
+                webbrowser.open(ruta.resolve().as_uri())
         except OSError as error:
-            self.notificar(f"No se pudo abrir el archivo:\n{error}")
+            try:
+                import webbrowser
+                webbrowser.open(ruta.resolve().as_uri())
+            except Exception:
+                self.notificar(f"No se pudo abrir el archivo:\n{error}")
 
-    def abrir_carpeta_informe(self, ruta: Path) -> None:
-        subprocess.Popen(["explorer.exe", f"/select,{ruta}"])
+    def abrir_carpeta_informe(self, ruta: Path | None = None, ruta_especifica: Path | None = None) -> None:
+        target = ruta or ruta_especifica
+        if target is None:
+            target = self.ruta_informe()
+        if target is None:
+            return
+        target = Path(target)
+        if getattr(self.page, "web", False):
+            self.notificar(f"Ubicación en servidor: {target.parent if target.is_file() else target}")
+            return
+        try:
+            if sys.platform == "win32":
+                if target.is_file():
+                    subprocess.Popen(["explorer.exe", f"/select,{target.resolve()}"])
+                else:
+                    subprocess.Popen(["explorer.exe", str(target.resolve())])
+            else:
+                import webbrowser
+                webbrowser.open(target.parent.resolve().as_uri() if target.is_file() else target.resolve().as_uri())
+        except Exception as exc:
+            self.notificar(f"No se pudo abrir la carpeta:\n{exc}")
 
     def compartir_correo(
         self,
@@ -1622,6 +1690,19 @@ class InterfazFlet:
             destinatarios_iniciales=destinatarios_iniciales,
             titulo_dialogo=titulo_dialogo,
         )
+
+    def mostrar_dialogo_api_master(self, _evento: ft.Event | None = None, tab_inicial: int = 0) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_dialogo_api_master(self, tab_inicial=tab_inicial)
+
+    def mostrar_gestion_api_keys(self, _evento: ft.Event | None = None) -> None:
+        self.mostrar_dialogo_api_master(_evento, tab_inicial=0)
+
+    def mostrar_estado_api(self, _evento: ft.Event | None = None) -> None:
+        self.mostrar_dialogo_api_master(_evento, tab_inicial=1)
+
+    def mostrar_sesiones_api(self, _evento: ft.Event | None = None) -> None:
+        self.mostrar_dialogo_api_master(_evento, tab_inicial=2)
 
     def mostrar_configuracion_smtp(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_configuracion_smtp(self)
@@ -1683,6 +1764,9 @@ class InterfazFlet:
         if not self.exigir_roles("administrador"):
             return
         self.mostrar_formulario_producto()
+
+    def mostrar_ver_stock(self, _evento: ft.Event | None = None) -> None:
+        mostrar_dialogo_ver_stock(self)
 
     def mostrar_gestion_productos(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_gestion_productos(self)

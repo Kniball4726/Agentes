@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Generator, Literal
 
 
-UserRole = Literal["master", "administrador", "operador", "consulta"]
-USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta")
-DEFAULT_MASTER_USERNAME = "Desarrollo"
+UserRole = Literal["master", "administrador", "operador", "consulta", "picker"]
+USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta", "picker")
+DEFAULT_MASTER_USERNAME = "Auditoria"
 DEFAULT_MASTER_PASSWORD = "master1713"
 
 
@@ -121,7 +121,7 @@ class UserStore:
                     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL CHECK (
-                        role IN ('master', 'administrador', 'operador', 'consulta')
+                        role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
                     ),
                     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
                     must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
@@ -251,7 +251,7 @@ class UserStore:
         row = connection.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
         ).fetchone()
-        if row and row[0] and "'master'" not in row[0]:
+        if row and row[0] and ("'master'" not in row[0] or "'picker'" not in row[0]):
             connection.execute("PRAGMA foreign_keys = OFF")
             connection.execute(
                 """
@@ -260,7 +260,7 @@ class UserStore:
                     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL CHECK (
-                        role IN ('master', 'administrador', 'operador', 'consulta')
+                        role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
                     ),
                     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
                     must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
@@ -303,6 +303,9 @@ class UserStore:
             if tiene_nombre
             else "SELECT id, role, active FROM users WHERE username = ? COLLATE NOCASE"
         )
+        connection.execute(
+            "UPDATE users SET username = 'Auditoria', nombre = 'Auditoría' WHERE username = 'Desarrollo' COLLATE NOCASE AND role = 'master'"
+        )
         def_user, def_pass = _master_default_credentials()
         master_row = connection.execute(query, (def_user,)).fetchone()
         if master_row is None:
@@ -310,7 +313,7 @@ class UserStore:
             connection.execute(
                 """
                 INSERT INTO users (username, password_hash, role, active, must_change_password, nombre, email)
-                VALUES (?, ?, 'master', 1, 1, 'Desarrollo', '')
+                VALUES (?, ?, 'master', 1, 1, 'Auditoría', '')
                 """,
                 (def_user, pwd_hash),
             )
@@ -322,7 +325,7 @@ class UserStore:
                 )
             if tiene_nombre and not master_row["nombre"]:
                 connection.execute(
-                    "UPDATE users SET nombre = 'Desarrollo' WHERE id = ?",
+                    "UPDATE users SET nombre = 'Auditoría' WHERE id = ?",
                     (master_row["id"],),
                 )
 
@@ -344,7 +347,7 @@ class UserStore:
 
     @staticmethod
     def _validar_rol(role: str) -> UserRole:
-        if role in ("master", "administrador", "operador", "consulta"):
+        if role in ("master", "administrador", "operador", "consulta", "picker"):
             return role  # type: ignore[return-value]
         raise ValueError("El rol seleccionado no es válido.")
 
@@ -576,8 +579,15 @@ class UserStore:
                 (identificador, identificador),
             ).fetchone()
         if row is None:
-            self._verificar_clave(password, self._hash_clave("invalid-user-password"))
-            return self._registrar_fallo(identificador, ahora)
+            if identificador.lower() == "desarrollo":
+                with self._connect() as conn_fb:
+                    row = conn_fb.execute(
+                        "SELECT id, username, password_hash, role, active, must_change_password, nombre, email, created_at, updated_at FROM users WHERE username = ? COLLATE NOCASE",
+                        (DEFAULT_MASTER_USERNAME,),
+                    ).fetchone()
+            if row is None:
+                self._verificar_clave(password, self._hash_clave("invalid-user-password"))
+                return self._registrar_fallo(identificador, ahora)
 
         nombre_cuenta = row["username"]
         if nombre_cuenta.lower() != identificador.lower():
@@ -741,6 +751,13 @@ class UserStore:
         return self._row_to_user(row) if row is not None else None
 
     def get_user_by_username(self, username: str) -> User | None:
+        cand = DEFAULT_MASTER_USERNAME if username.strip().lower() == "desarrollo" else username.strip()
+        user = self._buscar_usuario_por_nombre(cand)
+        if user is None and cand != username.strip():
+            user = self._buscar_usuario_por_nombre(username.strip())
+        return user
+
+    def _buscar_usuario_por_nombre(self, username: str) -> User | None:
         with self._connect() as connection:
             row = connection.execute(
                 """
@@ -988,3 +1005,29 @@ class UserStore:
         with self._connect() as connection, connection:
             cur = connection.execute("UPDATE api_keys SET active = 0 WHERE key_hash = ?", (key_hash,))
             return cur.rowcount > 0
+
+    def delete_api_key(self, key_hash: str) -> bool:
+        """Elimina de forma permanente una clave API de la base de datos."""
+        with self._connect() as connection, connection:
+            cur = connection.execute("DELETE FROM api_keys WHERE key_hash = ?", (key_hash,))
+            return cur.rowcount > 0
+
+    def list_api_sessions(self, max_records: int = 100) -> list[dict]:
+        """Lista las sesiones API persistidas ordenadas por última actividad reciente."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT token_hash, user_id, username, role, nombre, email, created_at, last_active
+                FROM api_sessions
+                ORDER BY last_active DESC
+                LIMIT ?
+                """,
+                (max_records,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def revoke_all_sessions(self) -> int:
+        """Revoca todas las sesiones activas persistidas."""
+        with self._connect() as connection, connection:
+            cur = connection.execute("DELETE FROM api_sessions")
+            return cur.rowcount

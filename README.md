@@ -15,7 +15,8 @@
    - [Centro de Documentación y Botón "Manual de Uso" (SOPs por Botón)](#centro-de-documentación-y-botón-manual-de-uso-en-la-barra-lateral)
    - [Gestión de Perfil de Usuario ("Mi Perfil")](#gestión-de-perfil-de-usuario-mi-perfil)
    - [Autenticación, Seguridad y Bloqueo de Cuentas](#autenticación-seguridad-y-bloqueo-de-cuentas)
-   - [Rol Master (`Desarrollo`)](#rol-master-desarrollo)
+   - [Rol Master (`Auditoria`)](#rol-master-auditoria)
+   - [Rol Picker](#rol-picker)
    - [Rol Administrador](#rol-administrador)
    - [Rol Operador](#rol-operador)
    - [Rol Consulta](#rol-consulta)
@@ -201,8 +202,9 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
 
 * **Manuales Oficiales Generados por Rol:**
   * **Manual del Operador (`Manual_Operador.pdf`):** Cubre los 13 comandos operativos de depósito: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
-  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los 21 comandos de supervisión: *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios* y *Manual de Uso*.
-  * **Manual Master (`Manual_Master.pdf`):** Cubre los 8 comandos técnicos de infraestructura: *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP*, *Alertas Telegram*, *Mercado Libre API (Credenciales)*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
+  * **Manual del Picker (`Manual_Picker.pdf`):** Cubre los procedimientos de preparación y recepción express: *Botonera Trío (Entrada, Salida, Descontar ML)*, *Ingreso de Fábrica*, *Generar Pedido a Fábrica*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Carga de Stock Físico (Inventario Ciego)*, *Ver Stock en Tiempo Real* y *Paleta de Comandos F2*.
+  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los 23 comandos de supervisión: *Panel Express (Entrada, Salida, Gestionar Productos, Ver Stock)*, *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios* y *Manual de Uso*.
+  * **Manual Master (`Manual_Master.pdf`):** Cubre los comandos técnicos de infraestructura y SoD: *Panel Express (Gestionar Usuarios, Registro de Auditoría)*, *API REST & Swagger UI*, *Gestión de API Keys*, *Sesiones Activas IAM*, *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP*, *Alertas Telegram*, *Mercado Libre API (Credenciales)*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
   * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los 4 comandos de consulta y lectura: *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
   * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo con todos los procedimientos y la matriz SoD unificada.
 
@@ -253,12 +255,15 @@ StockAgent incorpora estrictas medidas de seguridad para proteger la integridad 
 
 ---
 
-### Rol Master (`Desarrollo`) — Seguridad, IAM y Auditoría
+### Rol Master (`Auditoria`) — Seguridad, IAM y Auditoría Forense
 
-Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)** y el **Principio de Menor Privilegio**, el usuario **Master** está enfocado exclusivamente en la **administración técnica, gestión de identidades (IAM), auditoría integral y resguardo del sistema**. Al estar completamente desacoplado de la lógica de negocio y del inventario contable, garantiza imparcialidad y elimina conflictos de interés en las auditorías.
+Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)** y el **Principio de Menor Privilegio** (ISO/IEC 27001), el usuario **Master** (`Auditoria`, con alias histórico `Desarrollo` para retrocompatibilidad total) está enfocado exclusivamente en la **administración técnica, gestión de identidades (IAM), auditoría forense inmutable, administración de la API REST / API Keys y resguardo del sistema**. Al estar completamente desacoplado de la lógica de negocio y del inventario contable, garantiza absoluta imparcialidad y elimina conflictos de interés en auditorías de control interno.
 
-* **Usuario precargado:** `Desarrollo`
+* **Usuario precargado:** `Auditoria` (alias `Desarrollo`)
 * **Contraseña inicial:** `master1713` (con cambio obligatorio en el primer inicio de sesión).
+* **Botonera de Acceso Rápido Master (Cabecera):**
+  * `[🔐 Gestionar Usuarios]`: Aprovisionamiento, reseteo de claves y asignación de roles SoD.
+  * `[🛡️ Registro de Auditoría]`: Consola forense de lectura inmutable y trazabilidad transaccional.
 * **Alcance Exclusivo y Atributos Técnicos:**
   * **Gestión de Identidades y Accesos (IAM):** Es el **único rol facultado para crear, modificar, activar, desactivar y resetear contraseñas de cuentas de rol Administrador**. Asimismo, puede gestionar todas las cuentas operativas y desbloquear usuarios bloqueados por fuerza bruta.
   * **Centro de Auditoría Forense y Trazabilidad (Exclusivo Master):** Consulta inmutable y filtrado en tiempo real de todos los eventos del sistema: inicios de sesión, bloqueos por fuerza bruta, anulaciones, altas de usuarios, respaldos y modificaciones de configuración. Por principio de segregación de funciones (*SoD*), el Administrador no accede a este visor para evitar que el auditado audite sus propias operaciones.
@@ -282,9 +287,33 @@ Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)**
 
 ---
 
+### Rol Picker — Preparación de Pedidos, Recepción Express y Despachos
+
+Diseñado específicamente para el personal de preparación y movimiento físico de mercadería en almacén. El **Picker** dispone de una interfaz optimizada de alta velocidad enfocada estrictamente en el flujo diario de productos, con una botonera de acceso rápido superior y acceso a los módulos operativos de stock:
+
+* **Segregación SoD:** No tiene acceso a la administración de usuarios (IAM), auditoría técnica, configuraciones de infraestructura ni aprobación de cierres de jornada administrativa.
+* **Botonera de Acceso Rápido Picker (Cabecera):**
+  * `[🏷️ Descontar ML]`: Descuento ágil y prioritario de órdenes y etiquetas de Mercado Libre con feedback sonoro y anti-colisión.
+  * `[➕ Entrada]`: Entrada rápida con escáner de códigos de barras (EAN-13 / SKU) y justificación tipificada obligatoria.
+  * `[➖ Salida]`: Salida rápida por mermas, muestras o consumo con justificación obligatoria.
+* **Módulos Operativos de Mercadería:**
+  * **Ingreso de Fábrica:** Recepción formal con número de remito de entrega proveniente de la planta manufacturera.
+  * **Generar Pedido a Fábrica:** Solicitud formal de reposición de artículos hacia producción.
+  * **Descontar Mercado Libre:** Procesamiento individual o por lote de comprobantes y órdenes web.
+  * **Descontar Mercado Full:** Traspaso masivo y descuento de inventario remitido a bodegas de fulfillment.
+  * **Carga de Stock Físico (Inventario Ciego):** Módulo de conteo ciego para relevar existencias reales en estanterías sin condicionamiento visual del saldo de sistema.
+  * **Ver Stock en Tiempo Real:** Visor rápido con buscador instantáneo por código o descripción.
+  * **Atajos de Teclado (F2):** Paleta de comandos instantánea para saltar a cualquier módulo sin usar el ratón.
+
+---
+
 ### Rol Administrador
 
-Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
+Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, complementado por la **nueva Botonera de Acceso Rápido cuádruple** en la cabecera:
+* `[➕ Entrada]`: Entrada Rápida de mercadería con escáner y motivo.
+* `[➖ Salida]`: Salida Rápida de mercadería con justificación tipificada.
+* `[📦 Gestionar Productos]`: Acceso directo con 1 clic al catálogo maestro de artículos.
+* `[📊 Ver Stock]`: Nuevo visor en tiempo real de inventario consolidado con semáforo de existencias y búsqueda instantánea. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
 
 * **📦 Stock y Catálogo:** Gestión de catálogo maestro, ajustes de stock físico / ingresos de fábrica, comparativa de discrepancias, sincronización atómica con `Productos.xlsx` y generación automática de pedidos a fábrica.
 * **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), auditoría histórica de Cierres de Operarios (en orden cronológico descendente con desglose modal de pedidos, regeneración de hojas de ruta de transporte y exportaciones a PDF/Excel/Email), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST) y Mercado Full (con restauración documental delegada con exclusividad al rol Master por normativa SoD).
@@ -955,9 +984,36 @@ StockAgent/
 ├── requirements.txt                   # Dependencias de producción
 └── requirements-build.txt             # Dependencias de compilación
 ```
-#### Refactorización Modular de la Arquitectura
+#### Refactorización Modular de la Arquitectura (Eliminación de Código Monolítico)
 
-Para garantizar un código limpio, mantenible y escalable a lo largo del tiempo, la base de código fue descompuesta en módulos cohesivos con responsabilidades bien delimitadas tanto en backend como en frontend:
+Para garantizar un código limpio, desacoplado, mantenible y escalable bajo estándares de ingeniería de software, los archivos que concentraban múltiples responsabilidades fueron refactorizados y modularizados en paquetes cohesivos:
+
+1. **Modularización de Operaciones de Stock (`src/ui/dialogs/`):**
+   * El diálogo histórico monolítico `dlg_stock_ops.py` (anteriormente con más de 1,470 líneas) fue descompuesto en submódulos especializados e independientes:
+     - **`dlg_pedido_fabrica.py`:** Modal de armado y emisión de pedidos de reposición hacia fábrica (`generar_pedido_fabrica`).
+     - **`dlg_ingreso_fabrica.py`:** Recepción con remito de planta e incremento de inventario (`mostrar_ingreso_fabrica`).
+     - **`dlg_mercado_full.py`:** Descuento masivo y generación de planillas de despacho a bodegas de fulfillment (`mostrar_descuento_mercado_full`).
+     - **`dlg_stock_fisico.py`:** Conteo ciego para operarios/pickers y comparativa de discrepancias para administradores (`mostrar_stock_fisico_operario`, `mostrar_comparativa_stock_fisico_admin`).
+     - **`dlg_stock_ops.py` (Fachada):** Mantiene retrocompatibilidad del 100% re-exportando las funciones con idénticas firmas y contratos.
+
+2. **Modularización del Ciclo de Cierre y Hoja de Ruta (`src/ui/dialogs/cierre/`):**
+   * El diálogo `dlg_cierre.py` (anteriormente con más de 1,140 líneas) fue refactorizado en el nuevo paquete `src/ui/dialogs/cierre/`:
+     - **`hoja_ruta.py`:** Resolución y generación documental de la Hoja de Ruta de transporte (`resolver_archivos_cierre`, `gestionar_hoja_ruta_cierre`).
+     - **`dlg_cierre_operario.py`:** Asistente interactivo de cierre de turno del operario con cálculo de estadísticas y emisión de comprobantes (`mostrar_dialogo_cierre_jornada`).
+     - **`dlg_cierres_admin.py`:** Consola de auditoría de cierres descendente para administradores y desglose modal de pedidos (`mostrar_detalle_pedidos_cierre`, `mostrar_dialogo_cierres_operarios`).
+     - **`dlg_cierre.py` (Fachada):** Re-exporta limpiamente todas las funciones hacia el resto de la aplicación.
+
+3. **Modularización de Navegación y Sidebar (`src/ui/components/`):**
+   * El componente `sidebar.py` (anteriormente con más de 1,030 líneas) fue modularizado en:
+     - **`sidebar_sections.py`:** Definición de la estructura de datos `SeccionMenu` y generador de secciones dinámicas según el rol autenticado (`obtener_secciones_rol`).
+     - **`sidebar_horizontal.py`:** Barra superior horizontal para pantallas panorámicas y modos de visualización compactos (`construir_sidebar_horizontal_controls`).
+     - **`window_manager.py`:** Funciones de adaptación dimensional de pantalla, centrado de diálogos y cálculos responsive.
+     - **`sidebar.py`:** Sidebar vertical optimizado y ensamblador principal.
+
+4. **Nuevos Módulos Especializados e Integraciones API:**
+   * **`src/ui/dialogs/dlg_ver_stock.py`:** Visor de inventario en tiempo real con filtrado instantáneo por SKU/descripción, semáforo visual de stock mínimo y refresco dinámico.
+   * **`src/ui/dialogs/dlg_informes.py`:** Gestor centralizado de reportes generados con selector interactivo, vista previa y descarga segura multiplataforma.
+   * **`src/ui/dialogs/dlg_api.py`:** Consola Master para la administración de la API REST local, visor interactivo Swagger UI, gestión y revocación de API Keys, y monitoreo de sesiones activas.
 
 1. **Subpaquete de Dominio de Stock (`src/stock/`):**
    * **`models.py`:** Define las estructuras de datos inmutables (`RegistroDescuento`, `ReporteStock`).

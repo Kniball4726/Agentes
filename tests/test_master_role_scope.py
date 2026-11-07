@@ -52,6 +52,10 @@ class TestMasterRoleScope(unittest.TestCase):
                 textos.append(it.content)
 
         # Debe incluir secciones técnicas
+        self.assertIn("API REST Y SERVICIOS", textos)
+        self.assertIn("Gestión de Claves API", textos)
+        self.assertIn("Documentación y Estado", textos)
+        self.assertIn("Sesiones de API Activas", textos)
         self.assertIn("SEGURIDAD Y ACCESOS", textos)
         self.assertIn("Registro de Auditoría", textos)
         self.assertIn("DATOS Y RESGUARDO", textos)
@@ -64,6 +68,29 @@ class TestMasterRoleScope(unittest.TestCase):
         self.assertNotIn("Ajustar stock / Fábrica", textos)
         self.assertNotIn("Descontar Mercado Libre", textos)
         self.assertNotIn("Cierre de Jornada", textos)
+
+    def test_master_panel_acceso_rapido_seguridad(self):
+        """Verifica que el panel de acceso rápido para Master tenga Gestionar Usuarios y Registro de Auditoría."""
+        ctrl = self.interfaz.panel_acceso_rapido()
+        self.assertTrue(ctrl.visible if hasattr(ctrl, "visible") else True)
+
+        def extraer_textos(control):
+            txts = []
+            if hasattr(control, "value") and control.value:
+                txts.append(str(control.value))
+            if hasattr(control, "content") and control.content:
+                txts.extend(extraer_textos(control.content))
+            if hasattr(control, "controls") and control.controls:
+                for c in control.controls:
+                    txts.extend(extraer_textos(c))
+            return txts
+
+        textos = extraer_textos(ctrl)
+        self.assertIn("Gestionar Usuarios", textos)
+        self.assertIn("Registro de Auditoría", textos)
+        self.assertNotIn("Ingreso de Stock", textos)
+        self.assertNotIn("Egreso de Stock", textos)
+        self.assertNotIn("Descontar Mercado Libre", textos)
 
     def test_master_permisos_permitidos(self):
         """El rol Master puede abrir Gestión de Usuarios, Auditoría, Backups y SMTP."""
@@ -92,7 +119,20 @@ class TestMasterRoleScope(unittest.TestCase):
         self.assertEqual(len(self.page.dialogos), 1)
         self.page.pop_dialog()
 
-        # 6. Archivado Histórico (Exclusivo Master)
+        # 6. API REST y Gestión de Claves (Exclusivo Master)
+        self.interfaz.mostrar_gestion_api_keys()
+        self.assertEqual(len(self.page.dialogos), 1)
+        self.page.pop_dialog()
+
+        self.interfaz.mostrar_estado_api()
+        self.assertEqual(len(self.page.dialogos), 1)
+        self.page.pop_dialog()
+
+        self.interfaz.mostrar_sesiones_api()
+        self.assertEqual(len(self.page.dialogos), 1)
+        self.page.pop_dialog()
+
+        # 7. Archivado Histórico (Exclusivo Master)
         self.interfaz.mostrar_dialogo_archivo_historico()
         self.assertEqual(len(self.page.dialogos), 1)
         self.page.pop_dialog()

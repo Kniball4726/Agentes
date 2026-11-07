@@ -16,6 +16,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
     accesos_rapidos = []
     if rol == "operador":
         accesos_rapidos.extend([
+            ("Ver Stock", "Consulta de existencias y niveles en tiempo real", ft.Icons.VISIBILITY, ft.Colors.CYAN_400, interfaz.mostrar_ver_stock),
             ("Cargar / Armar Pedido", "Formulario rápido de remitos y canjes", ft.Icons.POST_ADD, ft.Colors.BLUE_400, interfaz.mostrar_crear_pedido),
             ("Ingreso de Fábrica", "Escáner rápido de recepción de mercadería", ft.Icons.INVENTORY_2, ft.Colors.ORANGE_400, interfaz.mostrar_ingreso_fabrica),
             ("Inventario en Vivo (Escáner)", "Conteo con cámara de celular o lector USB", ft.Icons.DOCUMENT_SCANNER, ft.Colors.GREEN_400, interfaz.mostrar_dialogo_inventario_vivo),
@@ -32,6 +33,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         ])
     elif rol == "administrador":
         accesos_rapidos.extend([
+            ("Ver Stock", "Consulta de existencias y niveles en tiempo real", ft.Icons.VISIBILITY, ft.Colors.CYAN_400, interfaz.mostrar_ver_stock),
             ("Gestionar Productos", "Catálogo maestro y existencias en Productos.xlsx", ft.Icons.ADD_BOX, ft.Colors.BLUE_400, interfaz.mostrar_gestion_productos),
             ("Métricas y Rendimiento", "Dashboard ejecutivo, rotación y volumen", ft.Icons.INSIGHTS, ft.Colors.PURPLE_400, interfaz.mostrar_dashboard_metricas),
             ("Historial de Pedidos", "Supervisión, reimpresión y rótulos en lote", ft.Icons.RECEIPT_LONG, ft.Colors.AMBER_400, interfaz.mostrar_historial_pedidos),
@@ -56,6 +58,11 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         ])
     elif rol == "master":
         accesos_rapidos.extend([
+            ("Gestión de Claves API", "Administrar tokens y claves de integración externa", ft.Icons.VPN_KEY, ft.Colors.CYAN_400, interfaz.mostrar_gestion_api_keys),
+            ("Documentación y Estado API", "Swagger UI, ReDoc y estado del servidor REST", ft.Icons.API, ft.Colors.BLUE_400, interfaz.mostrar_estado_api),
+            ("Sesiones de API Activas", "Ver y revocar sesiones REST conectadas", ft.Icons.DEVICES, ft.Colors.TEAL_400, interfaz.mostrar_sesiones_api),
+        ])
+        accesos_rapidos.extend([
             ("Registro de Auditoría", "Trazabilidad forense e historial de eventos", ft.Icons.SECURITY, ROJO, interfaz.mostrar_registro_auditoria),
             ("Copia de Seguridad", "Gestión de respaldos y espejo en red", ft.Icons.BACKUP, ft.Colors.PURPLE_400, interfaz.mostrar_dialogo_backup),
             ("Gestionar Usuarios", "Control de cuentas y credenciales IAM", ft.Icons.MANAGE_ACCOUNTS, ft.Colors.BLUE_400, interfaz.mostrar_gestion_usuarios),
@@ -65,6 +72,15 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Archivado Histórico", "Archivar pedidos antiguos y compactar base de datos", ft.Icons.AUTO_DELETE, ft.Colors.BROWN_400, interfaz.mostrar_dialogo_archivo_historico),
             ("Mercado Libre API (Credenciales)", "Configuración OAuth y sincronización API", ft.Icons.CLOUD_SYNC, ft.Colors.AMBER_600, interfaz.mostrar_sincronizacion_mercadolibre),
             ("Manual de Uso", "Documentación oficial del usuario master en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
+        ])
+    elif rol == "picker":
+        accesos_rapidos.extend([
+            ("Descontar Mercado Libre", "Escaneo rápido de paquetes y etiquetas ML", ft.Icons.STOREFRONT, ft.Colors.AMBER_600, interfaz.mostrar_descuento_mercado_libre),
+            ("Descontar Mercado Full", "Procesamiento de envíos Mercado Libre Full", ft.Icons.LOCAL_SHIPPING, ft.Colors.ORANGE_400, interfaz.mostrar_descuento_mercado_full),
+            ("Ingreso de Mercadería", "Entrada rápida de stock", ft.Icons.INPUT, ft.Colors.GREEN_400, interfaz.mostrar_dialogo_ingreso_rapido),
+            ("Ingreso de Fábrica", "Escáner rápido de recepción de mercadería", ft.Icons.INVENTORY_2, ft.Colors.ORANGE_400, interfaz.mostrar_ingreso_fabrica),
+            ("Egreso de Mercadería", "Salida rápida de stock", ft.Icons.OUTPUT, ft.Colors.RED_400, interfaz.mostrar_dialogo_salida_rapida),
+            ("Manual de Uso", "Documentación oficial en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
         ])
     else:
         accesos_rapidos.extend([

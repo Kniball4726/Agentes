@@ -1104,7 +1104,7 @@ class MercadoLibreDocxComponent:
 
 def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = None) -> None:
     """Ventana modularizada para procesar y descontar pedidos de Mercado Libre (Pistoleo en Vivo o archivo .docx)."""
-    if not interfaz.exigir_roles("operador", "administrador"):
+    if not interfaz.exigir_roles("operador", "administrador", "picker"):
         return
 
     carpeta_ml = getattr(interfaz.menu, "carpeta_mercado_libre", None) or (

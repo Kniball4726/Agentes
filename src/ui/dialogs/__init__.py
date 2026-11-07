@@ -16,6 +16,8 @@ from .dlg_productos import (
     mostrar_dialogo_historial_movimientos_stock,
     mostrar_dialogo_formulario_producto,
 )
+from .dlg_ver_stock import mostrar_dialogo_ver_stock
+from .dlg_informes import mostrar_dialogo_informes
 from .dlg_escaner import mostrar_dialogo_escaner_qr_despacho
 from .dlg_cierre import (
     mostrar_dialogo_cierre_jornada,
@@ -69,7 +71,20 @@ from .dlg_movimientos_rapidos import (
     MotivoSalidaRapida,
 )
 
+from .dlg_api import (
+    mostrar_dialogo_api_master,
+    mostrar_gestion_api_keys,
+    mostrar_estado_api,
+    mostrar_sesiones_api,
+)
+
 __all__ = [
+    # API REST & Keys
+    "mostrar_dialogo_api_master",
+    "mostrar_gestion_api_keys",
+    "mostrar_estado_api",
+    "mostrar_sesiones_api",
+
     # Auth & Profile
     "mostrar_inicio_sesion",
     "mostrar_cambio_clave_obligatorio",
@@ -84,10 +99,12 @@ __all__ = [
     "mostrar_dialogo_configuracion_smtp",
     "mostrar_dialogo_backup",
     "confirmar_restaurar",
-    # Catálogo & Productos
+    # Catálogo & Productos & Ver Stock
     "mostrar_dialogo_gestion_productos",
     "mostrar_dialogo_historial_movimientos_stock",
     "mostrar_dialogo_formulario_producto",
+    "mostrar_dialogo_ver_stock",
+    "mostrar_dialogo_informes",
     # Escáner & Despacho
     "mostrar_dialogo_escaner_qr_despacho",
     # Cierre de Jornada

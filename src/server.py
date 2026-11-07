@@ -511,6 +511,66 @@ def iniciar_servidor_web(
                                 },
                             )
 
+                        # Servir informes generados para descarga directa en navegador
+                        @self.get("/descargas/informes/{nombre_archivo}")
+                        @self.get("/descargas/informe/{nombre_archivo}")
+                        @self.get("/api/v1/informes/descargar/{nombre_archivo}")
+                        async def _serve_informe_descarga(nombre_archivo: str):
+                            nombre_seguro = Path(nombre_archivo).name
+                            base_app = Path(application_root())
+                            rutas_candidatas = [
+                                base_app / "Descuentos" / "descuentos" / nombre_seguro,
+                                base_app / "Descuentos" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "MercadoLibre" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "Mayoristas" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "Canjes" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "Fabrica" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "MercadoFull" / nombre_seguro,
+                                base_app / "Descuentos" / "descontados" / "StockFisico" / nombre_seguro,
+                                base_app / "Descuentos" / "Rotulos" / nombre_seguro,
+                                base_app / "Fabrica" / "Pedidos_Sugeridos" / nombre_seguro,
+                                base_app / "StockFisico" / "Comparativas" / nombre_seguro,
+                            ]
+                            archivo_encontrado: Path | None = None
+                            for cand in rutas_candidatas:
+                                if cand.exists() and cand.is_file():
+                                    archivo_encontrado = cand
+                                    break
+                            if not archivo_encontrado:
+                                base_desc = base_app / "Descuentos"
+                                if base_desc.exists():
+                                    for arch in base_desc.rglob(nombre_seguro):
+                                        if arch.is_file():
+                                            archivo_encontrado = arch
+                                            break
+                            if not archivo_encontrado or not archivo_encontrado.is_file():
+                                return JSONResponse(
+                                    status_code=404,
+                                    content={"error": f"El informe '{nombre_seguro}' no se encuentra disponible."},
+                                )
+                            media = "application/octet-stream"
+                            sufijo = archivo_encontrado.suffix.lower()
+                            if sufijo == ".pdf":
+                                media = "application/pdf"
+                            elif sufijo in (".xlsx", ".xlsm"):
+                                media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            elif sufijo == ".xls":
+                                media = "application/vnd.ms-excel"
+                            elif sufijo == ".csv":
+                                media = "text/csv"
+
+                            disposition = "inline" if sufijo == ".pdf" else "attachment"
+                            return FileResponse(
+                                str(archivo_encontrado),
+                                media_type=media,
+                                filename=nombre_seguro,
+                                headers={
+                                    "Content-Disposition": f'{disposition}; filename="{nombre_seguro}"',
+                                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                                },
+                            )
+
                     flet_web.fastapi.FastAPI.__init__ = custom_fastapi_init
 
                 handle = await _orig_serve(*args, **kwargs)
