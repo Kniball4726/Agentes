@@ -288,6 +288,71 @@ class TestMovimientosRapidos(unittest.TestCase):
         self.stock_manager.registrar_ingreso_fabrica.assert_not_called()
         self.assertIn("motivo justificado obligatorio", lbl_estado.value.lower())
 
+    def test_busqueda_pistola_con_stock_manager_none_y_sqlite_real(self):
+        """Verifica que el diálogo resuelva StockManager desde menu.ruta_excel_base y lea cod_barras."""
+        from pathlib import Path
+        import tempfile
+        import openpyxl
+        from src.stock_manager import StockManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            excel_path = root / "Productos.xlsx"
+            db_path = root / "productos.sqlite3"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Stock"
+            ws.append(["CÓDIGO", "PRODUCTOS", "STOCK"])
+            ws.append([])
+            ws.append(["UT-2156", "Cinta Métrica", 10])
+            wb.save(excel_path)
+            wb.close()
+
+            sm_real = StockManager(excel_path, ruta_base_datos=db_path)
+            sm_real.asignar_codigo_barras("UT-2156", 7791122334455)
+
+            self.interfaz.stock_manager = None
+            self.interfaz.menu.ruta_excel_base = excel_path
+
+            with patch("src.stock_manager.StockManager", return_value=sm_real):
+                mostrar_dialogo_ingreso_rapido(self.interfaz)
+                dlg = self.dialogo_mostrado
+                col = dlg.content
+                fila_busqueda = next(
+                    c for c in col.controls
+                    if isinstance(c, ft.Row) and any(isinstance(x, ft.TextField) for x in c.controls)
+                )
+                txt_busqueda = fila_busqueda.controls[0]
+                btn_buscar = fila_busqueda.controls[1]
+
+                # Simular lectura de pistola con prefijo AIM + CR/LF
+                txt_busqueda.value = "]C17791122334455\r\n"
+                btn_buscar.on_click(None)
+
+                def _recolectar_textos(ctrl) -> list[str]:
+                    hallados: list[str] = []
+                    if isinstance(ctrl, ft.Text) and ctrl.value:
+                        hallados.append(str(ctrl.value))
+                    if getattr(ctrl, "content", None) is not None:
+                        hallados.extend(_recolectar_textos(ctrl.content))
+                    for hijo in getattr(ctrl, "controls", []) or []:
+                        hallados.extend(_recolectar_textos(hijo))
+                    return hallados
+
+                lbl_estado = next(c for c in col.controls if isinstance(c, ft.Text) and hasattr(c, "value"))
+                self.assertIn("identificado correctamente", lbl_estado.value.lower())
+                textos_ui = " ".join(_recolectar_textos(col))
+                self.assertIn("Cinta Métrica", textos_ui)
+                self.assertIn("7791122334455", textos_ui)
+
+                # Confirmar transacción de ingreso rápido end-to-end sin stock_manager previo
+                dropdown_motivo = next(c for c in col.controls if isinstance(c, ft.Dropdown))
+                dropdown_motivo.value = MotivoIngresoRapido.DEVOLUCION_CLIENTE.value
+                btn_confirmar = dlg.actions[1]
+                btn_confirmar.on_click(None)
+                prod_actualizado = sm_real.product_store.get_product("UT-2156")
+                self.assertEqual(prod_actualizado["stock"], 11)
+
 
 if __name__ == "__main__":
     unittest.main()

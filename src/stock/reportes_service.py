@@ -334,7 +334,10 @@ def generar_reporte_catalogo_stock(
             fill_actual = _FILL_ZEBRA if idx % 2 == 0 else _FILL_WHITE
             cod = p["code"] if hasattr(p, "keys") else getattr(p, "code", "")
             nom = p["name"] if hasattr(p, "keys") else getattr(p, "name", "")
-            bar = p["barcode"] if "barcode" in p.keys() else ""
+            keys_p = set(p.keys()) if hasattr(p, "keys") else set()
+            bar = (p["cod_barras"] if "cod_barras" in keys_p and p["cod_barras"] else "") or (
+                p["barcode"] if "barcode" in keys_p else ""
+            )
             ubi = p["ubicacion"] if "ubicacion" in p.keys() else ""
             stk = int(p["stock"]) if hasattr(p, "keys") else int(getattr(p, "stock", 0))
             act = bool(p["active"]) if "active" in p.keys() else True
@@ -391,7 +394,10 @@ def generar_reporte_catalogo_stock(
     for p in prods:
         cod = p["code"] if hasattr(p, "keys") else getattr(p, "code", "")
         nom = p["name"] if hasattr(p, "keys") else getattr(p, "name", "")
-        bar = p["barcode"] if "barcode" in p.keys() else ""
+        keys_p = set(p.keys()) if hasattr(p, "keys") else set()
+        bar = (p["cod_barras"] if "cod_barras" in keys_p and p["cod_barras"] else "") or (
+            p["barcode"] if "barcode" in keys_p else ""
+        )
         ubi = p["ubicacion"] if "ubicacion" in p.keys() else ""
         stk = int(p["stock"]) if hasattr(p, "keys") else int(getattr(p, "stock", 0))
 

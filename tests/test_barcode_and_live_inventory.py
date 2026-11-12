@@ -186,3 +186,65 @@ class BarcodeAndLiveInventoryTests(unittest.TestCase):
         # Verificar que la lista de contados tiene el item en el nuevo layout móvil
         lista_contados = col.controls[6]
         self.assertEqual(len(lista_contados.controls), 1)
+
+    def test_barcode_casting_variants_and_cross_instance_cache(self):
+        """Valida casteo int/float, variantes HID ES/LA, ceros a la izquierda y caché entre instancias."""
+        import sqlite3
+        from contextlib import closing
+        from src.products.barcode_utils import (
+            coincide_codigo_o_barras,
+            generar_variantes_codigo_lector,
+            normalizar_codigo_lector,
+        )
+
+        # 1. Casteo seguro de tipos int / float / NaN / AIM / Code-39
+        self.assertEqual(normalizar_codigo_lector(7791234567890), "7791234567890")
+        self.assertEqual(normalizar_codigo_lector(7791234567890.0), "7791234567890")
+        self.assertEqual(normalizar_codigo_lector("2156.0\r\n"), "2156")
+        self.assertEqual(normalizar_codigo_lector("]C1*UT-100*\n"), "UT-100")
+        self.assertEqual(normalizar_codigo_lector(float("nan")), "")
+        self.assertIn("UT-100", generar_variantes_codigo_lector("+C1UT'100"))
+        self.assertIn("012345678905", generar_variantes_codigo_lector("0012345678905"))
+
+        StockManager(self.excel_path, ruta_base_datos=self.db_path)
+        store_escritura = ProductStore(self.db_path)
+        store_lectura = ProductStore(self.db_path)
+
+        # 2. Búsqueda negativa previa no debe envenenar la caché tras asignar desde otra instancia
+        self.assertIsNone(store_lectura.find_product_by_code_or_barcode("7790001112223"))
+        store_escritura.set_product_barcode("PROD-1", 7790001112223)
+        encontrado = store_lectura.find_product_by_code_or_barcode("]C17790001112223\r\n")
+        self.assertIsNotNone(encontrado)
+        self.assertEqual(encontrado["code"], "PROD-1")
+
+        # 3. Variante de teclado US->ES/LA (' en lugar de -) y case-insensitive sobre SKU
+        por_teclado = store_lectura.find_product_by_code_or_barcode("prod'1")
+        self.assertIsNotNone(por_teclado)
+        self.assertEqual(por_teclado["code"], "PROD-1")
+
+        # 4. UPC-A (12 dígitos con cero inicial) vs EAN-13 (13 dígitos con doble cero)
+        store_escritura.set_product_barcode("PROD-2", "012345678905")
+        por_ean = store_lectura.find_product_by_code_or_barcode("0012345678905")
+        self.assertIsNotNone(por_ean)
+        self.assertEqual(por_ean["code"], "PROD-2")
+
+        # 5. Valores almacenados en SQLite con espacios, ".0" o tipo numérico entero
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE products SET cod_barras = ' 8887776665554.0 ' WHERE code = ?",
+                ("PROD-3",),
+            )
+        por_float_db = store_lectura.find_product_by_code_or_barcode(8887776665554)
+        self.assertIsNotNone(por_float_db)
+        self.assertEqual(por_float_db["code"], "PROD-3")
+        self.assertTrue(coincide_codigo_o_barras(por_float_db, "8887776665554.0"))
+
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE products SET cod_barras = '002156' WHERE code = ?",
+                ("PROD-1",),
+            )
+        store_lectura.invalidar_cache()
+        por_sin_ceros = store_lectura.find_product_by_code_or_barcode("2156")
+        self.assertIsNotNone(por_sin_ceros)
+        self.assertEqual(por_sin_ceros["code"], "PROD-1")

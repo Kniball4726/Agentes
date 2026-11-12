@@ -397,16 +397,23 @@ def mostrar_dialogo_inventario_vivo(
             refrescar_vista_contados()
 
     def buscar_producto_por_termino(termino: str) -> sqlite3.Row | None:
-        t = termino.strip()
+        from src.products.barcode_utils import (
+            coincide_codigo_o_barras,
+            generar_variantes_codigo_lector,
+            normalizar_codigo_lector,
+        )
+
+        t = normalizar_codigo_lector(termino)
         if not t:
             return None
-        # 1. Chequear en cache local
-        if t in cache_productos:
-            # Retornar objeto tipo row o dict
-            return cache_productos[t]
-        # Chequear por barcode en cache
+        variantes = generar_variantes_codigo_lector(termino)
+
+        # 1. Chequear en caché local (coincidencia exacta primero, luego variantes/casteo)
+        for cand in variantes:
+            if cand in cache_productos:
+                return cache_productos[cand]
         for p in cache_productos.values():
-            if p["cod_barras"] and p["cod_barras"] == t:
+            if coincide_codigo_o_barras(p, termino):
                 return p
         # 2. Consultar directamente a la base de datos SQLite
         row = sm.product_store.find_product_by_code_or_barcode(t)

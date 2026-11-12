@@ -17,7 +17,7 @@ import re
 from datetime import datetime
 from html import escape
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
@@ -50,6 +50,40 @@ def _crear_qr_drawing(contenido: str, tamano_cm: float = 1.7) -> Drawing:
     d = Drawing(tam_puntos, tam_puntos, transform=[sx, 0, 0, sy, 0, 0])
     d.add(qr_widget)
     return d
+
+
+def _es_pedido_agregado(pedido: Any) -> bool:
+    """Determina si un pedido corresponde a un agregado."""
+    val = getattr(pedido, "agregado", False)
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "si", "sí", "t", "agregado")
+    return False
+
+
+def _formatear_cliente_etiqueta(pedido: Any) -> str:
+    """Formatea el nombre del cliente para la etiqueta de despacho.
+
+    Si el pedido es un agregado, concatena 'Agregado' al nombre del cliente
+    (a menos que la palabra ya se encuentre presente). Si posee número de pedido,
+    lo añade con el prefijo Nro.
+    """
+    cliente_base = (getattr(pedido, "cliente", "") or "").strip()
+    if _es_pedido_agregado(pedido):
+        if not re.search(r"\bagregado\b", cliente_base, re.IGNORECASE):
+            cliente_base = f"{cliente_base} Agregado"
+
+    num_ped = str(getattr(pedido, "numero_pedido", "") or "").strip()
+    if num_ped:
+        if not re.search(r"\b(nro|n°|nº|numero)\b", num_ped, re.IGNORECASE):
+            sufijo_pedido = f"Nro {num_ped}"
+        else:
+            sufijo_pedido = num_ped
+        return f"{cliente_base} {sufijo_pedido}"
+    return cliente_base
 
 
 ETIQUETAS_POR_HOJA = 10
@@ -169,17 +203,8 @@ def _construir_tarjeta_etiqueta(
     )
     items_label.append(t_top)
 
-    # 2. NOMBRE DEL CLIENTE GRANDE (Destacado) Y CONCATENACION CON NUMERO DE PEDIDO
-    num_ped = str(getattr(pedido, "numero_pedido", "") or "").strip()
-    if num_ped:
-        if not re.search(r"\b(nro|n°|nº|numero)\b", num_ped, re.IGNORECASE):
-            sufijo_pedido = f"Nro {num_ped}"
-        else:
-            sufijo_pedido = num_ped
-        cliente_formateado = f"{pedido.cliente.strip()} {sufijo_pedido}"
-    else:
-        cliente_formateado = pedido.cliente.strip()
-
+    # 2. NOMBRE DEL CLIENTE GRANDE (Destacado) Y CONCATENACION CON NUMERO DE PEDIDO (Y 'Agregado' si corresponde)
+    cliente_formateado = _formatear_cliente_etiqueta(pedido)
     nombre_cliente_txt = escape(cliente_formateado)
     tarjeta_cliente = Table(
         [
@@ -577,15 +602,7 @@ def generar_etiquetas_termicas_pdf(
         )
 
         # 2. Tarjeta Destinatario / Cliente (Grande y destacado)
-        num_ped = str(getattr(pedido, "numero_pedido", "") or "").strip()
-        if num_ped:
-            if not re.search(r"\b(nro|n°|nº|numero)\b", num_ped, re.IGNORECASE):
-                sufijo_ped = f"Nro {num_ped}"
-            else:
-                sufijo_ped = num_ped
-            cli_txt = f"{pedido.cliente.strip()} {sufijo_ped}"
-        else:
-            cli_txt = pedido.cliente.strip()
+        cli_txt = _formatear_cliente_etiqueta(pedido)
 
         estilo_cli_lbl = ParagraphStyle(
             f"Term_CliLbl_{bulto_idx}",
@@ -688,7 +705,7 @@ def generar_etiquetas_termicas_pdf(
         guia_part = f"|GUIA:{n_guia}" if n_guia else ""
         qr_payload = (
             f"REMITO:{pedido.nota_pedido}|"
-            f"CLIENTE:{pedido.cliente}|"
+            f"CLIENTE:{cli_txt}|"
             f"BULTO:{bulto_idx}/{total_bultos}|"
             f"LOGISTICA:{pedido.logistica}"
             f"{guia_part}"

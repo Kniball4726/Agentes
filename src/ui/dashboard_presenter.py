@@ -63,6 +63,10 @@ def renderizar_auditoria_master(interfaz: Any, eventos_auditoria: list[Any]) -> 
 
 def renderizar_pedidos_preparados_turno(interfaz: Any, pedidos_pendientes_turno: list[Any]) -> None:
     """Renderiza la lista descendente de pedidos preparados en el turno activo."""
+    if interfaz.usuario_actual and getattr(interfaz.usuario_actual, "role", None) in ("master", "picker"):
+        interfaz.lista_pedidos_preparados.controls.clear()
+        return
+
     total_bultos_turno = sum(p.bultos for p in pedidos_pendientes_turno)
     fecha_hoy_str = datetime.now().strftime("%A %d/%m/%Y").capitalize()
 
@@ -389,6 +393,12 @@ def actualizar_estado_dashboard(interfaz: Any, _evento: ft.Event | None = None) 
             f"Consola de Auditoría y Control de Accesos · Usuarios: {len(todos_usr)} · Cuentas activas: {activos_usr} · Backups: {len(bks)}"
         )
         renderizar_auditoria_master(interfaz, eventos_auditoria)
+    elif rol == "picker":
+        interfaz.banner_alerta_quiebre.visible = False
+        interfaz.pendientes_texto.value = (
+            f"Módulo de Picking y Despacho · Informes: {len(informes)}"
+        )
+        renderizar_informes_generados(interfaz, informes, mtimes_informes)
     else:
         total_descontados = conteo_jornada.get("total", 0)
         total_archivados = sum(map(len, archivados))

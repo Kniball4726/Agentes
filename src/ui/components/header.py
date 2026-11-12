@@ -294,7 +294,11 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                     ),
                     (ft.Text("Módulo de Administración Técnica y Auditoría de Seguridad", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
                      if interfaz.usuario_actual.role == "master"
-                     else interfaz.pendientes_texto),
+                     else (
+                         ft.Text("Módulo de Picking y Despacho · Movimientos de Stock", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
+                         if interfaz.usuario_actual.role == "picker"
+                         else interfaz.pendientes_texto
+                     )),
                 ],
                 spacing=4,
             ),

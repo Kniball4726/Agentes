@@ -438,36 +438,135 @@ class CatalogRepositoryMixin:
                     ) from error
                 raise
 
-    def get_product(self, code: str) -> sqlite3.Row | None:
-        """Obtiene un producto por su código interno (SKU) con soporte de caché en memoria."""
-        code_limpio = (code or "").strip()
-        if not code_limpio:
+    def _buscar_producto_sql_por_columna(
+        self,
+        connection: sqlite3.Connection,
+        columna: str,
+        variantes: list[str],
+        *,
+        solo_no_vacio: bool = False,
+    ) -> sqlite3.Row | None:
+        """Ejecuta búsqueda escalonada (exacta, casteada/case-insensitive y sin ceros)."""
+        if columna not in ("code", "cod_barras"):
+            raise ValueError(f"Columna de búsqueda no permitida: {columna}")
+        candidatos = [v for v in variantes if v]
+        if not candidatos:
             return None
+
+        filtro_exacto = " AND cod_barras != ''" if solo_no_vacio else ""
+        filtro_norm = " AND COALESCE(TRIM(CAST(cod_barras AS TEXT)), '') != ''" if solo_no_vacio else ""
+        cols_select = (
+            "code, name, stock, active, stock_minimo, stock_maximo, "
+            "stock_fisico, cod_barras, ubicacion"
+        )
+
+        # 1. Ruta rápida indexada por igualdad exacta
+        for cand in candidatos:
+            row = connection.execute(
+                f"SELECT {cols_select} FROM products WHERE {columna} = ?{filtro_exacto} LIMIT 1",
+                (cand,),
+            ).fetchone()
+            if row is not None:
+                return row
+
+        # 2. Ruta casteada a TEXT, sin espacios, sin sufijo '.0' y case-insensitive
+        expr_texto = f"TRIM(CAST({columna} AS TEXT))"
+        expr_sin_decimal = (
+            f"CASE WHEN {expr_texto} GLOB '[0-9]*.0' "
+            f"AND NOT (SUBSTR({expr_texto}, 1, LENGTH({expr_texto}) - 2) GLOB '*[^0-9]*') "
+            f"THEN SUBSTR({expr_texto}, 1, LENGTH({expr_texto}) - 2) "
+            f"ELSE {expr_texto} END"
+        )
+        for cand in candidatos:
+            row = connection.execute(
+                f"SELECT {cols_select} FROM products WHERE {expr_sin_decimal} = ? COLLATE NOCASE{filtro_norm} LIMIT 1",
+                (cand,),
+            ).fetchone()
+            if row is not None:
+                return row
+
+        # 3. Equivalencia numérica sin ceros a la izquierda (solo cadenas puramente numéricas)
+        vistos_num: set[str] = set()
+        for cand in candidatos:
+            if not cand.isdigit():
+                continue
+            sin_ceros = cand.lstrip("0") or "0"
+            if sin_ceros in vistos_num:
+                continue
+            vistos_num.add(sin_ceros)
+            row = connection.execute(
+                f"""
+                SELECT {cols_select}
+                FROM products
+                WHERE {expr_texto} != ''
+                  AND NOT ({expr_texto} GLOB '*[^0-9]*')
+                  AND COALESCE(NULLIF(LTRIM({expr_texto}, '0'), ''), '0') = ?{filtro_norm}
+                LIMIT 1
+                """,
+                (sin_ceros,),
+            ).fetchone()
+            if row is not None:
+                return row
+        return None
+
+    def _consultar_producto_cacheado(
+        self,
+        columna: str,
+        raw_query: object,
+        *,
+        permitir_variantes: bool = True,
+    ) -> sqlite3.Row | None:
+        """Consulta un producto por SKU o código de barras con casteo, variantes y caché."""
+        from src.products.barcode_utils import (
+            generar_variantes_codigo_lector,
+            normalizar_codigo_lector,
+        )
+
+        if permitir_variantes:
+            variantes = generar_variantes_codigo_lector(raw_query)
+        else:
+            unico = normalizar_codigo_lector(raw_query)
+            variantes = [unico] if unico else []
+
+        if not variantes:
+            return None
+
+        cache_destino = self._cache_sku if columna == "code" else self._cache_barcode
         with self._cache_lock:
-            if self._es_cache_valido() and code_limpio in self._cache_sku:
-                return self._cache_sku[code_limpio]
+            if self._es_cache_valido():
+                for cand in variantes:
+                    cached = cache_destino.get(cand)
+                    if cached is not None:
+                        return cached
 
         with closing(self._connect()) as connection:
             dv = connection.execute("PRAGMA data_version").fetchone()[0]
-            row = connection.execute(
-                """
-                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion
-                FROM products
-                WHERE code = ?
-                """,
-                (code_limpio,),
-            ).fetchone()
+            row = self._buscar_producto_sql_por_columna(
+                connection,
+                columna,
+                variantes,
+                solo_no_vacio=(columna == "cod_barras"),
+            )
 
             with self._cache_lock:
                 if not self._es_cache_valido(connection):
                     self._cache_sku.clear()
                     self._cache_barcode.clear()
-                self._cache_sku[code_limpio] = row
-                if row and row["cod_barras"]:
-                    self._cache_barcode[str(row["cod_barras"]).strip()] = row
+                if row is not None:
+                    code_canonical = normalizar_codigo_lector(row["code"]) or str(row["code"]).strip()
+                    if code_canonical:
+                        self._cache_sku[code_canonical] = row
+                    bar_canonical = normalizar_codigo_lector(row["cod_barras"]) if row["cod_barras"] else ""
+                    if bar_canonical:
+                        self._cache_barcode[bar_canonical] = row
+                    cache_destino[variantes[0]] = row
                 self._cache_data_version = dv
                 self._cache_ts = time.monotonic()
             return row
+
+    def get_product(self, code: object) -> sqlite3.Row | None:
+        """Obtiene un producto por su código interno (SKU) con casteo y soporte de caché."""
+        return self._consultar_producto_cacheado("code", code, permitir_variantes=True)
 
     def _query_producto_raw(self, code: str) -> sqlite3.Row | None:
         """Consulta directa a SQLite sin pasar por el caché."""
@@ -493,37 +592,9 @@ class CatalogRepositoryMixin:
             self.invalidar_cache()
             return cur.rowcount > 0
 
-    def get_product_by_barcode(self, cod_barras: str) -> sqlite3.Row | None:
-        """Obtiene un producto por su código de barras con soporte de caché en memoria."""
-        barras = (cod_barras or "").strip()
-        if not barras:
-            return None
-        with self._cache_lock:
-            if self._es_cache_valido() and barras in self._cache_barcode:
-                return self._cache_barcode[barras]
-
-        with closing(self._connect()) as connection:
-            dv = connection.execute("PRAGMA data_version").fetchone()[0]
-            row = connection.execute(
-                """
-                SELECT code, name, stock, active, stock_minimo, stock_maximo, stock_fisico, cod_barras, ubicacion
-                FROM products
-                WHERE cod_barras = ? AND cod_barras != ''
-                LIMIT 1
-                """,
-                (barras,),
-            ).fetchone()
-
-            with self._cache_lock:
-                if not self._es_cache_valido(connection):
-                    self._cache_sku.clear()
-                    self._cache_barcode.clear()
-                self._cache_barcode[barras] = row
-                if row and row["code"]:
-                    self._cache_sku[str(row["code"]).strip()] = row
-                self._cache_data_version = dv
-                self._cache_ts = time.monotonic()
-            return row
+    def get_product_by_barcode(self, cod_barras: object) -> sqlite3.Row | None:
+        """Obtiene un producto por su código de barras con casteo y soporte de caché."""
+        return self._consultar_producto_cacheado("cod_barras", cod_barras, permitir_variantes=True)
 
     def _query_barcode_raw(self, cod_barras: str) -> sqlite3.Row | None:
         """Obtiene un producto por su código de barras (EAN-13, QR, Code-128, etc.)."""
@@ -541,15 +612,27 @@ class CatalogRepositoryMixin:
                 (barras,),
             ).fetchone()
 
-    def find_product_by_code_or_barcode(self, query: str) -> sqlite3.Row | None:
-        """Busca primero por código interno (SKU), luego por código de barras con caché en memoria."""
-        val = (query or "").strip()
+    def find_product_by_code_or_barcode(self, query: object) -> sqlite3.Row | None:
+        """Busca primero por código interno (SKU) y luego por código de barras con casteo."""
+        from src.products.barcode_utils import normalizar_codigo_lector
+
+        val = normalizar_codigo_lector(query)
         if not val:
             return None
-        prod = self.get_product(val)
+
+        # 1. Priorizar coincidencia exacta normalizada (SKU -> Código de barras)
+        prod = self._consultar_producto_cacheado("code", val, permitir_variantes=False)
         if prod is not None:
             return prod
-        return self.get_product_by_barcode(val)
+        prod = self._consultar_producto_cacheado("cod_barras", val, permitir_variantes=False)
+        if prod is not None:
+            return prod
+
+        # 2. Respaldo por variantes (teclado US->ES/LA, ceros a la izquierda, EAN-13/UPC-A)
+        prod = self.get_product(query)
+        if prod is not None:
+            return prod
+        return self.get_product_by_barcode(query)
 
     def _find_product_raw(self, query: str) -> sqlite3.Row | None:
         """Busca primero por código interno (SKU), luego por código de barras."""
@@ -577,13 +660,25 @@ class CatalogRepositoryMixin:
                 (val,),
             ).fetchone()
 
-    def set_product_barcode(self, code: str, cod_barras: str) -> None:
+    def set_product_barcode(self, code: object, cod_barras: object) -> None:
+        """Asigna o actualiza el código de barras de un producto casteando tipos a texto."""
+        from src.products.barcode_utils import normalizar_codigo_lector
+
         self.invalidar_cache()
+        code_limpio = normalizar_codigo_lector(code)
+        if not code_limpio:
+            return
+        barras_limpias = normalizar_codigo_lector(cod_barras)
         with closing(self._connect()) as connection, connection:
-            connection.execute(
+            cursor = connection.execute(
                 "UPDATE products SET cod_barras = ? WHERE code = ?",
-                (cod_barras.strip(), code.strip()),
+                (barras_limpias, code_limpio),
             )
+            if cursor.rowcount == 0:
+                connection.execute(
+                    "UPDATE products SET cod_barras = ? WHERE TRIM(CAST(code AS TEXT)) = ? COLLATE NOCASE",
+                    (barras_limpias, code_limpio),
+                )
 
     def set_product_active(self, code: str, active: bool) -> None:
         self.invalidar_cache()

@@ -72,6 +72,12 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
     )
 
     def abrir_editar_usuario(u_target: User) -> None:
+        actual = interfaz.usuario_actual
+        actual_es_master = bool(actual and actual.role == "master")
+        if not actual_es_master and u_target.role in ("master", "administrador") and u_target.id != (actual.id if actual else 0):
+            interfaz.notificar("No tienes permisos para editar a otro administrador.")
+            return
+
         edit_nombre = ft.TextField(
             label="Nombre y apellido / Identificador en documentos",
             value=u_target.nombre,
@@ -130,6 +136,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         usuarios.controls.clear()
         actual = interfaz.usuario_actual
         actual_es_master = bool(actual and actual.role == "master")
+        actual_es_admin = bool(actual and actual.role == "administrador")
         bloqueados = (
             interfaz.user_store.list_locked_usernames()
             if hasattr(interfaz.user_store, "list_locked_usernames")
@@ -141,13 +148,26 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             else ["operador", "picker", "consulta"]
         )
         try:
-            lista_usuarios = interfaz.user_store.list_users(include_master=actual_es_master)
+            lista_usuarios = interfaz.user_store.list_users(
+                include_master=actual_es_master,
+                exclude_other_admins=actual_es_admin,
+                current_user_id=actual.id if actual else None,
+            )
         except TypeError:
+            try:
+                lista_usuarios = interfaz.user_store.list_users(include_master=actual_es_master)
+            except TypeError:
+                lista_usuarios = interfaz.user_store.list_users()
+        except Exception:
             lista_usuarios = interfaz.user_store.list_users()
+
         for usuario in lista_usuarios:
             if not actual_es_master and usuario.role == "master":
                 continue
             es_propio = actual is not None and usuario.id == actual.id
+            if actual_es_admin and usuario.role == "administrador" and not es_propio:
+                continue
+
             es_target_master = usuario.role == "master"
             es_target_admin = usuario.role == "administrador"
             no_puede_editar = es_propio or es_target_master or (es_target_admin and not actual_es_master)
@@ -242,6 +262,11 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
     def desbloquear_cuenta(uname: str) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
             return
+        target = interfaz.user_store.get_user_by_username(uname)
+        if target and not actual_es_master and target.role in ("master", "administrador"):
+            mensaje.value = "No tienes permisos para desbloquear a este usuario."
+            interfaz.page.update()
+            return
         interfaz.user_store.unlock_user(uname)
         try:
             interfaz.order_store.registrar_auditoria(
@@ -256,6 +281,10 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         interfaz.page.update()
 
     def abrir_reset_clave(u_target: User) -> None:
+        if not actual_es_master and u_target.role in ("master", "administrador"):
+            interfaz.notificar("Solo el usuario master puede restablecer la clave de un administrador.")
+            return
+
         clave_temp = ft.TextField(
             label=f"Nueva contraseña para {u_target.username} (mín. 10 caracteres)",
             password=True,
@@ -304,6 +333,17 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
     def cambiar_rol(user_id: int, role: str) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
             return
+        if not actual_es_master and role in ("administrador", "master"):
+            mensaje.value = "Solo el usuario master puede asignar el rol de administrador."
+            actualizar_lista()
+            interfaz.page.update()
+            return
+        target = interfaz.user_store.get_user(user_id)
+        if target and not actual_es_master and target.role in ("master", "administrador"):
+            mensaje.value = "Solo el usuario master puede modificar el rol de un administrador."
+            actualizar_lista()
+            interfaz.page.update()
+            return
         try:
             interfaz.user_store.update_role(
                 user_id,
@@ -319,6 +359,12 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
     def cambiar_estado(user_id: int, active: bool) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
             return
+        target = interfaz.user_store.get_user(user_id)
+        if target and not actual_es_master and target.role in ("master", "administrador"):
+            mensaje.value = "Solo el usuario master puede modificar el estado de un administrador."
+            actualizar_lista()
+            interfaz.page.update()
+            return
         try:
             interfaz.user_store.set_active(
                 user_id,
@@ -333,6 +379,10 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
 
     def crear_usuario(_evento: ft.Event) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
+            return
+        if not es_master and nuevo_rol.value in ("administrador", "master"):
+            mensaje.value = "Solo el usuario master puede crear administradores."
+            interfaz.page.update()
             return
         try:
             interfaz.user_store.create_user(

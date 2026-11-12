@@ -173,10 +173,30 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
             lbl_prod_stock_proyectado.color = color_tema
         _safe_update(tarjeta_producto)
 
+    sm_local: Any = None
+
+    def _obtener_stock_manager() -> Any:
+        nonlocal sm_local
+        sm_attr = getattr(interfaz, "stock_manager", None)
+        if sm_attr is not None:
+            return sm_attr
+        if sm_local is not None:
+            return sm_local
+        ruta_excel = getattr(getattr(interfaz, "menu", None), "ruta_excel_base", None)
+        if ruta_excel:
+            try:
+                from src.stock_manager import StockManager
+
+                sm_local = StockManager(ruta_excel)
+                return sm_local
+            except Exception:
+                return None
+        return None
+
     def _ejecutar_transaccion(codigo: str, nombre: str, qty: int, motivo: str, obs: str, cerrar_al_final: bool = True) -> bool:
         """Aplica la transacción de stock, historial, auditoría y webhooks."""
         usuario_nom = getattr(interfaz.usuario_actual, "nombre_identificador", None) or getattr(interfaz.usuario_actual, "username", "Operador")
-        sm = getattr(interfaz, "stock_manager", None)
+        sm = _obtener_stock_manager()
         if not sm:
             texto_estado.value = "Error crítico: Gestor de stock no encontrado."
             texto_estado.color = ft.Colors.RED_600
@@ -280,22 +300,30 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
             return False
 
     def _buscar_producto(_e: Any = None) -> None:
-        query = (txt_codigo_busqueda.value or "").strip()
+        from src.products.barcode_utils import generar_variantes_codigo_lector, normalizar_codigo_lector
+
+        raw_val = txt_codigo_busqueda.value
+        query = normalizar_codigo_lector(raw_val)
         if not query:
             return
 
-        sm = getattr(interfaz, "stock_manager", None)
-        if not sm:
+        sm = _obtener_stock_manager()
+        store = getattr(sm, "product_store", None) if sm is not None else getattr(interfaz, "product_store", None)
+        if not sm and not store:
             texto_estado.value = "Gestor de stock no disponible."
             texto_estado.color = ft.Colors.RED_600
             _safe_update(texto_estado)
             return
 
         row = None
-        if hasattr(sm, "buscar_producto_por_codigo_o_barras"):
-            row = sm.buscar_producto_por_codigo_o_barras(query)
-        elif hasattr(sm, "product_store") and sm.product_store:
-            row = sm.product_store.find_product_by_code_or_barcode(query)
+        variantes = generar_variantes_codigo_lector(raw_val) or [query]
+        for cand in variantes:
+            if sm is not None and hasattr(sm, "buscar_producto_por_codigo_o_barras"):
+                row = sm.buscar_producto_por_codigo_o_barras(cand)
+            if row is None and store is not None:
+                row = store.find_product_by_code_or_barcode(cand)
+            if row is not None:
+                break
 
         if not row:
             texto_estado.value = f"❌ Producto '{query}' no encontrado en el catálogo."
@@ -309,9 +337,14 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
             if hasattr(interfaz, "reproducir_sonido"):
                 interfaz.reproducir_sonido("error")
         else:
-            codigo = row["code"] if "code" in row.keys() else row[0]
-            nombre = row["name"] if "name" in row.keys() else row[1]
-            barcode = row["barcode"] if "barcode" in row.keys() else ""
+            keys = set(row.keys()) if hasattr(row, "keys") else set()
+            codigo = row["code"] if "code" in keys else row[0]
+            nombre = row["name"] if "name" in keys else row[1]
+            barcode = (
+                row["cod_barras"]
+                if "cod_barras" in keys and row["cod_barras"]
+                else (row["barcode"] if "barcode" in keys else "")
+            )
 
             stock_actual = 0
             if hasattr(sm, "catalogo") and codigo in sm.catalogo:

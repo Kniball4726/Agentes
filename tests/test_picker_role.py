@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 import flet as ft
 
-from src.orders_store import OrderStore
+from src.orders_store import OrderStore, Pedido
 from src.user_store import USER_ROLES, UserStore
 from src.ui.components.sidebar import obtener_secciones_rol
+from src.ui.components.panels import construir_panel_informes_actividad, construir_panel_metricas
+from src.ui.dashboard_presenter import renderizar_pedidos_preparados_turno, actualizar_estado_dashboard
+from src.ui.dialogs.dlg_historial_pedidos import mostrar_detalle_pedido_modal
 from tests.test_flet_gui import FakeMenu, FakePage, InterfazFlet
 
 
@@ -194,6 +197,75 @@ class TestPickerRole(unittest.TestCase):
         self.assertNotIn("Cargar Pedido", txts_master)
         self.assertNotIn("Mercado Libre", txts_master)
         self.assertNotIn("Descontar ML", txts_master)
+
+    def test_picker_no_ve_panel_pedidos_armados(self):
+        """Verifica que el panel de operaciones no incluya la tarjeta de pedidos preparados para rol picker."""
+        self.interfaz.usuario_actual = self.picker_user
+        panel = construir_panel_informes_actividad(self.interfaz)
+        # Para picker devuelve directamente tarjeta_der (Informes generados), no un Row o Column con tarjeta_izq
+        self.assertIsInstance(panel, ft.Container)
+        # La lista de pedidos preparados no forma parte de este panel
+        self.assertIsNotNone(panel.content)
+
+    def test_picker_renderizar_pedidos_preparados_no_crea_tarjetas(self):
+        """Verifica que renderizar_pedidos_preparados_turno no genere tarjetas de pedidos si el usuario es picker."""
+        ped = Pedido(
+            id=1,
+            nota_pedido="R-100",
+            numero_pedido="100",
+            cliente="Cliente Test",
+            bultos=2,
+            logistica="Mercado Envíos",
+            armador="Operador",
+            tipo_archivo="pdf",
+            nombre_archivo="doc.pdf",
+            agregado=False,
+            articulos_descontados=3,
+            resumen_items="Item A x3",
+            created_at="2026-11-12 10:00:00",
+            estado="descontado",
+        )
+        self.interfaz.usuario_actual = self.picker_user
+        self.interfaz.lista_pedidos_preparados.controls.clear()
+        renderizar_pedidos_preparados_turno(self.interfaz, [ped])
+        self.assertEqual(len(self.interfaz.lista_pedidos_preparados.controls), 0)
+
+    def test_picker_bloqueado_en_detalle_pedido_modal(self):
+        """Verifica que el rol picker no pueda visualizar el detalle modal de pedidos armados."""
+        ped = Pedido(
+            id=1,
+            nota_pedido="R-100",
+            numero_pedido="100",
+            cliente="Cliente Test",
+            bultos=2,
+            logistica="Mercado Envíos",
+            armador="Operador",
+            tipo_archivo="pdf",
+            nombre_archivo="doc.pdf",
+            agregado=False,
+            articulos_descontados=3,
+            resumen_items="Item A x3",
+            created_at="2026-11-12 10:00:00",
+            estado="descontado",
+        )
+        self.interfaz.usuario_actual = self.picker_user
+        notificaciones = []
+        self.interfaz.notificar = lambda msg: notificaciones.append(msg)
+        mostrar_detalle_pedido_modal(self.interfaz, ped)
+        self.assertTrue(any("Picker no tiene acceso" in m for m in notificaciones))
+
+    def test_picker_panel_metricas_oculto(self):
+        """Verifica que las tarjetas superiores de métricas de pedidos de la jornada estén ocultas para picker."""
+        self.interfaz.usuario_actual = self.picker_user
+        panel = construir_panel_metricas(self.interfaz)
+        self.assertFalse(getattr(panel, "visible", True))
+
+    def test_picker_actualizar_listas_no_muestra_conteo_pedidos(self):
+        """Verifica que el texto de pendientes no muestre el resumen de pedidos descontados para picker."""
+        self.interfaz.usuario_actual = self.picker_user
+        actualizar_estado_dashboard(self.interfaz)
+        self.assertNotIn("pedido(s) descontado(s)", self.interfaz.pendientes_texto.value)
+        self.assertIn("Picking y Despacho", self.interfaz.pendientes_texto.value)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
             ("Espacio en Disco", "telemetria_disco", ft.Icons.STORAGE),
             ("Salud Servidor", "telemetria_salud", ft.Icons.HEALTH_AND_SAFETY),
         ]
+    elif interfaz.usuario_actual and interfaz.usuario_actual.role == "picker":
+        return ft.Container(visible=False)
     else:
         metricas = [
             ("PDF de la jornada", "pdf", ft.Icons.DESCRIPTION),
@@ -78,6 +80,7 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     - Lado derecho: Informes generados (o eventos de auditoría para Master).
     """
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+    es_picker = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "picker")
     es_movil = bool(interfaz.es_pantalla_movil)
     titulo_derecha = "Eventos de auditoría recientes" if es_master else "Informes generados"
     icono_derecha = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
@@ -153,7 +156,8 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=not es_movil)
 
     # El usuario Master no gestiona ni visualiza pedidos operativos (Segregación SoD)
-    if es_master:
+    # El rol Picker se dedica exclusivamente al picking/despacho y no debe ver pedidos armados
+    if es_master or es_picker:
         return tarjeta_der
 
     tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=not es_movil)

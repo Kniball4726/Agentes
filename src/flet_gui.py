@@ -327,9 +327,28 @@ class InterfazFlet(
         else:
             self.mostrar_configuracion_inicial()
 
-    def _asegurar_file_picker(self) -> None:
+    def _asegurar_file_picker(self, forzar_recrear: bool = False) -> None:
         """Asegura que FilePicker esté registrado exclusivamente como servicio (Flet 1.0) sin contaminar el overlay visual."""
-        if not hasattr(self, "file_picker") or self.file_picker is None:
+        reg = getattr(self.page, "_services", None)
+
+        if forzar_recrear or not hasattr(self, "file_picker") or self.file_picker is None:
+            viejo_fp = getattr(self, "file_picker", None)
+            if viejo_fp is not None:
+                if hasattr(self.page, "overlay") and self.page.overlay is not None:
+                    try:
+                        self.page.overlay = [c for c in self.page.overlay if c is not viejo_fp]
+                    except Exception:
+                        pass
+                if hasattr(self.page, "services") and self.page.services is not None:
+                    try:
+                        self.page.services = [s for s in self.page.services if s is not viejo_fp]
+                    except Exception:
+                        pass
+                if reg is not None and hasattr(reg, "_services"):
+                    try:
+                        reg._services = [s for s in reg._services if s is not viejo_fp]
+                    except Exception:
+                        pass
             self.file_picker = ft.FilePicker()
 
         # En Flet 1.0 FilePicker es un Servicio no visual. Si está en overlay, Flutter intenta
@@ -339,17 +358,16 @@ class InterfazFlet(
                 self.page.overlay.remove(self.file_picker)
 
         if hasattr(self.page, "services") and self.page.services is not None:
-            if self.file_picker not in self.page.services:
+            if not any(s is self.file_picker for s in self.page.services):
                 self.page.services.append(self.file_picker)
 
-        reg = getattr(self.page, "_services", None)
         if type(reg).__name__ == "ServiceRegistry":
             if getattr(reg, "parent", None) is None:
                 try:
                     reg._parent = weakref.ref(self.page)
                 except Exception:
                     pass
-            if hasattr(reg, "_services") and self.file_picker not in reg._services:
+            if hasattr(reg, "_services") and not any(s is self.file_picker for s in reg._services):
                 try:
                     reg.register_service(self.file_picker)
                 except Exception:
@@ -452,6 +470,7 @@ class InterfazFlet(
         self.btn_cierre_jornada = None
         self.conversacion.controls.clear()
         self.ventana_chat_flotante = None
+        self._asegurar_file_picker(forzar_recrear=True)
         self.mostrar_inicio_sesion()
 
     def exigir_roles(self, *roles: UserRole) -> bool:
@@ -669,7 +688,7 @@ class InterfazFlet(
             self.page.overlay = []
         else:
             self.page.overlay.clear()
-        self._asegurar_file_picker()
+        self._asegurar_file_picker(forzar_recrear=True)
         self.page.overlay.append(ventana_chat)
 
         self.boton_chat_flotante = ft.FloatingActionButton(
@@ -1136,11 +1155,6 @@ class InterfazFlet(
     async def _descargar_archivo_navegador(self, ruta: Path) -> None:
         try:
             self._asegurar_file_picker()
-            if hasattr(self.page, "update"):
-                try:
-                    self.page.update()
-                except Exception:
-                    pass
             contenido_bytes = ruta.read_bytes()
             await self.file_picker.save_file(
                 dialog_title=f"Guardar {ruta.name}",
@@ -1148,6 +1162,7 @@ class InterfazFlet(
                 src_bytes=contenido_bytes,
             )
         except Exception as error:
+            logger.warning("Error al descargar archivo en navegador: %s", error)
             self.notificar(f"No se pudo descargar el archivo en el navegador:\n{error}")
 
     async def subir_archivos_desde_pc(
@@ -1159,11 +1174,6 @@ class InterfazFlet(
     ) -> list[Path]:
         try:
             self._asegurar_file_picker()
-            if hasattr(self.page, "update"):
-                try:
-                    self.page.update()
-                except Exception:
-                    pass
             ext_limpias: list[str] = []
             for ext in extensiones:
                 e = ext.lstrip(".").lower()
@@ -1184,6 +1194,7 @@ class InterfazFlet(
                 cancel_upload_on_window_blur=False,
             )
         except Exception as error:
+            logger.warning("Error al abrir selector de archivos: %s", error)
             self.notificar(f"Error al abrir el selector de archivos:\n{error}")
             return []
 

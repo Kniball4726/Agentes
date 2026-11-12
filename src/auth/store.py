@@ -669,16 +669,31 @@ class UserStore:
             )
             connection.execute("DELETE FROM login_attempts WHERE username = ?", (row["username"],))
 
-    def list_users(self, include_master: bool = True) -> list[User]:
+    def list_users(
+        self,
+        include_master: bool = True,
+        exclude_other_admins: bool = False,
+        current_user_id: int | None = None,
+    ) -> list[User]:
         with self._connect() as connection:
             query = """
                 SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
                 FROM users
             """
+            conditions: list[str] = []
+            params: list[Any] = []
             if not include_master:
-                query += " WHERE role != 'master'"
+                conditions.append("role != 'master'")
+            if exclude_other_admins:
+                if current_user_id is not None:
+                    conditions.append("(role != 'administrador' OR id = ?)")
+                    params.append(current_user_id)
+                else:
+                    conditions.append("role != 'administrador'")
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
             query += " ORDER BY username COLLATE NOCASE"
-            rows = connection.execute(query).fetchall()
+            rows = connection.execute(query, params).fetchall()
         return [self._row_to_user(row) for row in rows]
 
     def get_user(self, user_id: int) -> User | None:

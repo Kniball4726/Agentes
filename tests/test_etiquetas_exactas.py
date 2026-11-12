@@ -34,3 +34,79 @@ def test_etiquetas_exactas_sin_repeticion(tmp_path: Path):
     # Debe contener exactamente una vez "BULTO 1 DE 2" y una vez "BULTO 2 DE 2"
     assert texto.count("BULTO 1 DE 2") == 1
     assert texto.count("BULTO 2 DE 2") == 1
+
+
+def test_etiquetas_agregado_concatena_nombre_cliente(tmp_path: Path):
+    """Verifica que si el pedido es un agregado se concatene 'Agregado' al nombre del cliente."""
+    from src.label_generator import generar_etiquetas_termicas_pdf
+
+    # 1. Pedido normal (no agregado)
+    p_normal = Pedido(
+        id=60,
+        nota_pedido="REM-100",
+        numero_pedido="55",
+        cliente="Distribuidora Norte",
+        bultos=1,
+        logistica="Expreso",
+        armador="Lucas",
+        tipo_archivo="pdf",
+        nombre_archivo="doc.pdf",
+        agregado=False,
+        articulos_descontados=5,
+        resumen_items="5 un.",
+        created_at="2026-10-30 12:00:00",
+        estado="descontado",
+    )
+    pdf_normal_a4 = generar_etiquetas_bultos_pdf(p_normal, tmp_path)
+    texto_a4_norm = pypdf.PdfReader(str(pdf_normal_a4)).pages[0].extract_text()
+    assert "Distribuidora Norte" in texto_a4_norm
+    assert "Agregado" not in texto_a4_norm
+
+    # 2. Pedido agregado (debe concatenar 'Agregado')
+    p_agregado = Pedido(
+        id=61,
+        nota_pedido="REM-101",
+        numero_pedido="88",
+        cliente="Ferretería San Martín",
+        bultos=1,
+        logistica="Expreso",
+        armador="Lucas",
+        tipo_archivo="pdf",
+        nombre_archivo="doc.pdf",
+        agregado=True,
+        articulos_descontados=2,
+        resumen_items="2 un.",
+        created_at="2026-10-30 12:00:00",
+        estado="descontado",
+    )
+    pdf_a4_agregado = generar_etiquetas_bultos_pdf(p_agregado, tmp_path)
+    texto_a4_agr = pypdf.PdfReader(str(pdf_a4_agregado)).pages[0].extract_text()
+    assert "Ferretería San Martín Agregado" in texto_a4_agr
+    assert "Nro 88" in texto_a4_agr
+
+    # 3. Rótulo térmico también debe concatenar 'Agregado'
+    pdf_term_agregado = generar_etiquetas_termicas_pdf(p_agregado, tmp_path)
+    texto_term = pypdf.PdfReader(str(pdf_term_agregado)).pages[0].extract_text()
+    assert "Ferretería San Martín Agregado" in texto_term
+
+    # 4. No debe duplicar si el cliente ya contiene la palabra 'Agregado'
+    p_ya_agregado = Pedido(
+        id=62,
+        nota_pedido="REM-102",
+        numero_pedido="",
+        cliente="Ferretería San Martín Agregado",
+        bultos=1,
+        logistica="Expreso",
+        armador="Lucas",
+        tipo_archivo="pdf",
+        nombre_archivo="doc.pdf",
+        agregado=True,
+        articulos_descontados=2,
+        resumen_items="2 un.",
+        created_at="2026-10-30 12:00:00",
+        estado="descontado",
+    )
+    pdf_ya_agr = generar_etiquetas_bultos_pdf(p_ya_agregado, tmp_path)
+    texto_ya_agr = pypdf.PdfReader(str(pdf_ya_agr)).pages[0].extract_text()
+    assert "Ferretería San Martín Agregado" in texto_ya_agr
+    assert "Agregado Agregado" not in texto_ya_agr
