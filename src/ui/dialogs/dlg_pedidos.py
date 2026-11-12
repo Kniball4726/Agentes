@@ -241,7 +241,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
     ruta_comprobante: list[Path] = []
     datos_doc_ref: list[Any] = []
     texto_archivo = ft.Text(
-        "Ningún comprobante seleccionado (.pdf o .xlsx/.xls)",
+        "Ningún comprobante seleccionado (.pdf, .xlsx/.xls o .docx)",
         size=12,
         color=interfaz.secundario,
     )
@@ -250,11 +250,15 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         try:
             archivos = await interfaz.subir_archivos_desde_pc(
                 carpeta_destino=application_root() / "data" / "pedidos_archivos",
-                extensiones=["pdf", "xlsx", "xls"],
-                titulo="Seleccionar Comprobante de Pedido",
+                extensiones=["pdf", "xlsx", "xls", "docx"],
+                titulo="Seleccionar Comprobante de Pedido (.pdf, .xlsx, .docx)",
             )
             if archivos:
                 arch_candidato = archivos[0]
+                if len(archivos) > 1:
+                    interfaz.notificar(
+                        f"Se seleccionaron {len(archivos)} comprobantes. Se preparó '{arch_candidato.name}'; una vez confirmado este pedido podrás cargar los restantes."
+                    )
                 hash_candidato = calcular_hash_archivo(arch_candidato)
                 if hash_candidato:
                     duplicado = interfaz.order_store.buscar_pedido_por_hash(hash_candidato)
@@ -281,6 +285,14 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     if ext_c == ".pdf":
                         from ...remito_parser import parsear_remito
                         datos_doc = parsear_remito(arch_candidato)
+                    elif ext_c in (".docx",):
+                        from ...mercado_libre_parser import parsear_pedido_mercado_libre
+                        sm_cls = _get_stock_manager_cls()
+                        sm = sm_cls(interfaz.menu.ruta_excel_base)
+                        catalogo_tuplas = [
+                            (cod, val[1]) for cod, val in sm.catalogo.items()
+                        ]
+                        datos_doc = parsear_pedido_mercado_libre(arch_candidato, catalogo_tuplas)
                     else:
                         from ...canjes_parser import parsear_canje_excel
                         datos_doc = parsear_canje_excel(arch_candidato)
@@ -341,7 +353,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         content=ft.Column(
             [
                 ft.Text(
-                    "Comprobante adjunto (.pdf o .xlsx/.xls)",
+                    "Comprobante adjunto (.pdf, .xlsx/.xls o .docx)",
                     size=12,
                     color=interfaz.secundario,
                     weight=ft.FontWeight.W_500,
@@ -374,12 +386,8 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         except ValueError:
             bultos_val = 1
 
-        if getattr(confirmar_pedido, "_en_curso", False):
-            return
-        confirmar_pedido._en_curso = True
-
+        # Validaciones de campos del formulario antes de bloquear el botón
         if not remito:
-            confirmar_pedido._en_curso = False
             mensaje_error.value = "Debes ingresar el Remito / Factura."
             interfaz.page.update()
             return
@@ -424,6 +432,11 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                 )
                 interfaz.page.update()
                 return
+
+        # Prevenir doble clic concurrente una vez superadas las validaciones
+        if getattr(confirmar_pedido, "_en_curso", False):
+            return
+        confirmar_pedido._en_curso = True
 
         interfaz.page.pop_dialog()
         ext = archivo_path.suffix.lower()

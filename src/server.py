@@ -511,6 +511,15 @@ def iniciar_servidor_web(
                                 },
                             )
 
+                        # Aliases directos para visor universal de documentos inline
+                        try:
+                            from .api.v1.documentos import ver_documento, ver_documento_path
+                            self.add_api_route("/documentos/ver", ver_documento, methods=["GET"])
+                            self.add_api_route("/documentos/visor", ver_documento, methods=["GET"])
+                            self.add_api_route("/documentos/ver/{nombre_archivo:path}", ver_documento_path, methods=["GET"])
+                        except Exception as exc_doc:
+                            logger.warning("No se pudieron montar rutas directas para documentos: %s", exc_doc)
+
                     flet_web.fastapi.FastAPI.__init__ = custom_fastapi_init
 
                 handle = await _orig_serve(*args, **kwargs)

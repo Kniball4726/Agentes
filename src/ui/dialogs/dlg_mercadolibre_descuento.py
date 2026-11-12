@@ -780,7 +780,11 @@ class MercadoLibreDocxComponent:
         ]
 
         try:
-            res = parsear_pedido_mercado_libre(arch, productos_catalogo)
+            if arch.suffix.lower() == ".pdf":
+                from ...remito_parser import parsear_remito
+                res = parsear_remito(arch)
+            else:
+                res = parsear_pedido_mercado_libre(arch, productos_catalogo)
             self.resultado_parseo[0] = res
         except Exception as e:
             self.resumen_texto.value = f"Error al leer el archivo {arch.name}: {e}"
@@ -894,7 +898,7 @@ class MercadoLibreDocxComponent:
     def al_subir_docx(self, guardados: list[Path]) -> None:
         if not guardados:
             return
-        archivos_disco = sorted(list(self.carpeta_ml.glob("*.docx")))
+        archivos_disco = sorted(list(self.carpeta_ml.glob("*.docx")) + list(self.carpeta_ml.glob("*.pdf")))
         self.archivos_pendientes.clear()
         self.archivos_pendientes.extend(archivos_disco)
         self.selector_archivo.options = [
@@ -910,8 +914,8 @@ class MercadoLibreDocxComponent:
         try:
             guardados = await self.interfaz.subir_archivos_desde_pc(
                 carpeta_destino=self.carpeta_ml,
-                extensiones=["docx"],
-                titulo="Seleccionar pedido de Mercado Libre (.docx)",
+                extensiones=["docx", "pdf"],
+                titulo="Seleccionar comprobante de Mercado Libre (.docx, .pdf)",
             )
             if guardados:
                 self.al_subir_docx(guardados)

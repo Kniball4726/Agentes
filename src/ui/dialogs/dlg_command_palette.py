@@ -20,6 +20,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ("Ingreso de Fábrica", "Escáner rápido de recepción de mercadería", ft.Icons.INVENTORY_2, ft.Colors.ORANGE_400, interfaz.mostrar_ingreso_fabrica),
             ("Inventario en Vivo (Escáner)", "Conteo con cámara de celular o lector USB", ft.Icons.DOCUMENT_SCANNER, ft.Colors.GREEN_400, interfaz.mostrar_dialogo_inventario_vivo),
             ("Cierre de Jornada", "Consolidar turnos y generar hoja de ruta PDF", ft.Icons.TASK_ALT, ROJO, interfaz.mostrar_cierre_jornada),
+            ("Centro de Reportes", "Generar reportes en PDF y Excel para ver o imprimir", ft.Icons.ASSESSMENT, ft.Colors.RED_400, interfaz.mostrar_centro_reportes),
             ("Historial de Pedidos", "Buscar, reimprimir y ver pedidos del turno", ft.Icons.RECEIPT_LONG, ft.Colors.AMBER_400, interfaz.mostrar_historial_pedidos),
             ("Imprimir Descuento", "Consultar y reimprimir comprobantes de descuento", ft.Icons.PRINT, ft.Colors.CYAN_400, interfaz.mostrar_imprimir_descuentos),
             ("Gestión de Clientes", "Directorio y consulta de clientes", ft.Icons.PEOPLE_ALT, ft.Colors.TEAL_400, interfaz.mostrar_gestion_clientes),
@@ -34,6 +35,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         accesos_rapidos.extend([
             ("Gestionar Productos", "Catálogo maestro y existencias en Productos.xlsx", ft.Icons.ADD_BOX, ft.Colors.BLUE_400, interfaz.mostrar_gestion_productos),
             ("Métricas y Rendimiento", "Dashboard ejecutivo, rotación y volumen", ft.Icons.INSIGHTS, ft.Colors.PURPLE_400, interfaz.mostrar_dashboard_metricas),
+            ("Centro de Reportes", "Generar reportes en PDF y Excel para ver o imprimir", ft.Icons.ASSESSMENT, ft.Colors.RED_400, interfaz.mostrar_centro_reportes),
             ("Historial de Pedidos", "Supervisión, reimpresión y rótulos en lote", ft.Icons.RECEIPT_LONG, ft.Colors.AMBER_400, interfaz.mostrar_historial_pedidos),
             ("Cierres de Operarios", "Historial descendente de cierres creados por operarios", ft.Icons.FACT_CHECK, ft.Colors.ORANGE_400, interfaz.mostrar_historial_cierres_admin),
             ("Ajustar Stock / Fábrica", "Ingresos de mercadería y remitos de fábrica", ft.Icons.INVENTORY_2, ft.Colors.GREEN_400, interfaz.mostrar_ingreso_fabrica),

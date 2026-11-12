@@ -179,6 +179,145 @@ class TestClientCodeAndOrderFields(unittest.TestCase):
         self.assertIsNotNone(logistica_dropdown)
         self.assertIsNone(logistica_dropdown.value)
 
+    def test_crear_pedido_adjuntar_comprobante_invoca_subir_archivos(self):
+        """Verifica que el boton Adjuntar Comprobante este presente y llame a subir_archivos_desde_pc."""
+        import asyncio
+        from src.ui.dialogs.dlg_pedidos import mostrar_dialogo_crear_pedido
+        from src.user_store import User
+
+        class FakePage:
+            def __init__(self):
+                self.controls = []
+                self.dialogos = []
+            def update(self):
+                pass
+            def show_dialog(self, dialog):
+                self.dialogos.append(dialog)
+            def pop_dialog(self):
+                if self.dialogos:
+                    self.dialogos.pop()
+
+        page = FakePage()
+        interfaz_mock = MagicMock()
+        interfaz_mock.page = page
+        interfaz_mock.usuario_actual = User(1, "operador1", "operador", True)
+        interfaz_mock.order_store = self.store
+        interfaz_mock.modo_oscuro = False
+        interfaz_mock.borde = "#cccccc"
+        interfaz_mock.fondo = "#ffffff"
+        interfaz_mock.texto = "#000000"
+        interfaz_mock.secundario = "#666666"
+
+        test_file = Path(self.tmp_dir.name) / "remito_prueba.pdf"
+        test_file.write_bytes(b"%PDF-1.4 mock pdf content")
+
+        async def fake_subir(**kwargs):
+            return [test_file]
+
+        interfaz_mock.subir_archivos_desde_pc = fake_subir
+
+        mostrar_dialogo_crear_pedido(interfaz_mock)
+        self.assertEqual(len(page.dialogos), 1)
+        dialogo = page.dialogos[0]
+
+        # Buscar el boton de Adjuntar Comprobante
+        col_content = dialogo.content.content
+        btn_adjuntar = None
+        for c in col_content.controls:
+            if isinstance(c, ft.Container) and hasattr(c, "content") and isinstance(c.content, ft.Column):
+                for row_elem in c.content.controls:
+                    if isinstance(row_elem, ft.Row):
+                        for elem in row_elem.controls:
+                            if isinstance(elem, ft.Button) and "Adjuntar Comprobante" in (elem.content if isinstance(elem.content, str) else getattr(elem.content, "value", "")):
+                                btn_adjuntar = elem
+                                break
+
+        self.assertIsNotNone(btn_adjuntar)
+        # Ejecutar la accion de clic
+        asyncio.run(btn_adjuntar.on_click(None))
+
+    def test_confirmar_pedido_sin_logistica_permite_reintentar(self):
+        """Verifica que al faltar la logística, el formulario no quede bloqueado en un deadlock permanente."""
+        import asyncio
+        from unittest.mock import AsyncMock
+        from src.ui.dialogs.dlg_pedidos import mostrar_dialogo_crear_pedido
+        from src.user_store import User
+
+        class FakePage:
+            def __init__(self):
+                self.controls = []
+                self.dialogos = []
+            def update(self):
+                pass
+            def show_dialog(self, dialog):
+                self.dialogos.append(dialog)
+            def pop_dialog(self):
+                if self.dialogos:
+                    self.dialogos.pop()
+
+        page = FakePage()
+        interfaz_mock = MagicMock()
+        interfaz_mock.page = page
+        interfaz_mock.usuario_actual = User(1, "operador1", "operador", True)
+        interfaz_mock.order_store = self.store
+        interfaz_mock.modo_oscuro = False
+        interfaz_mock.borde = "#cccccc"
+        interfaz_mock.fondo = "#ffffff"
+        interfaz_mock.texto = "#000000"
+        interfaz_mock.secundario = "#666666"
+        interfaz_mock.ejecutar_tarea = AsyncMock()
+
+        test_file = Path(self.tmp_dir.name) / "remito_log.pdf"
+        test_file.write_bytes(b"%PDF-1.4 mock pdf content")
+
+        async def fake_subir(**kwargs):
+            return [test_file]
+
+        interfaz_mock.subir_archivos_desde_pc = fake_subir
+
+        mostrar_dialogo_crear_pedido(interfaz_mock)
+        dialogo = page.dialogos[0]
+
+        col_content = dialogo.content.content
+        btn_confirmar = dialogo.actions[0]
+        self.assertIn("Confirmar", str(btn_confirmar.content))
+
+        remito_input = None
+        cliente_input = None
+        logistica_dd = None
+        btn_adjuntar = None
+
+        for c in col_content.controls:
+            if isinstance(c, ft.TextField) and "Remito" in (c.label or ""):
+                remito_input = c
+            elif isinstance(c, ft.TextField) and "Cliente" in (c.label or ""):
+                cliente_input = c
+            elif isinstance(c, ft.Dropdown) and "Logística" in (c.label or ""):
+                logistica_dd = c
+            elif isinstance(c, ft.Container) and hasattr(c, "content") and isinstance(c.content, ft.Column):
+                for row_elem in c.content.controls:
+                    if isinstance(row_elem, ft.Row):
+                        for elem in row_elem.controls:
+                            if isinstance(elem, ft.Button) and "Adjuntar Comprobante" in (elem.content if isinstance(elem.content, str) else getattr(elem.content, "value", "")):
+                                btn_adjuntar = elem
+
+        asyncio.run(btn_adjuntar.on_click(None))
+        remito_input.value = "REM-991"
+        cliente_input.value = "Cliente Prueba"
+        self.assertIsNone(logistica_dd.value)
+
+        # Primer intento sin logística: debe advertir y NO trabar el botón
+        asyncio.run(btn_confirmar.on_click(None))
+        self.assertEqual(len(page.dialogos), 1)
+
+        # El usuario elige la logística requerida
+        logistica_dd.value = "Domicilio"
+
+        # Segundo intento: debe proceder sin quedar congelado y cerrar el diálogo
+        asyncio.run(btn_confirmar.on_click(None))
+        self.assertEqual(len(page.dialogos), 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()

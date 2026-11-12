@@ -9,6 +9,7 @@ from .dlg_auth import (
 )
 from .dlg_clientes import mostrar_dialogo_gestion_clientes
 from .dlg_usuarios import mostrar_dialogo_gestion_usuarios
+from .dlg_api_keys import mostrar_dialogo_api_keys
 from .dlg_smtp import mostrar_dialogo_configuracion_smtp
 from .dlg_backup import mostrar_dialogo_backup
 from .dlg_productos import (
@@ -68,6 +69,7 @@ from .dlg_movimientos_rapidos import (
     MotivoIngresoRapido,
     MotivoSalidaRapida,
 )
+from .dlg_reportes import mostrar_centro_reportes
 
 __all__ = [
     # Auth & Profile
@@ -77,9 +79,11 @@ __all__ = [
     "mostrar_mi_perfil",
     "mostrar_configuracion_inicial",
     "mostrar_dialogo_preferencias",
+    "mostrar_centro_reportes",
     # Clientes & Usuarios
     "mostrar_dialogo_gestion_clientes",
     "mostrar_dialogo_gestion_usuarios",
+    "mostrar_dialogo_api_keys",
     # Config & Backup & Restauración
     "mostrar_dialogo_configuracion_smtp",
     "mostrar_dialogo_backup",

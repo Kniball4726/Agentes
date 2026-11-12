@@ -48,6 +48,14 @@ class TestSecurityApiKeys(unittest.TestCase):
             nombre="Operador Seguridad",
             email="oper@sec.com",
         )
+        # Master user
+        self.master = self.user_store.create_user(
+            username="master_sec",
+            password="MasterPass123!",
+            role="master",
+            nombre="Master Seguridad",
+            email="master@sec.com",
+        )
 
         with self.product_store._connect() as conn:
             conn.execute(
@@ -140,19 +148,19 @@ class TestSecurityApiKeys(unittest.TestCase):
         self.assertEqual(response2.status_code, 401)
 
     def test_endpoints_gestion_api_keys(self):
-        """Verifica la API REST para administradores de gestión de API Keys."""
-        # Login como admin
+        """Verifica la API REST exclusiva para Master de gestión de API Keys."""
+        # Login como master
         login_res = self.client.post(
             "/api/v1/auth/login",
-            json={"username": "admin_sec", "password": "AdminPass123!"},
+            json={"username": "master_sec", "password": "MasterPass123!"},
         )
-        token_admin = login_res.json()["token"]
-        headers_admin = {"Authorization": f"Bearer {token_admin}"}
+        token_master = login_res.json()["token"]
+        headers_master = {"Authorization": f"Bearer {token_master}"}
 
         # Crear API Key
         res_create = self.client.post(
             "/api/v1/auth/api-keys?client_name=Sistema+WMS&role=operador",
-            headers=headers_admin,
+            headers=headers_master,
         )
         self.assertEqual(res_create.status_code, 200)
         data = res_create.json()
@@ -160,30 +168,42 @@ class TestSecurityApiKeys(unittest.TestCase):
         self.assertIn("sk_live_", api_key)
 
         # Listar API Keys
-        res_list = self.client.get("/api/v1/auth/api-keys", headers=headers_admin)
+        res_list = self.client.get("/api/v1/auth/api-keys", headers=headers_master)
         self.assertEqual(res_list.status_code, 200)
         keys = res_list.json()["api_keys"]
         self.assertEqual(len(keys), 1)
         key_hash = keys[0]["key_hash"]
 
-        # Intentar crear con usuario operador (debe dar 403)
+        # Intentar crear con usuario operador (debe dar 403 Forbidden)
         login_oper = self.client.post(
             "/api/v1/auth/login",
             json={"username": "oper_sec", "password": "OperPass123!"},
         )
         token_oper = login_oper.json()["token"]
-        res_forbidden = self.client.post(
+        res_forbidden_oper = self.client.post(
             "/api/v1/auth/api-keys?client_name=Hacker&role=operador",
             headers={"Authorization": f"Bearer {token_oper}"},
         )
-        self.assertEqual(res_forbidden.status_code, 403)
+        self.assertEqual(res_forbidden_oper.status_code, 403)
 
-        # Revocar API Key por endpoint
-        res_del = self.client.delete(f"/api/v1/auth/api-keys/{key_hash}", headers=headers_admin)
+        # Intentar crear con usuario administrador (también debe dar 403 Forbidden, exclusivo Master)
+        login_admin = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin_sec", "password": "AdminPass123!"},
+        )
+        token_admin = login_admin.json()["token"]
+        res_forbidden_admin = self.client.post(
+            "/api/v1/auth/api-keys?client_name=AdminSinPermiso&role=operador",
+            headers={"Authorization": f"Bearer {token_admin}"},
+        )
+        self.assertEqual(res_forbidden_admin.status_code, 403)
+
+        # Revocar API Key por endpoint (con master)
+        res_del = self.client.delete(f"/api/v1/auth/api-keys/{key_hash}", headers=headers_master)
         self.assertEqual(res_del.status_code, 200)
 
         # Listar nuevamente: debe estar inactiva (active=0)
-        res_list_after = self.client.get("/api/v1/auth/api-keys", headers=headers_admin)
+        res_list_after = self.client.get("/api/v1/auth/api-keys", headers=headers_master)
         self.assertEqual(res_list_after.json()["api_keys"][0]["active"], 0)
 
     def test_rate_limit_ip_login(self):

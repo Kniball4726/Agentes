@@ -165,6 +165,115 @@ class TestHistorialArchivosComprobantes(unittest.TestCase):
             dialogo = page_mock.show_dialog.call_args[0][0]
             self.assertIsInstance(dialogo, ft.AlertDialog)
 
+    def test_mostrar_historial_pedidos_formato_oscuro_y_orden_descendente(self):
+        p_antiguo = Pedido(
+            id=10,
+            nota_pedido="24860",
+            numero_pedido="1",
+            cliente="Dietetica Narodi",
+            bultos=1,
+            logistica="Centro de distribución",
+            armador="Gregory Rodriguez",
+            tipo_archivo="pdf",
+            nombre_archivo="24860.pdf",
+            agregado=False,
+            articulos_descontados=1,
+            resumen_items="1x Prod",
+            created_at="2026-02-11 09:00:00",
+            estado="descontado",
+        )
+        p_reciente = Pedido(
+            id=20,
+            nota_pedido="24897",
+            numero_pedido="1",
+            cliente="SUPLE SPORT",
+            bultos=4,
+            logistica="Domicilio",
+            armador="Gregory Rodriguez",
+            tipo_archivo="pdf",
+            nombre_archivo="24897.pdf",
+            agregado=False,
+            articulos_descontados=4,
+            resumen_items="4x Suplementos",
+            created_at="2026-09-11 15:30:00",
+            estado="descontado",
+        )
+
+        page_mock = MagicMock()
+        interfaz_mock = MagicMock()
+        interfaz_mock.page = page_mock
+        interfaz_mock.usuario_actual = SimpleNamespace(username="operador1", role="operador")
+        interfaz_mock.order_store = MagicMock()
+        # Devuelve pedidos sin orden específico
+        interfaz_mock.order_store.listar_pedidos.return_value = [p_antiguo, p_reciente]
+        interfaz_mock.modo_oscuro = True
+        interfaz_mock.texto = ft.Colors.WHITE
+        interfaz_mock.secundario = ft.Colors.GREY_400
+        interfaz_mock.fondo = ft.Colors.BLACK
+        interfaz_mock.fondo_acento = ft.Colors.GREY_900
+        interfaz_mock.borde = ft.Colors.GREY_800
+        interfaz_mock.boton_dialogo = lambda txt, cb: ft.TextButton(txt, on_click=cb)
+
+        mostrar_historial_pedidos(interfaz_mock)
+        page_mock.show_dialog.assert_called_once()
+        dialogo = page_mock.show_dialog.call_args[0][0]
+
+        # Verificar AlertDialog con fondo oscuro
+        self.assertIsInstance(dialogo, ft.AlertDialog)
+        self.assertEqual(dialogo.bgcolor, "#121214")
+
+        # Verificar que el contenido incluye cabecera de columnas y la lista
+        contenedor_principal = dialogo.content
+        columna = contenedor_principal.content
+        # Los controles deben ser: barra_busqueda, cabecera_columnas, items_lista, barra_paginacion
+        self.assertEqual(len(columna.controls), 4)
+
+        cabecera_columnas = columna.controls[1]
+        nombres_columnas = []
+        for c in cabecera_columnas.content.controls:
+            if hasattr(c, "content") and isinstance(c.content, ft.Text):
+                nombres_columnas.append(c.content.value)
+
+        self.assertIn("Nota", nombres_columnas)
+        self.assertIn("Cliente", nombres_columnas)
+        self.assertIn("Numero", nombres_columnas)
+        self.assertIn("Bultos", nombres_columnas)
+        self.assertIn("Logistica", nombres_columnas)
+        self.assertIn("Preparador", nombres_columnas)
+        self.assertIn("Fecha de retiro o entrega", nombres_columnas)
+        self.assertIn("Firma", nombres_columnas)
+
+        # Verificar items_lista ordenados por fecha descendente
+        items_lista = columna.controls[2]
+        # Debería haber encabezado para 11/9/2026 antes que 11/2/2026
+        def _extraer_textos(control):
+            res = []
+            if hasattr(control, "value") and control.value:
+                res.append(str(control.value))
+            if hasattr(control, "content"):
+                res.extend(_extraer_textos(control.content))
+            if hasattr(control, "controls") and isinstance(control.controls, list):
+                for sub in control.controls:
+                    res.extend(_extraer_textos(sub))
+            return res
+
+        textos_encontrados = []
+        for item in items_lista.controls:
+            textos_encontrados.extend(_extraer_textos(item))
+
+        self.assertIn("11/9/2026", textos_encontrados)
+        self.assertIn("11/2/2026", textos_encontrados)
+        # 11/9/2026 debe aparecer antes que 11/2/2026 (orden descendente)
+        idx_reciente = textos_encontrados.index("11/9/2026")
+        idx_antiguo = textos_encontrados.index("11/2/2026")
+        self.assertLess(idx_reciente, idx_antiguo)
+
+        # Verificar estilo de cabecera con acento rojo corporativo
+        primer_item = items_lista.controls[0]
+        self.assertEqual(primer_item.bgcolor, "#18181c")
+        self.assertEqual(primer_item.border.left.width, 4)
+
+
 
 if __name__ == "__main__":
     unittest.main()

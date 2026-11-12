@@ -124,6 +124,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
+                    ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
                     ("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
@@ -194,6 +195,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
+                    ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
                     ("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
                     ("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
@@ -225,12 +227,14 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 items=[
                     ("Gestionar usuarios", ft.Icons.MANAGE_ACCOUNTS, interfaz.mostrar_gestion_usuarios),
                     ("Registro de Auditoría", ft.Icons.SECURITY, interfaz.mostrar_registro_auditoria),
+                    ("Claves de API Externas", ft.Icons.VPN_KEY, interfaz.mostrar_dialogo_api_keys),
                 ],
             ),
             SeccionMenu(
                 titulo="DATOS Y RESGUARDO",
                 icono=ft.Icons.BACKUP,
                 items=[
+                    ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
                     ("Restaurar documentos", ft.Icons.RESTORE, interfaz.confirmar_restaurar),
                     ("Archivado Histórico", ft.Icons.AUTO_DELETE, interfaz.mostrar_dialogo_archivo_historico),
@@ -258,6 +262,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
             titulo="INFORMES",
             icono=ft.Icons.ASSESSMENT,
             items=[
+                ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                 ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
                 ("Compartir por correo", ft.Icons.EMAIL, interfaz.compartir_correo),
                 ("WhatsApp Web", ft.Icons.CHAT, interfaz.compartir_whatsapp),
@@ -402,8 +407,11 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
     username = interfaz.usuario_actual.username
     rol = interfaz.usuario_actual.role
 
-    # Botonera de Acceso Rápido para Operador / Admin / Master: Entrada, Salida, Cargar Pedido y Mercado Libre
-    if rol in ("operador", "administrador", "master"):
+    # Botonera de Acceso Rápido según rol:
+    # - Operador: Entrada, Salida, Cargar Pedido y Mercado Libre
+    # - Administrador: Solo Entrada y Salida
+    # - Master: Sin botones de inicio rápido (SoD / Auditoría)
+    if rol in ("operador", "administrador"):
         btn_entrada = ft.Container(
             content=ft.Row(
                 [
@@ -442,50 +450,63 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
             ink=True,
         )
 
-        btn_pedido = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.POST_ADD, size=14, color=ft.Colors.BLUE_500),
-                    ft.Text("Cargar Pedido", size=10, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=4,
-            ),
-            expand=True,
-            height=32,
-            border_radius=7,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.BLUE_500),
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500)),
-            tooltip="⚡ Cargar y escanear remito / armar nuevo pedido",
-            on_click=lambda _: interfaz.mostrar_crear_pedido(),
-            ink=True,
-        )
+        if rol == "operador":
+            btn_pedido = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(ft.Icons.POST_ADD, size=24, color=ft.Colors.WHITE),
+                        ft.Text("Cargar Pedido", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=8,
+                ),
+                expand=True,
+                height=48,
+                border_radius=8,
+                bgcolor=ROJO,
+                tooltip="⚡ Cargar y escanear remito / armar nuevo pedido (Proceso Principal)",
+                on_click=lambda _: interfaz.mostrar_crear_pedido(),
+                ink=True,
+                shadow=ft.BoxShadow(
+                    spread_radius=0,
+                    blur_radius=6,
+                    color=ft.Colors.with_opacity(0.35, ROJO),
+                    offset=ft.Offset(0, 2),
+                ),
+            )
 
-        btn_meli = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
-                    ft.Text("Mercado Libre", size=10, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=4,
-            ),
-            expand=True,
-            height=32,
-            border_radius=7,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
-            tooltip="⚡ Descontar y escanear etiquetas de Mercado Libre",
-            on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
-            ink=True,
-        )
+            btn_meli = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
+                        ft.Text("Mercado Libre", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=6,
+                ),
+                expand=True,
+                height=32,
+                border_radius=7,
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
+                tooltip="⚡ Descontar y escanear etiquetas de Mercado Libre",
+                on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
+                ink=True,
+            )
+
+            filas_rapidas = [
+                ft.Row([btn_pedido]),
+                ft.Row([btn_entrada, btn_salida], spacing=6),
+                ft.Row([btn_meli], spacing=6),
+            ]
+        else:
+            filas_rapidas = [
+                ft.Row([btn_entrada, btn_salida], spacing=6),
+            ]
 
         controls.append(
             ft.Column(
-                [
-                    ft.Row([btn_entrada, btn_salida], spacing=6),
-                    ft.Row([btn_pedido, btn_meli], spacing=6),
-                ],
+                filas_rapidas,
                 spacing=6,
                 tight=True,
             )
@@ -726,7 +747,7 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
         ft.VerticalDivider(width=8, color=interfaz.borde),
     ]
 
-    if rol in ("operador", "administrador", "master"):
+    if rol in ("operador", "administrador"):
         btn_ent_h = ft.Container(
             content=ft.Row(
                 [
@@ -763,49 +784,48 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
             on_click=lambda _: mostrar_dialogo_salida_rapida(interfaz),
             ink=True,
         )
-        btn_ped_h = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.POST_ADD, size=14, color=ft.Colors.BLUE_500),
-                    ft.Text("Cargar Pedido", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                ],
-                spacing=4,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            height=30,
-            padding=ft.Padding.symmetric(horizontal=8),
-            border_radius=6,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.BLUE_500),
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500)),
-            tooltip="⚡ Cargar / Armar Pedido",
-            on_click=lambda _: interfaz.mostrar_crear_pedido(),
-            ink=True,
-        )
-        btn_meli_h = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
-                    ft.Text("Mercado Libre", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                ],
-                spacing=4,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            height=30,
-            padding=ft.Padding.symmetric(horizontal=8),
-            border_radius=6,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
-            tooltip="⚡ Descontar Mercado Libre",
-            on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
-            ink=True,
-        )
-        controls.extend([
-            btn_ent_h,
-            btn_sal_h,
-            btn_ped_h,
-            btn_meli_h,
-            ft.VerticalDivider(width=8, color=interfaz.borde),
-        ])
+        botones_h = [btn_ent_h, btn_sal_h]
+
+        if rol == "operador":
+            btn_ped_h = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(ft.Icons.POST_ADD, size=16, color=ft.Colors.WHITE),
+                        ft.Text("Cargar Pedido", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    ],
+                    spacing=6,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                height=32,
+                padding=ft.Padding.symmetric(horizontal=10),
+                border_radius=6,
+                bgcolor=ROJO,
+                tooltip="⚡ Cargar / Armar Pedido (Proceso Principal)",
+                on_click=lambda _: interfaz.mostrar_crear_pedido(),
+                ink=True,
+            )
+            btn_meli_h = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
+                        ft.Text("Mercado Libre", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                height=30,
+                padding=ft.Padding.symmetric(horizontal=8),
+                border_radius=6,
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
+                tooltip="⚡ Descontar Mercado Libre",
+                on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
+                ink=True,
+            )
+            botones_h = [btn_ped_h, btn_ent_h, btn_sal_h, btn_meli_h]
+
+        controls.extend(botones_h)
+        controls.append(ft.VerticalDivider(width=8, color=interfaz.borde))
 
     controls.append(menu_bar)
 

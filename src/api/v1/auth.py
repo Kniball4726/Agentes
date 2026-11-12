@@ -114,11 +114,11 @@ async def logout(
 
 # --- Endpoints de Gestión de API Keys (B2B / ERP) ---
 
-@router.post("/api-keys", summary="Crear API Key para integración externa (Exclusivo Master/Admin)")
+@router.post("/api-keys", summary="Crear API Key para integración externa (Exclusivo Master)")
 async def crear_api_key(
     client_name: str,
     role: str = "operador",
-    user: Dict[str, Any] = Depends(require_roles("master", "administrador")),
+    user: Dict[str, Any] = Depends(require_roles("master")),
     user_store: UserStore = Depends(get_user_store),
 ):
     """Genera una nueva API Key para conectar ERPs o scripts externos."""
@@ -135,9 +135,9 @@ async def crear_api_key(
     }
 
 
-@router.get("/api-keys", summary="Listar API Keys registradas (Exclusivo Master/Admin)")
+@router.get("/api-keys", summary="Listar API Keys registradas (Exclusivo Master)")
 async def listar_api_keys(
-    user: Dict[str, Any] = Depends(require_roles("master", "administrador")),
+    user: Dict[str, Any] = Depends(require_roles("master")),
     user_store: UserStore = Depends(get_user_store),
 ):
     """Lista las claves de integración registradas con su estado y fecha de último uso."""
@@ -145,10 +145,10 @@ async def listar_api_keys(
     return {"ok": True, "api_keys": keys}
 
 
-@router.delete("/api-keys/{key_hash}", summary="Revocar API Key (Exclusivo Master/Admin)")
+@router.delete("/api-keys/{key_hash}", summary="Revocar API Key (Exclusivo Master)")
 async def revocar_api_key(
     key_hash: str,
-    user: Dict[str, Any] = Depends(require_roles("master", "administrador")),
+    user: Dict[str, Any] = Depends(require_roles("master")),
     user_store: UserStore = Depends(get_user_store),
 ):
     """Revoca el acceso a una clave de integración externa."""

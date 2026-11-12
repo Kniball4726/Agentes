@@ -9,6 +9,7 @@ from .productos import router as productos_router
 from .inventario import router as inventario_router
 from .despacho import router as despacho_router
 from .sistema import router as sistema_router
+from .documentos import router as documentos_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
 
@@ -17,3 +18,4 @@ api_v1_router.include_router(auth_router)
 api_v1_router.include_router(productos_router)
 api_v1_router.include_router(inventario_router)
 api_v1_router.include_router(despacho_router)
+api_v1_router.include_router(documentos_router)

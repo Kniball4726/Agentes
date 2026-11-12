@@ -119,15 +119,81 @@ class TestMovimientosRapidos(unittest.TestCase):
                 for sub in getattr(c, "controls", []):
                     if isinstance(sub, ft.Row):
                         for btn in getattr(sub, "controls", []):
-                            content = getattr(btn, "content", None)
-                            if isinstance(content, ft.Row):
-                                for elem in getattr(content, "controls", []):
+                            c_box = getattr(btn, "content", None)
+                            if isinstance(c_box, ft.Row):
+                                for elem in getattr(c_box, "controls", []):
                                     if isinstance(elem, ft.Text):
                                         textos.append(elem.value)
         self.assertIn("Entrada", textos)
         self.assertIn("Salida", textos)
         self.assertIn("Cargar Pedido", textos)
         self.assertIn("Mercado Libre", textos)
+
+    def test_boton_cargar_pedido_hero_operador(self):
+        """Verifica que el botón de Cargar Pedido sea el primer acceso rápido destacado con estilo Hero y fondo ROJO."""
+        from src.ui.components.sidebar import construir_sidebar_controls
+        from src.ui.theme import ROJO
+        controles = construir_sidebar_controls(self.interfaz)
+        columna_rapida = None
+        for c in controles:
+            if isinstance(c, ft.Column) and len(c.controls) == 3:
+                columna_rapida = c
+                break
+        self.assertIsNotNone(columna_rapida)
+        primer_row = columna_rapida.controls[0]
+        self.assertIsInstance(primer_row, ft.Row)
+        self.assertEqual(len(primer_row.controls), 1)
+        btn_hero = primer_row.controls[0]
+        self.assertEqual(btn_hero.height, 48)
+        self.assertEqual(btn_hero.bgcolor, ROJO)
+        row_content = btn_hero.content
+        self.assertIsInstance(row_content, ft.Row)
+        textos = [elem.value for elem in row_content.controls if isinstance(elem, ft.Text)]
+        self.assertIn("Cargar Pedido", textos)
+
+    def test_botonera_accesos_rapidos_sidebar_administrador(self):
+        """Verifica que para administrador solo aparezcan Entrada y Salida en el inicio rápido."""
+        from src.ui.components.sidebar import construir_sidebar_controls
+        admin_user = MagicMock(username="admin1", role="administrador")
+        self.interfaz.usuario_actual = admin_user
+        controles = construir_sidebar_controls(self.interfaz)
+        textos = []
+        for c in controles:
+            if isinstance(c, ft.Column):
+                for sub in getattr(c, "controls", []):
+                    if isinstance(sub, ft.Row):
+                        for btn in getattr(sub, "controls", []):
+                            c_box = getattr(btn, "content", None)
+                            if isinstance(c_box, ft.Row):
+                                for elem in getattr(c_box, "controls", []):
+                                    if isinstance(elem, ft.Text):
+                                        textos.append(elem.value)
+        self.assertIn("Entrada", textos)
+        self.assertIn("Salida", textos)
+        self.assertNotIn("Cargar Pedido", textos)
+        self.assertNotIn("Mercado Libre", textos)
+
+    def test_botonera_accesos_rapidos_sidebar_master(self):
+        """Verifica que para master no aparezca ningún botón de inicio rápido."""
+        from src.ui.components.sidebar import construir_sidebar_controls
+        master_user = MagicMock(username="master1", role="master")
+        self.interfaz.usuario_actual = master_user
+        controles = construir_sidebar_controls(self.interfaz)
+        textos = []
+        for c in controles:
+            if isinstance(c, ft.Column):
+                for sub in getattr(c, "controls", []):
+                    if isinstance(sub, ft.Row):
+                        for btn in getattr(sub, "controls", []):
+                            c_box = getattr(btn, "content", None)
+                            if isinstance(c_box, ft.Row):
+                                for elem in getattr(c_box, "controls", []):
+                                    if isinstance(elem, ft.Text):
+                                        textos.append(elem.value)
+        self.assertNotIn("Entrada", textos)
+        self.assertNotIn("Salida", textos)
+        self.assertNotIn("Cargar Pedido", textos)
+        self.assertNotIn("Mercado Libre", textos)
 
     def test_flujo_ingreso_rapido_confirmado(self):
         """Prueba completa del flujo de búsqueda y confirmación de una Entrada Rápida."""

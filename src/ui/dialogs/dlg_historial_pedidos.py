@@ -287,7 +287,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         return
 
     pedidos = interfaz.order_store.listar_pedidos(limit=400)
-    items_lista = ft.ListView(expand=True, spacing=10)
+    items_lista = ft.ListView(expand=True, spacing=1)
 
     def formatear_fecha_corta(f_str: str) -> str:
         try:
@@ -391,8 +391,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     )
 
     barra_paginacion = ft.Container(
-        bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_50,
-        border=ft.Border.all(1, ft.Colors.BLUE_GREY_700 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_200),
+        bgcolor="#18181b",
+        border=ft.Border.all(1, "#27272a"),
         border_radius=8,
         padding=ft.Padding.symmetric(horizontal=12, vertical=4),
         content=ft.Row(
@@ -415,6 +415,13 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
+
+    def _on_row_hover(e: ft.HoverEvent) -> None:
+        try:
+            e.control.bgcolor = "#26262b" if e.data == "true" else "#141416"
+            e.control.update()
+        except Exception:
+            pass
 
     def recargar_y_actualizar() -> None:
         nonlocal pedidos, pagina_actual
@@ -440,6 +447,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             candidatos.append(p)
 
         filtrados = [p for p in candidatos if coincide(p, termino)]
+        filtrados.sort(key=lambda x: (x.created_at or "", x.id), reverse=True)
         total_items = len(filtrados)
         total_paginas_global = max(1, (total_items + tamano_pagina - 1) // tamano_pagina)
         if pagina_actual > total_paginas_global:
@@ -502,98 +510,95 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             f_clave = p.created_at[:10] if p.created_at else "Sin fecha"
             pedidos_por_fecha.setdefault(f_clave, []).append(p)
 
-        for f_clave, pedidos_grupo in pedidos_por_fecha.items():
-            cant = len(pedidos_grupo)
-            texto_cant = "1 pedido armado" if cant == 1 else f"{cant} pedidos armados"
-            fecha_legible = formatear_fecha_corta(f_clave)
+        fechas_ordenadas = sorted(
+            pedidos_por_fecha.keys(),
+            key=lambda d: ("0000-00-00" if d == "Sin fecha" else d),
+            reverse=True,
+        )
 
+        for f_clave in fechas_ordenadas:
+            pedidos_grupo = pedidos_por_fecha[f_clave]
+            pedidos_grupo.sort(key=lambda x: (x.created_at or "", x.id), reverse=True)
+            cant = len(pedidos_grupo)
+
+            fecha_display = f_clave
+            try:
+                partes = f_clave.split("-")
+                if len(partes) == 3:
+                    dia = int(partes[2])
+                    mes = int(partes[1])
+                    anio = partes[0]
+                    fecha_display = f"{dia}/{mes}/{anio}"
+            except Exception:
+                pass
+
+            es_hoy = (f_clave == hoy_str)
             encabezado_fecha = ft.Container(
-                bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_50,
-                border=ft.Border.all(1, ft.Colors.BLUE_GREY_700 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_200),
-                border_radius=8,
+                bgcolor="#18181c",
+                border=ft.Border(
+                    left=ft.BorderSide(4, ROJO),
+                    top=ft.BorderSide(1, "#27272a"),
+                    right=ft.BorderSide(1, "#27272a"),
+                    bottom=ft.BorderSide(1, "#27272a"),
+                ),
+                border_radius=ft.BorderRadius(top_left=4, bottom_left=4, top_right=8, bottom_right=8),
                 padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-                margin=ft.Margin.only(top=8, bottom=2),
+                margin=ft.Margin.only(top=10, bottom=4),
                 content=ft.Row(
                     [
                         ft.Row(
                             [
                                 ft.Icon(ft.Icons.CALENDAR_MONTH, size=16, color=ROJO),
-                                ft.Text(f"Fecha: {fecha_legible}", weight=ft.FontWeight.BOLD, size=13, color=interfaz.texto),
+                                ft.Text(fecha_display, weight=ft.FontWeight.BOLD, size=13, color="#f4f4f5"),
+                                *(
+                                    [
+                                        ft.Container(
+                                            content=ft.Text("HOY", size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                                            bgcolor=ROJO,
+                                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                            border_radius=4,
+                                        )
+                                    ]
+                                    if es_hoy
+                                    else []
+                                ),
                             ],
                             spacing=8,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
                         ft.Container(
-                            content=ft.Text(texto_cant, size=11, weight=ft.FontWeight.W_500, color=ft.Colors.WHITE),
+                            content=ft.Text(
+                                f"{cant} pedido{'s' if cant != 1 else ''}",
+                                size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.WHITE,
+                            ),
                             bgcolor=ROJO,
-                            padding=ft.Padding.symmetric(horizontal=8, vertical=3),
-                            border_radius=12,
+                            border_radius=6,
+                            padding=ft.Padding.symmetric(horizontal=10, vertical=3),
                         ),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             )
             items_lista.controls.append(encabezado_fecha)
 
             for p in pedidos_grupo:
-                if getattr(p, "numero_pedido", ""):
-                    num_ped_txt = f"Pedido #{p.numero_pedido} · Remito: {p.nota_pedido}"
-                else:
-                    num_ped_txt = f"Remito / Factura: {p.nota_pedido}"
-                etiqueta_agregado = (
-                    ft.Container(
-                        content=ft.Text(
-                            "AGREGADO",
-                            size=10,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.AMBER_800 if not interfaz.modo_oscuro else ft.Colors.AMBER_300,
-                        ),
-                        bgcolor=ft.Colors.AMBER_100 if not interfaz.modo_oscuro else ft.Colors.AMBER_900,
-                        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                        border_radius=4,
-                    )
-                    if getattr(p, "agregado", False)
-                    else ft.Container()
-                )
-                etiqueta_anulado = (
-                    ft.Container(
-                        content=ft.Text(
-                            "ANULADO",
-                            size=10,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.WHITE,
-                        ),
-                        bgcolor=ft.Colors.RED_600,
-                        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                        border_radius=4,
-                    )
-                    if getattr(p, "estado", "") == "anulado"
-                    else ft.Container()
-                )
                 est_desp = (getattr(p, "estado_despacho", "armado") or "armado").lower()
+                es_anulado = getattr(p, "estado", "") == "anulado"
                 if est_desp == "entregado":
-                    col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.GREEN_700, ft.Colors.WHITE, "✔ ENTREGADO"
+                    col_desp_bg, lbl_desp = "#16a34a", "ENTREGADO"
                     sig_estado = "armado"
                     tip_estado = "Estado actual: Entregado (clic para volver a Armado)"
                 elif est_desp == "despachado":
-                    col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.AMBER_700, ft.Colors.WHITE, "🚚 DESPACHADO"
+                    col_desp_bg, lbl_desp = "#d97706", "DESPACHADO"
                     sig_estado = "entregado"
-                    tip_estado = "Marcar como ENTREGADO"
+                    tip_estado = "Marcar como DESPACHADO"
                 else:
-                    col_desp_bg, col_desp_txt, lbl_desp = ft.Colors.BLUE_700, ft.Colors.WHITE, "📦 ARMADO"
+                    col_desp_bg, lbl_desp = "#2563eb", "ARMADO"
                     sig_estado = "despachado"
                     tip_estado = "Marcar como DESPACHADO"
-
-                etiqueta_despacho = (
-                    ft.Container(
-                        content=ft.Text(lbl_desp, size=10, weight=ft.FontWeight.BOLD, color=col_desp_txt),
-                        bgcolor=col_desp_bg,
-                        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                        border_radius=4,
-                    )
-                    if getattr(p, "estado", "") != "anulado"
-                    else ft.Container()
-                )
-                hora_txt = p.created_at[11:16] if len(p.created_at) >= 16 else p.created_at
 
                 def cambiar_estado_ped(ped_obj: Pedido, nuevo_est: str) -> None:
                     usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
@@ -609,335 +614,146 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                     except Exception as err:
                         interfaz.notificar(str(err))
 
-                col_borde_izq = (
-                    ft.Colors.RED_600 if getattr(p, "estado", "") == "anulado"
-                    else (
-                        ft.Colors.GREEN_600 if est_desp == "entregado"
-                        else (ft.Colors.AMBER_600 if est_desp == "despachado" else ft.Colors.BLUE_600)
-                    )
+                nota_obs = ""
+                col_obs = "#a1a1aa"
+                if getattr(p, "agregado", False):
+                    nota_obs = "agregado"
+                    col_obs = "#eab308"
+                elif p.resumen_items:
+                    res_c = p.resumen_items.strip()
+                    if len(res_c) > 20:
+                        res_c = res_c[:18] + "..."
+                    nota_obs = res_c
+
+                badge_firma = ft.Container(
+                    content=ft.Text(
+                        "ANULADO" if es_anulado else lbl_desp,
+                        size=10,
+                        weight=ft.FontWeight.BOLD,
+                        color="#ffffff",
+                    ),
+                    bgcolor="#dc2626" if es_anulado else col_desp_bg,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                    border_radius=4,
+                    tooltip=tip_estado if not es_anulado else "Pedido anulado",
+                    on_click=(lambda _e, ped=p, st=sig_estado: cambiar_estado_ped(ped, st)) if not es_anulado else None,
                 )
 
-                boton_avanzar_desp = (
-                    ft.OutlinedButton(
-                        content=ft.Row(
-                            [
-                                ft.Icon(
-                                    ft.Icons.LOCAL_SHIPPING if est_desp == "armado" else (ft.Icons.VERIFIED if est_desp == "despachado" else ft.Icons.REPLAY),
-                                    size=14,
-                                    color=col_desp_txt if interfaz.modo_oscuro else col_desp_bg,
-                                ),
-                                ft.Text(
-                                    "Despachar pedido" if est_desp == "armado" else ("Marcar entregado" if est_desp == "despachado" else "Volver a armado"),
-                                    size=11,
-                                    weight=ft.FontWeight.W_500,
-                                    color=interfaz.texto,
-                                ),
-                            ],
-                            spacing=6,
-                            tight=True,
-                        ),
-                        tooltip=tip_estado,
-                        style=ft.ButtonStyle(
-                            padding=ft.Padding.symmetric(horizontal=10, vertical=5),
-                            shape=ft.RoundedRectangleBorder(radius=6),
-                            side=ft.BorderSide(1, col_desp_bg),
-                        ),
-                        on_click=lambda _e, ped=p, st=sig_estado: cambiar_estado_ped(ped, st),
-                    )
-                    if getattr(p, "estado", "") != "anulado"
-                    else ft.Container()
-                )
-                boton_rotulo_hist = ft.IconButton(
-                    icon=ft.Icons.QR_CODE_2,
-                    tooltip="Imprimir Rótulos A4 de Bultos con QR",
-                    icon_color=ft.Colors.AMBER_700 if not interfaz.modo_oscuro else ft.Colors.AMBER_400,
-                    on_click=lambda _e, ped=p: interfaz.imprimir_rotulos_pedido(ped),
-                )
-                boton_rotulo_termico = ft.IconButton(
-                    icon=ft.Icons.LABEL,
-                    tooltip="Imprimir Rótulo Térmico Continuo (100x150 mm)",
-                    icon_color=ft.Colors.PURPLE_400 if interfaz.modo_oscuro else ft.Colors.PURPLE_700,
-                    on_click=lambda _e, ped=p: interfaz.imprimir_rotulos_termicos_pedido(ped),
-                )
-                def _enviar_wa(ped_obj: Pedido) -> None:
-                    g_msg = f" N° Guía: {ped_obj.numero_guia}." if getattr(ped_obj, 'numero_guia', '') else ''
-                    msg = f"Hola {ped_obj.cliente}, tu pedido #{ped_obj.numero_pedido or ped_obj.nota_pedido} figura como '{ped_obj.estado_despacho.upper()}' ({ped_obj.bultos} bulto/s por {ped_obj.logistica}).{g_msg}"
-                    import urllib.parse, webbrowser
-                    webbrowser.open(f"https://web.whatsapp.com/send?text={urllib.parse.quote(msg)}")
-
-                boton_whatsapp_ped = ft.IconButton(
-                    icon=ft.Icons.CHAT,
-                    tooltip="Notificar estado y guía por WhatsApp Web al cliente",
-                    icon_color=ft.Colors.GREEN_400,
-                    on_click=lambda _e, ped=p: _enviar_wa(ped),
-                )
-                boton_editar_hist = (
-                    ft.IconButton(
-                        icon=ft.Icons.EDIT_OUTLINED,
-                        tooltip="Modificar datos del pedido (Exclusivo Operador)",
-                        icon_color=ft.Colors.BLUE_400 if interfaz.modo_oscuro else ft.Colors.BLUE_700,
-                        on_click=lambda _e, ped=p: interfaz.mostrar_dialogo_editar_pedido(ped, al_final=recargar_y_actualizar),
-                    )
-                    if (interfaz.usuario_actual and interfaz.usuario_actual.role == "operador" and p.estado != "anulado")
-                    else ft.Container()
-                )
-                boton_desarmar_hist = (
-                    ft.IconButton(
-                        icon=ft.Icons.REMOVE_SHOPPING_CART_OUTLINED,
-                        tooltip="Desarmar pedido y devolver stock a inventario",
-                        icon_color=ft.Colors.AMBER_400 if interfaz.modo_oscuro else ft.Colors.AMBER_800,
-                        on_click=lambda _e, ped=p: interfaz.confirmar_desarmar_pedido(ped, al_final=recargar_y_actualizar),
-                    )
-                    if (interfaz.usuario_actual and interfaz.usuario_actual.role in ("operador", "administrador") and p.estado != "anulado")
-                    else ft.Container()
-                )
-                boton_anular_hist = (
-                    ft.IconButton(
-                        icon=ft.Icons.CANCEL_OUTLINED,
-                        tooltip="Anular este pedido",
-                        icon_color=ft.Colors.RED_400,
-                        on_click=lambda _e, ped=p: interfaz.confirmar_anulacion_pedido(ped, al_final=recargar_y_actualizar),
-                    )
-                    if (interfaz.usuario_actual and interfaz.usuario_actual.role in ("administrador",) and p.estado != "anulado")
-                    else ft.Container()
-                )
-
-                nombre_arch = p.nombre_archivo or "Sin archivo"
-                ext_arch = Path(nombre_arch).suffix.lower()
-                if ext_arch == ".pdf":
-                    icon_arch = ft.Icons.PICTURE_AS_PDF
-                    col_arch = ROJO
-                elif ext_arch in (".xlsx", ".xls"):
-                    icon_arch = ft.Icons.TABLE_CHART
-                    col_arch = ft.Colors.GREEN_600 if not interfaz.modo_oscuro else ft.Colors.GREEN_400
-                elif ext_arch in (".docx", ".doc"):
-                    icon_arch = ft.Icons.DESCRIPTION
-                    col_arch = ft.Colors.BLUE_600 if not interfaz.modo_oscuro else ft.Colors.BLUE_400
-                else:
-                    icon_arch = ft.Icons.ATTACH_FILE
-                    col_arch = interfaz.secundario
-
-                chip_archivo = ft.Container(
+                fila_pedido = ft.Container(
+                    bgcolor="#141416",
+                    border=ft.Border(bottom=ft.BorderSide(0.5, "#222226")),
+                    padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+                    ink=True,
+                    on_hover=_on_row_hover,
+                    on_click=lambda _e, ped=p: mostrar_detalle_pedido_modal(interfaz, ped),
                     content=ft.Row(
                         [
-                            ft.Icon(icon_arch, size=13, color=col_arch),
-                            ft.Text(nombre_arch, size=11, weight=ft.FontWeight.W_500, color=col_arch),
-                            ft.Icon(ft.Icons.PRINT, size=12, color=col_arch),
-                        ],
-                        spacing=4,
-                        tight=True,
-                    ),
-                    border=ft.Border.all(1, col_arch if interfaz.modo_oscuro else ft.Colors.with_opacity(0.35, col_arch)),
-                    border_radius=6,
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=3),
-                    bgcolor=ft.Colors.with_opacity(0.08, col_arch),
-                    tooltip=f"Clic para consultar o reimprimir archivo cargado: {nombre_arch}",
-                    on_click=lambda _e, ped=p: abrir_comprobante_pedido(interfaz, ped),
-                )
-
-                boton_imprimir_arch = ft.IconButton(
-                    icon=ft.Icons.PRINT_OUTLINED,
-                    tooltip=f"Consultar y reimprimir comprobante ({nombre_arch})",
-                    icon_color=ft.Colors.CYAN_700 if not interfaz.modo_oscuro else ft.Colors.CYAN_400,
-                    on_click=lambda _e, ped=p: abrir_comprobante_pedido(interfaz, ped),
-                )
-                boton_detalle_modal = ft.IconButton(
-                    icon=ft.Icons.INFO_OUTLINE,
-                    tooltip="Consultar detalle completo del pedido",
-                    icon_color=interfaz.secundario,
-                    on_click=lambda _e, ped=p: mostrar_detalle_pedido_modal(interfaz, ped),
-                )
-
-                items_lista.controls.append(
-                    ft.Container(
-                        bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.WHITE,
-                        border=ft.Border(
-                            left=ft.BorderSide(4, col_borde_izq),
-                            top=ft.BorderSide(1, interfaz.borde),
-                            right=ft.BorderSide(1, interfaz.borde),
-                            bottom=ft.BorderSide(1, interfaz.borde),
-                        ),
-                        border_radius=ft.BorderRadius(top_left=4, bottom_left=4, top_right=10, bottom_right=10),
-                        padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-                        content=ft.Column(
-                            [
-                                # Fila 1: Cabecera con número de pedido, badges y hora
-                                ft.Row(
-                                    [
-                                        ft.Row(
-                                            [
-                                                ft.Checkbox(
-                                                    value=p.id in pedidos_seleccionados,
-                                                    tooltip="Seleccionar para despacho en lote",
-                                                    on_change=lambda e, pid=p.id: _toggle_sel(e, pid),
-                                                ),
-                                                ft.Icon(ft.Icons.RECEIPT_LONG, size=18, color=ROJO),
-                                                ft.Text(num_ped_txt, weight=ft.FontWeight.BOLD, size=14, color=interfaz.texto),
-                                                etiqueta_despacho,
-                                                etiqueta_agregado,
-                                                etiqueta_anulado,
-                                            ],
-                                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                            spacing=8,
-                                            wrap=True,
-                                        ),
-                                        ft.Row(
-                                            [
-                                                ft.Icon(ft.Icons.ACCESS_TIME, size=13, color=interfaz.secundario),
-                                                ft.Text(f"{hora_txt} hs", size=11, color=interfaz.secundario, weight=ft.FontWeight.W_500),
-                                            ],
-                                            spacing=4,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ft.Container(
+                                content=ft.Checkbox(
+                                    value=p.id in pedidos_seleccionados,
+                                    tooltip="Seleccionar para despacho en lote",
+                                    on_change=lambda e, pid=p.id: _toggle_sel(e, pid),
+                                    scale=0.8,
                                 ),
-
-                                # Fila 2: Datos comerciales y logísticos
-                                ft.Row(
+                                width=30,
+                                alignment=ft.Alignment(-1, 0),
+                            ),
+                            ft.Container(
+                                content=ft.Text(p.nota_pedido or "-", size=12, color="#f4f4f5"),
+                                width=75,
+                            ),
+                            ft.Container(
+                                content=ft.Row(
                                     [
-                                        ft.Row(
-                                            [
-                                                ft.Icon(ft.Icons.PERSON, size=14, color=ROJO),
-                                                ft.Text("Cliente:", size=12, color=interfaz.secundario),
-                                                ft.Text(p.cliente, size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                                            ],
-                                            spacing=4,
+                                        ft.IconButton(
+                                            icon=ft.Icons.DESCRIPTION_OUTLINED,
+                                            icon_size=15,
+                                            icon_color="#9ca3af",
+                                            tooltip=f"Ver/reimprimir comprobante ({p.nombre_archivo or 'Sin archivo'})",
+                                            on_click=lambda _e, ped=p: abrir_comprobante_pedido(interfaz, ped),
+                                            style=ft.ButtonStyle(padding=0),
+                                            width=18,
+                                            height=18,
                                         ),
-                                        ft.Container(
-                                            content=ft.Row(
-                                                [
-                                                    ft.Icon(ft.Icons.LOCAL_SHIPPING_OUTLINED, size=13, color=ft.Colors.BLUE_400),
-                                                    ft.Text(f"{p.logistica} · {p.bultos} bulto(s)", size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
-                                                ],
-                                                spacing=4,
-                                            ),
-                                            bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
-                                            padding=ft.Padding.symmetric(horizontal=8, vertical=3),
-                                            border_radius=6,
-                                        ),
-                                        *(
-                                            [
-                                                ft.Container(
-                                                    content=ft.Row(
-                                                        [
-                                                            ft.Icon(ft.Icons.CALENDAR_TODAY, size=12, color=ft.Colors.AMBER_400),
-                                                            ft.Text(
-                                                                f"Retiro: {p.fecha_retiro}",
-                                                                size=11,
-                                                                weight=ft.FontWeight.BOLD,
-                                                                color=ft.Colors.AMBER_300 if interfaz.modo_oscuro else ft.Colors.AMBER_800,
-                                                            ),
-                                                        ],
-                                                        spacing=4,
-                                                    ),
-                                                    bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.AMBER_900) if interfaz.modo_oscuro else ft.Colors.AMBER_50,
-                                                    border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.AMBER_600)),
-                                                    padding=ft.Padding.symmetric(horizontal=8, vertical=3),
-                                                    border_radius=6,
-                                                )
-                                            ]
-                                            if getattr(p, "fecha_retiro", "")
-                                            else []
-                                        ),
-                                        *(
-                                            [
-                                                ft.Container(
-                                                    content=ft.Row(
-                                                        [
-                                                            ft.Icon(ft.Icons.CONFIRMATION_NUMBER_OUTLINED, size=12, color=ft.Colors.TEAL_400),
-                                                            ft.Text(
-                                                                f"Guía: {p.numero_guia}",
-                                                                size=11,
-                                                                weight=ft.FontWeight.BOLD,
-                                                                color=ft.Colors.TEAL_400,
-                                                            ),
-                                                        ],
-                                                        spacing=4,
-                                                    ),
-                                                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.TEAL_400),
-                                                    border=ft.Border.all(1, ft.Colors.with_opacity(0.4, ft.Colors.TEAL_400)),
-                                                    padding=ft.Padding.symmetric(horizontal=8, vertical=3),
-                                                    border_radius=6,
-                                                )
-                                            ]
-                                            if getattr(p, "numero_guia", "")
-                                            else []
-                                        ),
-                                        ft.Row(
-                                            [
-                                                ft.Icon(ft.Icons.ENGINEERING_OUTLINED, size=13, color=interfaz.secundario),
-                                                ft.Text(f"Armador: {p.armador}", size=11, color=interfaz.secundario),
-                                            ],
-                                            spacing=4,
-                                        ),
-                                    ],
-                                    spacing=12,
-                                    wrap=True,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                ),
-
-                                # Fila 3: Archivo Comprobante y Resumen de Descuento
-                                ft.Row(
-                                    [
-                                        chip_archivo,
-                                        ft.Container(
-                                            content=ft.Row(
-                                                [
-                                                    ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=13, color=ft.Colors.GREEN_400),
-                                                    ft.Text(
-                                                        f"Descuento ({p.articulos_descontados} arts): {p.resumen_items}",
-                                                        size=11,
-                                                        weight=ft.FontWeight.W_500,
-                                                        color=ft.Colors.GREEN_400 if interfaz.modo_oscuro else ft.Colors.GREEN_800,
-                                                        no_wrap=False,
-                                                        overflow=ft.TextOverflow.ELLIPSIS,
-                                                        max_lines=2,
-                                                    ),
-                                                ],
-                                                spacing=6,
-                                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                            ),
-                                            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.GREEN_900) if interfaz.modo_oscuro else ft.Colors.GREEN_50,
-                                            border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.GREEN_700)),
-                                            padding=ft.Padding.symmetric(horizontal=10, vertical=4),
-                                            border_radius=6,
+                                        ft.Text(
+                                            p.cliente or "Sin Cliente",
+                                            size=12,
+                                            weight=ft.FontWeight.BOLD,
+                                            color="#f4f4f5",
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                            max_lines=1,
                                             expand=True,
                                         ),
                                     ],
-                                    spacing=10,
+                                    spacing=4,
                                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                 ),
-
-                                ft.Divider(height=6, thickness=0.6, color=interfaz.borde),
-
-                                # Fila 4: Barra de Acciones y Herramientas
-                                ft.Row(
-                                    [
-                                        boton_avanzar_desp,
-                                        ft.Row(
-                                            [
-                                                boton_rotulo_hist,
-                                                boton_rotulo_termico,
-                                                boton_whatsapp_ped,
-                                                boton_imprimir_arch,
-                                                boton_detalle_modal,
-                                                boton_editar_hist,
-                                                boton_desarmar_hist,
-                                                boton_anular_hist,
-                                            ],
-                                            spacing=4,
-                                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                width=240,
+                            ),
+                            ft.Container(
+                                content=ft.Text(p.numero_pedido or "-", size=12, color="#d4d4d8"),
+                                width=65,
+                            ),
+                            ft.Container(
+                                content=ft.Text(str(p.bultos), size=12, weight=ft.FontWeight.BOLD, color="#d4d4d8"),
+                                width=55,
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    p.logistica or "-",
+                                    size=12,
+                                    color="#d4d4d8",
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    max_lines=1,
                                 ),
-                            ],
-                            spacing=9,
-                        ),
-                    )
+                                width=170,
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    p.armador or "-",
+                                    size=12,
+                                    color="#a1a1aa",
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    max_lines=1,
+                                ),
+                                width=140,
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    nota_obs,
+                                    size=11,
+                                    weight=ft.FontWeight.BOLD if nota_obs == "agregado" else ft.FontWeight.NORMAL,
+                                    color=col_obs,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    max_lines=1,
+                                ),
+                                width=90,
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    getattr(p, "fecha_retiro", "") or "-",
+                                    size=11,
+                                    color="#a1a1aa",
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    max_lines=1,
+                                ),
+                                width=115,
+                            ),
+                            ft.Container(
+                                content=badge_firma,
+                                width=90,
+                            ),
+                            ft.Container(
+                                content=ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color="#71717a"),
+                                width=30,
+                                alignment=ft.Alignment(1, 0),
+                            ),
+                        ],
+                        spacing=6,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                 )
+                items_lista.controls.append(fila_pedido)
         if interfaz.page:
             interfaz.page.update()
 
@@ -990,8 +806,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     barra_lote = ft.Container(
         visible=False,
-        bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100,
-        border=ft.Border.all(1, ft.Colors.BLUE_GREY_700 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_300),
+        bgcolor="#18181b",
+        border=ft.Border.all(1, "#27272a"),
         border_radius=8,
         padding=ft.Padding.symmetric(horizontal=12, vertical=6),
         content=ft.Row(
@@ -1024,9 +840,9 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         prefix_icon=ft.Icons.SEARCH,
         dense=True,
         content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=interfaz.fondo,
-        border_color=interfaz.borde,
-        color=interfaz.texto,
+        bgcolor="#18181b",
+        border_color="#27272a",
+        color="#f4f4f5",
         expand=True,
         on_change=lambda e: (_ir_a_pagina(1) if pagina_actual != 1 else actualizar_vista(campo_busqueda.value or "")),
     )
@@ -1059,15 +875,15 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     def actualizar_botones_filtro() -> None:
         for b, tag in [(btn_f_todos, "todos"), (btn_f_hoy, "hoy"), (btn_f_pend, "pendientes"), (btn_f_desp, "despachados")]:
             if filtro_rapido_activo == tag:
-                b.style = ft.ButtonStyle(bgcolor=ROJO, color=ft.Colors.WHITE)
+                b.style = ft.ButtonStyle(bgcolor="#27272a", color=ft.Colors.WHITE, side=ft.BorderSide(1, "#3b82f6"))
             else:
-                b.style = ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color=interfaz.texto)
+                b.style = ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color="#a1a1aa", side=ft.BorderSide(1, "#27272a"))
 
     actualizar_botones_filtro()
 
     fila_chips_filtro = ft.Row(
         [
-            ft.Text("Filtros rápidos:", size=11, color=interfaz.secundario, weight=ft.FontWeight.BOLD),
+            ft.Text("Filtros rápidos:", size=11, color="#a1a1aa", weight=ft.FontWeight.BOLD),
             btn_f_todos,
             btn_f_hoy,
             btn_f_pend,
@@ -1086,7 +902,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                     ft.IconButton(
                         icon=ft.Icons.CLEAR,
                         icon_size=18,
-                        icon_color=interfaz.secundario,
+                        icon_color="#a1a1aa",
                         tooltip="Borrar búsqueda",
                         on_click=limpiar_busqueda,
                     ),
@@ -1096,15 +912,19 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                         tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
                         style=ft.ButtonStyle(
                             color=ft.Colors.WHITE,
-                            bgcolor=ft.Colors.BLUE_GREY_700,
+                            bgcolor="#27272a",
+                            side=ft.BorderSide(1, "#3f3f46"),
                         ),
                         on_click=imprimir_lote_rotulos_a4,
                     ),
                     ft.Button(
                         "Escanear QR / Cambiar Estado",
                         icon=ft.Icons.QR_CODE_SCANNER,
-                        bgcolor=ROJO,
-                        color=ft.Colors.WHITE,
+                        style=ft.ButtonStyle(
+                            color=ft.Colors.WHITE,
+                            bgcolor="#27272a",
+                            side=ft.BorderSide(1, "#3f3f46"),
+                        ),
                         on_click=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
                     ),
                 ],
@@ -1114,7 +934,13 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             ft.Row(
                 [
                     fila_chips_filtro,
-                    ft.TextButton("Seleccionar Visibles", icon=ft.Icons.CHECK_BOX_OUTLINED, on_click=_sel_todos_visibles),
+                    ft.TextButton(
+                        "Seleccionar Visibles",
+                        icon=ft.Icons.CHECK_BOX_OUTLINED,
+                        icon_color="#a1a1aa",
+                        style=ft.ButtonStyle(color="#a1a1aa"),
+                        on_click=_sel_todos_visibles,
+                    ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1125,34 +951,73 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         spacing=6,
     )
 
+    cabecera_columnas = ft.Container(
+        bgcolor="#18181b",
+        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        border=ft.Border(bottom=ft.BorderSide(1, "#27272a")),
+        content=ft.Row(
+            [
+                ft.Container(width=30),
+                ft.Container(content=ft.Text("Nota", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=75),
+                ft.Container(content=ft.Text("Cliente", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=240),
+                ft.Container(content=ft.Text("Numero", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=65),
+                ft.Container(content=ft.Text("Bultos", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=55),
+                ft.Container(content=ft.Text("Logistica", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=170),
+                ft.Container(content=ft.Text("Preparador", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=140),
+                ft.Container(content=ft.Text("Nota", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=90),
+                ft.Container(content=ft.Text("Fecha de retiro o entrega", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=115),
+                ft.Container(content=ft.Text("Firma", size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=90),
+                ft.Container(width=30),
+            ],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+    )
+
     actualizar_vista("")
 
     dialogo = ft.AlertDialog(
+        bgcolor="#121214",
         title=ft.Row(
             [
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.RECEIPT_LONG, color=ROJO, size=22),
-                        ft.Text("Historial de Pedidos", weight=ft.FontWeight.BOLD),
+                        ft.Icon(ft.Icons.RECEIPT_LONG, color="#a1a1aa", size=22),
+                        ft.Text("Ver pedidos mayoristas", weight=ft.FontWeight.BOLD, color="#f4f4f5", size=18),
                     ],
                     spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
-                texto_contador,
+                ft.Row(
+                    [
+                        texto_contador,
+                        ft.IconButton(
+                            icon=ft.Icons.CHECK_BOX_OUTLINED,
+                            icon_size=20,
+                            icon_color="#a1a1aa",
+                            tooltip="Seleccionar todos los pedidos visibles",
+                            on_click=_sel_todos_visibles,
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
         content=ft.Container(
-            width=960,
-            height=620,
+            width=1140,
+            height=660,
+            bgcolor="#121214",
             content=ft.Column(
                 [
                     barra_busqueda,
-                    ft.Divider(height=10, color=interfaz.borde),
+                    cabecera_columnas,
                     items_lista,
                     barra_paginacion,
                 ],
                 expand=True,
-                spacing=6,
+                spacing=4,
             ),
         ),
         actions=[

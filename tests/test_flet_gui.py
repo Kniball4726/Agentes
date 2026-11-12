@@ -145,8 +145,8 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        # 22 comandos para administrador (Telegram y SMTP reservados a Master)
-        self.assertEqual(len(interfaz.controles_tarea), 26)
+        # Comandos para administrador (incluye Centro de Reportes)
+        self.assertEqual(len(interfaz.controles_tarea), 27)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -291,7 +291,7 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertEqual(menu.procesamientos, [])
         self.assertEqual(len(page.dialogos), 1)
-        self.assertEqual(len(interfaz.controles_tarea), 8)
+        self.assertEqual(len(interfaz.controles_tarea), 9)
 
     def test_admin_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="administrador")
@@ -509,7 +509,10 @@ class FletGuiTests(unittest.TestCase):
             dest_dir = Path(temp_dir) / "MercadoFull"
             fake_file = SimpleNamespace(name="full_envio.xlsx", bytes=b"DATA123", path=None)
 
-            async def fake_pick_files(**_kwargs):
+            pick_kwargs = {}
+
+            async def fake_pick_files(**kwargs):
+                pick_kwargs.update(kwargs)
                 return [fake_file]
 
             saved_calls = []
@@ -530,11 +533,36 @@ class FletGuiTests(unittest.TestCase):
             )
             self.assertEqual(len(guardados), 1)
             self.assertEqual(guardados[0].read_bytes(), b"DATA123")
+            # Verificar que el selector nativo abra en modo ANY sin filtros que deshabiliten archivos
+            self.assertEqual(pick_kwargs.get("file_type"), ft.FilePickerFileType.ANY)
+            self.assertIsNone(pick_kwargs.get("allowed_extensions"))
 
             asyncio.run(interfaz._descargar_archivo_navegador(guardados[0]))
             self.assertEqual(len(saved_calls), 1)
             self.assertEqual(saved_calls[0]["file_name"], "full_envio.xlsx")
             self.assertEqual(saved_calls[0]["src_bytes"], b"DATA123")
+
+    def test_file_picker_remitos_permite_mayusculas_y_formatos(self):
+        interfaz, _, _ = self.crear_interfaz(role="operador")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dest_dir = Path(temp_dir) / "pedidos_archivos"
+            fake_pdf_mayus = SimpleNamespace(name="Remito_24942.PDF", bytes=b"%PDF-1.4...", path=None)
+
+            async def fake_pick_files(**_kwargs):
+                return [fake_pdf_mayus]
+
+            interfaz.file_picker.pick_files = fake_pick_files
+
+            guardados = asyncio.run(
+                interfaz.subir_archivos_desde_pc(
+                    carpeta_destino=dest_dir,
+                    extensiones=["pdf", "xlsx", "xls", "docx"],
+                    titulo="Seleccionar comprobante",
+                )
+            )
+            self.assertEqual(len(guardados), 1)
+            self.assertEqual(guardados[0].name, "Remito_24942.PDF")
+            self.assertEqual(guardados[0].read_bytes(), b"%PDF-1.4...")
 
     def test_actualizar_estado_refleja_pedidos_descontados_de_la_jornada(self):
         from src.orders_store import OrderStore
@@ -710,6 +738,32 @@ class FletGuiTests(unittest.TestCase):
         self.assertNotIn("Historial de Pedidos", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
         self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("CLIENTES", []))
 
+
+
+    def test_asegurar_file_picker_overlay_y_parent(self):
+        """Verifica que _asegurar_file_picker mantenga el file_picker fuera de overlay (evita 'Unknown control: FilePicker') y con parent valido."""
+        interfaz, _, page = self.crear_interfaz()
+        # Simular que estaba en overlay por error
+        page.overlay.append(interfaz.file_picker)
+
+        interfaz._asegurar_file_picker()
+
+        # No debe estar en overlay porque FilePicker es un Servicio en Flet 1.0 (evita panel rojo de error)
+        self.assertNotIn(interfaz.file_picker, page.overlay)
+
+        # Verificar resolucion correcta de file_picker.page y registro en services con Page real de Flet 1.0
+        import weakref
+        from flet.controls.base_page import Overlay
+        from flet.controls.core.view import View
+        page_real = ft.Page.__new__(ft.Page)
+        page_real.views = [View()]
+        page_real._overlay = Overlay()
+        page_real._overlay._parent = weakref.ref(page_real)
+        interfaz.page = page_real
+        interfaz._asegurar_file_picker()
+        self.assertNotIn(interfaz.file_picker, page_real.overlay)
+        self.assertIn(interfaz.file_picker, page_real.services)
+        self.assertIs(interfaz.file_picker.page, page_real)
 
 if __name__ == "__main__":
     unittest.main()

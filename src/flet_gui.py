@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import inspect
 import io
 import json
 import logging
@@ -129,6 +130,7 @@ from .ui.dialogs import (
     mostrar_dialogo_gestion_clientes,
     mostrar_dialogo_gestion_productos,
     mostrar_dialogo_gestion_usuarios,
+    mostrar_dialogo_api_keys,
     mostrar_dialogo_historial_movimientos_stock,
     mostrar_estadisticas,
     mostrar_historial_pedidos,
@@ -143,6 +145,7 @@ from .ui.dialogs import (
     mostrar_command_palette,
     mostrar_dialogo_ingreso_rapido,
     mostrar_dialogo_salida_rapida,
+    mostrar_centro_reportes,
     actualizar_alerta_quiebre,
     mostrar_detalle_quiebre,
     confirmar_restaurar,
@@ -306,22 +309,95 @@ class InterfazFlet:
             self.mostrar_configuracion_inicial()
 
     def _asegurar_file_picker(self) -> None:
-        """Asegura que FilePicker esté registrado como servicio (Flet 1.0) sin corromper el overlay visual."""
+        """Asegura que FilePicker esté registrado exclusivamente como servicio (Flet 1.0) sin contaminar el overlay visual."""
+        if not hasattr(self, "file_picker") or self.file_picker is None:
+            self.file_picker = ft.FilePicker()
+
+        # En Flet 1.0 FilePicker es un Servicio no visual. Si está en overlay, Flutter intenta
+        # renderizarlo como Widget y genera el panel rojo de error 'Unknown control: FilePicker'.
+        if hasattr(self.page, "overlay") and self.page.overlay is not None:
+            while self.file_picker in self.page.overlay:
+                self.page.overlay.remove(self.file_picker)
+
         if hasattr(self.page, "services") and self.page.services is not None:
             if self.file_picker not in self.page.services:
                 self.page.services.append(self.file_picker)
-        elif hasattr(self.page, "overlay"):
-            if self.page.overlay is None:
-                self.page.overlay = []
-            if self.file_picker not in self.page.overlay:
-                self.page.overlay.append(self.file_picker)
+
         reg = getattr(self.page, "_services", None)
-        if type(reg).__name__ == "ServiceRegistry" and hasattr(reg, "_services"):
-            if self.file_picker not in reg._services:
+        if type(reg).__name__ == "ServiceRegistry":
+            if getattr(reg, "parent", None) is None:
+                try:
+                    reg._parent = weakref.ref(self.page)
+                except Exception:
+                    pass
+            if hasattr(reg, "_services") and self.file_picker not in reg._services:
                 try:
                     reg.register_service(self.file_picker)
                 except Exception:
                     pass
+
+        # Asegurar referencia de parentesco directa a la página para que self.file_picker.page resuelva siempre
+        try:
+            self.file_picker._parent = weakref.ref(self.page)
+        except Exception:
+            pass
+
+    def abrir_url_en_navegador(self, url: str) -> None:
+        """Abre una URL en nueva pestaña/ventana compatible con Flet clásico, 1.0 y navegador."""
+        page = self.page
+        if not page:
+            return
+
+        # 1. Page.launch_url clásico si está disponible
+        if hasattr(page, "launch_url") and callable(getattr(page, "launch_url")):
+            try:
+                try:
+                    page.launch_url(url, web_window_name="_blank")
+                except TypeError:
+                    page.launch_url(url)
+                return
+            except Exception:
+                pass
+
+        # 2. UrlLauncher como servicio registrado (Flet 1.0+)
+        try:
+            launcher = None
+            if hasattr(page, "services") and isinstance(page.services, list):
+                for s in page.services:
+                    if isinstance(s, ft.UrlLauncher):
+                        launcher = s
+                        break
+                if not launcher:
+                    launcher = ft.UrlLauncher()
+                    page.services.append(launcher)
+                    try:
+                        page.update()
+                    except Exception:
+                        pass
+
+            if launcher:
+                if hasattr(page, "run_task") and callable(page.run_task):
+                    page.run_task(launcher.launch_url, url, web_only_window_name="_blank")
+                else:
+                    coro = launcher.launch_url(url, web_only_window_name="_blank")
+                    if inspect.iscoroutine(coro):
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.create_task(coro)
+                            else:
+                                loop.run_until_complete(coro)
+                        except Exception:
+                            coro.close()
+                return
+        except Exception:
+            pass
+
+        # 3. Fallback de navegador del sistema
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
 
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
         self.modo_oscuro = not self.modo_oscuro
@@ -1416,6 +1492,11 @@ class InterfazFlet:
     async def _descargar_archivo_navegador(self, ruta: Path) -> None:
         try:
             self._asegurar_file_picker()
+            if hasattr(self.page, "update"):
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
             contenido_bytes = ruta.read_bytes()
             await self.file_picker.save_file(
                 dialog_title=f"Guardar {ruta.name}",
@@ -1434,18 +1515,22 @@ class InterfazFlet:
     ) -> list[Path]:
         try:
             self._asegurar_file_picker()
+            if hasattr(self.page, "update"):
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
             ext_limpias: list[str] = []
             for ext in extensiones:
                 e = ext.lstrip(".").lower()
                 if e not in ext_limpias:
                     ext_limpias.append(e)
-            es_movil = self.es_pantalla_movil
-            tipo_selector = (
-                ft.FilePickerFileType.ANY
-                if (es_movil or not ext_limpias)
-                else ft.FilePickerFileType.CUSTOM
-            )
-            ext_selector = None if (es_movil or not ext_limpias) else ext_limpias
+            # En Flet Web y Desktop, usar ft.FilePickerFileType.ANY garantiza que el selector
+            # del sistema operativo/navegador no deshabilite ni oculte archivos válidos
+            # (remitos .pdf, .docx, .xlsx con mayúsculas/minúsculas).
+            # La validación estricta de extensiones se realiza abajo en Python.
+            tipo_selector = ft.FilePickerFileType.ANY
+            ext_selector = None
             seleccionados = await self.file_picker.pick_files(
                 dialog_title=titulo,
                 file_type=tipo_selector,
@@ -1546,7 +1631,7 @@ class InterfazFlet:
             ts = int(ruta_pdf.stat().st_mtime)
             url_doc = f"/documentacion/{nombre_archivo}?v={ts}"
             try:
-                self.page.launch_url(url_doc)
+                self.abrir_url_en_navegador(url_doc)
             except Exception:
                 self.abrir_informe(ruta_especifica=ruta_pdf)
             return
@@ -1561,17 +1646,29 @@ class InterfazFlet:
         ruta = ruta_especifica or self.ruta_informe()
         if ruta is None:
             return
+
+        ruta_path = Path(ruta)
+
         if getattr(self.page, "web", False):
-            if hasattr(self.page, "run_task"):
-                self.page.run_task(self._descargar_archivo_navegador, ruta)
-            else:
-                try:
-                    asyncio.create_task(self._descargar_archivo_navegador(ruta))
-                except RuntimeError:
-                    pass
+            # En modo Web: abrir el documento inline en una nueva pestaña (sin descarga previa forzada)
+            # Para PDFs, el navegador despliega su visor nativo completo con botones de Imprimir (Ctrl+P) y Descargar/Guardar.
+            try:
+                root = Path(application_root()).resolve()
+                ruta_res = ruta_path.resolve()
+                if ruta_res.is_relative_to(root):
+                    rel_p = str(ruta_res.relative_to(root)).replace("\\", "/")
+                else:
+                    rel_p = ruta_res.name
+            except Exception:
+                rel_p = ruta_path.name
+
+            url_doc = f"/documentos/ver?p={urllib.parse.quote(rel_p)}"
+            self.abrir_url_en_navegador(url_doc)
             return
+
+        # En modo escritorio nativo: abrir con el visor predeterminado del sistema operativo
         try:
-            os.startfile(ruta)  # type: ignore[attr-defined]
+            os.startfile(ruta_path)  # type: ignore[attr-defined]
         except OSError as error:
             self.notificar(f"No se pudo abrir el archivo:\n{error}")
 
@@ -1635,6 +1732,10 @@ class InterfazFlet:
     def mostrar_gestion_usuarios(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_gestion_usuarios(self)
 
+    def mostrar_dialogo_api_keys(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_dialogo_api_keys(self)
+
     def mostrar_gestion_clientes(self, _evento: ft.Event | None = None) -> None:
         self.cerrar_drawer_si_movil()
         mostrar_dialogo_gestion_clientes(self)
@@ -1647,6 +1748,10 @@ class InterfazFlet:
     def mostrar_historial_pedidos(self, _evento: ft.Event | None = None) -> None:
         self.cerrar_drawer_si_movil()
         mostrar_historial_pedidos(self, _evento)
+
+    def mostrar_centro_reportes(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_centro_reportes(self)
 
     def mostrar_detalle_pedido_modal(self, pedido: Any) -> None:
         from .ui.dialogs.dlg_historial_pedidos import mostrar_detalle_pedido_modal
