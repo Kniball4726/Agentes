@@ -118,8 +118,10 @@ def iniciar_heartbeat_red_daemon(interfaz: Any) -> None:
     interfaz._heartbeat_activo = True
 
     def _loop() -> None:
+        _iter_count = 0
         while getattr(interfaz, "_heartbeat_activo", True):
             time.sleep(12)
+            _iter_count += 1
             if not getattr(interfaz, "_heartbeat_activo", True) or not getattr(interfaz, "page", None):
                 break
             try:
@@ -132,6 +134,15 @@ def iniciar_heartbeat_red_daemon(interfaz: Any) -> None:
                 lat_ms = (time.monotonic() - t0) * 1000.0
                 nuevo_estado = "online" if lat_ms < 900.0 else "degraded"
                 actualizar_estado_conexion_ui(interfaz, nuevo_estado, latencia_ms=lat_ms)
+
+                # Limpieza periódica de sesiones API expiradas cada ~5 minutos (25 iteraciones)
+                if _iter_count % 25 == 0:
+                    user_store = getattr(interfaz, "user_store", None)
+                    if user_store and hasattr(user_store, "cleanup_expired_api_sessions"):
+                        try:
+                            user_store.cleanup_expired_api_sessions(24 * 3600)
+                        except Exception:
+                            pass
             except Exception as ex_ping:
                 actualizar_estado_conexion_ui(interfaz, "offline", mensaje=f"Error de enlace: {ex_ping}")
 

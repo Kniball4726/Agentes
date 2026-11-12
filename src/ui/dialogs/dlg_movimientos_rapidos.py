@@ -226,10 +226,41 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
                 pass
 
             msg_tipo = "Entrada registrada" if es_ingreso else "Salida registrada"
-            interfaz.notificar(
-                f"✅ {msg_tipo}: {codigo} ({qty} u.) por '{motivo}'",
-                color_tema,
-            )
+            
+            # Acción de Deshacer (Undo) contextual durante 6 segundos
+            def _deshacer_movimiento(_ev: Any = None) -> None:
+                try:
+                    sm.actualizar_stock_base(codigo, stock_actual, sincronizar_excel=True)
+                    if hasattr(interfaz, "order_store") and interfaz.order_store:
+                        interfaz.order_store.registrar_auditoria(
+                            usuario=usuario_nom,
+                            accion="DESHACER_MOVIMIENTO_RAPIDO",
+                            detalle=f"Reversión de {msg_tipo.lower()} para {codigo} ({qty} u.). Stock restaurado a {stock_actual}.",
+                        )
+                    if hasattr(interfaz, "reproducir_sonido"):
+                        interfaz.reproducir_sonido("exito")
+                    interfaz.notificar(f"↩️ Se revirtió el movimiento de {codigo}. Stock restaurado a {stock_actual}.", ft.Colors.BLUE_700)
+                    if hasattr(interfaz, "actualizar_estado"):
+                        interfaz.actualizar_estado()
+                except Exception as exc_undo:
+                    interfaz.notificar(f"Error al revertir movimiento: {exc_undo}", ft.Colors.RED_700)
+
+            try:
+                snack_undo = ft.SnackBar(
+                    content=ft.Text(f"✅ {msg_tipo}: {codigo} ({qty} u.)", color=ft.Colors.WHITE, size=13),
+                    action="Deshacer",
+                    action_color=ft.Colors.AMBER_300,
+                    on_action=_deshacer_movimiento,
+                    duration=6000,
+                    bgcolor=color_tema,
+                )
+                if getattr(interfaz, "page", None):
+                    interfaz.page.show_dialog(snack_undo)
+            except Exception:
+                interfaz.notificar(
+                    f"✅ {msg_tipo}: {codigo} ({qty} u.) por '{motivo}'",
+                    color_tema,
+                )
 
             # Refrescar UI general
             if hasattr(interfaz, "actualizar_estado"):

@@ -27,6 +27,7 @@ from .window_manager import (
     mostrar_menu_movil_fallback,
     configurar_ventana_principal,
 )
+from .debounce import Debouncer
 
 __all__ = [
     "construir_sidebar_controls",
@@ -56,4 +57,5 @@ __all__ = [
     "asegurar_drawer_movil",
     "mostrar_menu_movil_fallback",
     "configurar_ventana_principal",
+    "Debouncer",
 ]

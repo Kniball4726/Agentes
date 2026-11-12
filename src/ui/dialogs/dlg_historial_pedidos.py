@@ -7,6 +7,7 @@ from typing import Any, Callable
 import flet as ft
 
 from ..theme import ROJO
+from ..components.debounce import Debouncer
 from ...orders_store import Pedido
 from ...paths import application_root
 
@@ -844,8 +845,16 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         border_color="#27272a",
         color="#f4f4f5",
         expand=True,
-        on_change=lambda e: (_ir_a_pagina(1) if pagina_actual != 1 else actualizar_vista(campo_busqueda.value or "")),
     )
+
+    debouncer_pedidos = Debouncer(0.25)
+
+    def _al_escribir_filtro(_e: Any) -> None:
+        debouncer_pedidos.debounce(
+            lambda: _ir_a_pagina(1) if pagina_actual != 1 else actualizar_vista(campo_busqueda.value or "")
+        )
+
+    campo_busqueda.on_change = _al_escribir_filtro
 
     def limpiar_busqueda(_e: ft.Event) -> None:
         nonlocal pagina_actual

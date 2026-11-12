@@ -234,10 +234,12 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
         cod = (nuevo_codigo_txt.value or "").strip()
         dir_c = (nueva_direccion_txt.value or "").strip()
         if not nom:
+            nuevo_cliente_txt.error_text = "El nombre del cliente es obligatorio"
             msg_feedback.value = "Por favor ingresa un nombre para el cliente."
             msg_feedback.color = ft.Colors.RED_400
             interfaz.page.update()
             return
+        nuevo_cliente_txt.error_text = None
         try:
             interfaz.order_store.crear_cliente(nom, usuario=usr_nom, codigo=cod, direccion=dir_c)
             nuevo_cliente_txt.value = ""

@@ -906,6 +906,17 @@ StockAgent/
 │   │   ├── audit_repo.py              # Mixin de bitácora transaccional y auditoría forense
 │   │   ├── closure_repo.py            # Mixin de cierres de turno y consolidación de jornada
 │   │   └── store.py                   # Repositorio central OrderStore con soporte WAL y migraciones
+│   ├── products/                      # Subpaquete modular de productos, catálogo y despachos
+│   │   ├── __init__.py                # Exportación de ProductStore
+│   │   ├── store.py                   # Repositorio central ProductStore (ensambla mixins)
+│   │   ├── catalog_repo.py            # Mixin para catálogo, códigos de barras y CRUD
+│   │   ├── movements_repo.py          # Mixin para historial de movimientos y trazabilidad de despachos
+│   │   ├── physical_repo.py           # Mixin para inventario físico y discrepancias
+│   │   └── notifications_repo.py      # Mixin para notificaciones de administración y quiebres
+│   ├── inventory/                     # Subpaquete modular de inventario y sincronización Excel
+│   │   ├── __init__.py                # Exportación de StockManager
+│   │   ├── manager.py                 # Gestor central StockManager
+│   │   └── excel_sync.py              # Sincronización atómica y formateo de plantilla visual Excel
 │   ├── stock/                         # Subpaquete modular de dominio de stock e informes
 │   │   ├── __init__.py                # Exportaciones públicas del módulo stock
 │   │   ├── models.py                  # Dataclasses de descuento (RegistroDescuento, ReporteStock)
@@ -924,25 +935,27 @@ StockAgent/
 │   │   │   └── dialog_dispatcher.py   # Mixin despachador de diálogos modales e impresión
 │   │   ├── components/                # Componentes visuales desacoplados
 │   │   │   ├── __init__.py            # Exportaciones de componentes
+│   │   │   ├── debounce.py            # Utilidad Debouncer para búsquedas fluidas sin lag
 │   │   │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
 │   │   │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
 │   │   │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
 │   │   │   ├── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
 │   │   │   ├── audio_manager.py       # Motor acústico Web Audio API y sintetizador polifónico
-│   │   │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y semáforo visual
+│   │   │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y limpieza de sesiones
 │   │   │   ├── mobile_nav.py          # Barra de navegación inferior 'Thumb Zone' para móviles
 │   │   │   ├── docking_manager.py     # Gestor de docking del sidebar (izq/der/arriba/abajo/oculto)
 │   │   │   └── print_labels.py        # Despachador de impresión térmica y A4 de rótulos QR
 │   │   └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
 │   │       ├── __init__.py            # Re-exportación unificada de diálogos
 │   │       ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
-│   │       ├── dlg_clientes.py        # Alta, edición y administración de clientes
+│   │       ├── dlg_clientes.py        # Alta, edición y administración de clientes con validación inline
 │   │       ├── dlg_usuarios.py        # Administración de cuentas, roles y reseteo de claves
 │   │       ├── dlg_smtp.py            # Configuración de servidor SMTP y credenciales cifradas
 │   │       ├── dlg_backup.py          # Copias de seguridad y restauración asistida
-│   │       ├── dlg_productos.py       # Catálogo, edición de productos y movimientos de stock
+│   │       ├── dlg_productos.py       # Catálogo, edición de productos con validación inline y stock
 │   │       ├── dlg_pedidos.py         # Carga, cancelación, desarme y edición de pedidos
-│   │       ├── dlg_historial_pedidos.py # Historial de pedidos con búsqueda y reimpresión de comprobantes
+│   │       ├── dlg_historial_pedidos.py # Historial con búsqueda con debounce y reimpresión
+│   │       ├── dlg_movimientos_rapidos.py # Ajustes de stock rápidos con opción 'Deshacer' interactiva
 │   │       ├── dlg_escaner.py         # Escáner QR de despacho y avance de estado logístico
 │   │       ├── dlg_cierre/            # Subpaquete modular de cierre de jornada y hoja de ruta
 │   │       ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
@@ -953,12 +966,12 @@ StockAgent/
 │   │       ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
 │   │       └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
 │   ├── agent.py                       # Orquestador del Agente de Stock
-│   ├── flet_gui.py                    # Fachada y orquestador GUI principal (compuesto con mixins)
+│   ├── flet_gui.py                    # Fachada y orquestador GUI principal (compuesto con mixins y ProgressBar)
 │   ├── tray_icon.py                   # Controlador del icono en bandeja de Windows (pystray)
 │   ├── orders_store.py                # Fachada retrocompatible hacia src.orders
 │   ├── user_store.py                  # Fachada retrocompatible hacia src.auth
-│   ├── product_store.py               # DAO SQLite para catálogo, reposición e inventario físico
-│   ├── stock_manager.py               # Fachada central de inventario y manipulación de catálogo
+│   ├── product_store.py               # Fachada retrocompatible hacia src.products
+│   ├── stock_manager.py               # Fachada retrocompatible hacia src.inventory y src.stock
 │   ├── remito_parser.py               # Parser de remitos PDF
 │   ├── canjes_parser.py               # Parser de canjes Excel
 │   ├── mercado_libre_parser.py        # Parser de pedidos DOCX

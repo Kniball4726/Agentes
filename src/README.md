@@ -1,6 +1,6 @@
 # Arquitectura Modular del Backend y Frontend (src/)
 
-Este directorio contiene el código fuente principal de **StockAgent**, estructurado bajo principios de arquitectura limpia, separación de responsabilidades (SRP) y alta mantenibilidad.
+Este directorio contiene el código fuente principal de **StockAgent**, estructurado bajo principios de arquitectura limpia, separación de responsabilidades (SRP), alta mantenibilidad y resiliencia ante errores.
 
 ---
 
@@ -28,7 +28,20 @@ src/
 │   ├── closure_repo.py         # Mixin de cierres de turno y consolidación documental
 │   └── store.py                # Repositorio SQLite OrderStore unificado
 │
-├── stock/                      # Dominio de stock, reposición e inventario
+├── products/                   # Dominio modular de productos, catálogo y despachos
+│   ├── __init__.py             # Exportación de ProductStore
+│   ├── store.py                # Repositorio SQLite ProductStore unificado (ensambla mixins)
+│   ├── catalog_repo.py         # Repositorio mixin para catálogo, códigos de barras y CRUD
+│   ├── movements_repo.py       # Repositorio mixin para historial de movimientos y despachos
+│   ├── physical_repo.py        # Repositorio mixin para relevamiento físico y discrepancias
+│   └── notifications_repo.py   # Repositorio mixin para notificaciones de administración y quiebres
+│
+├── inventory/                  # Dominio modular de inventario y sincronización Excel
+│   ├── __init__.py             # Exportación de StockManager
+│   ├── manager.py              # StockManager central
+│   └── excel_sync.py           # Sincronización atómica y formateo de plantilla visual Excel
+│
+├── stock/                      # Dominio de stock, reposición y reportes
 │   ├── __init__.py             # Exportaciones de stock
 │   ├── models.py               # Dataclasses de descuento (RegistroDescuento, ReporteStock)
 │   ├── reports.py              # Exportadores binarios Excel (.xls) y vectoriales PDF
@@ -46,26 +59,30 @@ src/
 │   │   ├── session_sync.py     # Sincronización en tiempo real entre sesiones y chat
 │   │   └── dialog_dispatcher.py# Despachador central de vistas modales e impresión
 │   ├── components/             # Componentes visuales desacoplados
+│   │   ├── debounce.py         # Utilidad Debouncer para búsquedas reactivas de alto rendimiento
 │   │   ├── header.py           # Encabezado superior y selector de perfil / IP
 │   │   ├── sidebar.py          # Barra lateral / drawer responsivo
 │   │   ├── floating_chat.py    # Ventana flotante de chat (asistente + equipo)
 │   │   ├── audio_manager.py    # Motor acústico Web Audio API / winsound
-│   │   ├── network_heartbeat.py# Demonio de sondeo LAN y semáforo visual de latencia
+│   │   ├── network_heartbeat.py# Demonio de sondeo LAN, semáforo visual y limpieza de sesiones
 │   │   ├── mobile_nav.py       # Barra ergonómica inferior para dispositivos móviles
 │   │   └── print_labels.py     # Despacho de rótulos térmicos (100x150 mm) y A4
 │   └── dialogs/                # Vistas modulares por caso de uso
 │       ├── dlg_auth.py         # Autenticación, reseteo de claves y perfil
+│       ├── dlg_clientes.py     # ABM de clientes con validación inline de campos
+│       ├── dlg_productos.py    # Edición de catálogo con validación inline en tiempo real
 │       ├── dlg_pedidos.py      # Carga, cancelación y desarme de pedidos
-│       ├── dlg_historial_pedidos.py # Historial con paginación y búsqueda
+│       ├── dlg_historial_pedidos.py # Historial con paginación y búsqueda con debounce
+│       ├── dlg_movimientos_rapidos.py # Movimientos rápidos de stock con acción 'Deshacer'
+│       ├── dlg_ver_stock.py    # Visor de existencias con filtrado dinámico asistido
 │       ├── dlg_cierre/         # Asistente de cierre de jornada y hoja de ruta
-│       ├── dlg_stock_ops.py    # Operaciones de fábrica, ML Full y stock físico
-│       └── ...                 # Demás diálogos especializados
+│       └── dlg_stock_ops.py    # Operaciones de fábrica, ML Full y stock físico
 │
-├── user_store.py               # Fachada retrocompatible hacia src.auth
-├── orders_store.py             # Fachada retrocompatible hacia src.orders
-├── flet_gui.py                 # Orquestador UI ensamblado con mixins
-├── product_store.py            # DAO SQLite para catálogo de productos
-├── stock_manager.py            # Gestor central de inventario y sincronización Excel
+├── user_store.py               # Fachada retrocompatible hacia src.auth.UserStore
+├── orders_store.py             # Fachada retrocompatible hacia src.orders.OrderStore
+├── product_store.py            # Fachada retrocompatible hacia src.products.ProductStore
+├── stock_manager.py            # Fachada retrocompatible hacia src.inventory.StockManager
+├── flet_gui.py                 # Orquestador UI ensamblado con mixins, barra de progreso y cuotas
 └── server.py                   # Servidor ASGI / FastAPI, middleware PWA y OTA
 ```
 
@@ -138,35 +155,63 @@ Reemplaza el antiguo archivo monolítico `orders_store.py` (anteriormente de má
 
 ---
 
-## 🎨 4. Mixins de Interfaz de Usuario (`src/ui/mixins/`)
+## 🏷️ 4. Paquete de Productos y Catálogo (`src/products/`)
 
-La clase `InterfazFlet` en `src/flet_gui.py` fue desacoplada mediante herencia múltiple de mixins especializados:
+Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líneas), distribuyendo el modelo de datos y consultas en mixins orientados a subdominios:
 
-1. **`ResponsiveLayoutMixin` (`src/ui/mixins/responsive.py`):**
-   * Detección precisa de viewports móviles y tablets (< 768px).
-   * Cálculo dinámico de ancho y alto adaptable respetando márgenes de seguridad.
-   * Gestión del ciclo de vida del `NavigationDrawer` móvil y diálogo de fallback ante demoras.
-   * Manejador de eventos de redimensionamiento de ventana (`_al_redimensionar`).
-
-2. **`DocumentViewerMixin` (`src/ui/mixins/document_viewer.py`):**
-   * Apertura nativa de informes generados y previsualización inline en nueva pestaña web.
-   * Generación y visualización bajo demanda de manuales de usuario oficiales en PDF según el rol activo.
-   * Exploración en carpetas del sistema operativo (Windows Explorer / macOS / Linux).
-   * Compartición por correo electrónico y enlace directo a WhatsApp.
-
-3. **`SessionSyncMixin` (`src/ui/mixins/session_sync.py`):**
-   * Notificación reactiva en tiempo real entre múltiples pestañas y terminales conectadas a la LAN.
-   * Emisión de *toasts* colaborativos ante cierres, despachos o actualizaciones de stock.
-   * Sincronización del badge contador de mensajes no leídos en el canal de equipo.
-   * Carga y despacho de mensajes enriquecidos en el chat interno.
-
-4. **`DialogDispatcherMixin` (`src/ui/mixins/dialog_dispatcher.py`):**
-   * Centraliza los métodos de despacho y apertura de todas las ventanas modales de la aplicación.
-   * Desacopla la lógica de impresión de rótulos térmicos continuos y hojas A4.
+* **`catalog_repo.py` (`CatalogRepositoryMixin`):** Carga rápida en una sola consulta (`load_catalog_fast`), búsqueda difusa por SKU o código de barras, paginación, inserción y reordenamiento topológico en catálogo.
+* **`movements_repo.py` (`MovementsRepositoryMixin`):** Historial paginado de movimientos de inventario (`stock_movements`), registro de despachos con trazabilidad a nivel de ítem (`despachos`, `despacho_detalles`) y cálculo de KPIs.
+* **`physical_repo.py` (`PhysicalRepositoryMixin`):** Registro de conteos físicos de operarios, cálculo de diferencias vs. stock digital y almacenamiento de comparativas históricas.
+* **`notifications_repo.py` (`NotificationsRepositoryMixin`):** Notificaciones operativas para administradores y consulta a la vista `v_analisis_reposicion` para alertas de quiebre o sobrestock.
+* **`store.py` (`ProductStore`):** Ensambla los mixins, orquesta el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
+* **`src/product_store.py` (Fachada):** Mantiene retrocompatibilidad del 100%.
 
 ---
 
-## 🧪 5. Verificación y Cobertura de Pruebas
+## 📊 5. Paquete de Inventario y Sincronización Excel (`src/inventory/`)
+
+Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líneas):
+
+* **`excel_sync.py`:** Aísla la manipulación de bajo nivel con `openpyxl`: detección de esquemas dinámicos, normalización de encabezados, copiado exacto de estilos visuales y construcción de informes idénticos a la plantilla de producción.
+* **`manager.py` (`StockManager`):** Orquestación del catálogo, sincronización atómica con debounce entre SQLite y `Productos.xlsx`, aplicación de remitos mayoristas, canjes y despachos de Mercado Envíos Full.
+* **`src/stock_manager.py` (Fachada):** Re-exporta `StockManager`, `RegistroDescuento`, `ReporteStock` y utilidades para compatibilidad absoluta.
+
+---
+
+## 🎨 6. Mixins y Componentes de Interfaz de Usuario (`src/ui/`)
+
+### Mixins de Orquestación GUI (`src/ui/mixins/`):
+1. **`ResponsiveLayoutMixin`:** Detección precisa de viewports móviles (< 768px), redimensionamiento dinámico y drawer táctil.
+2. **`DocumentViewerMixin`:** Previsualización inline de informes, manuales SOP en PDF según rol y compartición.
+3. **`SessionSyncMixin`:** Sincronización de eventos en tiempo real entre múltiples terminales LAN y chat colaborativo.
+4. **`DialogDispatcherMixin`:** Despacho centralizado de diálogos modales e impresión de rótulos térmicos/A4.
+
+### Componentes y Mejoras UX/UI:
+* **`Debouncer` (`src/ui/components/debounce.py`):** Temporizador reactivo para campos de búsqueda (ej. 200 ms en visor de stock e historial de pedidos), evitando re-renderizados innecesarios y garantizando fluidez a 60 FPS.
+* **Validación Inline (`error_text`):** Mensajes de error en tiempo real debajo de los campos de texto en `dlg_clientes.py` y `dlg_productos.py` (nombre, SKU, stock), sin necesidad de modales intrusivos.
+* **Acción Interactiva "Deshacer" en SnackBar:** Ventana de 6 segundos tras un ajuste de stock rápido en `dlg_movimientos_rapidos.py` para revertir la operación con un solo clic y registrar la reversión en la auditoría.
+* **Barra de Progreso Reactiva con Porcentaje:** Integrada en el dashboard (`self.progreso_barra`) para tareas pesadas de importación, sincronización y generación de reportes.
+
+---
+
+## 🔒 7. Seguridad y Resiliencia
+
+* **Límite Estricto de Carga de Archivos:** Validación de tamaño máximo de 25 MB (`MAX_SUBIDA_BYTES = 25 * 1024 * 1024`) en `flet_gui.py:subir_archivo`, con alertas amigables que impiden ataques de denegación de servicio (DoS) por agotamiento de memoria.
+* **Limpieza Periódica de Sesiones Expiradas:** Integrada de forma autónoma en el demonio de latencia `network_heartbeat.py`, purgando tokens de API y sesiones inactivas cada 5 minutos sin impacto en el rendimiento.
+* **Protección de Descargas y Rutas:** Resolución estricta de rutas mediante `application_root()` evitando vulnerabilidades de Directory Traversal (`../`).
+
+---
+
+## 🤖 8. Integración Continua (CI Workflow)
+
+Ubicado en `.github/workflows/ci.yml`:
+* **Matriz de Ejecución:** Windows Server ejecutando en paralelo bajo **Python 3.11, 3.12 y 3.13**.
+* **Paso a Paso:** Clonado del repositorio, instalación de dependencias desde `requirements.txt` y ejecución de la suite completa de pruebas unitarias e integración con `pytest`.
+* **Garantía de Calidad:** Bloquea regresiones y garantiza que cada commit o pull request cumpla con el 100% de tests aprobados.
+
+---
+
+## 🧪 9. Verificación y Cobertura de Pruebas
 
 Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas:
 * **Total de pruebas:** 302 pruebas unitarias y de integración.

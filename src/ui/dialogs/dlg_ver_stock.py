@@ -3,6 +3,7 @@
 from typing import Any
 import flet as ft
 from ..theme import ROJO
+from ..components.debounce import Debouncer
 
 
 def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
@@ -287,9 +288,11 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
         limite[0] += 60
         actualizar_lista()
 
+    debouncer = Debouncer(0.2)
+
     def al_escribir_busqueda(_e: Any) -> None:
         limite[0] = 60
-        actualizar_lista()
+        debouncer.debounce(actualizar_lista)
 
     filtro_texto.on_change = al_escribir_busqueda
 

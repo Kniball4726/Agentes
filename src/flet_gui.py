@@ -265,6 +265,7 @@ class InterfazFlet(
         self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
         self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
         self.estado_tarea = ft.Text("Listo", color=self.secundario, size=12)
+        self.progreso_barra = ft.ProgressBar(width=200, value=None, color=ROJO, visible=False)
         self.lista_informes = ft.ListView(expand=True, spacing=4)
         self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
         self.header_pedidos_fecha = ft.Text("Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto)
@@ -609,7 +610,14 @@ class InterfazFlet(
             self.panel_metricas(),
             self.panel_acceso_rapido(),
             self.panel_informes_actividad(),
-            self.estado_tarea,
+            ft.Row(
+                [
+                    self.estado_tarea,
+                    self.progreso_barra,
+                ],
+                spacing=12,
+                alignment=ft.MainAxisAlignment.START,
+            ),
         ]
         dashboard = ft.Column(
             dashboard_controls,
@@ -984,6 +992,8 @@ class InterfazFlet(
 
         self.ocupado = True
         PROCESAMIENTO_GLOBAL_ACTIVO = True
+        self.progreso_barra.visible = True
+        self.progreso_barra.value = None
         self.estado_tarea.value = f"En curso: {nombre}"
         self.actualizar_estado_botones()
         self.sincronizar_sesiones()
@@ -1021,10 +1031,30 @@ class InterfazFlet(
         finally:
             self.ocupado = False
             PROCESAMIENTO_GLOBAL_ACTIVO = False
+            self.progreso_barra.visible = False
+            self.progreso_barra.value = None
             self.actualizar_estado_botones()
             self.actualizar_estado()
             self.sincronizar_sesiones()
         return exito
+
+    def actualizar_progreso(self, actual: int, total: int, mensaje: str = "") -> None:
+        """Actualiza el porcentaje y etiqueta de la barra de progreso de operaciones masivas."""
+        if total > 0:
+            val = min(1.0, max(0.0, float(actual) / float(total)))
+            self.progreso_barra.value = val
+            pct = int(val * 100)
+            self.estado_tarea.value = f"{mensaje} ({pct}%)" if mensaje else f"Progreso: {pct}%"
+        else:
+            self.progreso_barra.value = None
+            if mensaje:
+                self.estado_tarea.value = mensaje
+        self.progreso_barra.visible = True
+        if hasattr(self.page, "update"):
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _actualizar_estado_boton_cierre(self, conteo_total: int | None = None) -> None:
         """Habilita o deshabilita dinámicamente el botón de Cierre de Jornada según pedidos pendientes."""
@@ -1163,6 +1193,7 @@ class InterfazFlet(
         carpeta_destino.mkdir(parents=True, exist_ok=True)
         guardados: list[Path] = []
         rechazados: list[str] = []
+        MAX_SUBIDA_BYTES = 25 * 1024 * 1024  # 25 MB
         try:
             for item in seleccionados:
                 nombre_limpio = Path(item.name).name
@@ -1171,6 +1202,14 @@ class InterfazFlet(
                     if ext_item not in ext_limpias:
                         rechazados.append(nombre_limpio)
                         continue
+                # Validación de seguridad: límite de tamaño de archivo (25 MB)
+                peso_bytes = len(item.bytes) if (item.bytes and len(item.bytes) > 0) else (
+                    Path(item.path).stat().st_size if (item.path and Path(item.path).exists()) else 0
+                )
+                if peso_bytes > MAX_SUBIDA_BYTES:
+                    self.notificar(f"El archivo '{nombre_limpio}' ({peso_bytes // (1024*1024)} MB) supera el límite máximo de 25 MB.")
+                    continue
+
                 destino = carpeta_destino / nombre_limpio
                 _cnt = 1
                 while destino.exists():

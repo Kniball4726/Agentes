@@ -474,13 +474,19 @@ def mostrar_dialogo_formulario_producto(
         nombre = (campos["nombre"].value or "").strip()
         referencia = (campos["referencia"].value or "").strip()
         stock_texto = (campos["stock"].value or "").strip()
+        campos["codigo"].error_text = "El código es obligatorio" if not codigo else None
+        campos["nombre"].error_text = "El nombre es obligatorio" if not nombre else None
+        campos["referencia"].error_text = "Selecciona el producto de referencia" if not referencia else None
         if not codigo or not nombre or not referencia:
-            interfaz.notificar("Completa el código, el nombre y el código de referencia.")
+            interfaz.page.update()
             return
+
         try:
             stock = int(stock_texto) if stock_texto else None
+            campos["stock"].error_text = None
         except ValueError:
-            interfaz.notificar("El stock inicial debe ser un número entero.")
+            campos["stock"].error_text = "El stock inicial debe ser un número entero"
+            interfaz.page.update()
             return
 
         interfaz.page.pop_dialog()
