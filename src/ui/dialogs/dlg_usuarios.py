@@ -28,7 +28,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         expand=True,
     )
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
-    roles_creables = ["administrador", "operador", "consulta"] if es_master else ["operador", "consulta"]
+    roles_creables = ["administrador", "operador", "picker", "consulta"] if es_master else ["operador", "picker", "consulta"]
     nuevo_rol = ft.Dropdown(
         label="Rol",
         value="consulta",
@@ -136,9 +136,9 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             else set()
         )
         roles_asignables = (
-            ["administrador", "operador", "consulta"]
+            ["administrador", "operador", "picker", "consulta"]
             if actual_es_master
-            else ["operador", "consulta"]
+            else ["operador", "picker", "consulta"]
         )
         try:
             lista_usuarios = interfaz.user_store.list_users(include_master=actual_es_master)

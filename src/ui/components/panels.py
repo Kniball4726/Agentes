@@ -175,3 +175,191 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
         spacing=12,
         expand=True,
     )
+
+
+
+def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
+    """Genera el panel de accesos rápidos táctiles según el rol del usuario:
+    - Master: Oculto / Eliminado.
+    - Picker: Ingreso, Egreso y Descontar Mercado Libre.
+    - Administrador: Solo Ingreso y Egreso.
+    - Operador: Cargar Pedido, Descontar ML, Ingreso y Egreso.
+    - Consulta / Otros: Oculto.
+    """
+    rol = str(getattr(getattr(interfaz, "usuario_actual", None), "role", "")).lower()
+    if rol in ("consulta", ""):
+        return ft.Container(height=0, visible=False)
+
+    es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+
+    items_config = []
+    if rol == "master":
+        items_config = [
+            (
+                "Gestionar Usuarios",
+                "Control de cuentas y credenciales IAM",
+                ft.Icons.MANAGE_ACCOUNTS,
+                ft.Colors.BLUE_600,
+                interfaz.mostrar_gestion_usuarios,
+            ),
+            (
+                "Registro de Auditoría",
+                "Trazabilidad forense e historial de eventos",
+                ft.Icons.SECURITY,
+                ROJO,
+                interfaz.mostrar_registro_auditoria,
+            ),
+        ]
+    elif rol == "picker":
+        items_config = [
+            (
+                "Descontar Mercado Libre",
+                "Escaneo de paquetes y etiquetas ML",
+                ft.Icons.STOREFRONT,
+                ft.Colors.AMBER_600,
+                interfaz.mostrar_descuento_mercado_libre,
+            ),
+            (
+                "Ingreso de Stock",
+                "Entrada rápida / Fábrica",
+                ft.Icons.INPUT,
+                ft.Colors.GREEN_700,
+                interfaz.mostrar_dialogo_ingreso_rapido,
+            ),
+            (
+                "Egreso de Stock",
+                "Salida rápida de mercadería",
+                ft.Icons.OUTPUT,
+                ft.Colors.DEEP_ORANGE_600,
+                interfaz.mostrar_dialogo_salida_rapida,
+            ),
+        ]
+    elif rol == "administrador":
+        items_config = [
+            (
+                "Gestionar Productos",
+                "Catálogo maestro y existencias",
+                ft.Icons.INVENTORY_2,
+                ft.Colors.BLUE_600,
+                interfaz.mostrar_gestion_productos,
+            ),
+            (
+                "Ingreso de Stock",
+                "Entrada rápida / Fábrica",
+                ft.Icons.INPUT,
+                ft.Colors.GREEN_700,
+                interfaz.mostrar_dialogo_ingreso_rapido,
+            ),
+            (
+                "Egreso de Stock",
+                "Salida rápida de mercadería",
+                ft.Icons.OUTPUT,
+                ft.Colors.DEEP_ORANGE_600,
+                interfaz.mostrar_dialogo_salida_rapida,
+            ),
+        ]
+    elif rol == "operador":
+        items_config = [
+            (
+                "Cargar / Armar Pedido",
+                "Nuevo remito o canje",
+                ft.Icons.POST_ADD,
+                ft.Colors.BLUE_600,
+                interfaz.mostrar_crear_pedido,
+            ),
+            (
+                "Descontar Mercado Libre",
+                "Escaneo de etiquetas ML",
+                ft.Icons.STOREFRONT,
+                ft.Colors.AMBER_600,
+                interfaz.mostrar_descuento_mercado_libre,
+            ),
+            (
+                "Ingreso de Stock",
+                "Entrada rápida de fábrica",
+                ft.Icons.INPUT,
+                ft.Colors.GREEN_700,
+                interfaz.mostrar_dialogo_ingreso_rapido,
+            ),
+            (
+                "Egreso de Stock",
+                "Salida rápida de mercadería",
+                ft.Icons.OUTPUT,
+                ft.Colors.DEEP_ORANGE_600,
+                interfaz.mostrar_dialogo_salida_rapida,
+            ),
+        ]
+
+    if not items_config:
+        return ft.Container(height=0, visible=False)
+
+    tarjetas = []
+    for titulo, subtitulo, icono, color_icono, accion in items_config:
+        bg_icon_container = (
+            ft.Colors.with_opacity(0.18, color_icono)
+            if es_oscuro
+            else ft.Colors.with_opacity(0.12, color_icono)
+        )
+        card = ft.Container(
+            expand=not es_movil,
+            bgcolor=interfaz.superficie,
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.15, interfaz.texto)),
+            border_radius=12,
+            padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+            ink=True,
+            on_click=accion,
+            content=ft.Row(
+                [
+                    ft.Container(
+                        width=42,
+                        height=42,
+                        border_radius=10,
+                        bgcolor=bg_icon_container,
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Icon(icono, color=color_icono, size=22),
+                    ),
+                    ft.Column(
+                        [
+                            ft.Text(titulo, size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                            ft.Text(subtitulo, size=11, color=interfaz.secundario),
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                    ft.Icon(ft.Icons.ARROW_FORWARD_IOS, size=12, color=interfaz.secundario),
+                ],
+                spacing=12,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
+        tarjetas.append(card)
+
+    if es_movil:
+        for t in tarjetas:
+            t.expand = False
+            t.col = 12 if len(tarjetas) <= 2 else 6
+        contenedor_tarjetas = ft.ResponsiveRow(tarjetas, spacing=8, run_spacing=8)
+    else:
+        contenedor_tarjetas = ft.Row(tarjetas, spacing=12)
+
+    titulo_rapido = "Accesos Rápidos de Seguridad y Control" if rol == "master" else "Accesos Rápidos de Operación"
+    icono_rapido = ft.Icons.SECURITY if rol == "master" else ft.Icons.FLASH_ON
+
+    return ft.Container(
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Icon(icono_rapido, size=16, color=ROJO),
+                        ft.Text(titulo_rapido, size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ],
+                    spacing=6,
+                ),
+                contenedor_tarjetas,
+            ],
+            spacing=8,
+            tight=True,
+        ),
+        padding=ft.Padding.only(bottom=4),
+    )

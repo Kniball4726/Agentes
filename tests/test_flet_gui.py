@@ -145,8 +145,8 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        # Comandos para administrador (incluye Centro de Reportes)
-        self.assertEqual(len(interfaz.controles_tarea), 27)
+        # Comandos para administrador (incluye Centro de Reportes y Ver Stock)
+        self.assertEqual(len(interfaz.controles_tarea), 29)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -291,7 +291,7 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertEqual(menu.procesamientos, [])
         self.assertEqual(len(page.dialogos), 1)
-        self.assertEqual(len(interfaz.controles_tarea), 9)
+        self.assertEqual(len(interfaz.controles_tarea), 10)
 
     def test_admin_cannot_process_or_simulate(self):
         interfaz, menu, page = self.crear_interfaz(role="administrador")

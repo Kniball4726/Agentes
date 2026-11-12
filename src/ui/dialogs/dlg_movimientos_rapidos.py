@@ -48,7 +48,7 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         return
 
     rol = str(getattr(interfaz.usuario_actual, "role", "")).lower()
-    if rol not in ("master", "administrador", "operador"):
+    if rol not in ("master", "administrador", "operador", "picker"):
         interfaz.notificar(
             "Tu rol de usuario no tiene permisos para registrar movimientos rápidos de stock.",
             ft.Colors.RED_700,

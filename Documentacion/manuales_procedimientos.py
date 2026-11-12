@@ -678,12 +678,12 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
     ))
     story.append(Spacer(1, 4))
 
-    # BOTONERA DÚO EXPRESS (CABECERA)
-    story.append(Paragraph("2. Botonera Dúo Express (Entrada y Salida Rápida)", est["h1"]))
+    # BOTONERA EXPRESS (CABECERA)
+    story.append(Paragraph("2. Panel de Acceso Rápido Express (Entrada, Salida, Gestionar Productos y Ver Stock)", est["h1"]))
     story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
     story.append(Paragraph(
-        "Acceso directo superior para el registro rápido de entradas y salidas de stock con escáner, "
-        "justificación obligatoria por catálogo de motivos (Enum) y trazabilidad inmutable en auditoría.",
+        "Botonera superior de alta productividad para el Administrador que integra el registro rápido de movimientos, "
+        "el acceso instantáneo a la administración del catálogo de artículos y el nuevo visor de stock consolidado en tiempo real.",
         est["body_sangria"],
     ))
     story.append(Spacer(1, 4))
@@ -718,6 +718,39 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         ],
         resultado_obtenido="Baja inmediata de stock con trazabilidad.",
         validaciones_advertencias="Motivo obligatorio y alerta si el saldo queda en negativo.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Gestionar Productos (Acceso Rápido)",
+        icono_str="[📦 Catálogo]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Apertura instantánea del catálogo maestro de productos para altas de urgencia, corrección de ubicaciones físicas y actualización de stock mínimo.",
+        datos_modificados="Tabla 'productos' en SQLite y sincronización con 'Productos.xlsx'.",
+        pasos_procedimiento=[
+            "Pulsar el botón azul <b>'Gestionar Productos'</b> en la barra superior de acceso rápido.",
+            "Localizar el producto o ingresar un nuevo SKU.",
+            "Guardar modificaciones para impacto inmediato en las terminales operativas.",
+        ],
+        resultado_obtenido="Acceso directo a la gestión de artículos sin navegar menús laterales.",
+        validaciones_advertencias="Requiere rol Administrador.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Ver Stock en Tiempo Real",
+        icono_str="[📊 Ver Stock]",
+        modulo="ACCESO RÁPIDO Y CONSULTA",
+        proposito_funcional="NUEVO MÓDULO: Consulta instantánea y consolidada de todas las existencias de almacén con filtrado en vivo, indicadores visuales de quiebre de stock, punto de reorden y ubicación física en racks.",
+        datos_modificados="Ninguno (consulta de solo lectura de alta velocidad con caché optimizada).",
+        pasos_procedimiento=[
+            "Pulsar el botón verde esmeralda <b>'Ver Stock'</b> en la botonera de acceso rápido o menú lateral.",
+            "Escribir en la barra de búsqueda por SKU, descripción o código de barras.",
+            "Observar el semáforo de inventario: Normal (Verde), Bajo Stock (Amarillo), Quiebre Crítico (Rojo).",
+            "Pulsar 'Actualizar' para recargar instantáneamente el saldo físico consolidado.",
+        ],
+        resultado_obtenido="Radiografía completa del depósito en pantalla completa con respuesta en milisegundos.",
+        validaciones_advertencias="Permite consultar sin bloquear operaciones activas de despacho.",
     )
 
     # SECCIÓN 1: STOCK Y CATÁLOGO
@@ -1088,12 +1121,56 @@ def construir_manual_master(ruta_destino: Path) -> Path:
     story.append(Paragraph("1. Principios de Seguridad y Segregación SoD (Rol Master)", est["h1"]))
     story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
     story.append(Paragraph(
-        "El rol <b>Master</b> (`Desarrollo / Superadministrador`) es la máxima autoridad técnica del sistema. "
-        "Bajo el principio SoD de la Norma ISO/IEC 27001, no realiza tareas de negocio diarias (preparar pedidos) para mantener "
-        "su total imparcialidad técnica. Sus atribuciones comprenden la trazabilidad forense, restauración en desastres, "
-        "archivado histórico y configuración de servidores de comunicación.",
+        "El rol <b>Master</b> (`Auditoria / Superadministrador`) es la máxima autoridad técnica y de resguardo del sistema. "
+        "Bajo el estricto principio de Segregación de Funciones (SoD) de la Norma ISO/IEC 27001, no realiza tareas de negocio diarias "
+        "(preparar pedidos o modificar stock operativo) para mantener su total imparcialidad técnica y forense. "
+        "Sus atribuciones exclusivas comprenden la trazabilidad inmutable, gestión de identidades IAM, administración de la API REST "
+        "y llaves de integración (API Keys), monitoreo de sesiones activas, restauración de desastres, archivado histórico y configuración SMTP/Telegram.",
         est["body_sangria"],
     ))
+    story.append(Spacer(1, 4))
+
+    # ACCESO RÁPIDO MASTER
+    story.append(Paragraph("2. Panel de Acceso Rápido Master (Seguridad & IAM)", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+    story.append(Paragraph(
+        "Botonera express superior del rol Master diseñada para el acceso inmediato a las dos herramientas nucleares "
+        "de auditoría técnica y gestión de credenciales sin navegación en árboles de menú:",
+        est["body_sangria"],
+    ))
+    story.append(Spacer(1, 4))
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Gestionar usuarios",
+        icono_str="[🔐 Usuarios]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Acceso directo para aprovisionamiento, reseteo de credenciales, bloqueo preventivo y asignación de roles SoD.",
+        datos_modificados="Tabla 'users' en SQLite con actualización de hash BCrypt.",
+        pasos_procedimiento=[
+            "Hacer clic en el botón de acceso rápido 'Gestionar usuarios'.",
+            "Filtrar o seleccionar la cuenta a intervenir.",
+            "Asignar rol o forzar cambio de contraseña temporal.",
+        ],
+        resultado_obtenido="Aprovisionamiento instantáneo de cuentas de usuario.",
+        validaciones_advertencias="La cuenta raíz Auditoria / Master está blindada contra desactivación o eliminación.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Registro de Auditoría",
+        icono_str="[🛡️ Auditoría]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Apertura rápida de la consola forense inmutable para supervisión inmediata ante incidentes o alertas de seguridad.",
+        datos_modificados="Ninguno (lectura protegida de la bitácora inmutable).",
+        pasos_procedimiento=[
+            "Pulsar 'Registro de Auditoría' en la cabecera.",
+            "Visualizar los últimos eventos transaccionales con timestamp de alta precisión.",
+            "Exportar registros o filtrar por IP y usuario.",
+        ],
+        resultado_obtenido="Inspección forense instantánea en tiempo real.",
+        validaciones_advertencias="Bitácora append-only protegida contra truncamiento o borrado.",
+    )
     story.append(Spacer(1, 4))
 
     # SECCIÓN 1: AUDITORÍA Y TRAZABILIDAD
@@ -1220,6 +1297,55 @@ def construir_manual_master(ruta_destino: Path) -> Path:
         ],
         resultado_obtenido="Enlace seguro autenticado para sincronización de ventas y stock.",
         validaciones_advertencias="Los tokens vencidos se renuevan automáticamente mediante el Refresh Token.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="API REST & Swagger UI",
+        icono_str="[🚀]",
+        modulo="INTEGRACIÓN Y SERVICIOS API",
+        proposito_funcional="Apertura y supervisión de la documentación interactiva OpenAPI / Swagger UI de la API REST local para integración de sistemas externos ERP, WMS y e-Commerce.",
+        datos_modificados="Ninguno (inspección de endpoints /docs y telemetría de microservicios).",
+        pasos_procedimiento=[
+            "Pulsar <b>'API REST & Swagger UI'</b>.",
+            "El sistema abre automáticamente el navegador con la interfaz interactiva de Swagger.",
+            "Probar endpoints autorizados con Bearer Token o API Key.",
+        ],
+        resultado_obtenido="Acceso directo a la consola de desarrollo y endpoints documentados.",
+        validaciones_advertencias="Requiere que el servicio FastAPI / Uvicorn esté activo en el servidor.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Gestión de API Keys",
+        icono_str="[🔑]",
+        modulo="SEGURIDAD Y ACCESOS API",
+        proposito_funcional="Creación, rotación, revocación y auditoría de tokens y llaves criptográficas API Key para clientes externos y scripts automatizados.",
+        datos_modificados="Tabla 'api_keys' en SQLite y registro de creación en auditoría.",
+        pasos_procedimiento=[
+            "Pulsar <b>'Gestión de API Keys'</b>.",
+            "Pulsar 'Generar Nueva Key', asignar nombre de cliente, fecha de expiración y alcance de permisos.",
+            "Copiar la llave segura (se muestra una única vez por seguridad criptográfica).",
+            "Revocar llaves comprometidas o vencidas con un solo clic.",
+        ],
+        resultado_obtenido="Llave criptográfica de alta entropía para autenticación externa.",
+        validaciones_advertencias="Las llaves revocadas son rechazadas inmediatamente por el middleware de seguridad.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Sesiones Activas y Monitoreo IAM",
+        icono_str="[👥]",
+        modulo="SEGURIDAD Y CONCURRENCIA",
+        proposito_funcional="Monitoreo en tiempo real de todas las sesiones de usuario abiertas, terminales conectadas, direcciones IP, tiempo de inactividad y cierre forzoso de sesiones.",
+        datos_modificados="Tabla de sesiones activas y revocación de tokens JWT.",
+        pasos_procedimiento=[
+            "Pulsar <b>'Sesiones Activas'</b>.",
+            "Revisar el listado de usuarios con sesión abierta y su IP de origen.",
+            "En caso de sospecha de acceso no autorizado, pulsar 'Cerrar Sesión Forzosamente'.",
+        ],
+        resultado_obtenido="Expulsión instantánea de la terminal no deseada y resguardo del perímetro.",
+        validaciones_advertencias="El cierre forzoso invalida inmediatamente el token de la sesión intervenida.",
     )
 
     agregar_ficha_boton(
@@ -1443,6 +1569,220 @@ def construir_manual_consulta(ruta_destino: Path) -> Path:
     doc.build(story, canvasmaker=crear_canvas_iso_upel(codigo_doc, titulo_doc, "3.0.0"))
     return ruta_destino
 
+# =============================================================================
+# 4.1 MANUAL ROL PICKER (BOTÓN POR BOTÓN)
+# =============================================================================
+def construir_manual_picker(ruta_destino: Path) -> Path:
+    """Genera el Manual de Procedimiento y Uso Botón por Botón para el Rol Picker."""
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    doc = SimpleDocTemplate(
+        str(ruta_destino),
+        pagesize=A4,
+        leftMargin=MARGEN_IZQ,
+        rightMargin=MARGEN_DER,
+        topMargin=MARGEN_SUP,
+        bottomMargin=MARGEN_INF,
+    )
+    est = obtener_estilos_iso_upel()
+    story = []
+
+    codigo_doc = "MAN-PROC-PCK-2026"
+    titulo_doc = "Manual de Procedimiento y Uso de Botones (Rol Picker)"
+
+    agregar_portada_iso_upel(
+        story, est, codigo_doc, titulo_doc,
+        "Rol Picker (Preparación de Pedidos, Recepción Express y Despachos)",
+        "Guía técnica y operativa botón por botón: botonera express (Ingreso, Egreso y Descontar Mercado Libre), "
+        "recepción de mercadería de fábrica con remito, pedidos a planta productora, transferencias masivas a Mercado Full, "
+        "conteo físico ciego de inventario y consulta de stock en tiempo real.",
+        version="3.0.0",
+    )
+
+    story.append(Paragraph("1. Principios de Segregación SoD y Responsabilidades del Rol Picker", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+    story.append(Paragraph(
+        "El <b>Picker</b> es el rol operativo especializado en la agilidad de los movimientos físicos y digitales del inventario. "
+        "Bajo el principio de Segregación de Funciones (SoD) de la Norma ISO/IEC 27001, el usuario Picker cuenta con permisos enfocados "
+        "estrictamente en el flujo de mercadería: entradas rápidas, salidas tipificadas, despachos de Mercado Libre y Mercado Full, "
+        "ingresos con remito de fábrica y conteos ciegos de inventario físico. "
+        "Tiene restringido el acceso a la administración de cuentas IAM, configuraciones técnicas de sistema y aprobación de cierres de auditoría general.",
+        est["body_sangria"],
+    ))
+    story.append(Spacer(1, 4))
+
+    # SECCIÓN 1: PANEL DE ACCESO RÁPIDO PICKER
+    story.append(Paragraph("2. Panel de Acceso Rápido (Botonera Trío Express)", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+    story.append(Paragraph(
+        "Ubicada en la parte superior de la interfaz, presenta en primer lugar el acceso directo a <b>Descontar Mercado Libre</b>, "
+        "seguido de las operaciones express de <b>Ingreso de Stock</b> y <b>Egreso de Stock</b> para máxima velocidad de preparación:",
+        est["body_sangria"],
+    ))
+    story.append(Spacer(1, 4))
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Descontar Mercado Libre",
+        icono_str="[🏷️ Descontar ML]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Apertura directa y prioritaria del módulo de lectura y procesamiento de etiquetas/órdenes de Mercado Libre para picking y deducción instantánea.",
+        datos_modificados="Actualiza 'productos' y asienta la orden de venta con trazabilidad.",
+        pasos_procedimiento=[
+            "Pulsar el botón amarillo <b>'Descontar ML'</b> ubicado en primera posición en la cabecera.",
+            "Pegar el texto o escanear el remito/etiqueta de la venta de Mercado Libre.",
+            "El sistema extrae SKU y unidades; verificar en pantalla.",
+            "Pulsar <b>'Procesar y Descontar'</b>.",
+        ],
+        resultado_obtenido="Descuento automático de las existencias vendidas y orden despachada.",
+        validaciones_advertencias="Protección con soft-locks para evitar doble despacho de una misma orden.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Entrada Rápida (Ingreso)",
+        icono_str="[➕ Entrada]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Recepción express de productos por devoluciones, reingresos o sobrantes con escáner de código de barras y motivo obligatorio.",
+        datos_modificados="Incremento en tabla 'productos' de SQLite, 'stock_movements' y 'logs_auditoria'.",
+        pasos_procedimiento=[
+            "Pulsar el botón verde <b>'Entrada'</b> en la cabecera.",
+            "Escanear el código de barras o ingresar el SKU.",
+            "Digitar la cantidad e indicar el motivo del ingreso.",
+            "Pulsar <b>'Confirmar Entrada'</b>.",
+        ],
+        resultado_obtenido="Aumento inmediato en stock y registro de auditoría con identificación del Picker.",
+        validaciones_advertencias="Motivo y cantidad estrictamente obligatorios.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="⚡ Salida Rápida (Egreso)",
+        icono_str="[➖ Salida]",
+        modulo="ACCESO RÁPIDO (CABECERA)",
+        proposito_funcional="Baja express de stock por roturas, mermas de depósito, muestras comerciales o entrega inmediata en mostrador.",
+        datos_modificados="Descuento en SQLite y asiento tipificado en 'stock_movements' y auditoría.",
+        pasos_procedimiento=[
+            "Pulsar el botón ámbar <b>'Salida'</b> en la cabecera.",
+            "Escanear código del artículo o buscar por descripción.",
+            "Ingresar cantidad y seleccionar motivo tipificado.",
+            "Pulsar <b>'Confirmar Salida'</b>.",
+        ],
+        resultado_obtenido="Disminución de existencias y comprobante digital.",
+        validaciones_advertencias="Alerta preventiva si la cantidad solicitada supera el stock disponible.",
+    )
+
+    # SECCIÓN 2: OPERACIONES DE MERCADERÍA
+    story.append(PageBreak())
+    story.append(Paragraph("3. Módulo: STOCK Y OPERACIONES DE MERCADERÍA (Botón por Botón)", est["h1"]))
+    story.append(HRFlowable(width="100%", thickness=1.0, color=COLOR_PRIMARIO, spaceBefore=2, spaceAfter=4))
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Ingreso de Fábrica (Recepción con Remito)",
+        icono_str="[🏭]",
+        modulo="OPERACIONES DE MERCADERÍA",
+        proposito_funcional="Recepción formal de mercadería enviada desde la planta de producción o fábrica central, con validación de remito de entrega.",
+        datos_modificados="Incremento masivo de stock, tabla 'ingresos_fabrica' y bitácora de auditoría.",
+        pasos_procedimiento=[
+            "Hacer clic en <b>'Ingreso de Fábrica'</b> en el panel lateral.",
+            "Ingresar el número de remito y transportista.",
+            "Cargar las cantidades recibidas por cada producto enviado por la planta.",
+            "Pulsar <b>'Confirmar Recepción de Fábrica'</b>.",
+        ],
+        resultado_obtenido="Comprobante de ingreso de fábrica y actualización de inventario consolidado.",
+        validaciones_advertencias="El número de remito es verificado para evitar duplicaciones.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Generar Pedido a Fábrica",
+        icono_str="[📝]",
+        modulo="OPERACIONES DE MERCADERÍA",
+        proposito_funcional="Emisión formal de solicitud de reposición de artículos hacia la planta manufacturera según necesidades de depósito.",
+        datos_modificados="Genera registro de pedido a fábrica y comprobante PDF / Excel.",
+        pasos_procedimiento=[
+            "Pulsar <b>'Generar Pedido a Fábrica'</b>.",
+            "Seleccionar los productos a reponer y las unidades requeridas.",
+            "Revisar el consolidado y pulsar <b>'Emitir Solicitud'</b>.",
+        ],
+        resultado_obtenido="Documento oficial de solicitud de reposición despachado por correo o impreso.",
+        validaciones_advertencias="Las cantidades deben ser números enteros positivos mayores a cero.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Descontar Mercado Full",
+        icono_str="[📦]",
+        modulo="OPERACIONES DE MERCADERÍA",
+        proposito_funcional="Módulo especializado para preparar y descontar lotes de mercadería enviados masivamente a las bodegas de fulfillment de Mercado Libre (Mercado Full).",
+        datos_modificados="Deduce el stock del depósito local y genera el comprobante de transferencia a bodega externa.",
+        pasos_procedimiento=[
+            "Pulsar <b>'Descontar Mercado Full'</b>.",
+            "Ingresar o importar el listado de envío Full con los SKUs y cantidades a remitir.",
+            "Validar el total de bultos y pulsar <b>'Confirmar Envío Full'</b>.",
+        ],
+        resultado_obtenido="Comprobante de despacho a Mercado Full con saldo actualizado en depósito.",
+        validaciones_advertencias="Verifica disponibilidad previa de existencias en el depósito propio antes de autorizar la salida.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Carga de Stock Físico (Inventario Ciego)",
+        icono_str="[📋]",
+        modulo="OPERACIONES DE MERCADERÍA",
+        proposito_funcional="Módulo de conteo ciego de inventario: permite al Picker ingresar las cantidades físicas contadas en los estantes sin ver el saldo del sistema, garantizando imparcialidad.",
+        datos_modificados="Tabla 'stock_fisico_relevamientos' con fecha, hora, usuario Picker y unidades contadas.",
+        pasos_procedimiento=[
+            "Hacer clic en <b>'Carga de Stock Físico'</b>.",
+            "Recorrer los pasillos y escanear cada producto en su estantería.",
+            "Digitar el número exacto de unidades presentes físicamente.",
+            "Pulsar <b>'Finalizar y Enviar Conteo a Supervisión'</b>.",
+        ],
+        resultado_obtenido="Planilla de relevamiento asentada para posterior comparación y ajuste por Administración.",
+        validaciones_advertencias="El Picker no puede alterar el saldo maestro directamente; su función es registrar la evidencia física fiel.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Ver Stock en Tiempo Real",
+        icono_str="[📊]",
+        modulo="CONSULTA Y AYUDA",
+        proposito_funcional="Consulta ágil del inventario con buscador por SKU, código o descripción para verificar saldos y ubicación física sin salir de la operativa.",
+        datos_modificados="Ninguno (consulta de solo lectura).",
+        pasos_procedimiento=[
+            "Pulsar <b>'Ver Stock'</b>.",
+            "Escribir parte del nombre o código del producto.",
+            "Visualizar existencias, stock de seguridad y ubicación en racks.",
+        ],
+        resultado_obtenido="Localización y disponibilidad inmediata del artículo solicitado.",
+        validaciones_advertencias="Actualización en vivo conforme otros operarios registran despachos.",
+    )
+
+    agregar_ficha_boton(
+        story, est,
+        nombre_boton="Paleta de Comandos Picker (F2)",
+        icono_str="[⚡]",
+        modulo="CONFIGURACIÓN Y ACCESOS RÁPIDOS",
+        proposito_funcional="Lanzador instantáneo de funciones por teclado: pulsar F2 en cualquier pantalla para abrir directamente el diálogo de Entrada, Salida, Mercado Libre o Ver Stock.",
+        datos_modificados="Preferencia de interfaz.",
+        pasos_procedimiento=[
+            "Presionar la tecla <b>F2</b> en el teclado.",
+            "Escribir 'entrada', 'salida', 'ml' o 'stock'.",
+            "Presionar Enter para saltar inmediatamente a la pantalla deseada sin usar el ratón.",
+        ],
+        resultado_obtenido="Velocidad récord en el empaque y preparación de envíos.",
+        validaciones_advertencias="Disponible en todos los navegadores y clientes de escritorio.",
+    )
+
+    story.append(Spacer(1, 6))
+    agregar_tarjeta_referencia_rapida(story, est)
+    story.append(PageBreak())
+    agregar_formulario_firmas_autorizadas_iso(story, est, 2)
+    agregar_matriz_distribucion_copias(story, est, 3)
+
+    doc.build(story, canvasmaker=crear_canvas_iso_upel(codigo_doc, titulo_doc, "3.0.0"))
+    return ruta_destino
+
 
 # =============================================================================
 # 5. GENERADOR MAESTRO Y GENERAL
@@ -1464,6 +1804,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
 
     rutas = {
         "operador": base_dir / "Manual_Operador.pdf",
+        "picker": base_dir / "Manual_Picker.pdf",
         "administrador": base_dir / "Manual_Administrador.pdf",
         "master": base_dir / "Manual_Master.pdf",
         "consulta": base_dir / "Manual_Consulta.pdf",
@@ -1472,6 +1813,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
     }
 
     construir_manual_operador(rutas["operador"])
+    construir_manual_picker(rutas["picker"])
     construir_manual_administrador(rutas["administrador"])
     construir_manual_master(rutas["master"])
     construir_manual_consulta(rutas["consulta"])
