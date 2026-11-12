@@ -889,11 +889,74 @@ StockAgent/
 │   ├── Manual_General.pdf             # Compendio integral de todos los roles
 │   └── generar_manual_pdf.py          # Script automatizado de compilación PDF (ReportLab)
 ├── src/                               # Código fuente modular y desacoplado
+│   ├── core/                          # Núcleo de excepciones y contratos de dominio
+│   │   ├── __init__.py                # Exportaciones de errores tipados
+│   │   └── exceptions.py              # Jerarquía unificada de errores (DomainError, AuthError, OrderStoreError)
+│   ├── auth/                          # Subpaquete de autenticación, usuarios y API keys
+│   │   ├── __init__.py                # Exportaciones públicas de auth
+│   │   ├── models.py                  # Dataclasses inmutables (User, ApiKey, UserRole)
+│   │   ├── password.py                # Hashing PBKDF2-HMAC-SHA256 y validación de políticas
+│   │   └── store.py                   # Repositorio transaccional UserStore (SQLite WAL)
+│   ├── orders/                        # Subpaquete de pedidos, clientes, auditoría y concurrencia
+│   │   ├── __init__.py                # Exportaciones públicas de orders
+│   │   ├── models.py                  # Dataclasses de pedidos (Pedido, Cliente, MensajeChat)
+│   │   ├── client_repo.py             # Mixin de gestión y código automático de clientes
+│   │   ├── chat_repo.py               # Mixin de canal colaborativo y menciones inteligentes
+│   │   ├── concurrency_repo.py        # Mixin de soft-locking temporal (TTL) e idempotencia SHA-256
+│   │   ├── audit_repo.py              # Mixin de bitácora transaccional y auditoría forense
+│   │   ├── closure_repo.py            # Mixin de cierres de turno y consolidación de jornada
+│   │   └── store.py                   # Repositorio central OrderStore con soporte WAL y migraciones
+│   ├── stock/                         # Subpaquete modular de dominio de stock e informes
+│   │   ├── __init__.py                # Exportaciones públicas del módulo stock
+│   │   ├── models.py                  # Dataclasses de descuento (RegistroDescuento, ReporteStock)
+│   │   ├── reports.py                 # Exportadores de informes (.xls con xlwt y .pdf con ReportLab)
+│   │   ├── replenishment.py           # Sugerencia y generación de pedidos a fábrica en Excel
+│   │   └── physical_inventory.py      # Comparación y generación de planillas unificadas de inventario físico
+│   ├── ui/                            # Subpaquete modular de interfaz gráfica de usuario (Flet)
+│   │   ├── __init__.py                # Exportaciones públicas de UI
+│   │   ├── theme.py                   # Paleta cromática corporativa, bordes y estilos temáticos
+│   │   ├── dashboard_presenter.py     # Presentador desacoplado del Dashboard reactivo
+│   │   ├── mixins/                    # Mixins modulares para InterfazFlet
+│   │   │   ├── __init__.py            # Exportaciones de mixins UI
+│   │   │   ├── responsive.py          # Mixin de diseño adaptativo, viewport móvil y drawer
+│   │   │   ├── document_viewer.py     # Mixin de apertura de informes, manuales PDF y compartición
+│   │   │   ├── session_sync.py        # Mixin de sincronización en tiempo real y chat de equipo
+│   │   │   └── dialog_dispatcher.py   # Mixin despachador de diálogos modales e impresión
+│   │   ├── components/                # Componentes visuales desacoplados
+│   │   │   ├── __init__.py            # Exportaciones de componentes
+│   │   │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
+│   │   │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
+│   │   │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
+│   │   │   ├── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
+│   │   │   ├── audio_manager.py       # Motor acústico Web Audio API y sintetizador polifónico
+│   │   │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y semáforo visual
+│   │   │   ├── mobile_nav.py          # Barra de navegación inferior 'Thumb Zone' para móviles
+│   │   │   ├── docking_manager.py     # Gestor de docking del sidebar (izq/der/arriba/abajo/oculto)
+│   │   │   └── print_labels.py        # Despachador de impresión térmica y A4 de rótulos QR
+│   │   └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
+│   │       ├── __init__.py            # Re-exportación unificada de diálogos
+│   │       ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
+│   │       ├── dlg_clientes.py        # Alta, edición y administración de clientes
+│   │       ├── dlg_usuarios.py        # Administración de cuentas, roles y reseteo de claves
+│   │       ├── dlg_smtp.py            # Configuración de servidor SMTP y credenciales cifradas
+│   │       ├── dlg_backup.py          # Copias de seguridad y restauración asistida
+│   │       ├── dlg_productos.py       # Catálogo, edición de productos y movimientos de stock
+│   │       ├── dlg_pedidos.py         # Carga, cancelación, desarme y edición de pedidos
+│   │       ├── dlg_historial_pedidos.py # Historial de pedidos con búsqueda y reimpresión de comprobantes
+│   │       ├── dlg_escaner.py         # Escáner QR de despacho y avance de estado logístico
+│   │       ├── dlg_cierre/            # Subpaquete modular de cierre de jornada y hoja de ruta
+│   │       ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
+│   │       ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
+│   │       ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full y stock físico
+│   │       ├── dlg_mercadolibre_descuento.py # Descuento Mercado Libre (Pistoleo en Vivo con lector y carga DOCX)
+│   │       ├── dlg_quiebre.py         # Detección temprana y visualización de productos en quiebre
+│   │       ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
+│   │       └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
 │   ├── agent.py                       # Orquestador del Agente de Stock
-│   ├── flet_gui.py                    # Fachada principal Flet, PWA y orquestación UI
+│   ├── flet_gui.py                    # Fachada y orquestador GUI principal (compuesto con mixins)
 │   ├── tray_icon.py                   # Controlador del icono en bandeja de Windows (pystray)
-│   ├── orders_store.py                # DAO SQLite para pedidos, clientes y auditoría
-│   ├── user_store.py                  # DAO SQLite para usuarios, perfiles y seguridad
+│   ├── orders_store.py                # Fachada retrocompatible hacia src.orders
+│   ├── user_store.py                  # Fachada retrocompatible hacia src.auth
 │   ├── product_store.py               # DAO SQLite para catálogo, reposición e inventario físico
 │   ├── stock_manager.py               # Fachada central de inventario y manipulación de catálogo
 │   ├── remito_parser.py               # Parser de remitos PDF
@@ -909,48 +972,7 @@ StockAgent/
 │   ├── ssl_manager.py                 # Generador automático de certificados X.509 para HTTPS
 │   ├── logger_config.py               # Configuración de logs rotativos en data/logs/stockagent.log
 │   ├── internal_chat.py               # Bot y Asistente Virtual con chips por rol
-│   ├── server.py                      # Servidor ASGI/FastAPI desacoplado, middleware, PWA y OTA updates
-│   │
-│   ├── stock/                         # Subpaquete modular de dominio de stock e informes
-│   │   ├── __init__.py                # Exportaciones públicas del módulo stock
-│   │   ├── models.py                  # Dataclasses de descuento (RegistroDescuento, ReporteStock)
-│   │   ├── reports.py                 # Exportadores de informes (.xls con xlwt y .pdf con ReportLab)
-│   │   ├── replenishment.py           # Sugerencia y generación de pedidos a fábrica en Excel
-│   │   └── physical_inventory.py      # Comparación y generación de planillas unificadas de inventario físico
-│   │
-│   └── ui/                            # Subpaquete modular de interfaz gráfica de usuario (Flet)
-│       ├── __init__.py                # Exportaciones públicas de UI
-│       ├── theme.py                   # Paleta cromática corporativa, bordes y estilos temáticos
-│       ├── components/                # Componentes visuales desacoplados
-│       │   ├── __init__.py            # Exportaciones de componentes
-│       │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
-│       │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
-│       │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
-│       │   ├── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
-│       │   ├── audio_manager.py       # Motor acústico Web Audio API y sintetizador polifónico
-│       │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y semáforo visual
-│       │   ├── mobile_nav.py          # Barra de navegación inferior 'Thumb Zone' para móviles
-│       │   ├── docking_manager.py     # Gestor de docking del sidebar (izq/der/arriba/abajo/oculto)
-│       │   └── print_labels.py        # Despachador de impresión térmica y A4 de rótulos QR
-│       └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
-│           ├── __init__.py            # Re-exportación unificada de diálogos
-│           ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
-│           ├── dlg_clientes.py        # Alta, edición y administración de clientes
-│           ├── dlg_usuarios.py        # Administración de cuentas, roles y reseteo de claves
-│           ├── dlg_smtp.py            # Configuración de servidor SMTP y credenciales cifradas
-│           ├── dlg_backup.py          # Copias de seguridad y restauración asistida
-│           ├── dlg_productos.py       # Catálogo, edición de productos y movimientos de stock
-│           ├── dlg_pedidos.py         # Carga, cancelación, desarme y edición de pedidos
-│           ├── dlg_historial_pedidos.py # Historial de pedidos con búsqueda y reimpresión de comprobantes
-│           ├── dlg_escaner.py         # Escáner QR de despacho y avance de estado logístico
-│           ├── dlg_cierre.py          # Cierre de jornada y generación de hoja de ruta
-│           ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
-│           ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
-│           ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full y stock físico
-│           ├── dlg_mercadolibre_descuento.py # Descuento Mercado Libre (Pistoleo en Vivo con lector y carga DOCX)
-│           ├── dlg_quiebre.py         # Detección temprana y visualización de productos en quiebre
-│           ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
-│           └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
+│   └── server.py                      # Servidor ASGI/FastAPI desacoplado, middleware, PWA y OTA updates
 ├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
 │   ├── lib/                           # Código fuente Dart (UI y servicios)
 │   │   ├── main.dart                  # Punto de entrada y enrutamiento inicial
@@ -1078,6 +1100,43 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
 
 13. **Indicadores Reactivos de Tareas Pendientes (`●`):**
     * Puntos rojos dinámicos en los títulos de categoría del menú acordeón y en la barra horizontal, que alertan inmediatamente al operario o supervisor sobre pedidos pendientes de cierre o tareas pendientes.
+
+14. **Jerarquía Unificada de Errores y Excepciones de Dominio (`src/core/exceptions.py`):**
+    * Creación del paquete `src/core/` con una estructura tipificada de excepciones de negocio e infraestructura para eliminar capturas genéricas silenciosas:
+      - `StockAgentError`: Raíz de todas las excepciones de la plataforma.
+      - `DomainError`, `InfrastructureError`, `ValidationError`: Clasificación de nivel superior.
+      - `AuthError` (`UserNotFoundError`, `AuthenticationError`, `AccountLockedError`, `InvalidCredentialsError`, `PasswordPolicyError`).
+      - `OrderStoreError` (`OrderNotFoundError`, `ClientNotFoundError`, `OrderLockError`).
+      - `StockError` (`ProductNotFoundError`, `InsufficientStockError`, `CatalogueError`).
+      - `DocumentError` (`ParserError`, `ReportError`, `PrintJobError`).
+      - `NetworkError` (`HeartbeatError`, `DatabaseConnectionError`).
+    * Cada excepción transporta código de error estandarizado (`code`), código de respuesta HTTP (`status_code`) y diccionario de metadatos contextuales (`context`) para auditoría forense inmediata.
+
+15. **Modularización Integral del Dominio de Usuarios y Seguridad (`src/auth/`):**
+    * Deconstrucción completa del archivo monolítico `src/user_store.py` (anteriormente de más de 1,040 líneas) en el paquete `src/auth/`:
+      - **`models.py`:** Entidades inmutables `User`, `ApiKey`, `UserRole` y tuplas de autorización `USER_ROLES`.
+      - **`password.py`:** Módulo criptográfico aislado con hashing `PBKDF2-HMAC-SHA256`, sal criptográfica aleatoria de 32 bytes, 100,000 iteraciones y verificación segura contra ataques de temporización (`hmac.compare_digest`).
+      - **`store.py`:** Repositorio transaccional `UserStore` en SQLite WAL, gestión de intentos fallidos, bloqueo preventivo y preferencias de interfaz.
+      - **`src/user_store.py` (Fachada):** Fachada retrocompatible de 35 líneas que re-exporta los símbolos con 100% de paridad funcional para toda la aplicación y tests.
+
+16. **Modularización Integral del Dominio de Pedidos y Auditoría (`src/orders/`):**
+    * Deconstrucción del archivo monolítico `src/orders_store.py` (anteriormente de más de 1,690 líneas) en el paquete `src/orders/` bajo el patrón Repository Mixin:
+      - **`models.py`:** Modelos de datos `Pedido`, `Cliente`, `MensajeChat`, `LogAuditoria`, `CierreJornada`.
+      - **`client_repo.py` (`ClientRepositoryMixin`):** CRUD de clientes, gestión de domicilios/teléfonos y autogeneración de códigos únicos (`CLI-XXXXXX`).
+      - **`chat_repo.py` (`ChatRepositoryMixin`):** Canal de mensajería interna, contadores de no leídos por usuario y etiquetado dinámico de pedidos (`#PED-XXXX`).
+      - **`concurrency_repo.py` (`ConcurrencyRepositoryMixin`):** Concesiones temporales de edición (Lease/TTL de 5 min) e idempotencia criptográfica SHA-256 para evitar duplicación ante microcortes.
+      - **`audit_repo.py` (`AuditRepositoryMixin`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de IPs, sesiones y usuarios.
+      - **`closure_repo.py` (`ClosureRepositoryMixin`):** Consolidación de cierres de turno, cálculo de métricas de bultos y archivo seguro de informes.
+      - **`store.py` (`OrderStore`):** Repositorio central que compone todos los mixins, gestiona transacciones atómicas y migraciones del esquema SQLite.
+      - **`src/orders_store.py` (Fachada):** Fachada retrocompatible de 30 líneas que preserva íntegramente las importaciones históricas.
+
+17. **Desacoplamiento de la GUI en Mixins de Composición (`src/ui/mixins/`):**
+    * Descomposición de la clase coordinadora `InterfazFlet` (`src/flet_gui.py`) en mixins de responsabilidad única:
+      - **`ResponsiveLayoutMixin` (`src/ui/mixins/responsive.py`):** Detección de dispositivos móviles y tablets, dimensiones adaptables de ancho/alto, control del ciclo de vida del drawer y adaptación reactiva a redimensionamientos.
+      - **`DocumentViewerMixin` (`src/ui/mixins/document_viewer.py`):** Visualización de informes, generación dinámica de manuales de rol en PDF, exploración de carpetas del sistema y compartición por correo o WhatsApp.
+      - **`SessionSyncMixin` (`src/ui/mixins/session_sync.py`):** Sincronización colaborativa entre pestañas/terminales LAN, toasts contextuales, insignias dinámicas y chat de equipo.
+      - **`DialogDispatcherMixin` (`src/ui/mixins/dialog_dispatcher.py`):** Despacho centralizado y apertura de todos los modales de la plataforma e impresión de rótulos térmicos y A4.
+    * La clase `InterfazFlet` ahora hereda directamente de estos cuatro mixins, reduciendo sensiblemente el tamaño del archivo, eliminando duplicación y mejorando la testeabilidad sin alterar ninguna signatura pública.
 
 ### Esquema de Bases de Datos SQLite
 

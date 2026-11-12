@@ -8,7 +8,8 @@ Aplicación cliente nativa en **Flutter** con arquitectura desacoplada, diseñad
 
 A diferencia de versiones anteriores basadas en WebViews, la aplicación móvil ahora es **100% nativa en Flutter**:
 
-* **Consumo de API REST (/api/v1):** Se comunica con el backend mediante peticiones JSON estándar y sin estado (`Bearer Token`), liberando la memoria del servidor de la PC.
+* **Consumo de API REST (/api/v1):** Se comunica con el backend modular mediante peticiones JSON estándar y sin estado (`Bearer Token`), conectando directamente con los módulos de dominio desacoplados (`src.auth` para autenticación y `src.orders` para gestión de pedidos y despacho).
+* **Manejo Estructurado de Errores (`src.core.exceptions`):** Las respuestas de error del servidor retornan códigos tipificados y consistentes (ej. `AUTH_ACCOUNT_LOCKED`, `ORDER_NOT_FOUND`), permitiendo a la app móvil mostrar alertas precisas y descriptivas en pantalla.
 * **Sesión Segura y Roles:** Login nativo con verificación de credenciales y roles (`operador`, `administrador`, `master`).
 * **Resiliencia Offline:** Los conteos de inventario se guardan continuamente en almacenamiento local del teléfono. Si el operario entra a un sector sin Wi-Fi, no pierde ni un solo escaneo.
 * **Feedback Háptico y Sonoro:** Confirmación inmediata por vibración y pitido auditivo tras cada lectura válida de código de barras o rótulo QR.
