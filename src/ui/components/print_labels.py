@@ -23,9 +23,12 @@ def listar_impresoras_sistema() -> list[str]:
             "-Command",
             "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True, "timeout": 6}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        res = subprocess.run(cmd, **kwargs)
         if res.returncode == 0:
-            lineas = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+            lineas = {l.strip() for l in res.stdout.splitlines() if l.strip()}
             return sorted(lineas)
     except Exception:
         pass
@@ -43,7 +46,10 @@ def imprimir_directo_spooler(ruta_pdf: Path, impresora: str) -> bool:
             "-Command",
             f"Start-Process -FilePath '{ruta_pdf.resolve()}' -Verb PrintTo -ArgumentList '\"{impresora}\"' -PassThru | Out-Null",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True, "timeout": 10}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        res = subprocess.run(cmd, **kwargs)
         return res.returncode == 0
     except Exception:
         return False

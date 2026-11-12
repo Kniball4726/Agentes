@@ -1,12 +1,31 @@
 """Diálogo modal para la configuración de preferencias de interfaz del usuario."""
 
+from __future__ import annotations
+
 from typing import Any
 import flet as ft
+
+from ..components.print_labels import listar_impresoras_sistema
 from ..theme import ROJO
 from ..user_preferences import (
-    obtener_preferencias_usuario,
     guardar_preferencia_usuario,
+    obtener_preferencias_usuario,
 )
+
+_POSICIONES_VALIDAS = ("izquierda", "derecha", "arriba", "abajo", "oculto")
+
+
+def _construir_opciones_impresoras(
+    impresoras: list[str],
+    impresora_actual: str,
+) -> tuple[list[ft.dropdown.Option], str]:
+    """Genera opciones deduplicadas de impresoras y el valor seleccionado válido."""
+    unicas = list(dict.fromkeys(impresoras))
+    opciones = [ft.dropdown.Option("", "Abrir en visor PDF del sistema")]
+    for imp in unicas:
+        opciones.append(ft.dropdown.Option(imp, f"🖨️ {imp}"))
+    valor = impresora_actual if impresora_actual in unicas else ""
+    return opciones, valor
 
 
 def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None) -> None:
@@ -17,22 +36,58 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
     username = interfaz.usuario_actual.username
     prefs = obtener_preferencias_usuario(username)
 
-    pos_actual = getattr(interfaz, "posicion_sidebar", "izquierda")
-    if not pos_actual:
-        pos_actual = prefs.get("posicion_sidebar", "izquierda")
+    pos_actual = getattr(interfaz, "posicion_sidebar", "") or prefs.get("posicion_sidebar", "izquierda")
+    if pos_actual not in _POSICIONES_VALIDAS:
+        pos_actual = "izquierda"
 
-    impresora_actual = prefs.get("impresora_termica", "")
+    impresora_actual = str(prefs.get("impresora_termica", "") or "")
     impresion_directa_actual = bool(prefs.get("impresion_directa", False))
+
+    titulo_texto = ft.Text(
+        "Preferencias de Interfaz",
+        weight=ft.FontWeight.BOLD,
+        size=18,
+        color=interfaz.texto,
+    )
+    subtitulo_texto = ft.Text(
+        "Personaliza la apariencia, navegación y dispositivos de tu usuario.",
+        size=12,
+        color=interfaz.secundario,
+    )
+    divisor_cabecera = ft.Divider(height=12, color=interfaz.borde)
+    lbl_tema = ft.Text("TEMA VISUAL", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
+    lbl_navegacion = ft.Text("DISPOSICIÓN DE NAVEGACIÓN", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
+    lbl_impresion = ft.Text("IMPRESIÓN Y DISPOSITIVOS", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
+    nota_pie = ft.Text(
+        "Tus elecciones se guardan automáticamente para tus próximas sesiones.",
+        size=11,
+        italic=True,
+        color=interfaz.secundario,
+    )
+
+    def _refrescar_colores_dialogo() -> None:
+        titulo_texto.color = interfaz.texto
+        subtitulo_texto.color = interfaz.secundario
+        divisor_cabecera.color = interfaz.borde
+        lbl_tema.color = interfaz.secundario
+        lbl_navegacion.color = interfaz.secundario
+        lbl_impresion.color = interfaz.secundario
+        nota_pie.color = interfaz.secundario
 
     def al_cambiar_tema(e: Any) -> None:
         nuevo_oscuro = bool(e.control.value)
         if nuevo_oscuro != interfaz.modo_oscuro:
             interfaz.alternar_tema()
             guardar_preferencia_usuario(username, "modo_oscuro", nuevo_oscuro)
+            _refrescar_colores_dialogo()
+            try:
+                interfaz.page.update()
+            except Exception:
+                pass
 
     def al_cambiar_posicion(e: Any) -> None:
-        nueva_pos = str(e.control.value)
-        if nueva_pos in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
+        nueva_pos = str(e.control.value or "")
+        if nueva_pos in _POSICIONES_VALIDAS:
             guardar_preferencia_usuario(username, "posicion_sidebar", nueva_pos)
             interfaz.cambiar_posicion_sidebar(nueva_pos)
 
@@ -48,12 +103,13 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
         if interfaz.page and hasattr(interfaz.page, "pop_dialog"):
             try:
                 interfaz.page.pop_dialog()
+                interfaz.page.update()
             except Exception:
                 pass
 
     switch_tema = ft.Switch(
         label="Modo oscuro activado",
-        value=interfaz.modo_oscuro,
+        value=bool(interfaz.modo_oscuro),
         active_color=ROJO,
         on_change=al_cambiar_tema,
     )
@@ -73,13 +129,11 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
     )
 
     impresoras = listar_impresoras_sistema()
-    opciones_impresora = [ft.dropdown.Option("", "Abrir en visor PDF del sistema")]
-    for imp in impresoras:
-        opciones_impresora.append(ft.dropdown.Option(imp, f"🖨️ {imp}"))
+    opciones_impresora, valor_impresora = _construir_opciones_impresoras(impresoras, impresora_actual)
 
     dropdown_impresora = ft.Dropdown(
         label="Impresora de rótulos térmicos",
-        value=impresora_actual if impresora_actual in impresoras else "",
+        value=valor_impresora,
         options=opciones_impresora,
         on_select=al_cambiar_impresora,
         width=380,
@@ -95,19 +149,19 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
 
     contenido = ft.Column(
         [
-            ft.Text("Personaliza la apariencia, navegación y dispositivos de tu usuario.", size=12, color=interfaz.secundario),
-            ft.Divider(height=12, color=interfaz.borde),
-            ft.Text("TEMA VISUAL", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+            subtitulo_texto,
+            divisor_cabecera,
+            lbl_tema,
             switch_tema,
             ft.Container(height=4),
-            ft.Text("DISPOSICIÓN DE NAVEGACIÓN", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+            lbl_navegacion,
             dropdown_posicion,
             ft.Container(height=4),
-            ft.Text("IMPRESIÓN Y DISPOSITIVOS", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+            lbl_impresion,
             dropdown_impresora,
             switch_impresion_directa,
             ft.Container(height=4),
-            ft.Text("Tus elecciones se guardan automáticamente para tus próximas sesiones.", size=11, italic=True, color=interfaz.secundario),
+            nota_pie,
         ],
         spacing=6,
         tight=True,
@@ -119,7 +173,7 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.TUNE, color=ROJO, size=24),
-                ft.Text("Preferencias de Interfaz", weight=ft.FontWeight.BOLD, size=18, color=interfaz.texto),
+                titulo_texto,
             ],
             spacing=10,
         ),
@@ -133,5 +187,6 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
     try:
         interfaz.page.show_dialog(dialogo)
         interfaz.page.update()
-    except Exception:
-        pass
+    except Exception as error:
+        if hasattr(interfaz, "notificar"):
+            interfaz.notificar(f"No se pudo abrir Preferencias de Interfaz: {error}")
