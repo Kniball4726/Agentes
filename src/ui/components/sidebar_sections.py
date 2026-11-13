@@ -124,7 +124,6 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                     ("Cargar / Armar Pedido", ft.Icons.POST_ADD, interfaz.mostrar_crear_pedido),
                     ("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                     ("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
-                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                 ],
             ),
             SeccionMenu(
@@ -147,6 +146,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
+                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                     ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
@@ -219,6 +219,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
+                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                     ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
@@ -239,7 +240,6 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 icono=ft.Icons.BUILD,
                 items=[
                     *herramientas_comunes,
-                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                 ],
             ),
         ]

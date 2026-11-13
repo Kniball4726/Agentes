@@ -27,7 +27,10 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         can_reveal_password=True,
         expand=True,
     )
-    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+    actual = interfaz.usuario_actual
+    actual_es_master = bool(actual and actual.role == "master")
+    actual_es_admin = bool(actual and actual.role == "administrador")
+    es_master = actual_es_master
     roles_creables = ["administrador", "operador", "picker", "consulta"] if es_master else ["operador", "picker", "consulta"]
     nuevo_rol = ft.Dropdown(
         label="Rol",
@@ -133,10 +136,12 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         interfaz.page.show_dialog(dlg_edit)
 
     def actualizar_lista() -> None:
+        nonlocal actual, actual_es_master, actual_es_admin, es_master
         usuarios.controls.clear()
         actual = interfaz.usuario_actual
         actual_es_master = bool(actual and actual.role == "master")
         actual_es_admin = bool(actual and actual.role == "administrador")
+        es_master = actual_es_master
         bloqueados = (
             interfaz.user_store.list_locked_usernames()
             if hasattr(interfaz.user_store, "list_locked_usernames")

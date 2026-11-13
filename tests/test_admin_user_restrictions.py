@@ -141,6 +141,43 @@ class TestAdminUserRestrictions(unittest.TestCase):
         self.assertIn("@supervisor2", texto_unido)
         self.assertIn("@operario1", texto_unido)
 
+    def test_master_can_unlock_user_and_reset_password_without_name_error(self):
+        """Verifica que el master pueda desbloquear usuarios y abrir el modal de reset de clave sin NameError."""
+        # Bloquear a operario1
+        for _ in range(5):
+            self.u_store.authenticate("operario1", "clave_incorrecta_123")
+        self.assertIn("operario1", self.u_store.list_locked_usernames())
+
+        self.interfaz.usuario_actual = self.master_user
+        mostrar_dialogo_gestion_usuarios(self.interfaz)
+        dlg = self.page.dialogos[0]
+        col_content = dlg.content.content
+        usuarios_col = col_content.controls[7]
+
+        # Buscar fila de operario1
+        fila_operario = None
+        for fila in usuarios_col.controls:
+            for c in fila.controls:
+                if isinstance(c, ft.Column):
+                    for t in c.controls:
+                        if hasattr(t, "value") and "@operario1" in str(t.value):
+                            fila_operario = fila
+                            break
+
+        self.assertIsNotNone(fila_operario)
+        boton_desbloquear = fila_operario.controls[2]
+        boton_reset = fila_operario.controls[4]
+
+        self.assertFalse(boton_desbloquear.disabled)
+        # Ejecutar on_click de desbloquear
+        boton_desbloquear.on_click(None)
+        self.assertNotIn("operario1", self.u_store.list_locked_usernames())
+
+        # Ejecutar on_click de reset de clave
+        boton_reset.on_click(None)
+        # Debe abrir el diálogo de reset sin NameError
+        self.assertGreaterEqual(len(self.page.dialogos), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

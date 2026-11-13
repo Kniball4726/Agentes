@@ -734,9 +734,11 @@ class FletGuiTests(unittest.TestCase):
         self.assertNotIn("Gestión de Clientes", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
 
         self.assertIn("Historial de Pedidos", botones_por_seccion["INFORMES"])
-        self.assertIn("Imprimir Descuento", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
+        self.assertIn("Imprimir Descuento", botones_por_seccion["INFORMES"])
         self.assertNotIn("Historial de Pedidos", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
+        self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
         self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("CLIENTES", []))
+
 
 
 

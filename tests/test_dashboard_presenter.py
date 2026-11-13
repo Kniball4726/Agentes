@@ -123,6 +123,8 @@ class TestDashboardPresenter(unittest.TestCase):
         self.assertEqual(tile.title.overflow, ft.TextOverflow.ELLIPSIS)
         self.assertTrue(tile.subtitle.no_wrap)
         self.assertTrue(tile.trailing.tight)
+        iconos = [btn.icon for btn in tile.trailing.controls if isinstance(btn, ft.IconButton)]
+        self.assertIn(ft.Icons.PRINT, iconos)
 
     def test_renderizar_pedidos_preparados_boton_editar_operador(self):
         """Verifica que para un operador aparezca el botón de editar pedido."""

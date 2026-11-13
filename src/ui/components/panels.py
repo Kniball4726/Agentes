@@ -94,14 +94,35 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     interfaz.lista_pedidos_preparados.height = 260 if es_movil else None
 
     # Panel LADO DERECHO: Informes generados
+    acciones_derecha: list[ft.Control] = [ft.Icon(icono_derecha, color=ROJO, size=18)]
+    if not es_master:
+        btn_imprimir = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.PRINT, size=13, color=ft.Colors.WHITE),
+                    ft.Text("Imprimir Descuento", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                ],
+                spacing=4,
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            bgcolor=ROJO,
+            border_radius=6,
+            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+            tooltip="Consultar y reimprimir comprobantes de descuento",
+            on_click=lambda _: interfaz.mostrar_imprimir_descuentos(),
+            ink=True,
+        )
+        acciones_derecha.insert(0, btn_imprimir)
+
     contenido_derecha = ft.Column(
         [
             ft.Row(
                 [
                     ft.Text(titulo_derecha, size=15, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ft.Icon(icono_derecha, color=ROJO, size=18),
+                    ft.Row(acciones_derecha, spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             interfaz.lista_informes,
         ],

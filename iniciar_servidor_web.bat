@@ -59,18 +59,20 @@ if exist "dist\StockAgent.exe" (
 
 echo [ERROR] No se encontro Python ni el ejecutable StockAgent.exe.
 echo Por favor instala Python 3.10+ o activa el entorno virtual .venv.
-pause
+if "!MODO_SILENCIOSO!"=="0" pause
 exit /b 1
 
 :FIN
 if errorlevel 1 (
-    echo.
-    echo ==================================================================
-    echo [ERROR] La aplicacion se cerro con error.
-    echo Revisa el archivo de log en data\logs\stockagent.log
-    echo ==================================================================
-    echo.
-    pause
+    if "!MODO_SILENCIOSO!"=="0" (
+        echo.
+        echo ==================================================================
+        echo [ERROR] La aplicacion se cerro con error.
+        echo Revisa el archivo de log en data\logs\stockagent.log
+        echo ==================================================================
+        echo.
+        pause
+    )
 ) else (
     if "!MODO_SILENCIOSO!"=="0" (
         echo.

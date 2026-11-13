@@ -13,7 +13,7 @@ set "CARPETA_TRABAJO=%~dp0"
 set "ACCESO_DIRECTO=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\StockAgent.lnk"
 
 echo Creando acceso directo en la carpeta de Inicio de Windows...
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%ACCESO_DIRECTO%'); $s.TargetPath = '%SCRIPT_VBS%'; $s.WorkingDirectory = '%CARPETA_TRABAJO%'; $s.WindowStyle = 7; $s.Description = 'StockAgent Servidor Web (Segundo Plano)'; $s.Save()"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%ACCESO_DIRECTO%'); $s.TargetPath = '%SCRIPT_VBS%'; $s.Arguments = '--no-browser'; $s.WorkingDirectory = '%CARPETA_TRABAJO%'; $s.WindowStyle = 7; $s.Description = 'StockAgent Servidor Web (Segundo Plano)'; $s.Save()"
 
 if exist "%ACCESO_DIRECTO%" (
     echo.

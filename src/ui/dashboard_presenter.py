@@ -250,6 +250,19 @@ def renderizar_informes_generados(interfaz: Any, informes: list[Path], mtimes_in
                 on_click=lambda _e, archivo=ruta: interfaz.seleccionar_informe(archivo),
                 trailing=ft.Row(
                     [
+                        *(
+                            [
+                                ft.IconButton(
+                                    icon=ft.Icons.PRINT,
+                                    tooltip="Imprimir comprobante de descuento",
+                                    icon_color=ROJO,
+                                    icon_size=18,
+                                    on_click=lambda _e, r=ruta: interfaz.mostrar_imprimir_descuentos(),
+                                )
+                            ]
+                            if (not es_comparativa and not es_fabrica)
+                            else []
+                        ),
                         ft.IconButton(
                             icon=ft.Icons.VISIBILITY_OUTLINED,
                             tooltip="Ver informe",

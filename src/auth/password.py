@@ -22,6 +22,18 @@ def hash_clave(clave: str) -> str:
 def verificar_clave(clave: str, hash_almacenado: str) -> bool:
     """Verifica una contraseña contra un hash almacenado de forma segura en tiempo constante."""
     try:
+        if ":" in hash_almacenado and "$" not in hash_almacenado:
+            salt_text, digest_text = hash_almacenado.split(":", maxsplit=1)
+            salt = bytes.fromhex(salt_text)
+            expected = bytes.fromhex(digest_text)
+            actual = hashlib.pbkdf2_hmac(
+                "sha256",
+                clave.encode("utf-8"),
+                salt,
+                PASSWORD_ITERATIONS,
+            )
+            return hmac.compare_digest(actual, expected)
+
         prefijo, salt, derivada = hash_almacenado.split("$")
         iteraciones = int(prefijo.split(":")[-1])
         candidata = hashlib.pbkdf2_hmac(
