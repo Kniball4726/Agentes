@@ -15,6 +15,7 @@ from typing import Any
 import urllib.parse
 import urllib.request
 
+from .. import secretos
 from ..paths import application_root
 
 CONFIG_PATH_DEFAULT = "data/config_telegram.json"
@@ -36,18 +37,31 @@ def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
         "notificar_seguridad": True,
         "notificar_cierre": True,
     }
+    necesita_migracion = False
     if ruta.exists():
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                raw_token = str(data.get("bot_token", "")).strip()
+                necesita_migracion = bool(raw_token and not secretos.esta_cifrado(raw_token))
+                try:
+                    token_descifrado = secretos.descifrar(raw_token)
+                except secretos.SecretoError:
+                    token_descifrado = ""
                 res = {
-                    "bot_token": str(data.get("bot_token", "")).strip(),
+                    "bot_token": token_descifrado,
                     "chat_id": str(data.get("chat_id", "")).strip(),
                     "activo": bool(data.get("activo", False)),
                     "notificar_quiebres": bool(data.get("notificar_quiebres", True)),
                     "notificar_seguridad": bool(data.get("notificar_seguridad", True)),
                     "notificar_cierre": bool(data.get("notificar_cierre", True)),
                 }
+        except Exception:
+            pass
+
+    if necesita_migracion:
+        try:
+            guardar_config_telegram(res, root_path=root_path)
         except Exception:
             pass
 
@@ -62,11 +76,13 @@ def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
 
 
 def guardar_config_telegram(config: dict[str, Any], root_path: Path | None = None) -> None:
-    """Guarda la configuración del bot de Telegram en disco."""
+    """Guarda la configuración del bot de Telegram en disco cifrando el token."""
     ruta = _obtener_ruta_config(root_path)
     ruta.parent.mkdir(parents=True, exist_ok=True)
+    a_guardar = dict(config)
+    a_guardar["bot_token"] = secretos.cifrar(str(a_guardar.get("bot_token") or "").strip())
     with open(ruta, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+        json.dump(a_guardar, f, indent=2, ensure_ascii=False)
 
 
 def enviar_mensaje_telegram(

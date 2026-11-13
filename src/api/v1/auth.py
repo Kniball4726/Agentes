@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..deps import crear_sesion, get_current_user, get_user_store, require_roles, revocar_sesion
 from ..schemas import LoginRequest, LoginResponse, UsuarioResponse
+from ...auth.models import USER_ROLES
 from ...user_store import UserStore
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
@@ -125,11 +126,18 @@ async def crear_api_key(
     if not client_name or not client_name.strip():
         raise HTTPException(status_code=400, detail="Debe indicar el nombre del cliente o sistema externo.")
 
-    raw_key, key_hash = user_store.create_api_key(client_name.strip(), role=role)
+    role_limpio = (role or "").strip().lower()
+    if role_limpio not in USER_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Rol no válido. Roles permitidos: {', '.join(USER_ROLES)}.",
+        )
+
+    raw_key, key_hash = user_store.create_api_key(client_name.strip(), role=role_limpio)
     return {
         "ok": True,
         "client_name": client_name.strip(),
-        "role": role,
+        "role": role_limpio,
         "api_key": raw_key,
         "message": "Guarde esta clave API en un lugar seguro. No se volverá a mostrar completa.",
     }

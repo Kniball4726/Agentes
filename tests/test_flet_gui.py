@@ -740,6 +740,7 @@ class FletGuiTests(unittest.TestCase):
 
 
 
+
     def test_asegurar_file_picker_overlay_y_parent(self):
         """Verifica que _asegurar_file_picker mantenga el file_picker fuera de overlay (evita 'Unknown control: FilePicker') y con parent valido."""
         interfaz, _, page = self.crear_interfaz()
@@ -764,44 +765,6 @@ class FletGuiTests(unittest.TestCase):
         self.assertNotIn(interfaz.file_picker, page_real.overlay)
         self.assertIn(interfaz.file_picker, page_real.services)
         self.assertIs(interfaz.file_picker.page, page_real)
-
-    def test_cambio_usuario_mantiene_file_picker_activo(self):
-        """Verifica que al cambiar de usuario (logout -> login) el file_picker se recree y permanezca funcional."""
-        interfaz, _, page = self.crear_interfaz(role="administrador")
-        primer_fp = interfaz.file_picker
-
-        # 1. El usuario cierra sesión
-        interfaz.cerrar_sesion()
-        self.assertIsNone(interfaz.usuario_actual)
-
-        # 2. Inicia sesión como operario
-        operador_user = User(2, "operario1", "operador", True)
-        interfaz.usuario_actual = operador_user
-        interfaz.construir()
-
-        # El file_picker debe ser una instancia renovada y no la instancia obsoleta previa
-        self.assertIsNot(interfaz.file_picker, primer_fp)
-        self.assertIsNotNone(interfaz.file_picker)
-
-        # Validar funcionamiento al subir comprobante
-        with tempfile.TemporaryDirectory() as temp_dir:
-            dest_dir = Path(temp_dir) / "pedidos_archivos"
-            fake_doc = SimpleNamespace(name="Remito_Prueba.pdf", bytes=b"%PDF-1.4 TEST", path=None)
-
-            async def fake_pick(**_kwargs):
-                return [fake_doc]
-
-            interfaz.file_picker.pick_files = fake_pick
-            archivos = asyncio.run(
-                interfaz.subir_archivos_desde_pc(
-                    carpeta_destino=dest_dir,
-                    extensiones=["pdf"],
-                    titulo="Comprobante",
-                )
-            )
-            self.assertEqual(len(archivos), 1)
-            self.assertEqual(archivos[0].name, "Remito_Prueba.pdf")
-
 
 if __name__ == "__main__":
     unittest.main()

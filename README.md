@@ -39,7 +39,7 @@
    - [Batería de Pruebas Unitarias y Aseguramiento de Calidad](#batería-de-pruebas-unitarias-y-aseguramiento-de-calidad)
 6. [Ecosistema Móvil Nativo (Flutter - Android e iOS)](#6-ecosistema-móvil-nativo-flutter---android-e-ios)
    - [Arquitectura del Cliente Móvil](#arquitectura-del-cliente-móvil)
-   - [Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat`)](#servidor-http-para-conexión-móvil-limpia-iniciar_servidor_movilbat)
+   - [Servidor Móvil HTTPS por Defecto y Opción HTTP (`iniciar_servidor_movil.bat`)](#servidor-móvil-https-por-defecto-y-opción-http-iniciar_servidor_movilbat)
    - [Compilación y Despliegue de APK para Android (`compilar_apk.bat`)](#compilación-y-despliegue-de-apk-para-android-compilar_apkbat)
    - [Actualizaciones Automáticas OTA (Over-The-Air) para Android](#actualizaciones-automáticas-ota-over-the-air-para-android)
    - [Diseño Responsive Integral y Experiencia Móvil](#diseño-responsive-integral-y-experiencia-móvil)
@@ -166,10 +166,12 @@ El acceso está protegido por cuentas locales con contraseñas cifradas en PBKDF
 
 ```mermaid
 flowchart TD
-    M["Master (Desarrollo)"] -->|Crea / Gestiona| A["Administradores"]
+    M["Master (Auditoria / Desarrollo)"] -->|Crea / Gestiona| A["Administradores"]
     M -->|Crea / Gestiona| O["Operadores"]
+    M -->|Crea / Gestiona| P["Pickers"]
     M -->|Crea / Gestiona| C["Consulta"]
     A -->|Crea / Gestiona| O
+    A -->|Crea / Gestiona| P
     A -->|Crea / Gestiona| C
     A -.->|Bloqueado| M
 ```
@@ -181,7 +183,7 @@ flowchart TD
 Para asegurar que cada miembro del equipo cuente con asistencia inmediata y documentación oficial estandarizada acorde a su nivel de autorización, **la barra lateral de navegación presenta en primer lugar la sección 'DOCUMENTACIÓN' con el botón directo 'Manual de Uso'**:
 
 * **Estructura Normalizada por Procedimientos Operativos Estándar (SOP - Botón a Botón):**
-  A partir de la versión **v3.0.0**, cada manual abandona el formato genérico y se estructura de manera modular y exhaustiva con **Fichas de Procedimiento Oficiales** que cubren el 100% de los botones e interactivos disponibles en el menú lateral de cada rol. Cada ficha contiene:
+  A partir de la versión **v3.0.0** (actualizada a **v3.1.0** en manuales operativos de rol y **v2.2.0** en el Compendio Maestro ISO/BPMN), cada manual se estructura de manera modular y exhaustiva con **Fichas de Procedimiento Oficiales** que cubren los comandos reales habilitados en el menú lateral de cada rol. Cada ficha contiene:
   1. **Encabezado y Metadatos:** Nombre del comando, icono del sistema, sección de pertenencia y atajo de teclado (`Ctrl + K` / `F2`).
   2. **Propósito y Alcance (Qué hace):** Definición clara del objetivo operativo o administrativo en el flujo de trabajo.
   3. **Requisitos y Perfil Autorizado:** Precondiciones, rol con permisos y reglas de segregación de funciones (*Separation of Duties - SoD*).
@@ -190,7 +192,7 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
   6. **Manejo de Errores, Excepciones y Buenas Prácticas:** Advertencias de seguridad, prevención de bloqueos y acciones correctivas.
 
 * **Control de Versiones y Responsabilidad Documental Institucional:**
-  Todos los manuales PDF generados incorporan en su portada formal dos tablas de control de calidad bajo normas ISO/BPM:
+  Todos los manuales PDF generados incorporan en su portada formal dos tablas de control de calidad bajo normas ISO/UPEL:
   * **Tabla 1 (Control Documental):**
     * **Elaborado por:** `Gregory Rodriguez`
     * **Revisado por:** ` ` *(Espacio en blanco reservado para firma de supervisión institucional)*
@@ -199,19 +201,21 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
     * `v1.0.0`: Versión inicial monolítica con arquitectura LAN y persistencia SQLite.
     * `v2.0.0`: Segregación estricta de funciones IAM (SoD), credenciales cifradas y PWA offline.
     * `v3.0.0`: Reestructuración integral botón a botón por fichas SOP para cada rol, módulo de auditoría de cierres descendente para administradores y visor documental Zero-Cache.
+    * `v3.1.0` / `v2.2.0`: Arquitectura completamente modular (`src/` + `Documentacion/pdf_engine/` + `Documentacion/procedimientos/`), endurecimiento HTTPS por defecto, Firewall en perfil privado, cifrado DPAPI/Fernet en secretos, enlaces con token HMAC `?dt=`, Swagger deshabilitado por defecto y matriz SoD de 5 roles.
 
-* **Manuales Oficiales Generados por Rol:**
-  * **Manual del Operador (`Manual_Operador.pdf`):** Cubre los 13 comandos operativos de depósito: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
-  * **Manual del Picker (`Manual_Picker.pdf`):** Cubre los procedimientos de preparación y recepción express: *Botonera Trío (Entrada, Salida, Descontar ML)*, *Ingreso de Fábrica*, *Generar Pedido a Fábrica*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Carga de Stock Físico (Inventario Ciego)*, *Ver Stock en Tiempo Real* y *Paleta de Comandos F2*.
-  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los 23 comandos de supervisión: *Panel Express (Entrada, Salida, Gestionar Productos, Ver Stock)*, *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios* y *Manual de Uso*.
-  * **Manual Master (`Manual_Master.pdf`):** Cubre los comandos técnicos de infraestructura y SoD: *Panel Express (Gestionar Usuarios, Registro de Auditoría)*, *API REST & Swagger UI*, *Gestión de API Keys*, *Sesiones Activas IAM*, *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP*, *Alertas Telegram*, *Mercado Libre API (Credenciales)*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
-  * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los 4 comandos de consulta y lectura: *Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
-  * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo con todos los procedimientos y la matriz SoD unificada.
+* **Manuales Oficiales Generados (8 PDFs):**
+  * **Manual del Operador (`Manual_Operador.pdf`):** Cubre la botonera rápida de carga y los comandos del operador: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Centro de Reportes / Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
+  * **Manual del Picker (`Manual_Picker.pdf`):** Alineado estrictamente con su menú lateral acotado por SoD: *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Mercadería*, *Ingreso de Fábrica*, *Egreso de Mercadería*, *Paleta de Comandos F2*, *Chat Interno* y *Manual de Uso* (acceso HTTPS `?dt=`).
+  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los módulos de supervisión y operación gerencial: *Panel Express (Entrada, Salida, Gestionar Productos, Ver Stock)*, *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios (Operador / Picker / Consulta)* y *Manual de Uso*.
+  * **Manual Master (`Manual_Master.pdf`):** Cubre los comandos técnicos de infraestructura, IAM y seguridad SoD: *Panel Express (Gestionar Usuarios, Registro de Auditoría)*, *Documentación y Estado API* (`STOCKAGENT_ENABLE_API_DOCS=0` por defecto), *Gestión de API Keys*, *Sesiones Activas IAM*, *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP (cifrado DPAPI/Fernet)*, *Alertas Telegram*, *Mercado Libre API (Credenciales cifradas)*, *Firewall Privado y Accesos LAN*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
+  * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los comandos de solo lectura: *Centro de Reportes / Abrir informe*, *Historial de Pedidos (solo lectura)*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
+  * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo de 12 capítulos ISO/UPEL con diagramas BPMN, infraestructura HTTPS/Firewall, gestión del cambio SGC y la matriz SoD unificada de 5 roles.
+  * **Manual Clásico de Uso (`Manual_de_Uso_StockAgent.pdf`):** Documento general generado directamente desde `Documentacion/generar_manual_pdf.py`.
 
-* **Visualización Dinámica e Inmediata (Zero-Cache):**
-  * **Modo Web / Red Local:** El servidor expone el endpoint seguro `/documentacion/{archivo}` y abre el PDF en una pestaña del navegador con visualización directa (*inline*) y control de versiones dinámico (`?v=timestamp`). Cada vez que la documentación es actualizada en el servidor, **los cambios se reflejan de inmediato para todos los usuarios sin necesidad de limpiar la caché del navegador ni reiniciar la aplicación**.
+* **Visualización Dinámica e Inmediata Protegida por Token (Zero-Cache):**
+  * **Modo Web / Red Local:** El servidor expone los endpoints protegidos `/documentacion/{archivo}` y `/documentos/ver` con verificación de sesión o token HMAC firmado (`?v=timestamp&dt=<token>`). Cada vez que la documentación se regenera, **los cambios se reflejan de inmediato en los clientes autenticados sin limpiar la caché del navegador ni exponer documentos sin autorización**.
   * **Modo Escritorio Nativo:** Abre el documento PDF directamente en el visor predeterminado del sistema operativo (Edge, Adobe Acrobat, Chrome, etc.).
-  * **Autogeneración Desatendida:** Si algún archivo PDF no estuviese presente en el disco, el sistema lo compila automáticamente en tiempo real mediante `generar_todos_los_manuales()`.
+  * **Autogeneración Desatendida:** Si algún archivo PDF no estuviese presente en el disco, el sistema lo compila automáticamente mediante `generar_todos_los_manuales()`.
 
 ---
 
@@ -619,32 +623,31 @@ Perfil restringido de solo lectura para auditoría externa, vendedores o supervi
 
 La siguiente matriz detalla de forma oficial la distribución de responsabilidades y segregación de funciones (*Separation of Duties - SoD*) implementada en StockAgent:
 
-| Módulo / Funcionalidad | Rol Master (`Desarrollo`) | Rol Administrador | Rol Operador | Rol Consulta | Justificación y Regla SoD |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Master desacoplado de la operativa diaria; operadores y administradores procesan comprobantes. |
-| **Descuento Mercado Libre (DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Gestión operativa de ventas online habilitada para depósito y gerencia. |
-| **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | **Novedad:** Operadores y Administradores pueden descontar lotes de Mercado Full de forma ágil. |
-| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización y descuento de ventas online reservada a administradores. |
-| **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque y discrepancias entre operarios y supervisores. |
-| **Desarmar Pedido y Restituir Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Retorno atómico de unidades físicas al inventario ante cancelaciones o rechazos. |
-| **Consulta y Reimpresión de Comprobantes** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | Visualización y reimpresión de comprobantes PDF, Excel y Word originales. |
-| **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4 sin desperdicio. |
-| **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Consolidación diaria de pedidos, cierre contable y emisión de hojas de ruta de transporte. |
-| **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta de turnos anteriores. |
-| **Ingreso de Fábrica (Recepción de Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | **Novedad:** Escáner rápido con lotes de 12 y steppers +/-. Operador solo suma; Admin puede además sobrescribir y procesar archivos. |
-| **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
-| **Ajuste de Stock y Entrada de Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Modificación de existencias por recepción mayorista reservada a supervisión. |
-| **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
-| **Comparativa de Stock Físico** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Conciliación de recuentos físicos masivos y detección de sobrantes/faltantes. |
-| **Generación de Pedido a Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Cálculo automático de compras sugeridas y exportación a planilla oficial. |
-| **Métricas, Heatmap y Radar de Anomalías** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Inteligencia de negocios, slotting de depósito y prevención de desabastecimiento. |
-| **Sincronización Total con Excel (Flush)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Volcado masivo y atómico desde SQLite hacia la planilla maestra `Productos.xlsx`. |
-| **Gestión de Cuentas (Operador y Consulta)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Creación, reseteo de claves y desbloqueo de usuarios del turno. |
-| **Gestión de Cuentas (Administrador)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | Solo Master puede promover, editar o dar de baja cuentas con rol Administrador. |
-| **Auditoría Forense y Salud del Servidor** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | **SoD Estricto:** Evita que el auditado tenga acceso o altere los registros de auditoría. |
-| **Configuración Telegram y Servidor SMTP** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | Custodia de credenciales corporativas, tokens de bots y servicios de correo. |
-| **Copias de Seguridad (Backups .zip)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Generación de respaldos comprimidos de las 3 bases SQLite y el catálogo. |
-| **Restauración de Documentos (Rollback Lotes)**| ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | **Delegación SoD a Master:** Reversión histórica de lotes restringida al máximo nivel de seguridad. |
+| Módulo / Funcionalidad | Rol Master (`Auditoria`) | Rol Administrador | Rol Operador | Rol Picker | Rol Consulta | Justificación y Regla SoD |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | Master y Picker desacoplados de la carga administrativa de pedidos/clientes. |
+| **Descuento Mercado Libre (Pistoleo / DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Preparación y despacho ágil online habilitado en depósito. |
+| **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Operadores, Pickers y Administradores procesan envíos a fulfillment. |
+| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización de ventas por API reservada a administradores (credenciales bajo Master). |
+| **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Denegado | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque entre operarios, pickers y supervisores. |
+| **Desarmar Pedido y Restituir Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Retorno atómico de unidades físicas al inventario ante cancelaciones o rechazos. |
+| **Consulta / Historial y Reimpresión** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ✅ Habilitado | El Picker no accede a historial ni tarjetas de pedidos; Consulta opera en solo lectura. |
+| **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4. |
+| **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Consolidación diaria de pedidos y emisión de hojas de ruta de transporte. |
+| **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta previas. |
+| **Movimientos Rápidos (Ingreso / Egreso Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Entradas/egresos ágiles con justificación tipificada y auditoría inmediata. |
+| **Ingreso de Fábrica (Recepción de Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Escáner rápido con lotes y steppers +/-; Administrador puede además procesar archivos y sobrescribir. |
+| **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ En sidebar web | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
+| **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
+| **Comparativa Stock Físico / Pedido Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Conciliación masiva y cálculo automático de reposición para gerencia. |
+| **Métricas, Heatmap y Radar de Anomalías** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Inteligencia operativa, slotting ABC y detección estadística Z-score. |
+| **Sincronización Total con Excel (Flush)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Volcado masivo y atómico desde SQLite hacia `Productos.xlsx`. |
+| **Gestión de Cuentas (Operador, Picker y Consulta)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Creación, reseteo de claves y desbloqueo de usuarios operativos. |
+| **Gestión de Cuentas (Administrador)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Solo Master puede promover, editar o dar de baja cuentas Administrador. |
+| **Auditoría Forense, API Keys y Salud Servidor** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | **SoD Estricto:** Imparcialidad técnica; el Administrador no audita sus propias operaciones. |
+| **Configuración Telegram, SMTP y ML Credenciales** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Custodia exclusiva de secretos cifrados (DPAPI / Fernet). |
+| **Copias de Seguridad (Backups .zip)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Generación de respaldos comprimidos de las 3 bases SQLite y el catálogo. |
+| **Restauración de Documentos (Rollback Lotes)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Reversión histórica de lotes restringida exclusivamente al perfil Master. |
 
 ---
 
@@ -829,7 +832,7 @@ Para garantizar una experiencia ágil, robusta y sin inconsistencias en entornos
   * `top`: Barra superior tipo cinta de opciones (Ribbon).
   * `bottom`: Barra inferior apilada.
   * `hidden`: Pantalla completa maximizada para lectura continua de pedidos o monitores de empaque.
-* **Paleta de Comandos Rápida (F2 / Ctrl+K):** Menú rápido flotante con filtro en tiempo real que mapea y expone todos los módulos, botones y funciones permitidas para el rol activo (Operador, Administrador, Master o Consulta), navegable 100% por teclado.
+* **Paleta de Comandos Rápida (F2 / Ctrl+K):** Menú rápido flotante con filtro en tiempo real que mapea y expone todos los módulos, botones y funciones permitidas para el rol activo (`Master`, `Administrador`, `Operador`, `Picker` o `Consulta`), navegable 100% por teclado.
 
 ### 4.5 Fase 3: Optimización de Rendimiento, Paginación, Caché SKU y Demonio Heartbeat
 * **Paginación Inteligente del Historial:** La tabla de pedidos soporta paginación en servidor (`page_size = 10, 25, 50, 100`), evitando caídas de rendimiento o saturación de DOM cuando existen miles de comprobantes archivados.
@@ -843,7 +846,7 @@ Para garantizar una experiencia ágil, robusta y sin inconsistencias en entornos
 * **Barra de Navegación "Thumb Zone" Móvil (`mobile_nav.py`):** En resoluciones móviles (< 768px), la interfaz conmuta automáticamente a una barra inferior `ft.NavigationBar` situada en la zona ergonómica del pulgar, dando acceso con 1 toque a los 5 destinos críticos: Pedidos, Escanear ML, Fábrica, Cierre y Chat.
 * **Buffer de Escaneo Offline y Despacho en Lote (`colaOffline`):** En el cliente móvil Flutter (`stockagent_mobile`), los escaneos en zonas muertas de Wi-Fi de depósito se almacenan en un buffer local seguro con vibración háptica; al restablecerse la conectividad, el banner de advertencia ofrece sincronizar el lote completo mediante el endpoint batch `/api/v1/despacho/escanear-lote`.
 * **Herramientas de Despliegue Rápido de PWA y Móvil:**
-  * `crear_acceso_directo_cliente.bat`: Genera un acceso directo en el escritorio de Windows para lanzar la interfaz web en modo aplicación nativa sin barra de direcciones (`--app=http://<IP>:8550`).
+  * `crear_acceso_directo_cliente.bat`: Genera un acceso directo en el escritorio de Windows para lanzar la interfaz web en modo aplicación nativa sin barra de direcciones (`--app=https://<IP>:8550` por defecto, o `--http` para redes privadas aisladas sin TLS).
   * `exportar_stockagent_mobile.bat`: Script de desacoplamiento automático para extraer el proyecto Flutter móvil como repositorio independiente listo para compilar APKs de producción.
 
 ---
@@ -881,141 +884,69 @@ StockAgent/
 │   ├── Mayoristas/
 │   ├── Canjes/
 │   └── MercadoLibre/
-├── Documentacion/                     # Manuales oficiales en PDF discriminados por roles
+├── Documentacion/                     # Manuales oficiales en PDF y motor modular de compilación
 │   ├── Manual_Operador.pdf            # Manual oficial para Rol Operador
+│   ├── Manual_Picker.pdf              # Manual oficial para Rol Picker
 │   ├── Manual_Administrador.pdf       # Manual oficial para Rol Administrador
 │   ├── Manual_Master.pdf              # Manual oficial para Rol Master (Técnico / Forense)
 │   ├── Manual_Consulta.pdf            # Manual oficial para Rol Consulta
-│   ├── Manual_General.pdf             # Compendio integral de todos los roles
-│   └── generar_manual_pdf.py          # Script automatizado de compilación PDF (ReportLab)
+│   ├── Manual_General.pdf             # Compendio maestro institucional ISO/UPEL (12 capítulos)
+│   ├── Manual_Maestro_Imprimible.pdf  # Versión maestro imprimible con tablas de firmas/copias
+│   ├── Manual_de_Uso_StockAgent.pdf   # Manual general clásico compilado por generar_manual_pdf.py
+│   ├── pdf_engine/                    # Motor modular ReportLab/ISO/BPMN (constants, canvas_iso, components_apa, forms_sgc, manuals_*)
+│   ├── procedimientos/                # Fichas SOP modulares por rol (fichas, rol_*, runner)
+│   ├── generar_manual_pdf.py          # Fachada retrocompatible hacia Documentacion.pdf_engine
+│   └── manuales_procedimientos.py     # Fachada retrocompatible hacia Documentacion.procedimientos
 ├── src/                               # Código fuente modular y desacoplado
-│   ├── core/                          # Núcleo de excepciones y contratos de dominio
-│   │   ├── __init__.py                # Exportaciones de errores tipados
-│   │   └── exceptions.py              # Jerarquía unificada de errores (DomainError, AuthError, OrderStoreError)
-│   ├── auth/                          # Subpaquete de autenticación, usuarios y API keys
-│   │   ├── __init__.py                # Exportaciones públicas de auth
-│   │   ├── models.py                  # Dataclasses inmutables (User, ApiKey, UserRole)
-│   │   ├── password.py                # Hashing PBKDF2-HMAC-SHA256 y validación de políticas
-│   │   └── store.py                   # Repositorio transaccional UserStore (SQLite WAL)
-│   ├── orders/                        # Subpaquete de pedidos, clientes, auditoría y concurrencia
-│   │   ├── __init__.py                # Exportaciones públicas de orders
-│   │   ├── models.py                  # Dataclasses de pedidos (Pedido, Cliente, MensajeChat)
-│   │   ├── client_repo.py             # Mixin de gestión y código automático de clientes
-│   │   ├── chat_repo.py               # Mixin de canal colaborativo y menciones inteligentes
-│   │   ├── concurrency_repo.py        # Mixin de soft-locking temporal (TTL) e idempotencia SHA-256
-│   │   ├── audit_repo.py              # Mixin de bitácora transaccional y auditoría forense
-│   │   ├── closure_repo.py            # Mixin de cierres de turno y consolidación de jornada
-│   │   └── store.py                   # Repositorio central OrderStore con soporte WAL y migraciones
-│   ├── products/                      # Subpaquete modular de productos, catálogo y despachos
-│   │   ├── __init__.py                # Exportación de ProductStore
-│   │   ├── store.py                   # Repositorio central ProductStore (ensambla mixins)
-│   │   ├── catalog_repo.py            # Mixin para catálogo, códigos de barras y CRUD
-│   │   ├── movements_repo.py          # Mixin para historial de movimientos y trazabilidad de despachos
-│   │   ├── physical_repo.py           # Mixin para inventario físico y discrepancias
-│   │   └── notifications_repo.py      # Mixin para notificaciones de administración y quiebres
-│   ├── inventory/                     # Subpaquete modular de inventario y sincronización Excel
-│   │   ├── __init__.py                # Exportación de StockManager
-│   │   ├── manager.py                 # Gestor central StockManager
-│   │   └── excel_sync.py              # Sincronización atómica y formateo de plantilla visual Excel
-│   ├── stock/                         # Subpaquete modular de dominio de stock e informes
-│   │   ├── __init__.py                # Exportaciones públicas del módulo stock
-│   │   ├── models.py                  # Dataclasses de descuento (RegistroDescuento, ReporteStock)
-│   │   ├── reports.py                 # Exportadores de informes (.xls con xlwt y .pdf con ReportLab)
-│   │   ├── replenishment.py           # Sugerencia y generación de pedidos a fábrica en Excel
-│   │   └── physical_inventory.py      # Comparación y generación de planillas unificadas de inventario físico
-│   ├── ui/                            # Subpaquete modular de interfaz gráfica de usuario (Flet)
-│   │   ├── __init__.py                # Exportaciones públicas de UI
-│   │   ├── theme.py                   # Paleta cromática corporativa, bordes y estilos temáticos
-│   │   ├── dashboard_presenter.py     # Presentador desacoplado del Dashboard reactivo
-│   │   ├── mixins/                    # Mixins modulares para InterfazFlet
-│   │   │   ├── __init__.py            # Exportaciones de mixins UI
-│   │   │   ├── responsive.py          # Mixin de diseño adaptativo, viewport móvil y drawer
-│   │   │   ├── document_viewer.py     # Mixin de apertura de informes, manuales PDF y compartición
-│   │   │   ├── session_sync.py        # Mixin de sincronización en tiempo real y chat de equipo
-│   │   │   └── dialog_dispatcher.py   # Mixin despachador de diálogos modales e impresión
-│   │   ├── components/                # Componentes visuales desacoplados
-│   │   │   ├── __init__.py            # Exportaciones de componentes
-│   │   │   ├── debounce.py            # Utilidad Debouncer para búsquedas fluidas sin lag
-│   │   │   ├── header.py              # Barra superior con selector de modo oscuro, perfil e IP LAN
-│   │   │   ├── sidebar.py             # Drawer lateral de navegación adaptable móvil/escritorio
-│   │   │   ├── floating_chat.py       # Ventana de chat flotante (Asistente IA + chat de equipo)
-│   │   │   ├── panels.py              # Paneles de métricas de jornada, pedidos en vivo e informes
-│   │   │   ├── audio_manager.py       # Motor acústico Web Audio API y sintetizador polifónico
-│   │   │   ├── network_heartbeat.py   # Demonio de sondeo de conectividad LAN y limpieza de sesiones
-│   │   │   ├── mobile_nav.py          # Barra de navegación inferior 'Thumb Zone' para móviles
-│   │   │   ├── docking_manager.py     # Gestor de docking del sidebar (izq/der/arriba/abajo/oculto)
-│   │   │   └── print_labels.py        # Despachador de impresión térmica y A4 de rótulos QR
-│   │   └── dialogs/                   # Ventanas modulares desacopladas por dominio funcional
-│   │       ├── __init__.py            # Re-exportación unificada de diálogos
-│   │       ├── dlg_auth.py            # Login, cambio obligatorio de clave, edición de perfil y setup
-│   │       ├── dlg_clientes.py        # Alta, edición y administración de clientes con validación inline
-│   │       ├── dlg_usuarios.py        # Administración de cuentas, roles y reseteo de claves
-│   │       ├── dlg_smtp.py            # Configuración de servidor SMTP y credenciales cifradas
-│   │       ├── dlg_backup.py          # Copias de seguridad y restauración asistida
-│   │       ├── dlg_productos.py       # Catálogo, edición de productos con validación inline y stock
-│   │       ├── dlg_pedidos.py         # Carga, cancelación, desarme y edición de pedidos
-│   │       ├── dlg_historial_pedidos.py # Historial con búsqueda con debounce y reimpresión
-│   │       ├── dlg_movimientos_rapidos.py # Ajustes de stock rápidos con opción 'Deshacer' interactiva
-│   │       ├── dlg_escaner.py         # Escáner QR de despacho y avance de estado logístico
-│   │       ├── dlg_cierre/            # Subpaquete modular de cierre de jornada y hoja de ruta
-│   │       ├── dlg_email.py           # Compartir por correo y WhatsApp con selector de adjuntos
-│   │       ├── dlg_analytics.py       # Dashboard analítico, auditoría, estadísticas y notificaciones
-│   │       ├── dlg_stock_ops.py       # Ingreso fábrica, pedido fábrica, ML Full y stock físico
-│   │       ├── dlg_mercadolibre_descuento.py # Descuento Mercado Libre (Pistoleo en Vivo con lector y carga DOCX)
-│   │       ├── dlg_quiebre.py         # Detección temprana y visualización de productos en quiebre
-│   │       ├── dlg_restaurar.py       # Rollback y restauración documental delegada a rol Master
-│   │       └── dlg_inventario_vivo.py # Relevamiento de inventario en vivo (cámara móvil y escáner PC)
-│   ├── agent.py                       # Orquestador del Agente de Stock
-│   ├── flet_gui.py                    # Fachada y orquestador GUI principal (compuesto con mixins y ProgressBar)
-│   ├── tray_icon.py                   # Controlador del icono en bandeja de Windows (pystray)
-│   ├── orders_store.py                # Fachada retrocompatible hacia src.orders
-│   ├── user_store.py                  # Fachada retrocompatible hacia src.auth
-│   ├── product_store.py               # Fachada retrocompatible hacia src.products
-│   ├── stock_manager.py               # Fachada retrocompatible hacia src.inventory y src.stock
-│   ├── remito_parser.py               # Parser de remitos PDF
-│   ├── canjes_parser.py               # Parser de canjes Excel
-│   ├── mercado_libre_parser.py        # Parser de pedidos DOCX
-│   ├── mercado_full_parser.py         # Parser de planillas Mercado Libre Full
-│   ├── dispatch_manifest.py           # Generador de Hoja de Ruta por Transporte (PDF)
-│   ├── label_generator.py             # Generador de Rótulos con QR (Hojas A4 y Rollo Térmico 100x150 mm)
-│   ├── backup_manager.py              # Motor de respaldos comprimidos y restauración verificada
-│   ├── email_sender.py                # Envío directo SMTP con adjuntos y credenciales cifradas
-│   ├── secretos.py                    # Cifrado local de credenciales (Windows DPAPI / Fernet)
-│   ├── alertas_programadas.py         # Planificador en segundo plano de alertas diarias por correo
-│   ├── ssl_manager.py                 # Generador automático de certificados X.509 para HTTPS
-│   ├── logger_config.py               # Configuración de logs rotativos en data/logs/stockagent.log
-│   ├── internal_chat.py               # Bot y Asistente Virtual con chips por rol
-│   └── server.py                      # Servidor ASGI/FastAPI desacoplado, middleware, PWA y OTA updates
+│   ├── core/                          # Núcleo de excepciones tipadas (exceptions.py)
+│   ├── api/                           # API REST v1 (deps.py con HMAC ?dt=/Bearer/API Key, schemas.py, v1/*.py)
+│   ├── server_app/                    # Servidor web ASGI modular (__init__, flet_patch, middleware, network_utils, protected_docs_routes, static_routes)
+│   ├── auth/                          # Autenticación y usuarios (models, password [600k PBKDF2], schema, validators, events, lockout_repo, api_tokens_repo, store)
+│   ├── orders/                        # Pedidos, clientes, chat, concurrencia y auditoría (models, schema, *_repo, store)
+│   ├── products/                      # Catálogo, códigos de barra, movimientos y conteo físico (barcode_utils, catalog_read/write_repo, movements_repo, physical_repo, notifications_repo, store)
+│   ├── inventory/                     # Orquestación StockManager y sincronización Excel (manager, catalog_loader, discount_engine, excel_sync, template_sync)
+│   ├── stock/                         # Reportes, reposición y conciliación (models, report_styles, reports_stock, reports_ops, xls_exporter, pdf_exporter, manifest_pdf, replenishment, physical_inventory, reportes_service)
+│   ├── labels/                        # Rótulos QR y códigos de barra (utils, thermal_labels 100x150 mm, a4_labels)
+│   ├── parsers/                       # Parsers de documentos (remito_parser, canjes_parser, mercado_libre_parser, mercado_full_parser, factory_parser, physical_stock_parser)
+│   ├── integrations/                  # Conectores externos (email_sender, mercado_libre_api, sheets_manager, telegram_notifier)
+│   ├── chat/                          # Asistente virtual e intenciones semánticas por rol (intent_parser, role_help, formatters)
+│   ├── cli/                           # Interfaz de consola y procesamiento por lotes (archive_ops, interactive_flows)
+│   ├── tray/                          # Bandeja del sistema Windows pystray (net_and_images, tray_controller)
+│   ├── ui/                            # Capa de presentación gráfica Flet
+│   │   ├── theme.py / app_config.py / user_preferences.py / dashboard_presenter.py
+│   │   ├── mixins/                    # auth_session, batch_processor, chat_panel, dialog_dispatcher, document_viewer, file_transfer, responsive, session_sync
+│   │   ├── components/                # audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_sections), window_manager
+│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados por caso de uso (auth_*, analytics_*, api_panel_tabs, cierre/, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, ml_*, movimientos_rapidos_ops, pedidos_*, productos_modales, stock_fisico_views)
+│   ├── agent.py / menu.py             # Orquestadores CLI y de lotes
+│   ├── flet_gui.py                    # Fachada y orquestador GUI principal compuesto con mixins
+│   ├── secretos.py                    # Cifrado en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
+│   ├── ssl_manager.py                 # Generador automático de certificados X.509 SAN para HTTPS
+│   ├── webhook_manager.py             # Webhooks salientes con validación anti-SSRF
+│   ├── anomaly_detector.py / warehouse_slotting.py / system_telemetry.py / alertas_programadas.py / archive_manager.py / backup_manager.py / logger_config.py / paths.py
+│   └── *.py (fachadas retrocompatibles) # server, user_store, orders_store, product_store, stock_manager, label_generator, dispatch_manifest, internal_chat, tray_icon, email_sender, telegram_notifier, mercado_libre_api, sheets_manager y *_parser
 ├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
-│   ├── lib/                           # Código fuente Dart (UI y servicios)
-│   │   ├── main.dart                  # Punto de entrada y enrutamiento inicial
-│   │   ├── theme/app_theme.dart       # Paleta cromática corporativa (Dark Theme)
-│   │   ├── services/storage_service.dart # Persistencia de IP/puerto (SharedPreferences)
-│   │   └── screens/
-│   │       ├── config_screen.dart     # Pantalla de configuración y prueba de IP
-│   │       └── app_screen.dart        # Visor WebView, escáner nativo y resiliencia Wi-Fi
+│   ├── lib/                           # Código fuente Dart (controllers, models, screens, services, theme, widgets, main.dart)
 │   ├── android/                       # Configuración y manifiestos nativos Android
-│   │   └── app/src/main/AndroidManifest.xml # Permisos de red, cámara y cleartext
 │   ├── ios/                           # Configuración nativa Apple iOS
-│   │   └── Runner/Info.plist          # Permisos de red local y cámara
 │   ├── dist_movil/                    # Instalador oficial StockAgent.apk y version.json
 │   ├── compilar_apk.bat               # Compilador con 1 clic de APK Release para Android
-│   ├── iniciar_servidor_movil.bat     # Servidor HTTP limpio para teléfonos en LAN
+│   ├── iniciar_servidor_movil.bat     # Servidor móvil (HTTPS por defecto, --http opcional)
 │   ├── iniciar_servidor_movil_en_segundo_plano.vbs # Servidor móvil silencioso sin ventana de consola
+│   ├── DESACOPLAMIENTO.md             # Documentación de arquitectura móvil desacoplada
 │   ├── pubspec.yaml                   # Dependencias oficiales de Flutter
 │   └── README_MOVIL.md                # Manual operativo del cliente móvil
-├── crear_exe.bat                      # Script de compilación a .exe independiente
+├── crear_exe.bat                      # Script de compilación a .exe independiente (Flet pack / spec opcional)
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
-├── crear_acceso_directo_cliente.bat   # Generador de acceso directo de escritorio (PWA App Mode)
+├── crear_acceso_directo_cliente.bat   # Generador de acceso directo cliente (HTTPS por defecto, --http opcional)
 ├── exportar_stockagent_mobile.bat     # Extractor limpio del cliente móvil nativo Flutter
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
 ├── detener_servidor.bat               # Detención rápida del servidor y liberación de puerto
 ├── configurar_inicio_automatico.bat   # Alta de inicio automático con Windows
 ├── desactivar_inicio_automatico.bat   # Baja de inicio automático con Windows
 ├── instalar_certificado.bat           # Instalador con 1 clic del certificado SSL en Windows
-├── configurar_firewall_red.bat        # Apertura de puerto 8550 en Firewall de Windows
-├── main.py                            # Punto de entrada de la aplicación (--https, --port, --host, --desktop)
-├── StockAgent.spec                    # Especificación PyInstaller
+├── configurar_firewall_red.bat        # Apertura de puerto 8550 en Firewall de Windows (Perfil Privado)
+├── main.py                            # Punto de entrada de la aplicación (--https, --http, --port, --host, --desktop)
+├── .env.example                       # Plantilla documentada de variables de entorno
 ├── requirements.txt                   # Dependencias de producción
 └── requirements-build.txt             # Dependencias de compilación
 ```
@@ -1071,9 +1002,9 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
 4. **Compatibilidad Inversa al 100%:**
    * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
-5. **Desacoplamiento de Servidor e Infraestructura de Red (`src/server.py`):**
-   * Se desacopló íntegramente la capa de servidor web de `src/flet_gui.py` hacia `src/server.py`, reduciendo `flet_gui.py` en más de 800 líneas de código y facilitando su testeo unitario.
-   * **Servicios Encapsulados:** Gestión del ciclo de vida ASGI / Starlette / Uvicorn, middleware de conexiones activas (`_RegistroConexionesMiddleware`), sondas de socket anti-colisión (`_puerto_local_activo`), resolución automática de IPs (LAN y Tailscale VPN), endpoints PWA (`/sw.js`, `/manifest.json`, `/offline.html`), recursos del escáner (`/scanner.html`, `/js/scanner.js`, `/css/scanner.css`) y el centro de distribución de actualizaciones Over-The-Air (OTA) para móviles (`/api/version` y `/api/apk`).
+5. **Desacoplamiento de Servidor e Infraestructura de Red (`src/server_app/` + fachada `src/server.py`):**
+   * Se desacopló íntegramente la capa de servidor web de `src/flet_gui.py` hacia el paquete `src/server_app/` (con fachada `src/server.py`), reduciendo `flet_gui.py` y eliminando código monolítico para facilitar su testeo unitario.
+   * **Servicios Encapsulados:** Gestión del ciclo de vida ASGI / Starlette / Uvicorn (`__init__.py`), middleware CORS/cabeceras de seguridad y tracking activo (`middleware.py`), resolución automática de IPs LAN y Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con HMAC `?dt=` (`protected_docs_routes.py`), parcheo Flet (`flet_patch.py`), endpoints PWA/escáner y distribución OTA APK (`static_routes.py`).
 
 6. **Especialización Modular de Diálogos (`dlg_quiebre.py` y `dlg_restaurar.py`):**
    * **`src/ui/dialogs/dlg_quiebre.py`:** Módulo autónomo para el cálculo y presentación interactiva de alertas de quiebre de stock tras la carga de comprobantes o cierres.
@@ -1128,7 +1059,7 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
 15. **Modularización Integral del Dominio de Usuarios y Seguridad (`src/auth/`):**
     * Deconstrucción completa del archivo monolítico `src/user_store.py` (anteriormente de más de 1,040 líneas) en el paquete `src/auth/`:
       - **`models.py`:** Entidades inmutables `User`, `ApiKey`, `UserRole` y tuplas de autorización `USER_ROLES`.
-      - **`password.py`:** Módulo criptográfico aislado con hashing `PBKDF2-HMAC-SHA256`, sal criptográfica aleatoria de 32 bytes, 100,000 iteraciones y verificación segura contra ataques de temporización (`hmac.compare_digest`).
+      - **`password.py`:** Módulo criptográfico aislado con hashing `PBKDF2-HMAC-SHA256`, sal aleatoria de 16 bytes (32 caracteres hexadecimales), `600,000` iteraciones (`PASSWORD_ITERATIONS`) y verificación segura contra ataques de temporización (`hmac.compare_digest`).
       - **`store.py`:** Repositorio transaccional `UserStore` en SQLite WAL, gestión de intentos fallidos, bloqueo preventivo y preferencias de interfaz.
       - **`src/user_store.py` (Fachada):** Fachada retrocompatible de 35 líneas que re-exporta los símbolos con 100% de paridad funcional para toda la aplicación y tests.
 
@@ -1149,7 +1080,14 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
       - **`DocumentViewerMixin` (`src/ui/mixins/document_viewer.py`):** Visualización de informes, generación dinámica de manuales de rol en PDF, exploración de carpetas del sistema y compartición por correo o WhatsApp.
       - **`SessionSyncMixin` (`src/ui/mixins/session_sync.py`):** Sincronización colaborativa entre pestañas/terminales LAN, toasts contextuales, insignias dinámicas y chat de equipo.
       - **`DialogDispatcherMixin` (`src/ui/mixins/dialog_dispatcher.py`):** Despacho centralizado y apertura de todos los modales de la plataforma e impresión de rótulos térmicos y A4.
-    * La clase `InterfazFlet` ahora hereda directamente de estos cuatro mixins, reduciendo sensiblemente el tamaño del archivo, eliminando duplicación y mejorando la testeabilidad sin alterar ninguna signatura pública.
+    * La clase `InterfazFlet` ahora hereda de 8 mixins modulares (`ResponsiveLayoutMixin`, `DocumentViewerMixin`, `SessionSyncMixin`, `DialogDispatcherMixin`, `AuthSessionMixin`, `BatchProcessorMixin`, `ChatPanelMixin`, `FileTransferMixin`), eliminando código monolítico sin alterar ninguna signatura pública ni objetivos de prueba.
+
+18. **Desacoplamiento Integral de Paquetes de Infraestructura, Dominio, UI y Documentación:**
+    * **`src/server_app/`:** Reemplaza el antiguo `src/server.py` monolítico dividiendo parcheo Flet (`flet_patch.py`), CORS/cabeceras HTTP (`middleware.py`), resolución IP LAN/Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con token `?dt=` (`protected_docs_routes.py`) y rutas estáticas PWA/OTA (`static_routes.py`).
+    * **`src/labels/`, `src/parsers/`, `src/integrations/`, `src/chat/`, `src/cli/`, `src/tray/`:** Cada dominio queda aislado en paquetes con submódulos pequeños (`<= 450` líneas en la gran mayoría del código) y fachadas retrocompatibles en la raíz de `src/` (`label_generator.py`, `remito_parser.py`, `email_sender.py`, `internal_chat.py`, `menu.py`, `tray_icon.py`, etc.).
+    * **`src/inventory/` y `src/stock/`:** Se dividieron en `catalog_loader.py`, `discount_engine.py`, `excel_sync.py`, `template_sync.py`, `report_styles.py`, `reports_stock.py`, `reports_ops.py`, `xls_exporter.py`, `pdf_exporter.py`, `manifest_pdf.py` y `reportes_service.py`.
+    * **Descomposición de Diálogos Extensos (`src/ui/dialogs/`):** Todos los modales grandes fueron separados en vistas y ayudantes enfocados (`auth_*`, `analytics_*`, `api_panel_tabs`, `heatmap_render`, `historial_*`, `ingreso_fabrica_archivo`, `inventario_vivo_views`, `ml_scanner_component` + `ml_docx_component` + `ml_helpers`, `movimientos_rapidos_ops`, `pedidos_crear` + `pedidos_gestion`, `productos_modales`, `stock_fisico_views`) y `floating_chat_intents.py` en componentes.
+    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Eliminan los antiguos monolitos de documentación (`> 1,800` y `> 2,500` líneas), manteniendo `generar_manual_pdf.py` y `manuales_procedimientos.py` como fachadas 100% compatibles.
 
 ### Esquema de Bases de Datos SQLite
 
@@ -1186,7 +1124,7 @@ CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('master', 'administrador', 'operador', 'consulta')),
+    role TEXT NOT NULL CHECK (role IN ('master', 'administrador', 'operador', 'consulta', 'picker')),
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
     nombre TEXT NOT NULL DEFAULT '',
@@ -1297,7 +1235,8 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
    ```powershell
    .\crear_exe.bat
    ```
-3. El resultado se generará en `dist\StockAgent.exe`, acompañado automáticamente de `Descuentos\Productos.xlsx`, la carpeta `assets\`, librerías DLL y los scripts de red.
+   *(Si existe `StockAgent.spec` compila vía PyInstaller; en su ausencia utiliza automáticamente `flet pack main.py` incluyendo `flet_web`, `uvicorn`, `fastapi`, `starlette`, `websockets` y `reportlab`.)*
+3. El resultado se generará en `dist\StockAgent.exe`, acompañado automáticamente de `Descuentos\Productos.xlsx`, la carpeta `assets\`, los manuales `Documentacion\*.pdf` y los scripts de red/cliente (`iniciar_servidor_web.bat`, `crear_acceso_directo_cliente.bat`, `instalar_certificado.bat`, `configurar_firewall_red.bat`, entre otros).
 
 ---
 
@@ -1308,7 +1247,7 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
    ```powershell
    .\configurar_firewall_red.bat
    ```
-   Esto habilita el tráfico entrante TCP en el puerto `8550`.
+   Esto crea la regla `"StockAgent Web (Puerto 8550)"` acotada estrictamente al perfil **`Private` (Red Privada)** para tráfico TCP entrante en el puerto `8550` y elimina reglas amplias heredadas (`"StockAgent Python"`).
 
 #### Paso 2: Iniciar el Servidor HTTPS
 1. Ejecuta `iniciar_servidor_web.bat` (o `python main.py`).
@@ -1318,6 +1257,16 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
 3. La consola y el System Tray mostrarán las direcciones seguras listas para usar:
    - En la misma PC servidor: `https://127.0.0.1:8550`
    - Desde otras PCs, notebooks, tablets o celulares en la red WiFi/LAN: `https://192.168.X.X:8550`
+
+#### Paso 3: Compartir Acceso Directo con Otras PCs en la Red Local
+Para evitar que los operarios deban recordar la IP o escribirla manualmente en el navegador:
+1. En la PC cliente de la misma LAN (o generando el acceso y copiándolo), ejecuta:
+   ```powershell
+   .\crear_acceso_directo_cliente.bat 192.168.X.X 8550
+   ```
+   *(Si se ejecuta sin argumentos utiliza `192.168.1.100:8550`. Por defecto apunta a `https://`; para entornos locales aislados sin TLS admite `--http`.)*
+2. El script crea en el Escritorio el enlace `StockAgent.url` y, si detecta Chrome o Edge instalados, el acceso directo tipo aplicación `StockAgent - Deposito.lnk` (`--app=URL`).
+3. Para evitar la advertencia inicial del certificado autofirmado en navegadores Chrome/Edge, ejecuta también `instalar_certificado.bat` como Administrador en el equipo cliente.
 
 #### Paso 3: Primer ingreso desde los navegadores (Certificado Autofirmado)
 Dado que el certificado es generado localmente por la propia empresa (sin depender de un dominio público en internet), la primera vez que ingreses desde un navegador verás el aviso estándar *"La conexión no es privada"* (`NET::ERR_CERT_AUTHORITY_INVALID`):
@@ -1410,24 +1359,23 @@ StockAgent permite acceder y operar de forma remota desde cualquier PC, notebook
 
 ### Endurecimiento de Seguridad y API REST v1 (Enterprise Grade)
 
-La API REST v1 y el servidor web han sido blindados con controles de seguridad perimetral y criptográfica avanzada:
+La API REST v1 y el servidor web (`src/server_app/`) han sido blindados con controles de seguridad perimetral y criptográfica avanzada:
 
-1. **Persistencia Criptográfica de Sesiones (`api_sessions` en SQLite):**
-   * Los tokens de sesión nunca se guardan en texto plano en la base de datos; se indexan y almacenan calculando su digest unidireccional SHA-256 (`token_hash`).
-   * Las sesiones sobreviven a reinicios del servidor sin degradar la memoria caché en caliente.
-2. **Sistema de Claves de Integración API Keys (`X-API-Key`):**
-   * Emisión de claves estáticas con prefijo seguro `sk_live_...` para conectar ERPs, scripts satélite y plataformas B2B.
-   * Endpoints exclusivos para administradores (`POST /api/v1/auth/api-keys`, `GET /api/v1/auth/api-keys`, `DELETE /api/v1/auth/api-keys/{key_hash}`).
-   * Registro del último uso (`last_used`) y revocación instantánea a nivel de base de datos.
-3. **Consulta de Stock para ERPs (`GET /api/v1/productos/{codigo}/stock`):**
-   * Endpoint de ultra-alta velocidad para validar existencias de productos por SKU o código de barras escaneado mediante `X-API-Key` o token Bearer.
-4. **Protección Contra Fuerza Bruta por IP (Rate Limiting en `/login`):**
-   * Umbral estricto de máximo 10 intentos por minuto por dirección IP de origen, respondiendo con código HTTP `429 Too Many Requests` ante ráfagas maliciosas.
-5. **CORS Restringido a Redes Privadas y Encabezados de Seguridad:**
-   * Restricción mediante expresión regular para admitir únicamente orígenes confiables: localhost (`127.0.0.1`), LAN privada RFC 1918 (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) y Tailscale VPN (`100.x.x.x`).
-   * Inyección automática de cabeceras HTTP de protección: `X-Content-Type-Options: nosniff` y `X-Frame-Options: SAMEORIGIN` (prevención de Clickjacking y MIME sniffing).
-6. **Integridad Referencial en SQLite:**
-   * Aplicación sistemática de `PRAGMA foreign_keys = ON` en todas las conexiones a bases de datos transaccionales.
+1. **Persistencia Criptográfica de Sesiones (`api_sessions` en SQLite) y Revocación Inmediata:**
+   * Los tokens de sesión nunca se guardan en texto plano ni se aceptan en query strings (`?token=` rechazado con `401`); se indexan en SQLite calculando su digest SHA-256 (`token_hash`).
+   * Desactivar una cuenta, cambiar su rol o resetear su clave revoca al instante las sesiones activas en memoria y base de datos.
+2. **Documentación OpenAPI / Swagger Deshabilitada por Defecto:**
+   * Los endpoints `/docs`, `/redoc` y `/openapi.json` permanecen desactivados (`STOCKAGENT_ENABLE_API_DOCS=0`) para minimizar la superficie de exposición en red. Pueden habilitarse explícitamente solo en auditorías controladas (`STOCKAGENT_ENABLE_API_DOCS=1`).
+3. **Acceso Protegido a Documentación e Informes (`?dt=` HMAC):**
+   * Las rutas `/documentacion/`, `/informes/` y `/documentos/ver` bloquean accesos anónimos y exigen sesión autenticada, Bearer/API Key o un token HMAC firmado de corta duración (`crear_token_documento`).
+4. **Cifrado de Secretos en Disco (`src/secretos.py`) y Protección Anti-SSRF:**
+   * Credenciales SMTP, tokens de Telegram y secretos de Mercado Libre se cifran en disco con Windows DPAPI (`enc:dpapi:`) o Fernet (`enc:fernet:`), manteniendo compatibilidad de lectura transparente y validación estricta de URLs en `webhook_manager.py` y rutas de backup en `backup_manager.py`.
+5. **Sistema de Claves de Integración API Keys (`X-API-Key`):**
+   * Emisión de claves estáticas con prefijo seguro `sk_live_...` para conectar ERPs y plataformas satélite (`POST /api/v1/auth/api-keys`, `GET /api/v1/auth/api-keys`, `DELETE /api/v1/auth/api-keys/{key_hash}`), con registro `last_used` y revocación inmediata.
+6. **Consulta de Stock para ERPs (`GET /api/v1/productos/{codigo}/stock`):**
+   * Endpoint de alta velocidad para validar existencias de productos por SKU o código de barras escaneado mediante `X-API-Key` o token Bearer.
+7. **Protección Contra Fuerza Bruta por IP y Cabeceras de Seguridad:**
+   * Rate limiting en login (`429 Too Many Requests`), CORS restringido a localhost, LAN privada RFC 1918 y Tailscale (`100.x.x.x`), cabeceras `X-Content-Type-Options: nosniff` y `X-Frame-Options: SAMEORIGIN`, regla Firewall restringida al perfil `Private` e integridad referencial `PRAGMA foreign_keys = ON`.
 
 ---
 
@@ -1460,8 +1408,8 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 2. **Protección Contra Fuerza Bruta y Credential Stuffing:**
    * **Bloqueo preventivo:** Tras 5 intentos fallidos consecutivos de inicio de sesión desde un usuario o IP, la cuenta queda automáticamente bloqueada durante 15 minutos.
    * **Desbloqueo administrativo:** El rol Master o un Administrador pueden desbloquear manualmente al usuario al instante desde el panel de gestión.
-   * **Derivación de Claves PBKDF2-HMAC-SHA256:** Las contraseñas se almacenan con salt individual de alta entropía y miles de iteraciones, impidiendo ataques de tablas arcoíris (*rainbow tables*).
-   * **Política de Claves Fuertes:** Obligatoriedad de cambio de contraseña por defecto en el primer inicio de sesión con validación de longitud mínima (10 caracteres).
+   * **Derivación de Claves PBKDF2-HMAC-SHA256:** Las contraseñas se almacenan con sal aleatoria de 16 bytes (32 caracteres hex) y `600,000` iteraciones (`PASSWORD_ITERATIONS`), impidiendo ataques de tablas arcoíris (*rainbow tables*) y fuerza bruta offline.
+   * **Política de Claves Fuertes:** Obligatoriedad de cambio de contraseña por defecto en el primer inicio de sesión con validación de longitud mínima (`10` caracteres).
 3. **Inmunidad Contra Inyección SQL (SQL Injection):**
    * El 100% de las consultas a SQLite (`pedidos.sqlite3`, `usuarios.sqlite3`, `productos.sqlite3`) se realizan mediante **sentencias parametrizadas** y tipadas. No existe concatenación dinámica de cadenas en consultas SQL.
 4. **Segregación de Funciones y Mínimo Privilegio (Separation of Duties - SoD):**
@@ -1477,10 +1425,18 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 ### Batería de Pruebas Unitarias y Aseguramiento de Calidad
 
-El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas que validan la persistencia transaccional, el cifrado, el control de concurrencia y los flujos logísticos:
+El proyecto cuenta con una cobertura integral de pruebas unitarias y de integración automatizadas que validan la persistencia transaccional, el endurecimiento de seguridad, el control de concurrencia, los flujos logísticos y todas las fachadas modulares:
 
-* **Total de pruebas:** 225 pruebas unitarias automatizadas distribuidas en 36 módulos.
-* **Tasa de éxito:** 100% aprobadas (`225 passed in 28.33s - OK`).
+* **Total de pruebas:** `331` pruebas automatizadas distribuidas en `53` módulos (`tests/test_*.py`), más subtests.
+* **Tasa de éxito:** 100% aprobadas (`331 passed`).
+
+#### Suites Destacadas Recientes
+* `tests/test_security_hardening.py`: Rechazo de tokens en query string (`401`), revocación instantánea al desactivar usuario o cambiar rol, protección `?dt=` en `/documentacion/` y `/informes/`, cifrado DPAPI/Fernet de secretos, validación anti-SSRF en webhooks y límites seguros en backups `.zip`.
+* `tests/test_picker_role.py`: Alcance estricto SoD del rol `picker` (solo Despacho ML/Full y Movimientos Rápidos/Fábrica; bloqueo en pedidos, métricas, usuarios y auditoría).
+* `tests/test_api_v1.py`, `tests/test_api_master_dialog.py`, `tests/test_api_keys_dialog.py`, `tests/test_security_api_keys.py`: Endpoints REST v1, consola Master de API, gestión de claves `X-API-Key`, rate limiting (`429`) y sesiones SQLite con `PRAGMA foreign_keys = ON`.
+* `tests/test_documentos_visor.py`, `tests/test_dashboard_presenter.py`, `tests/test_admin_user_restrictions.py`, `tests/test_admin_ver_stock_informes.py`: Visor protegido con tokens `?dt=`, presentador de dashboard y restricciones administrativas.
+* `tests/test_fabrica_scanner_workflow.py`, `tests/test_mercadolibre_scanner_workflow.py`, `tests/test_mercadolibre_docx_dialog.py`, `tests/test_movimientos_rapidos.py`: Flujos modulares de pistoleo en vivo, ingreso de fábrica, carga DOCX y deshacer movimientos rápidos.
+* `tests/test_etiquetas_exactas.py`, `tests/test_reportes_service.py`, `tests/test_user_preferences.py`, `tests/test_env_config.py`, `tests/test_e2e_reparaciones.py`, `tests/test_nuevas_mejoras_operativas.py`: Rótulos exactos, servicio de reportes, preferencias UI, carga `.env`, compatibilidad de fachadas y mejoras operativas E2E.
 
 #### Módulos de Prueba Adicionales
 21. `tests/test_realtime_stock_and_cierre.py`:
@@ -1500,9 +1456,9 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
     - Desglose modal interactivo de pedidos vinculados a cada cierre de operario ("Ver Pedidos").
     - Regeneración y apertura de Hoja de Ruta (PDF), informe consolidado PDF y planilla Excel.
 25. `tests/test_manuales_procedimientos.py`:
-    - Compilación desatendida y programática de manuales SOP en formato PDF para los 4 roles.
-    - Generación modular botón a botón con estructura exhaustiva de Fichas de Procedimiento.
-    - Verificación formal de metadatos de calidad en portada: Elaborado por Gregory Rodriguez, Revisado por / Aprobado por en blanco para firmas institucionales, e historial de versión v3.0.0.
+    - Compilación desatendida y programática de los manuales SOP en formato PDF para los 5 roles + General/Maestro.
+    - Generación modular mediante `Documentacion/pdf_engine/` y `Documentacion/procedimientos/` conservando las fachadas `generar_manual_pdf.py` y `manuales_procedimientos.py`.
+    - Verificación formal de metadatos de calidad en portada: Elaborado por Gregory Rodriguez, Revisado por / Aprobado por en blanco para firmas institucionales, e historial de versiones vigente.
 26. `tests/test_security_api_keys.py`:
     - Persistencia de sesiones SQLite con hash SHA-256 e inmunidad a reinicios de caché en memoria.
     - Ciclo de vida completo de API Keys (`create_api_key`, `validate_api_key`, `list_api_keys`, `revoke_api_key`).
@@ -1611,7 +1567,7 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias automatizadas
 #### Ejecución de las Pruebas
 Para ejecutar la suite completa en cualquier momento desde PowerShell:
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -o pythonpath=.
+.\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short
 ```
 
 
@@ -1656,16 +1612,14 @@ A diferencia de empaquetar un intérprete de Python completo dentro del teléfon
 
 ---
 
-### Servidor HTTP para Conexión Móvil Limpia (`iniciar_servidor_movil.bat` / `iniciar_servidor_movil_en_segundo_plano.vbs`)
+### Servidor Móvil HTTPS por Defecto y Opción HTTP (`iniciar_servidor_movil.bat`)
 
-Los sistemas operativos móviles modernos (Android 9+ e iOS) aplican políticas de seguridad estrictas que bloquean de forma agresiva los certificados SSL autofirmados locales. 
+El lanzador optimizado `stockagent_mobile/iniciar_servidor_movil.bat` (y su visor silencioso `iniciar_servidor_movil_en_segundo_plano.vbs`) coordina el arranque limpio en la PC servidor:
 
-Para resolver esto sin fricción, StockAgent incluye el lanzador optimizado `stockagent_mobile/iniciar_servidor_movil.bat`:
-
-* **Ejecución Silenciosa / Segundo Plano:** Al hacer doble clic en `stockagent_mobile/iniciar_servidor_movil.bat` o `stockagent_mobile/iniciar_servidor_movil_en_segundo_plano.vbs`, el servidor se ejecuta sin dejar abierta ninguna ventana de consola negra, alojándose en la bandeja del sistema junto al reloj.
-* **Modo HTTP Plano (`--http`):** Inicia el servidor web en `http://0.0.0.0:8550`, permitiendo que los WebViews y navegadores móviles se conecten fluidamente sin pantallas rojas de advertencia ni interrupción de WebSockets (`/ws`).
-* **Verificación de Firewall Automática:** Valida y crea la regla de entrada TCP en el Firewall de Windows para el puerto 8550 en perfiles de red privada y de dominio.
-* **Información de Red Clara:** Muestra de forma destacada la IP local exacta a ingresar en el teléfono (ej: `http://192.168.1.50:8550`).
+* **Ejecución Silenciosa / Segundo Plano:** Sin argumentos, se lanza de forma invisible en segundo plano mediante `iniciar_servidor_movil_en_segundo_plano.vbs` alojándose en la bandeja del sistema. Con `--consola` muestra el estado y los registros en pantalla.
+* **HTTPS Cifrado por Defecto (`STOCKAGENT_HTTPS=1`):** Inicia el servidor web seguro en `https://0.0.0.0:8550` reutilizando `data/certs/stockagent.crt`. Para estaciones Windows de la LAN se recomienda instalar el certificado con `instalar_certificado.bat` o generar el acceso directo con `crear_acceso_directo_cliente.bat`.
+* **Opción HTTP Legacy (`--http`):** En redes LAN estrictamente privadas donde un dispositivo móvil o WebView rechace el certificado autofirmado local, puede ejecutarse explícitamente con `iniciar_servidor_movil.bat --consola --http` (muestra un aviso de seguridad indicando tráfico sin cifrar).
+* **Puerto Listo al Instante:** Libera procesos previos escuchando en el puerto `8550` antes de levantar la instancia (`src/server_app/` a través de `src/server.py`).
 
 ---
 
@@ -1699,7 +1653,7 @@ sequenceDiagram
     autonumber
     actor Dev as Desarrollador
     participant Bat as compilar_apk.bat
-    participant Srv as Servidor StockAgent (src/server.py)
+    participant Srv as Servidor StockAgent (src/server_app/)
     participant App as Teléfono Android (App Flutter)
 
     Dev->>Bat: Ejecuta compilación
@@ -1717,7 +1671,7 @@ sequenceDiagram
 #### ¿Cómo Funciona el Ecosistema OTA?
 1. **Control de Versiones en `pubspec.yaml`:**
    * La versión de la app móvil se define con la nomenclatura estándar `version: 1.0.1+2`, donde `1.0.1` es el nombre visible (`versionName`) y `2` es el número entero incremental (`versionCode`).
-2. **Distribución Automática desde el Servidor (`src/server.py`):**
+2. **Distribución Automática desde el Servidor (`src/server_app/static_routes.py`):**
    * El servidor expone dos endpoints especializados:
      - `GET /api/version` (o `/actualizaciones/version.json`): Devuelve el manifiesto JSON con `version_code`, `version_name`, novedades y URL de descarga.
      - `GET /api/apk` (o `/actualizaciones/StockAgent.apk`): Sirve el archivo APK binario con encabezados `application/vnd.android.package-archive` y control de caché deshabilitado.
@@ -1753,7 +1707,7 @@ Dadas las restricciones del ecosistema de Apple para la instalación de archivos
 
 #### Método Directo (PWA - Sin requerir Mac ni licencias de desarrollador):
 1. Conecta el iPhone a la misma red Wi-Fi de la PC.
-2. Abre **Safari** y escribe la URL de la PC: `http://192.168.X.X:8550`.
+2. Abre **Safari** y escribe la URL de la PC: `https://192.168.X.X:8550` (o `http://192.168.X.X:8550` si iniciaste el servidor con `--http` en LAN privada).
 3. Toca el botón central **Compartir** (icono de rectángulo con flecha hacia arriba).
 4. Selecciona **"Agregar a pantalla de inicio"** (*Add to Home Screen*).
 5. La app se abrirá a pantalla completa con su icono oficial, comportándose como una aplicación nativa y con acceso a la cámara para escaneos.

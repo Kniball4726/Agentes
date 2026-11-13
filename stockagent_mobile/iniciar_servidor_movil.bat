@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
-title StockAgent - Servidor para App Movil (HTTP Red Local)
+title StockAgent - Servidor para App Movil (HTTPS)
 cd /d "%~dp0.."
 
 rem ------------------------------------------------------------------
@@ -9,11 +9,13 @@ rem Analizar parametros recibidos
 rem ------------------------------------------------------------------
 set "MODO_SILENCIOSO=0"
 set "FORZAR_CONSOLA=0"
+set "MODO_HTTP=0"
 
 for %%A in (%*) do (
     if /i "%%~A"=="--consola" set "FORZAR_CONSOLA=1"
     if /i "%%~A"=="--console" set "FORZAR_CONSOLA=1"
     if /i "%%~A"=="--debug" set "FORZAR_CONSOLA=1"
+    if /i "%%~A"=="--http" set "MODO_HTTP=1"
     if /i "%%~A"=="--no-browser" set "MODO_SILENCIOSO=1"
     if /i "%%~A"=="--sin-navegador" set "MODO_SILENCIOSO=1"
     if /i "%%~A"=="--silent" set "MODO_SILENCIOSO=1"
@@ -30,16 +32,27 @@ if "%~1"=="" if "!FORZAR_CONSOLA!"=="0" (
     )
 )
 
-if "!MODO_SILENCIOSO!"=="0" (
-    echo ==================================================================
-    echo   STOCK AGENT - SERVIDOR MOVIL (MODO HTTP LIMPIO - PUERTO 8550)
-    echo ==================================================================
-    echo   * Modo: App Movil (HTTP Red Local LAN sin errores SSL)
-    echo   * Escucha: 0.0.0.0:8550 (Todas las placas de red activas)
-    echo ==================================================================
-    echo.
-    echo [1/2] Liberando puerto 8550 de instancias previas...
-)
+if "!MODO_SILENCIOSO!"=="1" goto :DESPUES_BANNER
+if "!MODO_HTTP!"=="1" goto :BANNER_HTTP
+echo ==================================================================
+echo   STOCK AGENT - SERVIDOR MOVIL (HTTPS SEGURO - PUERTO 8550)
+echo ==================================================================
+echo   * Modo: HTTPS cifrado por defecto (usa --http solo en LAN privada)
+echo   * Escucha: 0.0.0.0:8550
+echo ==================================================================
+goto :BANNER_FIN
+:BANNER_HTTP
+echo ==================================================================
+echo   STOCK AGENT - SERVIDOR MOVIL (MODO HTTP LEGACY - PUERTO 8550)
+echo ==================================================================
+echo   [AVISO DE SEGURIDAD] Trafico sin cifrar por parametro --http.
+echo   * Usar unicamente en una red LAN privada de confianza.
+echo   * Escucha: 0.0.0.0:8550
+echo ==================================================================
+:BANNER_FIN
+echo.
+echo [1/2] Liberando puerto 8550 de instancias previas...
+:DESPUES_BANNER
 
 rem 1. Liberar puerto 8550 de instancias previas (StockAgent.exe o Python)
 taskkill /F /IM StockAgent.exe >nul 2>&1
@@ -59,18 +72,18 @@ if not defined PYTHON_EXE if exist "ttech\Scripts\python.exe" set "PYTHON_EXE=tt
 
 if defined PYTHON_EXE (
     if "!MODO_SILENCIOSO!"=="1" (
-        "%PYTHON_EXE%" main.py --http --force --ocultar-consola --no-browser %*
+        "%PYTHON_EXE%" main.py --force --ocultar-consola --no-browser %*
     ) else (
-        "%PYTHON_EXE%" main.py --http --force %*
+        "%PYTHON_EXE%" main.py --force %*
     )
     goto :FIN
 )
 
 if exist "StockAgent.exe" (
     if "!MODO_SILENCIOSO!"=="1" (
-        "StockAgent.exe" --http --force --ocultar-consola --no-browser %*
+        "StockAgent.exe" --force --ocultar-consola --no-browser %*
     ) else (
-        "StockAgent.exe" --http --force %*
+        "StockAgent.exe" --force %*
     )
     goto :FIN
 )
@@ -78,18 +91,18 @@ if exist "StockAgent.exe" (
 where python >nul 2>&1
 if not errorlevel 1 (
     if "!MODO_SILENCIOSO!"=="1" (
-        python main.py --http --force --ocultar-consola --no-browser %*
+        python main.py --force --ocultar-consola --no-browser %*
     ) else (
-        python main.py --http --force %*
+        python main.py --force %*
     )
     goto :FIN
 )
 
 if exist "dist\StockAgent.exe" (
     if "!MODO_SILENCIOSO!"=="1" (
-        "dist\StockAgent.exe" --http --force --ocultar-consola --no-browser %*
+        "dist\StockAgent.exe" --force --ocultar-consola --no-browser %*
     ) else (
-        "dist\StockAgent.exe" --http --force %*
+        "dist\StockAgent.exe" --force %*
     )
     goto :FIN
 )

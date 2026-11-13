@@ -34,7 +34,7 @@ if not defined PYINSTALLER_EXE if not defined FLET_EXE (
     exit /b 1
 )
 
-if defined PYINSTALLER_EXE (
+if defined PYINSTALLER_EXE if exist "StockAgent.spec" (
     echo Compilando con PyInstaller (StockAgent.spec)...
     "%PYINSTALLER_EXE%" StockAgent.spec --distpath dist -y
 ) else (
@@ -71,8 +71,13 @@ if exist "detener_servidor.bat" copy /Y "detener_servidor.bat" "dist\detener_ser
 if exist "iniciar_en_segundo_plano.vbs" copy /Y "iniciar_en_segundo_plano.vbs" "dist\iniciar_en_segundo_plano.vbs" > nul
 if exist "instalar_certificado.bat" copy /Y "instalar_certificado.bat" "dist\instalar_certificado.bat" > nul
 if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
+if exist "crear_acceso_directo_cliente.bat" copy /Y "crear_acceso_directo_cliente.bat" "dist\crear_acceso_directo_cliente.bat" > nul
 if exist "configurar_inicio_automatico.bat" copy /Y "configurar_inicio_automatico.bat" "dist\configurar_inicio_automatico.bat" > nul
 if exist "desactivar_inicio_automatico.bat" copy /Y "desactivar_inicio_automatico.bat" "dist\desactivar_inicio_automatico.bat" > nul
+if exist "Documentacion\*.pdf" (
+    if not exist "dist\Documentacion" mkdir "dist\Documentacion"
+    copy /Y "Documentacion\*.pdf" "dist\Documentacion\" > nul
+)
 
 echo.
 echo Ejecutable creado: dist\StockAgent.exe

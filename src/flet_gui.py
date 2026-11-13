@@ -1,229 +1,70 @@
 """Prototipo de escritorio en Flet para el agente de control de stock."""
 
-import asyncio
-import contextlib
-import inspect
-import io
-import json
-import logging
-import os
-import re
-import shutil
-import socket
-import subprocess
-import sys
-import traceback
-import urllib.parse
 import weakref
-import webbrowser
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 import flet as ft
-import openpyxl
 
-from .alertas_programadas import enviar_resumen_ahora, iniciar_planificador
-from .factory_parser import parsear_archivo_fabrica
+from .internal_chat import obtener_mensaje_bienvenida
 from .logger_config import configurar_logging
-from .mercado_full_parser import parsear_archivo_mercado_full
-from .mercado_libre_parser import parsear_pedido_mercado_libre
-from .physical_stock_parser import parsear_excel_stock_fisico
-from .internal_chat import (
-    detectar_intencion,
-    extraer_termino_busqueda,
-    formatear_diagnostico_archivos,
-    formatear_respuesta_criticos,
-    formatear_respuesta_stock,
-    formatear_ultimo_informe,
-    obtener_chips_configuracion,
-    obtener_comandos_ayuda,
-    obtener_mensaje_bienvenida,
-    obtener_pie_ayuda,
-)
 from .menu import MenuAgente
-from .agent import AgenteRemitosStock
-from .backup_manager import (
-    crear_backup_sistema,
-    guardar_config_backup,
-    listar_backups_disponibles,
-    obtener_config_backup,
-    restaurar_backup_sistema,
-)
-from .canjes_parser import parsear_canje_excel
-from .consolidator import ItemConsolidado
-from .dispatch_manifest import generar_hoja_ruta_pdf
-from .email_sender import (
-    despachar_correo,
-    guardar_config_email,
-    obtener_config_email,
-    probar_conexion_smtp,
-)
-from .label_generator import generar_etiquetas_bultos_pdf, generar_etiquetas_lote_pedidos_pdf, generar_etiquetas_termicas_pdf
-from .orders_store import (
-    CierreJornada,
-    ESTADOS_DESPACHO,
-    LOGISTICA_OPCIONES,
-    MensajeChat,
-    OrderStore,
-    Pedido,
-    RegistroAuditoria,
-    calcular_hash_archivo,
-)
-from .remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo, parsear_remito
+from .orders_store import OrderStore
 from .paths import application_root
 from .product_store import ProductStore
-from .ssl_manager import asegurar_certificado_ssl
-from .stock_manager import StockManager
-from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
-from .ui.theme import (
-    ROJO,
-    FONDO,
-    SUPERFICIE,
-    TEXTO,
-    SECUNDARIO,
-    BORDE,
-)
-from .ui.mixins import (
-    ResponsiveLayoutMixin,
-    DocumentViewerMixin,
-    SessionSyncMixin,
-    DialogDispatcherMixin,
-)
-from .ui.components import (
-    construir_sidebar_controls,
-    crear_ventana_chat_flotante,
-    procesar_mensaje_chat_agente,
-    construir_encabezado,
-    construir_panel_metricas,
-    construir_panel_informes_actividad,
-    construir_panel_acceso_rapido,
-    reproducir_sonido_web,
-    actualizar_estado_conexion_ui,
-    iniciar_heartbeat_red_daemon,
-    construir_navigation_bar_movil,
-    manejar_cambio_navegacion_movil,
-    aplicar_posicion_sidebar_ui,
-    cambiar_posicion_sidebar_ui,
-    imprimir_rotulos_termicos_pedido_ui,
-    imprimir_rotulos_pedido_ui,
-    imprimir_rotulos_lote_ui,
-)
-from .ui.dashboard_presenter import actualizar_estado_dashboard
-from .ui.dialogs import (
-    compartir_correo,
-    compartir_whatsapp,
-    enviar_correo_cierre,
-    generar_pedido_fabrica,
-    mostrar_cambiar_mi_clave,
-    mostrar_cambio_clave_obligatorio,
-    mostrar_comparativa_stock_fisico_admin,
-    mostrar_configuracion_inicial,
-    mostrar_dashboard_metricas,
-    mostrar_descuento_mercado_full,
-    mostrar_descuento_mercado_libre,
-    mostrar_dialogo_backup,
-    mostrar_dialogo_cierre_jornada,
-    mostrar_dialogo_cierres_operarios,
-    mostrar_dialogo_compartir_cierre,
-    mostrar_dialogo_configuracion_smtp,
-    mostrar_dialogo_api_master,
-    mostrar_gestion_api_keys,
-    mostrar_estado_api,
-    mostrar_sesiones_api,
-    mostrar_dialogo_confirmar_anulacion_pedido,
-    mostrar_dialogo_confirmar_desarmar_pedido,
-    mostrar_dialogo_crear_pedido,
-    mostrar_dialogo_editar_pedido,
-    mostrar_dialogo_enviar_correo,
-    mostrar_dialogo_escaner_qr_despacho,
-    mostrar_dialogo_formulario_producto,
-    mostrar_dialogo_gestion_clientes,
-    mostrar_dialogo_gestion_productos,
-    mostrar_dialogo_gestion_usuarios,
-    mostrar_dialogo_api_keys,
-    mostrar_dialogo_historial_movimientos_stock,
-    mostrar_estadisticas,
-    mostrar_historial_pedidos,
-    mostrar_imprimir_descuentos,
-    mostrar_ingreso_fabrica,
-    mostrar_inicio_sesion,
-    mostrar_mi_perfil,
-    mostrar_notificaciones_admin,
-    mostrar_registro_auditoria,
-    mostrar_stock_fisico_operario,
-    mostrar_dialogo_inventario_vivo,
-    mostrar_command_palette,
-    mostrar_dialogo_ingreso_rapido,
-    mostrar_dialogo_salida_rapida,
-    mostrar_centro_reportes,
-    mostrar_dialogo_ver_stock,
-    mostrar_dialogo_informes,
-    actualizar_alerta_quiebre,
-    mostrar_detalle_quiebre,
-    confirmar_restaurar,
-    restaurar_documentos,
-)
-from .ui.dialogs.dlg_archivo_historico import mostrar_dialogo_archivo_historico
-from .ui.dialogs.dlg_telegram import mostrar_dialogo_configuracion_telegram
 from .server import (
-    iniciar_servidor_web,
     _RegistroConexionesMiddleware,
     _puerto_local_activo,
+    iniciar_servidor_web,
     obtener_directorio_assets,
     obtener_ip_local,
     obtener_ip_tailscale,
 )
+from .stock_manager import StockManager
+from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
+from .ui.app_config import (
+    INACTIVIDAD_MAX_MINUTOS,
+    PUERTO_WEB_DEFAULT,
+    _obtener_inactividad_max_minutos,
+    guardar_correo_cierre,
+    obtener_correo_cierre_guardado,
+)
+from .ui.components import (
+    actualizar_estado_conexion_ui,
+    aplicar_posicion_sidebar_ui,
+    construir_encabezado,
+    construir_navigation_bar_movil,
+    construir_panel_acceso_rapido,
+    construir_panel_informes_actividad,
+    construir_panel_metricas,
+    construir_sidebar_controls,
+    iniciar_heartbeat_red_daemon,
+    manejar_cambio_navegacion_movil,
+    reproducir_sonido_web,
+)
+from .ui.dashboard_presenter import actualizar_estado_dashboard
+from .ui.dialogs import (
+    actualizar_alerta_quiebre,
+    mostrar_command_palette,
+    mostrar_detalle_quiebre,
+)
+from .ui.mixins import (
+    AuthSessionMixin,
+    BatchProcessingMixin,
+    ChatPanelMixin,
+    DialogDispatcherMixin,
+    DocumentViewerMixin,
+    FileTransferMixin,
+    ResponsiveLayoutMixin,
+    SessionSyncMixin,
+)
+from .ui.theme import BORDE, FONDO, ROJO, SECUNDARIO, SUPERFICIE, TEXTO
 
 logger = configurar_logging()
 
-def _obtener_inactividad_max_minutos() -> int:
-    val = os.environ.get("STOCKAGENT_INACTIVIDAD_MINUTOS", "720")
-    try:
-        return int(val)
-    except ValueError:
-        return 720
-
-# Tiempo de inactividad antes de cerrar sesion (por defecto 720 min = 12 horas; 0 desactiva el cierre)
-INACTIVIDAD_MAX_MINUTOS = _obtener_inactividad_max_minutos()
-
-
-# Constantes de tema importadas desde .ui.theme (ROJO, FONDO, SUPERFICIE, TEXTO, SECUNDARIO)
-PUERTO_WEB_DEFAULT = 8550
 SESIONES_ACTIVAS: weakref.WeakSet["InterfazFlet"] = weakref.WeakSet()
 PROCESAMIENTO_GLOBAL_ACTIVO: bool = False
-
-
-
-
-
-def obtener_correo_cierre_guardado() -> str:
-    """Recupera los destinatarios guardados para el cierre de jornada."""
-    cfg = application_root() / "data" / "config_notificaciones.json"
-    if cfg.exists():
-        try:
-            with open(cfg, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return str(data.get("correo_cierre", "") or "")
-        except Exception:
-            pass
-    return ""
-
-
-def guardar_correo_cierre(correo: str) -> None:
-    """Guarda las direcciones de correo destinatarias del cierre."""
-    cfg = application_root() / "data" / "config_notificaciones.json"
-    cfg.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        data = {}
-        if cfg.exists():
-            with open(cfg, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        data["correo_cierre"] = correo.strip()
-        with open(cfg, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception:
-        pass
 
 
 class InterfazFlet(
@@ -231,19 +72,19 @@ class InterfazFlet(
     DocumentViewerMixin,
     SessionSyncMixin,
     DialogDispatcherMixin,
+    FileTransferMixin,
+    ChatPanelMixin,
+    BatchProcessingMixin,
+    AuthSessionMixin,
 ):
+    """Controlador principal de la interfaz Flet (Desktop y Web)."""
+
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         SESIONES_ACTIVAS.add(self)
-        self.user_store = UserStore(
-            application_root() / "data" / "usuarios.sqlite3"
-        )
-        self.order_store = OrderStore(
-            application_root() / "data" / "pedidos.sqlite3"
-        )
-        self.product_store = ProductStore(
-            application_root() / "data" / "productos.sqlite3"
-        )
+        self.user_store = UserStore(application_root() / "data" / "usuarios.sqlite3")
+        self.order_store = OrderStore(application_root() / "data" / "pedidos.sqlite3")
+        self.product_store = ProductStore(application_root() / "data" / "productos.sqlite3")
         (application_root() / "data" / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
         self.usuario_actual: User | None = None
         self.modo_oscuro = True
@@ -327,58 +168,6 @@ class InterfazFlet(
         else:
             self.mostrar_configuracion_inicial()
 
-    def _asegurar_file_picker(self, forzar_recrear: bool = False) -> None:
-        """Asegura que FilePicker esté registrado exclusivamente como servicio (Flet 1.0) sin contaminar el overlay visual."""
-        reg = getattr(self.page, "_services", None)
-
-        if forzar_recrear or not hasattr(self, "file_picker") or self.file_picker is None:
-            viejo_fp = getattr(self, "file_picker", None)
-            if viejo_fp is not None:
-                if hasattr(self.page, "overlay") and self.page.overlay is not None:
-                    try:
-                        self.page.overlay = [c for c in self.page.overlay if c is not viejo_fp]
-                    except Exception:
-                        pass
-                if hasattr(self.page, "services") and self.page.services is not None:
-                    try:
-                        self.page.services = [s for s in self.page.services if s is not viejo_fp]
-                    except Exception:
-                        pass
-                if reg is not None and hasattr(reg, "_services"):
-                    try:
-                        reg._services = [s for s in reg._services if s is not viejo_fp]
-                    except Exception:
-                        pass
-            self.file_picker = ft.FilePicker()
-
-        # En Flet 1.0 FilePicker es un Servicio no visual. Si está en overlay, Flutter intenta
-        # renderizarlo como Widget y genera el panel rojo de error 'Unknown control: FilePicker'.
-        if hasattr(self.page, "overlay") and self.page.overlay is not None:
-            while self.file_picker in self.page.overlay:
-                self.page.overlay.remove(self.file_picker)
-
-        if hasattr(self.page, "services") and self.page.services is not None:
-            if not any(s is self.file_picker for s in self.page.services):
-                self.page.services.append(self.file_picker)
-
-        if type(reg).__name__ == "ServiceRegistry":
-            if getattr(reg, "parent", None) is None:
-                try:
-                    reg._parent = weakref.ref(self.page)
-                except Exception:
-                    pass
-            if hasattr(reg, "_services") and not any(s is self.file_picker for s in reg._services):
-                try:
-                    reg.register_service(self.file_picker)
-                except Exception:
-                    pass
-
-        # Asegurar referencia de parentesco directa a la página para que self.file_picker.page resuelva siempre
-        try:
-            self.file_picker._parent = weakref.ref(self.page)
-        except Exception:
-            pass
-
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
         self.modo_oscuro = not self.modo_oscuro
         if self.modo_oscuro:
@@ -401,6 +190,7 @@ class InterfazFlet(
         """Interpreta dimensiones en diálogos para adaptarlos a pantallas pequeñas."""
         if hasattr(self.page, "show_dialog") and not getattr(self.page, "_dialogos_adaptables_configurados", False):
             orig_show = self.page.show_dialog
+
             def show_dialog_adaptable(dialogo):
                 self.cerrar_drawer_si_movil()
                 if hasattr(dialogo, "content") and dialogo.content is not None:
@@ -413,15 +203,14 @@ class InterfazFlet(
                             if isinstance(h_orig, (int, float)):
                                 c.height = self.alto_adaptable(int(h_orig))
                 return orig_show(dialogo)
+
             self.page.show_dialog = show_dialog_adaptable
             self.page._dialogos_adaptables_configurados = True
 
     def _configurar_ventana(self) -> None:
         self.page.title = "Control de Inventario Depósito Pasteur"
         if hasattr(self.page, "window"):
-            self.page.window.icon = str(
-                Path(__file__).resolve().parent / "img" / "ultratech.ico"
-            )
+            self.page.window.icon = str(Path(__file__).resolve().parent / "img" / "ultratech.ico")
             self.page.window.maximized = True
             self.page.window.min_width = 360
             self.page.window.min_height = 480
@@ -433,93 +222,6 @@ class InterfazFlet(
             self.page.on_resize = self._al_redimensionar
         self.page.on_keyboard_event = self._manejar_teclas_globales
         self._configurar_dialogos_adaptables()
-
-    def mostrar_inicio_sesion(self, error: str = "") -> None:
-        mostrar_inicio_sesion(self, error=error)
-
-    def mostrar_cambio_clave_obligatorio(self) -> None:
-        mostrar_cambio_clave_obligatorio(self)
-
-    def mostrar_cambiar_mi_clave(self, _evento: ft.Event | None = None) -> None:
-        mostrar_cambiar_mi_clave(self, _evento)
-
-    def mostrar_mi_perfil(self, _evento: ft.Event | None = None) -> None:
-        mostrar_mi_perfil(self, _evento)
-
-    def mostrar_configuracion_inicial(self, error: str = "") -> None:
-        mostrar_configuracion_inicial(self, error=error)
-
-    def cerrar_sesion(self, _evento: ft.Event | None = None) -> None:
-        self._heartbeat_activo = False
-        self._heartbeat_iniciado = False
-        if self.usuario_actual is not None:
-            try:
-                self.order_store.registrar_auditoria(
-                    usuario=self.usuario_actual.username,
-                    accion="LOGOUT",
-                    detalle="Cierre de sesión manual",
-                )
-            except Exception:
-                pass
-            logger.info("Sesión cerrada manualmente por %s", self.usuario_actual.username)
-        self.usuario_actual = None
-        self._prefs_cargadas_usuario = False
-        self.controles_tarea.clear()
-        if hasattr(self, "botones_cierre_jornada") and self.botones_cierre_jornada is not None:
-            self.botones_cierre_jornada.clear()
-        self.btn_cierre_jornada = None
-        self.conversacion.controls.clear()
-        self.ventana_chat_flotante = None
-        self._asegurar_file_picker(forzar_recrear=True)
-        self.mostrar_inicio_sesion()
-
-    def exigir_roles(self, *roles: UserRole) -> bool:
-        if self.usuario_actual is None:
-            self.mostrar_inicio_sesion()
-            return False
-        ahora = datetime.now()
-        if INACTIVIDAD_MAX_MINUTOS > 0 and (ahora - self.ultima_actividad).total_seconds() > INACTIVIDAD_MAX_MINUTOS * 60:
-            nom_exp = self.usuario_actual.username
-            self.usuario_actual = None
-            tiempo_inactividad = (
-                f"{INACTIVIDAD_MAX_MINUTOS // 60} h"
-                if INACTIVIDAD_MAX_MINUTOS % 60 == 0
-                else f"{INACTIVIDAD_MAX_MINUTOS} min"
-            )
-            try:
-                self.order_store.registrar_auditoria(
-                    usuario=nom_exp,
-                    accion="LOGOUT_INACTIVIDAD",
-                    detalle=f"Sesión cerrada automáticamente tras {tiempo_inactividad} de inactividad",
-                )
-            except Exception:
-                pass
-            logger.info("Sesión de '%s' expirada por inactividad (%s)", nom_exp, tiempo_inactividad)
-            self.mostrar_inicio_sesion(
-                f"Tu sesión se cerró por inactividad ({tiempo_inactividad}). vuelve a ingresar."
-            )
-            return False
-        self.ultima_actividad = ahora
-
-        usuario = None
-        if self.user_store:
-            try:
-                usuario_db = self.user_store.get_user(self.usuario_actual.id)
-                if usuario_db and usuario_db.username.lower() == self.usuario_actual.username.lower():
-                    usuario = usuario_db
-            except Exception:
-                pass
-        if usuario is None:
-            usuario = self.usuario_actual
-        if usuario is None or not usuario.active:
-            self.usuario_actual = None
-            self.mostrar_inicio_sesion("La cuenta ya no está activa. Inicia sesión nuevamente.")
-            return False
-        self.usuario_actual = usuario
-        if usuario.role not in roles:
-            self.notificar("Tu rol no tiene permiso para realizar esta acción.")
-            return False
-        return True
 
     def _sidebar_horizontal_controls(self) -> list[ft.Control]:
         from .ui.components.sidebar import construir_sidebar_horizontal_controls
@@ -535,14 +237,18 @@ class InterfazFlet(
                 "derecha": "a la derecha",
                 "arriba": "en barra superior (horizontal)",
                 "abajo": "en barra inferior (horizontal)",
-                "oculto": "oculto (pantalla completa · usa F2 para módulos)"
+                "oculto": "oculto (pantalla completa · usa F2 para módulos)",
             }.get(nueva_posicion, nueva_posicion)
             try:
                 snack = ft.SnackBar(
                     content=ft.Row(
                         [
                             ft.Icon(ft.Icons.DOCK, color=ft.Colors.WHITE, size=16),
-                            ft.Text(f"Menú ubicado {nombre_pos}. Atajo rápido: F2 o Ctrl+K.", color=ft.Colors.WHITE, size=12),
+                            ft.Text(
+                                f"Menú ubicado {nombre_pos}. Atajo rápido: F2 o Ctrl+K.",
+                                color=ft.Colors.WHITE,
+                                size=12,
+                            ),
                         ],
                         spacing=8,
                     ),
@@ -572,7 +278,9 @@ class InterfazFlet(
             try:
                 from .ui.components.sidebar import obtener_preferencias_usuario
                 prefs = obtener_preferencias_usuario(self.usuario_actual.username)
-                if "posicion_sidebar" in prefs and prefs["posicion_sidebar"] in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
+                if "posicion_sidebar" in prefs and prefs["posicion_sidebar"] in (
+                    "izquierda", "derecha", "arriba", "abajo", "oculto"
+                ):
                     self.posicion_sidebar = prefs["posicion_sidebar"]
                 if "modo_oscuro" in prefs:
                     deseado_oscuro = bool(prefs["modo_oscuro"])
@@ -610,11 +318,7 @@ class InterfazFlet(
                 controls=[
                     ft.Container(
                         padding=16,
-                        content=ft.Column(
-                            sidebar_items,
-                            spacing=8,
-                            tight=True,
-                        ),
+                        content=ft.Column(sidebar_items, spacing=8, tight=True),
                     )
                 ],
             )
@@ -623,23 +327,19 @@ class InterfazFlet(
 
         self.page.navigation_bar = construir_navigation_bar_movil(self) if es_movil else None
 
-        dashboard_controls: list[ft.Control] = [
-            self.encabezado(),
-            self.banner_alerta_quiebre,
-            self.panel_metricas(),
-            self.panel_acceso_rapido(),
-            self.panel_informes_actividad(),
-            ft.Row(
-                [
-                    self.estado_tarea,
-                    self.progreso_barra,
-                ],
-                spacing=12,
-                alignment=ft.MainAxisAlignment.START,
-            ),
-        ]
         dashboard = ft.Column(
-            dashboard_controls,
+            [
+                self.encabezado(),
+                self.banner_alerta_quiebre,
+                self.panel_metricas(),
+                self.panel_acceso_rapido(),
+                self.panel_informes_actividad(),
+                ft.Row(
+                    [self.estado_tarea, self.progreso_barra],
+                    spacing=12,
+                    alignment=ft.MainAxisAlignment.START,
+                ),
+            ],
             expand=True,
             spacing=16,
             scroll=ft.ScrollMode.AUTO if es_movil else None,
@@ -658,29 +358,19 @@ class InterfazFlet(
                 width=258,
                 bgcolor=self.superficie,
                 padding=20,
-                content=ft.Column(
-                    sidebar_items,
-                    spacing=8,
-                    scroll=ft.ScrollMode.AUTO,
-                ),
+                content=ft.Column(sidebar_items, spacing=8, scroll=ft.ScrollMode.AUTO),
             )
             self.page.add(
                 ft.Row(
                     [
                         sidebar,
-                        ft.Container(
-                            expand=True,
-                            padding=22,
-                            content=dashboard,
-                        ),
+                        ft.Container(expand=True, padding=22, content=dashboard),
                     ],
                     expand=True,
                     spacing=0,
                     vertical_alignment=ft.CrossAxisAlignment.STRETCH,
                 )
             )
-
-        if not es_movil and "sidebar" in locals():
             self._aplicar_posicion_sidebar(dashboard, sidebar)
 
         ventana_chat = self.crear_ventana_chat_flotante()
@@ -695,7 +385,12 @@ class InterfazFlet(
             content=ft.Row(
                 [
                     ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=18 if es_movil else 20),
-                    ft.Text("Chat" if es_movil else "Asistente", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD, size=12 if es_movil else 13),
+                    ft.Text(
+                        "Chat" if es_movil else "Asistente",
+                        color=ft.Colors.WHITE,
+                        weight=ft.FontWeight.BOLD,
+                        size=12 if es_movil else 13,
+                    ),
                     self.badge_chat_container,
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -711,10 +406,7 @@ class InterfazFlet(
         if not self.conversacion.controls:
             rol_actual = self.usuario_actual.role if self.usuario_actual else "operador"
             nom_actual = self.usuario_actual.username if self.usuario_actual else ""
-            self.escribir_chat(
-                "Agente",
-                obtener_mensaje_bienvenida(rol_actual, nom_actual),
-            )
+            self.escribir_chat("Agente", obtener_mensaje_bienvenida(rol_actual, nom_actual))
         self.actualizar_estado()
         self.refrescar_usuarios_chat_equipo()
         self._iniciar_heartbeat_red()
@@ -775,25 +467,6 @@ class InterfazFlet(
                 on_click=self.mostrar_notificaciones_admin,
             )
 
-    def _enriquecer_mensaje_con_pedidos(self, texto: str) -> str:
-        """Si el mensaje menciona #remito o #nota, adjunta automáticamente el resumen del pedido."""
-        referencias = re.findall(r"#([A-Za-z0-9_-]{2,40})", texto)
-        if not referencias:
-            return texto
-        resumenes: list[str] = []
-        vistos: set[str] = set()
-        for ref in referencias:
-            ref_norm = ref.upper()
-            if ref_norm in vistos:
-                continue
-            vistos.add(ref_norm)
-            res = self.order_store.obtener_pedido_resumen_chat(ref)
-            if res:
-                resumenes.append(res)
-        if resumenes:
-            return texto + "\n" + "\n".join(resumenes)
-        return texto
-
     def encabezado(self) -> ft.Control:
         return construir_encabezado(self)
 
@@ -805,56 +478,6 @@ class InterfazFlet(
 
     def panel_informes_actividad(self) -> ft.Control:
         return construir_panel_informes_actividad(self)
-
-    def alternar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
-        self.chat_visible = not self.chat_visible
-        if self.ventana_chat_flotante is not None:
-            self.ventana_chat_flotante.visible = self.chat_visible
-            self.page.update()
-
-    def cerrar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
-        self.chat_visible = False
-
-        if self.ventana_chat_flotante is not None:
-            self.ventana_chat_flotante.visible = False
-            self.page.update()
-
-    def limpiar_chat(self, _evento: ft.Event | None = None) -> None:
-        self.conversacion.controls.clear()
-        rol_actual = self.usuario_actual.role if self.usuario_actual else "operador"
-        nom_actual = self.usuario_actual.username if self.usuario_actual else ""
-        self.escribir_chat(
-            "Agente",
-            f"Conversación reiniciada.\n\n{obtener_mensaje_bienvenida(rol_actual, nom_actual)}",
-        )
-        self.page.update()
-
-    def ejecutar_comando_rapido(self, comando: str) -> None:
-        if comando == "/stock":
-            self.entrada_chat.value = "/stock "
-            self.entrada_chat.focus()
-            self.page.update()
-            return
-        self.entrada_chat.value = comando
-        asyncio.create_task(self.enviar_chat(None))
-
-    def cambiar_pestaña_chat(self, modo: str) -> None:
-        self.modo_chat_activo = modo
-        if self.ventana_chat_flotante is not None:
-            self.ventana_chat_flotante.visible = True
-            self.chat_visible = True
-        if hasattr(self, "_cambiar_tab_fn") and self._cambiar_tab_fn is not None:
-            self._cambiar_tab_fn(modo)
-        else:
-            self.page.update()
-
-    def crear_ventana_chat_flotante(self) -> ft.Container:
-        return crear_ventana_chat_flotante(self)
-
-    def panel_chat(self) -> ft.Control:
-        if self.ventana_chat_flotante is None:
-            self.crear_ventana_chat_flotante()
-        return self.ventana_chat_flotante
 
     def tarjeta(self, contenido: ft.Control, expand: bool = False) -> ft.Container:
         return ft.Container(
@@ -886,258 +509,11 @@ class InterfazFlet(
         self.estado_tarea.value = f"{tipo} seleccionado: {ruta.name}"
         self.page.update()
 
-    def escribir_chat(self, emisor: str, mensaje: str) -> None:
-        color = ROJO if emisor == "Tú" else ft.Colors.RED_300
-        if emisor == "Tú":
-            bgcolor = ft.Colors.RED_900 if self.modo_oscuro else ft.Colors.RED_50
-        else:
-            bgcolor = ft.Colors.BLUE_GREY_800 if self.modo_oscuro else ft.Colors.GREY_100
-        self.conversacion.controls.append(
-            ft.Container(
-                bgcolor=bgcolor,
-                border_radius=10,
-                padding=10,
-                content=ft.Column(
-                    [
-                        ft.Text(emisor, size=10, weight=ft.FontWeight.BOLD, color=color),
-                        ft.Text(mensaje, size=12, color=self.texto),
-                    ],
-                    spacing=3,
-                ),
-            )
-        )
-
-    async def enviar_chat(self, _evento: ft.Event | None = None) -> None:
-        if not self.exigir_roles(*USER_ROLES):
-            return
-        mensaje = (self.entrada_chat.value or "").strip()
-        if not mensaje:
-            return
-        self.entrada_chat.value = ""
-        self.escribir_chat("Tú", mensaje)
-        await procesar_mensaje_chat_agente(self, mensaje)
-
-    def resumen_estado(self) -> str:
-        mayoristas, canjes, mercado_libre = self.menu._obtener_pendientes()
-        fab = self.menu._obtener_pendientes_fabrica()
-        full = getattr(self.menu, "_obtener_pendientes_mercado_full", lambda: [])()
-        archivados = self.menu._obtener_archivados()
-        return (
-            f"Pendientes: {len(mayoristas)} PDF mayoristas, {len(canjes)} Excel "
-            f"de canjes, {len(mercado_libre)} DOCX de Mercado Libre, {len(fab)} fábrica "
-            f"y {len(full)} Mercado Full. "
-            f"Archivados: {sum(map(len, archivados))}. "
-            f"Informes disponibles: {len(self.menu._obtener_generados())}."
-        )
-
-    def resumen_informes(self) -> str:
-        informes = self.menu._obtener_generados()
-        if not informes:
-            return "Todavía no hay informes generados."
-        nombres = [ruta.name for ruta in informes[-10:]]
-        return "Informes recientes:\n" + "\n".join(nombres)
-
-    def fuentes_seleccionadas(self) -> tuple[bool, bool, bool]:
-        return (
-            bool(self.mayoristas.value),
-            bool(self.canjes.value),
-            bool(self.mercado_libre.value),
-        )
-
-    async def simular(self, _evento: ft.Event | None) -> None:
-        if not self.exigir_roles("operador"):
-            return
-        await self.procesar(simulacion=True)
-
-    def procesar_real(self, _evento: ft.Event) -> None:
-        if not self.exigir_roles("operador"):
-            return
-        dialogo = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Confirmar procesamiento real"),
-            content=ft.Text(
-                "Esta operación generará el informe y moverá los documentos "
-                "procesados a 'descontados'. No modificará Productos.xlsx. ¿Quieres continuar?"
-            ),
-            actions=[
-                self.boton_dialogo("Cancelar", lambda _e: self.page.pop_dialog()),
-                self.boton_dialogo("Confirmar", self.confirmar_procesar_real),
-            ],
-        )
-        self.page.show_dialog(dialogo)
-
-    async def confirmar_procesar_real(self, _evento: ft.Event) -> None:
-        if not self.exigir_roles("operador"):
-            return
-        self.page.pop_dialog()
-        await self.procesar(simulacion=False)
-
-    async def procesar(self, simulacion: bool) -> None:
-        if not self.exigir_roles("operador"):
-            return
-        if PROCESAMIENTO_GLOBAL_ACTIVO or self.ocupado:
-            self.notificar(
-                "Hay una operación de procesamiento de stock en curso desde otra sesión o pestaña. "
-                "Por seguridad en los archivos, espera a que finalice."
-            )
-            return
-        fuentes = self.fuentes_seleccionadas()
-        if not any(fuentes):
-            self.notificar("Selecciona al menos una fuente.")
-            return
-
-        usuario_actual_nom = self.usuario_actual.username if self.usuario_actual else "operador"
-        await self.ejecutar_tarea(
-            "Simulación" if simulacion else "Procesamiento real",
-            lambda: self.menu.procesar(
-                incluir_mayoristas=fuentes[0],
-                incluir_canjes=fuentes[1],
-                incluir_mercado_libre=fuentes[2],
-                simulacion=simulacion,
-                usuario=usuario_actual_nom,
-            ),
-        )
-
-    async def ejecutar_tarea(
-        self, nombre: str, accion: Callable[[], object]
-    ) -> bool:
-        global PROCESAMIENTO_GLOBAL_ACTIVO
-        if PROCESAMIENTO_GLOBAL_ACTIVO or self.ocupado:
-            self.notificar(
-                "Hay una operación de procesamiento de stock en curso desde otra sesión o pestaña. "
-                "Por seguridad en los archivos, espera a que finalice."
-            )
-            return False
-
-        self.ocupado = True
-        PROCESAMIENTO_GLOBAL_ACTIVO = True
-        self.progreso_barra.visible = True
-        self.progreso_barra.value = None
-        self.estado_tarea.value = f"En curso: {nombre}"
-        self.actualizar_estado_botones()
-        self.sincronizar_sesiones()
-        self.page.update()
-
-        salida = io.StringIO()
-        exito = False
-
-        def ejecutar() -> None:
-            with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(salida):
-                accion()
-
-        try:
-            await asyncio.to_thread(ejecutar)
-        except Exception as exc:
-            detalle = traceback.format_exc()
-            logger.error("Error ejecutando tarea '%s': %s\n%s", nombre, exc, detalle)
-            self.actividad.controls.append(
-                ft.Text(
-                    f"[ERROR]\n{detalle}",
-                    color=ft.Colors.RED_400 if self.modo_oscuro else ft.Colors.RED_700,
-                    size=14,
-                )
-            )
-            self.estado_tarea.value = f"{nombre} terminó con un error."
-            self.notificar("La operación falló. Revisa el panel Actividad.")
-        else:
-            texto = salida.getvalue().strip()
-            if texto:
-                self.actividad.controls.append(
-                    ft.Text(texto, color=self.texto, size=14)
-                )
-            self.estado_tarea.value = f"{nombre} finalizada."
-            exito = True
-        finally:
-            self.ocupado = False
-            PROCESAMIENTO_GLOBAL_ACTIVO = False
-            self.progreso_barra.visible = False
-            self.progreso_barra.value = None
-            self.actualizar_estado_botones()
-            self.actualizar_estado()
-            self.sincronizar_sesiones()
-        return exito
-
-    def actualizar_progreso(self, actual: int, total: int, mensaje: str = "") -> None:
-        """Actualiza el porcentaje y etiqueta de la barra de progreso de operaciones masivas."""
-        if total > 0:
-            val = min(1.0, max(0.0, float(actual) / float(total)))
-            self.progreso_barra.value = val
-            pct = int(val * 100)
-            self.estado_tarea.value = f"{mensaje} ({pct}%)" if mensaje else f"Progreso: {pct}%"
-        else:
-            self.progreso_barra.value = None
-            if mensaje:
-                self.estado_tarea.value = mensaje
-        self.progreso_barra.visible = True
-        if hasattr(self.page, "update"):
-            try:
-                self.page.update()
-            except Exception:
-                pass
-
-    def _actualizar_estado_boton_cierre(self, conteo_total: int | None = None) -> None:
-        """Habilita o deshabilita dinámicamente el botón de Cierre de Jornada según pedidos pendientes."""
-        if conteo_total is None:
-            conteo_total = 0
-            if hasattr(self, "order_store") and self.order_store:
-                try:
-                    conteo = self.order_store.contar_pedidos_pendientes_cierre_por_tipo()
-                    conteo_total = int(conteo.get("total", 0))
-                except Exception:
-                    conteo_total = 0
-
-        esta_deshabilitado = bool(self.ocupado or PROCESAMIENTO_GLOBAL_ACTIVO or conteo_total == 0)
-
-        if conteo_total == 0:
-            tooltip_txt = "No hay pedidos pendientes de cierre"
-        else:
-            tooltip_txt = f"{conteo_total} pedido(s) pendiente(s) de cierre"
-
-        botones = getattr(self, "botones_cierre_jornada", []) or []
-        btn_single = getattr(self, "btn_cierre_jornada", None)
-        todos_botones = list(botones)
-        if btn_single and btn_single not in todos_botones:
-            todos_botones.append(btn_single)
-
-        for btn in todos_botones:
-            btn.disabled = esta_deshabilitado
-            btn.tooltip = tooltip_txt
-            btn.content = f"Cierre de Jornada ({conteo_total})" if conteo_total > 0 else "Cierre de Jornada"
-
-        try:
-            from .ui.components.sidebar import actualizar_puntos_pendientes_sidebar
-            actualizar_puntos_pendientes_sidebar(self)
-        except Exception:
-            pass
-        badge_sec = getattr(self, "badge_seccion_cierre", None)
-        badge_txt = getattr(self, "badge_texto_cierre", None)
-        if badge_sec is not None:
-            badge_sec.visible = (conteo_total > 0)
-        if badge_txt is not None:
-            badge_txt.value = str(conteo_total)
-
-        badge_h_sec = getattr(self, "badge_h_seccion_cierre", None)
-        badge_h_txt = getattr(self, "badge_h_texto_cierre", None)
-        if badge_h_sec is not None:
-            badge_h_sec.visible = (conteo_total > 0)
-        if badge_h_txt is not None:
-            badge_h_txt.value = str(conteo_total)
-
-    def actualizar_estado_botones(self) -> None:
-        deshabilitado = self.ocupado or PROCESAMIENTO_GLOBAL_ACTIVO
-        for control in self.controles_tarea:
-            control.disabled = deshabilitado
-        if not deshabilitado:
-            self._actualizar_estado_boton_cierre()
-        self.page.update()
-
     def notificar(self, mensaje: str) -> None:
         dialogo = ft.AlertDialog(
             title=ft.Text("Aviso"),
             content=ft.Text(mensaje),
-            actions=[
-                self.boton_dialogo("Aceptar", lambda _e: self.page.pop_dialog())
-            ],
+            actions=[self.boton_dialogo("Aceptar", lambda _e: self.page.pop_dialog())],
         )
         self.page.show_dialog(dialogo)
 
@@ -1151,115 +527,6 @@ class InterfazFlet(
                 cb.set(str(texto))
         except Exception:
             pass
-
-    async def _descargar_archivo_navegador(self, ruta: Path) -> None:
-        try:
-            self._asegurar_file_picker()
-            contenido_bytes = ruta.read_bytes()
-            await self.file_picker.save_file(
-                dialog_title=f"Guardar {ruta.name}",
-                file_name=ruta.name,
-                src_bytes=contenido_bytes,
-            )
-        except Exception as error:
-            logger.warning("Error al descargar archivo en navegador: %s", error)
-            self.notificar(f"No se pudo descargar el archivo en el navegador:\n{error}")
-
-    async def subir_archivos_desde_pc(
-        self,
-        carpeta_destino: Path,
-        extensiones: list[str],
-        titulo: str = "Seleccionar archivo(s) desde esta PC",
-        al_terminar: Callable[[list[Path]], None] | None = None,
-    ) -> list[Path]:
-        try:
-            self._asegurar_file_picker()
-            ext_limpias: list[str] = []
-            for ext in extensiones:
-                e = ext.lstrip(".").lower()
-                if e not in ext_limpias:
-                    ext_limpias.append(e)
-            # En Flet Web y Desktop, usar ft.FilePickerFileType.ANY garantiza que el selector
-            # del sistema operativo/navegador no deshabilite ni oculte archivos válidos
-            # (remitos .pdf, .docx, .xlsx con mayúsculas/minúsculas).
-            # La validación estricta de extensiones se realiza abajo en Python.
-            tipo_selector = ft.FilePickerFileType.ANY
-            ext_selector = None
-            seleccionados = await self.file_picker.pick_files(
-                dialog_title=titulo,
-                file_type=tipo_selector,
-                allowed_extensions=ext_selector,
-                allow_multiple=True,
-                with_data=True,
-                cancel_upload_on_window_blur=False,
-            )
-        except Exception as error:
-            logger.warning("Error al abrir selector de archivos: %s", error)
-            self.notificar(f"Error al abrir el selector de archivos:\n{error}")
-            return []
-
-        if not seleccionados:
-            return []
-
-        carpeta_destino.mkdir(parents=True, exist_ok=True)
-        guardados: list[Path] = []
-        rechazados: list[str] = []
-        MAX_SUBIDA_BYTES = 25 * 1024 * 1024  # 25 MB
-        try:
-            for item in seleccionados:
-                nombre_limpio = Path(item.name).name
-                if ext_limpias:
-                    ext_item = Path(nombre_limpio).suffix.lstrip(".").lower()
-                    if ext_item not in ext_limpias:
-                        rechazados.append(nombre_limpio)
-                        continue
-                # Validación de seguridad: límite de tamaño de archivo (25 MB)
-                peso_bytes = len(item.bytes) if (item.bytes and len(item.bytes) > 0) else (
-                    Path(item.path).stat().st_size if (item.path and Path(item.path).exists()) else 0
-                )
-                if peso_bytes > MAX_SUBIDA_BYTES:
-                    self.notificar(f"El archivo '{nombre_limpio}' ({peso_bytes // (1024*1024)} MB) supera el límite máximo de 25 MB.")
-                    continue
-
-                destino = carpeta_destino / nombre_limpio
-                _cnt = 1
-                while destino.exists():
-                    try:
-                        with open(destino, "ab"):
-                            pass
-                        break
-                    except OSError:
-                        destino = carpeta_destino / f"{Path(nombre_limpio).stem}_{_cnt}{Path(nombre_limpio).suffix}"
-                        _cnt += 1
-                if item.bytes and len(item.bytes) > 0:
-                    destino.write_bytes(item.bytes)
-                    guardados.append(destino)
-                elif item.path:
-                    origen = Path(item.path)
-                    if origen.exists():
-                        if origen.resolve() != destino.resolve():
-                            shutil.copy2(origen, destino)
-                        guardados.append(destino)
-                elif item.bytes is not None:
-                    destino.write_bytes(item.bytes)
-                    guardados.append(destino)
-        except Exception as error:
-            self.notificar(f"Error al guardar el archivo subido:\n{error}")
-            return []
-
-        if rechazados and not guardados:
-            formatos_str = ", ".join(f".{x}" for x in ext_limpias)
-            self.notificar(
-                f"El archivo seleccionado ({', '.join(rechazados)}) no tiene un formato permitido ({formatos_str})."
-            )
-            return []
-
-        if guardados:
-            if al_terminar is not None:
-                al_terminar(guardados)
-            self.actualizar_estado()
-            self.sincronizar_sesiones()
-        return guardados
 
     def actualizar_estado_conexion(
         self,

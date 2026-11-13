@@ -8,9 +8,9 @@ Aplicación cliente nativa en **Flutter** con arquitectura desacoplada, diseñad
 
 A diferencia de versiones anteriores basadas en WebViews, la aplicación móvil ahora es **100% nativa en Flutter**:
 
-* **Consumo de API REST (/api/v1):** Se comunica con el backend modular mediante peticiones JSON estándar y sin estado (`Bearer Token`), conectando directamente con los módulos de dominio desacoplados (`src.auth` para autenticación, `src.orders` para gestión de pedidos y despacho, `src.products` para consulta y actualización de catálogo/código de barras, y `src.inventory` para reconciliación de stock).
+* **Consumo de API REST (/api/v1):** Se comunica con el backend modular mediante peticiones JSON estándar y sin estado (`Bearer Token` en encabezado `Authorization`), conectando directamente con los módulos de dominio desacoplados (`src.auth` para autenticación, `src.orders` para gestión de pedidos y despacho, `src.products` para consulta y actualización de catálogo/código de barras, `src.stock` para informes/etiquetas y `src.inventory` para reconciliación de stock).
 * **Manejo Estructurado de Errores (`src.core.exceptions`):** Las respuestas de error del servidor retornan códigos tipificados y consistentes (ej. `AUTH_ACCOUNT_LOCKED`, `ORDER_NOT_FOUND`), permitiendo a la app móvil mostrar alertas precisas y descriptivas en pantalla.
-* **Sesión Segura y Roles:** Login nativo con verificación de credenciales y roles (`operador`, `administrador`, `master`).
+* **Sesión Segura y Roles:** Login nativo con verificación de credenciales y control de permisos por rol (`operador`, `picker`, `administrador`, `master`, `consulta`).
 * **Resiliencia Offline:** Los conteos de inventario se guardan continuamente en almacenamiento local del teléfono. Si el operario entra a un sector sin Wi-Fi, no pierde ni un solo escaneo.
 * **Feedback Háptico y Sonoro:** Confirmación inmediata por vibración y pitido auditivo tras cada lectura válida de código de barras o rótulo QR.
 
@@ -41,21 +41,19 @@ A diferencia de versiones anteriores basadas en WebViews, la aplicación móvil 
 
 Para permitir la conexión por red local:
 
-1. Haz doble clic en:
+1. Asegúrate de haber habilitado el puerto `8550` en perfil de red privada ejecutando `configurar_firewall_red.bat` como Administrador (una sola vez).
+2. Haz doble clic en:
    ```bat
-   iniciar_servidor_movil.bat
+   stockagent_mobile\iniciar_servidor_movil.bat
    ```
-2. La consola liberará automáticamente el puerto `8550`, verificará el Firewall de Windows y mostrará los datos de conexión LAN:
-   ```text
-   ==================================================================
-     >>> DATOS PARA CONECTAR TU CELULAR (APP O NAVEGADOR) <<<
-     * Host / IP:   192.168.100.19
-     * Puerto:      8550
-     * Protocolo:   HTTP
-
-     * URL Directa: http://192.168.100.19:8550
-   ==================================================================
-   ```
+   *(Sin argumentos inicia en segundo plano mediante `iniciar_servidor_movil_en_segundo_plano.vbs`. Para ver diagnóstico en consola ejecuta `iniciar_servidor_movil.bat --consola`.)*
+3. Por defecto el servidor arranca sobre **HTTPS cifrado** en `0.0.0.0:8550` (`https://<IP_SERVIDOR>:8550`) usando el certificado en `data\certs\stockagent.crt`:
+   * Si abres la app web/PWA desde otra PC Windows o navegador en LAN, instala `stockagent.crt` con `instalar_certificado.bat` o utiliza `crear_acceso_directo_cliente.bat`.
+   * En dispositivos móviles o entornos de red local estrictamente aislados donde requieras HTTP plano temporalmente, pasa la bandera `--http`:
+     ```bat
+     stockagent_mobile\iniciar_servidor_movil.bat --consola --http
+     ```
+     *(Con `--http` el tráfico viaja sin cifrar; úsalo únicamente en una LAN privada de confianza.)*
 
 ---
 

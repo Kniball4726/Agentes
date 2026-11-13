@@ -17,11 +17,13 @@ from ..core.exceptions import (
     OrderValidationError,
     OrderConcurrencyError,
 )
+from .schema import inicializar_esquema_pedidos
 from .client_repo import ClientRepositoryMixin
 from .chat_repo import ChatRepositoryMixin
 from .concurrency_repo import ConcurrencyRepositoryMixin
 from .audit_repo import AuditRepositoryMixin
 from .closure_repo import ClosureRepositoryMixin
+from .dispatch_repo import DispatchRepositoryMixin
 from .store import OrderStore
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "ESTADOS_DESPACHO",
     "_COLUMNAS_DESPACHO",
     "calcular_hash_archivo",
+    "inicializar_esquema_pedidos",
     "OrderStoreError",
     "OrderNotFoundError",
     "OrderValidationError",
@@ -43,5 +46,6 @@ __all__ = [
     "ConcurrencyRepositoryMixin",
     "AuditRepositoryMixin",
     "ClosureRepositoryMixin",
+    "DispatchRepositoryMixin",
     "OrderStore",
 ]

@@ -138,7 +138,9 @@ class DocumentViewerMixin:
 
         if getattr(self.page, "web", False):
             ts = int(ruta_pdf.stat().st_mtime)
-            url_doc = f"/documentacion/{nombre_archivo}?v={ts}"
+            from ...api.deps import crear_token_documento
+            dt = crear_token_documento(self.usuario_actual, recurso=nombre_archivo)
+            url_doc = f"/documentacion/{nombre_archivo}?v={ts}&dt={urllib.parse.quote(dt)}"
             try:
                 self.abrir_url_en_navegador(url_doc)
             except Exception:
@@ -151,6 +153,10 @@ class DocumentViewerMixin:
             self.notificar(f"No se pudo abrir el manual:\n{error}")
 
     def abrir_informe(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
+        if hasattr(self, "exigir_roles") and not self.exigir_roles(
+            "operador", "picker", "administrador", "master", "consulta"
+        ):
+            return
         if ruta_especifica is None:
             if getattr(self, "menu", None) and hasattr(self.menu, "_obtener_generados"):
                 try:
@@ -177,6 +183,11 @@ class DocumentViewerMixin:
                 rel_p = ruta_path.name
 
             url_doc = f"/documentos/ver?p={urllib.parse.quote(rel_p)}"
+            usr_actual = getattr(self, "usuario_actual", None)
+            if usr_actual is not None:
+                from ...api.deps import crear_token_documento
+                dt = crear_token_documento(usr_actual, recurso=rel_p)
+                url_doc = f"{url_doc}&dt={urllib.parse.quote(dt)}"
             self.abrir_url_en_navegador(url_doc)
             return
 

@@ -9,12 +9,18 @@ Incluye soporte para modo continuo (pistoleo automático) e integración con Web
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import flet as ft
 
-from ..theme import ROJO
 from ...webhook_manager import despachar_evento_webhook
+from ..theme import ROJO
+from .movimientos_rapidos_ops import (
+    buscar_producto_movimiento,
+    ejecutar_transaccion_movimiento_rapido,
+    extraer_datos_fila_producto,
+    obtener_stock_manager_movimiento,
+)
 
 
 class MotivoIngresoRapido(str, Enum):
@@ -62,17 +68,15 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
     enum_motivos = MotivoIngresoRapido if es_ingreso else MotivoSalidaRapida
 
     producto_seleccionado: dict[str, Any] = {}
+    cache_sm: list[Any] = [None]
 
-    # Campos UI
     texto_estado = ft.Text("", size=12, italic=True)
-
     switch_modo_continuo = ft.Switch(
         label="Modo pistoleo continuo (automático)",
         value=False,
         active_color=color_tema,
         tooltip="Aplica el movimiento al disparar el código de barras sin presionar Confirmar",
     )
-
     txt_codigo_busqueda = ft.TextField(
         label="Escanear Código de Barras o ingresar SKU",
         hint_text="Enfoque aquí con la lectora o escriba y presione Enter",
@@ -81,7 +85,6 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         text_size=13,
         expand=True,
     )
-
     txt_cantidad = ft.TextField(
         value="1",
         label="Cantidad",
@@ -90,7 +93,6 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         width=100,
         text_size=14,
     )
-
     dropdown_motivo = ft.Dropdown(
         label="Motivo obligatorio *",
         hint_text="Seleccione un motivo justificado...",
@@ -99,7 +101,6 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         expand=True,
         options=[ft.dropdown.Option(m.value) for m in enum_motivos],
     )
-
     txt_observaciones = ft.TextField(
         label="Observaciones / Detalle adicional (opcional)",
         hint_text="Ej: Remito provisorio, cliente García, caja golpeada...",
@@ -110,7 +111,6 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         text_size=12,
     )
 
-    # Tarjeta de producto encontrado
     lbl_prod_nombre = ft.Text("Ningún producto seleccionado", size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto)
     lbl_prod_codigo = ft.Text("SKU: -", size=12, color=interfaz.secundario)
     lbl_prod_barras = ft.Text("Código de barras: -", size=12, color=interfaz.secundario)
@@ -120,17 +120,8 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
     tarjeta_producto = ft.Container(
         content=ft.Column(
             [
-                ft.Row(
-                    [
-                        ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=20, color=color_tema),
-                        lbl_prod_nombre,
-                    ],
-                    spacing=8,
-                ),
-                ft.Row(
-                    [lbl_prod_codigo, lbl_prod_barras],
-                    spacing=20,
-                ),
+                ft.Row([ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=20, color=color_tema), lbl_prod_nombre], spacing=8),
+                ft.Row([lbl_prod_codigo, lbl_prod_barras], spacing=20),
                 ft.Row(
                     [lbl_prod_stock_actual, ft.Icon(ft.Icons.ARROW_FORWARD, size=14, color=interfaz.secundario), lbl_prod_stock_proyectado],
                     spacing=10,
@@ -152,10 +143,14 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
             except Exception:
                 pass
 
+    def _mostrar_error(msg: str) -> None:
+        texto_estado.value = msg
+        texto_estado.color = ft.Colors.RED_600
+        _safe_update(texto_estado)
+
     def _obtener_cantidad_int() -> int:
         try:
-            val = int(str(txt_cantidad.value or "").strip())
-            return max(1, val)
+            return max(1, int(str(txt_cantidad.value or "").strip()))
         except Exception:
             return 1
 
@@ -167,167 +162,49 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
         actual = int(producto_seleccionado.get("stock_actual", 0))
         resultante = (actual + qty) if es_ingreso else (actual - qty)
         lbl_prod_stock_proyectado.value = f"Stock resultante: {resultante} u."
-        if not es_ingreso and resultante < 0:
-            lbl_prod_stock_proyectado.color = ft.Colors.RED_600
-        else:
-            lbl_prod_stock_proyectado.color = color_tema
+        lbl_prod_stock_proyectado.color = ft.Colors.RED_600 if (not es_ingreso and resultante < 0) else color_tema
         _safe_update(tarjeta_producto)
 
-    sm_local: Any = None
-
-    def _obtener_stock_manager() -> Any:
-        nonlocal sm_local
-        sm_attr = getattr(interfaz, "stock_manager", None)
-        if sm_attr is not None:
-            return sm_attr
-        if sm_local is not None:
-            return sm_local
-        ruta_excel = getattr(getattr(interfaz, "menu", None), "ruta_excel_base", None)
-        if ruta_excel:
+    def _al_cerrar(_e: Any = None) -> None:
+        if interfaz.page and hasattr(interfaz.page, "pop_dialog"):
             try:
-                from src.stock_manager import StockManager
-
-                sm_local = StockManager(ruta_excel)
-                return sm_local
-            except Exception:
-                return None
-        return None
-
-    def _ejecutar_transaccion(codigo: str, nombre: str, qty: int, motivo: str, obs: str, cerrar_al_final: bool = True) -> bool:
-        """Aplica la transacción de stock, historial, auditoría y webhooks."""
-        usuario_nom = getattr(interfaz.usuario_actual, "nombre_identificador", None) or getattr(interfaz.usuario_actual, "username", "Operador")
-        sm = _obtener_stock_manager()
-        if not sm:
-            texto_estado.value = "Error crítico: Gestor de stock no encontrado."
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
-            return False
-
-        cantidad_ajuste = qty if es_ingreso else -qty
-
-        try:
-            # 1. Ajuste atómico en catálogo y SQLite
-            sm.registrar_ingreso_fabrica({codigo: cantidad_ajuste}, sobrescribir=False)
-
-            # 2. Historial de movimientos
-            mtype = "ingreso_rapido" if es_ingreso else "salida_rapida"
-            detalle_mov = f"[{motivo}] {obs}".strip()
-            if hasattr(sm, "product_store") and sm.product_store:
-                sm.product_store.register_movements(
-                    [(codigo, nombre, cantidad_ajuste, mtype)],
-                    usuario=usuario_nom,
-                    detalle=detalle_mov,
-                )
-
-            # 3. Log de auditoría
-            if hasattr(interfaz, "order_store") and interfaz.order_store:
-                accion_audit = "INGRESO_RAPIDO" if es_ingreso else "SALIDA_RAPIDA"
-                detalle_audit = f"[{motivo}] {codigo} ({nombre}) x{qty} u. - {obs}".strip()
-                interfaz.order_store.registrar_auditoria(
-                    usuario=usuario_nom,
-                    accion=accion_audit,
-                    detalle=detalle_audit,
-                )
-
-            # 4. Despacho asíncrono de Webhook
-            try:
-                despachar_evento_webhook(
-                    "MOVIMIENTO_RAPIDO",
-                    {
-                        "tipo": "ingreso" if es_ingreso else "salida",
-                        "codigo": codigo,
-                        "nombre": nombre,
-                        "cantidad": qty,
-                        "motivo": motivo,
-                        "usuario": usuario_nom,
-                    },
-                )
+                interfaz.page.pop_dialog()
             except Exception:
                 pass
 
-            msg_tipo = "Entrada registrada" if es_ingreso else "Salida registrada"
-            
-            # Acción de Deshacer (Undo) contextual durante 6 segundos
-            def _deshacer_movimiento(_ev: Any = None) -> None:
-                try:
-                    sm.actualizar_stock_base(codigo, stock_actual, sincronizar_excel=True)
-                    if hasattr(interfaz, "order_store") and interfaz.order_store:
-                        interfaz.order_store.registrar_auditoria(
-                            usuario=usuario_nom,
-                            accion="DESHACER_MOVIMIENTO_RAPIDO",
-                            detalle=f"Reversión de {msg_tipo.lower()} para {codigo} ({qty} u.). Stock restaurado a {stock_actual}.",
-                        )
-                    if hasattr(interfaz, "reproducir_sonido"):
-                        interfaz.reproducir_sonido("exito")
-                    interfaz.notificar(f"↩️ Se revirtió el movimiento de {codigo}. Stock restaurado a {stock_actual}.", ft.Colors.BLUE_700)
-                    if hasattr(interfaz, "actualizar_estado"):
-                        interfaz.actualizar_estado()
-                except Exception as exc_undo:
-                    interfaz.notificar(f"Error al revertir movimiento: {exc_undo}", ft.Colors.RED_700)
-
-            try:
-                snack_undo = ft.SnackBar(
-                    content=ft.Text(f"✅ {msg_tipo}: {codigo} ({qty} u.)", color=ft.Colors.WHITE, size=13),
-                    action="Deshacer",
-                    action_color=ft.Colors.AMBER_300,
-                    on_action=_deshacer_movimiento,
-                    duration=6000,
-                    bgcolor=color_tema,
-                )
-                if getattr(interfaz, "page", None):
-                    interfaz.page.show_dialog(snack_undo)
-            except Exception:
-                interfaz.notificar(
-                    f"✅ {msg_tipo}: {codigo} ({qty} u.) por '{motivo}'",
-                    color_tema,
-                )
-
-            # Refrescar UI general
-            if hasattr(interfaz, "actualizar_estado"):
-                try:
-                    interfaz.actualizar_estado()
-                except Exception:
-                    pass
-
-            if cerrar_al_final:
-                _al_cerrar()
-            return True
-
-        except Exception as ex:
-            texto_estado.value = f"Error al registrar movimiento: {ex}"
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
-            return False
+    def _aplicar_transaccion(codigo: str, nombre: str, qty: int, motivo: str, obs: str, cerrar_al_final: bool) -> bool:
+        sm = obtener_stock_manager_movimiento(interfaz, cache_sm)
+        stock_previo = int(producto_seleccionado.get("stock_actual", 0))
+        return ejecutar_transaccion_movimiento_rapido(
+            interfaz,
+            sm,
+            es_ingreso=es_ingreso,
+            color_tema=color_tema,
+            codigo=codigo,
+            nombre=nombre,
+            qty=qty,
+            stock_previo=stock_previo,
+            motivo=motivo,
+            obs=obs,
+            on_error=_mostrar_error,
+            on_cerrar=_al_cerrar,
+            cerrar_al_final=cerrar_al_final,
+        )
 
     def _buscar_producto(_e: Any = None) -> None:
-        from src.products.barcode_utils import generar_variantes_codigo_lector, normalizar_codigo_lector
+        raw_val = txt_codigo_busqueda.value or ""
+        sm = obtener_stock_manager_movimiento(interfaz, cache_sm)
+        store = getattr(sm, "product_store", None) if sm is not None else getattr(interfaz, "product_store", None)
+        if not sm and not store:
+            _mostrar_error("Gestor de stock no disponible.")
+            return
 
-        raw_val = txt_codigo_busqueda.value
-        query = normalizar_codigo_lector(raw_val)
+        query, row = buscar_producto_movimiento(sm, store, raw_val)
         if not query:
             return
 
-        sm = _obtener_stock_manager()
-        store = getattr(sm, "product_store", None) if sm is not None else getattr(interfaz, "product_store", None)
-        if not sm and not store:
-            texto_estado.value = "Gestor de stock no disponible."
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
-            return
-
-        row = None
-        variantes = generar_variantes_codigo_lector(raw_val) or [query]
-        for cand in variantes:
-            if sm is not None and hasattr(sm, "buscar_producto_por_codigo_o_barras"):
-                row = sm.buscar_producto_por_codigo_o_barras(cand)
-            if row is None and store is not None:
-                row = store.find_product_by_code_or_barcode(cand)
-            if row is not None:
-                break
-
         if not row:
-            texto_estado.value = f"❌ Producto '{query}' no encontrado en el catálogo."
-            texto_estado.color = ft.Colors.RED_600
+            _mostrar_error(f"❌ Producto '{query}' no encontrado en el catálogo.")
             producto_seleccionado.clear()
             lbl_prod_nombre.value = "Ningún producto seleccionado"
             lbl_prod_codigo.value = "SKU: -"
@@ -337,48 +214,27 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
             if hasattr(interfaz, "reproducir_sonido"):
                 interfaz.reproducir_sonido("error")
         else:
-            keys = set(row.keys()) if hasattr(row, "keys") else set()
-            codigo = row["code"] if "code" in keys else row[0]
-            nombre = row["name"] if "name" in keys else row[1]
-            barcode = (
-                row["cod_barras"]
-                if "cod_barras" in keys and row["cod_barras"]
-                else (row["barcode"] if "barcode" in keys else "")
-            )
-
-            stock_actual = 0
-            if hasattr(sm, "catalogo") and codigo in sm.catalogo:
-                stock_actual = int(sm.catalogo[codigo][2])
-            elif "stock" in row.keys():
-                stock_actual = int(row["stock"])
-
-            producto_seleccionado["codigo"] = codigo
-            producto_seleccionado["nombre"] = nombre
-            producto_seleccionado["barcode"] = barcode
-            producto_seleccionado["stock_actual"] = stock_actual
-
-            lbl_prod_nombre.value = str(nombre)
-            lbl_prod_codigo.value = f"SKU: {codigo}"
-            lbl_prod_barras.value = f"Código de barras: {barcode or 'Sin código'}"
-            lbl_prod_stock_actual.value = f"Stock actual: {stock_actual} u."
+            datos = extraer_datos_fila_producto(sm, row)
+            producto_seleccionado.update(datos)
+            lbl_prod_nombre.value = str(datos["nombre"])
+            lbl_prod_codigo.value = f"SKU: {datos['codigo']}"
+            lbl_prod_barras.value = f"Código de barras: {datos['barcode'] or 'Sin código'}"
+            lbl_prod_stock_actual.value = f"Stock actual: {datos['stock_actual']} u."
             texto_estado.value = "✅ Producto identificado correctamente."
             texto_estado.color = ft.Colors.GREEN_600
             _actualizar_proyeccion()
 
-            # En modo continuo: si el motivo ya está seleccionado, ejecutar de inmediato
             if switch_modo_continuo.value:
                 motivo = dropdown_motivo.value
                 if not motivo:
-                    texto_estado.value = "⚠️ En modo continuo debes preseleccionar el motivo primero."
-                    texto_estado.color = ft.Colors.RED_600
+                    _mostrar_error("⚠️ En modo continuo debes preseleccionar el motivo primero.")
                 else:
                     qty = _obtener_cantidad_int()
                     obs = (txt_observaciones.value or "").strip()
-                    ok = _ejecutar_transaccion(codigo, nombre, qty, motivo, obs, cerrar_al_final=False)
-                    if ok:
+                    if _aplicar_transaccion(datos["codigo"], datos["nombre"], qty, motivo, obs, cerrar_al_final=False):
                         if hasattr(interfaz, "reproducir_sonido"):
                             interfaz.reproducir_sonido("exito")
-                        texto_estado.value = f"⚡ {('Entrada' if es_ingreso else 'Salida')} automática: {codigo} x{qty}. Listo para siguiente disparo."
+                        texto_estado.value = f"⚡ {('Entrada' if es_ingreso else 'Salida')} automática: {datos['codigo']} x{qty}. Listo para siguiente disparo."
                         texto_estado.color = color_tema
                         txt_codigo_busqueda.value = ""
                         try:
@@ -392,13 +248,6 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
 
     txt_codigo_busqueda.on_submit = _buscar_producto
 
-    def _modificar_cantidad(delta: int) -> None:
-        actual = _obtener_cantidad_int()
-        nuevo = max(1, actual + delta)
-        txt_cantidad.value = str(nuevo)
-        _safe_update(txt_cantidad)
-        _actualizar_proyeccion()
-
     def _fijar_cantidad(cant: int) -> None:
         txt_cantidad.value = str(max(1, cant))
         _safe_update(txt_cantidad)
@@ -406,51 +255,34 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
 
     txt_cantidad.on_change = lambda _e: _actualizar_proyeccion()
 
-    def _al_cerrar(_e: Any = None) -> None:
-        if interfaz.page and hasattr(interfaz.page, "pop_dialog"):
-            try:
-                interfaz.page.pop_dialog()
-            except Exception:
-                pass
-
     def _confirmar_movimiento(_e: Any = None) -> None:
         if not producto_seleccionado:
-            texto_estado.value = "⚠️ Primero debes escanear o seleccionar un producto."
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
+            _mostrar_error("⚠️ Primero debes escanear o seleccionar un producto.")
             return
-
         motivo = dropdown_motivo.value
         if not motivo:
-            texto_estado.value = "⚠️ Debes seleccionar un motivo justificado obligatorio."
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
+            _mostrar_error("⚠️ Debes seleccionar un motivo justificado obligatorio.")
             return
-
         qty = _obtener_cantidad_int()
         if qty <= 0:
-            texto_estado.value = "⚠️ La cantidad debe ser mayor a 0."
-            texto_estado.color = ft.Colors.RED_600
-            _safe_update(texto_estado)
+            _mostrar_error("⚠️ La cantidad debe ser mayor a 0.")
             return
+        _aplicar_transaccion(
+            producto_seleccionado["codigo"],
+            producto_seleccionado["nombre"],
+            qty,
+            motivo,
+            (txt_observaciones.value or "").strip(),
+            cerrar_al_final=True,
+        )
 
-        codigo = producto_seleccionado["codigo"]
-        nombre = producto_seleccionado["nombre"]
-        obs = (txt_observaciones.value or "").strip()
-
-        _ejecutar_transaccion(codigo, nombre, qty, motivo, obs, cerrar_al_final=True)
-
-    # Botones rápidos de cantidad (+1, +5, +10, +50)
     fila_stepper = ft.Row(
         [
-            ft.IconButton(ft.Icons.REMOVE, on_click=lambda _: _modificar_cantidad(-1), tooltip="Restar 1"),
+            ft.IconButton(ft.Icons.REMOVE, on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() - 1), tooltip="Restar 1"),
             txt_cantidad,
-            ft.IconButton(ft.Icons.ADD, on_click=lambda _: _modificar_cantidad(1), tooltip="Sumar 1"),
+            ft.IconButton(ft.Icons.ADD, on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() + 1), tooltip="Sumar 1"),
             ft.Container(width=10),
-            ft.Button("+1", on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() + 1), height=32),
-            ft.Button("+5", on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() + 5), height=32),
-            ft.Button("+10", on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() + 10), height=32),
-            ft.Button("+50", on_click=lambda _: _fijar_cantidad(_obtener_cantidad_int() + 50), height=32),
+            *[ft.Button(f"+{v}", on_click=lambda _e, inc=v: _fijar_cantidad(_obtener_cantidad_int() + inc), height=32) for v in (1, 5, 10, 50)],
         ],
         alignment=ft.MainAxisAlignment.START,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -459,18 +291,7 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
     contenido = ft.Column(
         [
             switch_modo_continuo,
-            ft.Row(
-                [
-                    txt_codigo_busqueda,
-                    ft.IconButton(
-                        ft.Icons.SEARCH,
-                        icon_color=color_tema,
-                        tooltip="Buscar producto (o presione Enter)",
-                        on_click=_buscar_producto,
-                    ),
-                ],
-                spacing=6,
-            ),
+            ft.Row([txt_codigo_busqueda, ft.IconButton(ft.Icons.SEARCH, icon_color=color_tema, tooltip="Buscar producto (o presione Enter)", on_click=_buscar_producto)], spacing=6),
             texto_estado,
             tarjeta_producto,
             ft.Divider(height=1, color=ft.Colors.with_opacity(0.2, interfaz.borde)),
@@ -486,37 +307,31 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
     )
 
     btn_confirmar = ft.Button(
-        content=ft.Row(
-            [
-                ft.Icon(icono_accion, size=18, color=ft.Colors.WHITE),
-                ft.Text("Confirmar " + ("Entrada" if es_ingreso else "Salida"), color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
-            ],
-            spacing=6,
-            alignment=ft.MainAxisAlignment.CENTER,
-        ),
+        content=ft.Row([ft.Icon(icono_accion, size=18, color=ft.Colors.WHITE), ft.Text("Confirmar " + ("Entrada" if es_ingreso else "Salida"), color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
         bgcolor=color_tema,
         on_click=_confirmar_movimiento,
     )
 
     dialogo = ft.AlertDialog(
         modal=True,
-        title=ft.Row(
-            [
-                ft.Icon(icono_accion, color=color_tema, size=24),
-                ft.Text(titulo_texto, weight=ft.FontWeight.BOLD, size=18, color=interfaz.texto),
-            ],
-            spacing=10,
-        ),
+        title=ft.Row([ft.Icon(icono_accion, color=color_tema, size=24), ft.Text(titulo_texto, weight=ft.FontWeight.BOLD, size=18, color=interfaz.texto)], spacing=10),
         content=contenido,
-        actions=[
-            ft.Button("Cerrar / Cancelar", on_click=_al_cerrar),
-            btn_confirmar,
-        ],
+        actions=[ft.Button("Cerrar / Cancelar", on_click=_al_cerrar), btn_confirmar],
         actions_alignment=ft.MainAxisAlignment.END,
     )
-
     try:
         interfaz.page.show_dialog(dialogo)
         interfaz.page.update()
     except Exception:
         pass
+
+
+__all__ = [
+    "MotivoIngresoRapido",
+    "MotivoSalidaRapida",
+    "ROJO",
+    "_mostrar_dialogo_movimiento_rapido",
+    "despachar_evento_webhook",
+    "mostrar_dialogo_ingreso_rapido",
+    "mostrar_dialogo_salida_rapida",
+]

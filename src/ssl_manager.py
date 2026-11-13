@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import ipaddress
+import os
 import socket
 from pathlib import Path
 
@@ -129,5 +130,9 @@ def asegurar_certificado_ssl(
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
+    try:
+        os.chmod(ruta_key, 0o600)
+    except OSError:
+        pass
     ruta_cert.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     return ruta_cert, ruta_key

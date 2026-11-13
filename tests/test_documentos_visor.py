@@ -14,9 +14,32 @@ from src.user_store import User, UserRole
 
 class TestDocumentosVisor(unittest.TestCase):
     def setUp(self):
+        import tempfile
+        from src.auth.store import UserStore
+        from src.api.deps import (
+            crear_sesion,
+            get_user_store,
+            _sesiones_activas,
+            _doc_tokens,
+        )
+
+        self._sesiones_activas = _sesiones_activas
+        self._doc_tokens = _doc_tokens
+        self._sesiones_activas.clear()
+        self._doc_tokens.clear()
+
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.store = UserStore(Path(self._tmpdir.name) / "auth_docs.db")
+        self.user = self.store.create_user("docviewer", "ClaveSegura123!", "administrador")
+        self.token = crear_sesion(self.user, self.store)
+
         self.app = FastAPI()
         self.app.include_router(documentos_router)
-        self.client = TestClient(self.app)
+        self.app.dependency_overrides[get_user_store] = lambda: self.store
+        self.client = TestClient(
+            self.app, headers={"Authorization": f"Bearer {self.token}"}
+        )
+        self.anon_client = TestClient(self.app)
         self.app_root = Path(application_root()).resolve()
 
         # Crear archivo PDF de prueba en data/informes
@@ -26,6 +49,10 @@ class TestDocumentosVisor(unittest.TestCase):
         self.archivo_pdf_test.write_bytes(b"%PDF-1.4 test content")
 
     def tearDown(self):
+        self.app.dependency_overrides.clear()
+        self._sesiones_activas.clear()
+        self._doc_tokens.clear()
+        self._tmpdir.cleanup()
         if self.archivo_pdf_test.exists():
             self.archivo_pdf_test.unlink()
 
@@ -82,6 +109,34 @@ class TestDocumentosVisor(unittest.TestCase):
         """Valida que un archivo inexistente retorne 404."""
         response = self.client.get("/documentos/ver?p=inexistente_123456789.pdf")
         self.assertEqual(response.status_code, 404)
+
+    def test_documentos_sin_autenticacion_401(self):
+        """Valida que los endpoints de documentos rechacen peticiones sin sesión ni token."""
+        rel_path = f"data/informes/{self.archivo_pdf_test.name}"
+        self.assertEqual(
+            self.anon_client.get(f"/documentos/ver?p={rel_path}").status_code, 401
+        )
+        self.assertEqual(
+            self.anon_client.get(f"/documentos/visor?p={rel_path}").status_code, 401
+        )
+        self.assertEqual(
+            self.anon_client.get(f"/documentos/ver/{rel_path}").status_code, 401
+        )
+
+    def test_documento_token_temporal_dt_valido_y_scoped(self):
+        """Valida que ?dt= permita acceder solo al documento autorizado."""
+        from src.api.deps import crear_token_documento
+
+        rel_path = f"data/informes/{self.archivo_pdf_test.name}"
+        dt = crear_token_documento(self.user, recurso=rel_path)
+
+        res_ok = self.anon_client.get(f"/documentos/ver?p={rel_path}&dt={dt}")
+        self.assertEqual(res_ok.status_code, 200)
+
+        res_otro = self.anon_client.get(
+            f"/documentos/ver?p=inexistente_123456789.pdf&dt={dt}"
+        )
+        self.assertEqual(res_otro.status_code, 401)
 
 
 class TestFletGuiAbrirInforme(unittest.TestCase):

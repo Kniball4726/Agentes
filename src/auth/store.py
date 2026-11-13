@@ -1,34 +1,42 @@
 """Persistencia SQLite y lógica de negocio de usuarios, roles, sesiones y API keys."""
 
-import hashlib
-import hmac
-import os
+from __future__ import annotations
+
 import sqlite3
 import time
 from contextlib import closing, contextmanager
-from datetime import datetime
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
 from ..core.exceptions import UserStoreError
+from .api_tokens_repo import ApiTokensRepositoryMixin
+from .events import notify_session_revocation, register_session_revocation_listener
+from .lockout_repo import LockoutRepositoryMixin
 from .models import (
     DEFAULT_MASTER_PASSWORD,
     DEFAULT_MASTER_USERNAME,
-    EMAIL_REGEX,
-    FAILED_WINDOW_SECONDS,
-    LOCKOUT_SECONDS,
-    MAX_FAILED_ATTEMPTS,
-    PASSWORD_ITERATIONS,
-    PASSWORD_MIN_LENGTH,
     AuthResult,
     User,
     UserRole,
-    _master_default_credentials,
 )
 from .password import hash_clave, validar_clave, verificar_clave
+from .schema import inicializar_esquema, migrar_columnas
+from .validators import (
+    normalizar_usuario,
+    validar_email,
+    validar_nombre,
+    validar_rol,
+    verificar_email_unico,
+)
+
+_notify_session_revocation = notify_session_revocation
+
+_USER_COLUMNS = (
+    "id, username, role, active, must_change_password, nombre, email, created_at, updated_at"
+)
 
 
-class UserStore:
+class UserStore(LockoutRepositoryMixin, ApiTokensRepositoryMixin):
     """Gestor de acceso a datos para usuarios, credenciales, sesiones y claves API."""
 
     def __init__(self, database_path: Path) -> None:
@@ -47,241 +55,15 @@ class UserStore:
 
     def _initialize(self) -> None:
         with self._connect() as connection, connection:
-            self._migrar_esquema(connection)
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL CHECK (
-                        role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
-                    ),
-                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-                    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
-                    nombre TEXT NOT NULL DEFAULT '',
-                    email TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS login_attempts (
-                    username TEXT PRIMARY KEY COLLATE NOCASE,
-                    failed_count INTEGER NOT NULL DEFAULT 0,
-                    first_failed_at REAL NOT NULL DEFAULT 0,
-                    locked_until REAL NOT NULL DEFAULT 0
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS api_sessions (
-                    token_hash TEXT PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    username TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    nombre TEXT NOT NULL,
-                    email TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    last_active REAL NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_api_sessions_last_active ON api_sessions(last_active)
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS api_keys (
-                    key_hash TEXT PRIMARY KEY,
-                    client_name TEXT NOT NULL,
-                    role TEXT NOT NULL DEFAULT 'operador',
-                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-                    created_at TEXT NOT NULL,
-                    last_used TEXT NOT NULL DEFAULT ''
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)
-                """
-            )
-            self._migrar_columnas(connection)
-            self._asegurar_indices_y_triggers(connection)
-            self._asegurar_usuario_master(connection)
-
-    def _migrar_columnas(self, connection: sqlite3.Connection) -> None:
-        columnas = {r["name"] for r in connection.execute("PRAGMA table_info(users)")}
-
-        if "must_change_password" not in columnas:
-            connection.execute(
-                "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
-            )
-            def_user, def_pass = _master_default_credentials()
-            master = connection.execute(
-                "SELECT id, password_hash FROM users WHERE username = ? COLLATE NOCASE",
-                (def_user,),
-            ).fetchone()
-            if master is not None and (
-                self._verificar_clave(def_pass, master["password_hash"])
-                or self._verificar_clave(DEFAULT_MASTER_PASSWORD, master["password_hash"])
-            ):
-                connection.execute(
-                    "UPDATE users SET must_change_password = 1 WHERE id = ?", (master["id"],)
-                )
-
-        if "nombre" not in columnas:
-            connection.execute(
-                "ALTER TABLE users ADD COLUMN nombre TEXT NOT NULL DEFAULT ''"
-            )
-
-        if "email" not in columnas:
-            connection.execute(
-                "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"
-            )
-
-        if "updated_at" not in columnas:
-            connection.execute(
-                "ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
-            )
-            connection.execute(
-                "UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = ''"
-            )
+            inicializar_esquema(connection)
 
     @staticmethod
-    def _asegurar_indices_y_triggers(connection: sqlite3.Connection) -> None:
-        connection.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nocase ON users(username COLLATE NOCASE)"
-        )
-        connection.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email COLLATE NOCASE) WHERE email != '' AND email IS NOT NULL"
-        )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)"
-        )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_users_active ON users(active)"
-        )
-        connection.execute(
-            """
-            CREATE TRIGGER IF NOT EXISTS trg_users_updated_at
-            AFTER UPDATE OF username, password_hash, role, active, must_change_password, nombre, email ON users
-            FOR EACH ROW
-            BEGIN
-                UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
-            END
-            """
-        )
-
-    @staticmethod
-    def _migrar_esquema(connection: sqlite3.Connection) -> None:
-        row = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
-        ).fetchone()
-        if row and row[0] and ("'master'" not in row[0] or "'picker'" not in row[0]):
-            connection.execute("PRAGMA foreign_keys = OFF")
-            connection.execute(
-                """
-                CREATE TABLE users_migracion (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL CHECK (
-                        role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
-                    ),
-                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-                    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
-                    nombre TEXT NOT NULL DEFAULT '',
-                    email TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            old_cols = {r["name"] for r in connection.execute("PRAGMA table_info(users)")}
-            cols_to_copy = [
-                c
-                for c in [
-                    "id",
-                    "username",
-                    "password_hash",
-                    "role",
-                    "active",
-                    "must_change_password",
-                    "nombre",
-                    "email",
-                    "created_at",
-                ]
-                if c in old_cols
-            ]
-            cols_str = ", ".join(cols_to_copy)
-            connection.execute(
-                f"INSERT INTO users_migracion ({cols_str}) SELECT {cols_str} FROM users"
-            )
-            connection.execute("DROP TABLE users")
-            connection.execute("ALTER TABLE users_migracion RENAME TO users")
-            connection.execute("PRAGMA foreign_keys = ON")
-
-    def _asegurar_usuario_master(self, connection: sqlite3.Connection) -> None:
-        columnas = {r["name"] for r in connection.execute("PRAGMA table_info(users)")}
-        tiene_nombre = "nombre" in columnas
-        query = (
-            "SELECT id, role, active, nombre FROM users WHERE username = ? COLLATE NOCASE"
-            if tiene_nombre
-            else "SELECT id, role, active FROM users WHERE username = ? COLLATE NOCASE"
-        )
-        auditoria_row = connection.execute(
-            "SELECT id FROM users WHERE username = 'Auditoria' COLLATE NOCASE"
-        ).fetchone()
-        desarrollo_row = connection.execute(
-            "SELECT id FROM users WHERE username = 'Desarrollo' COLLATE NOCASE AND role = 'master'"
-        ).fetchone()
-        if auditoria_row and desarrollo_row:
-            connection.execute(
-                "DELETE FROM users WHERE id = ?", (desarrollo_row["id"],)
-            )
-        elif desarrollo_row:
-            connection.execute(
-                "UPDATE users SET username = 'Auditoria', nombre = 'Auditoría' WHERE id = ?",
-                (desarrollo_row["id"],),
-            )
-        def_user, def_pass = _master_default_credentials()
-        master_row = connection.execute(query, (def_user,)).fetchone()
-        if master_row is None:
-            pwd_hash = self._hash_clave(def_pass)
-            connection.execute(
-                """
-                INSERT INTO users (username, password_hash, role, active, must_change_password, nombre, email)
-                VALUES (?, ?, 'master', 1, 1, 'Auditoría', '')
-                """,
-                (def_user, pwd_hash),
-            )
-        else:
-            if master_row["role"] != "master" or not master_row["active"]:
-                connection.execute(
-                    "UPDATE users SET role = 'master', active = 1 WHERE id = ?",
-                    (master_row["id"],),
-                )
-            if tiene_nombre and not master_row["nombre"]:
-                connection.execute(
-                    "UPDATE users SET nombre = 'Auditoría' WHERE id = ?",
-                    (master_row["id"],),
-                )
+    def _migrar_columnas(connection: sqlite3.Connection) -> None:
+        migrar_columnas(connection)
 
     @staticmethod
     def _normalizar_usuario(username: str) -> str:
-        username = username.strip()
-        if not 3 <= len(username) <= 64:
-            raise ValueError("El usuario debe tener entre 3 y 64 caracteres.")
-        if any(character.isspace() for character in username):
-            raise ValueError("El usuario no puede contener espacios.")
-        return username
+        return normalizar_usuario(username)
 
     @staticmethod
     def _validar_clave(password: str) -> None:
@@ -289,75 +71,29 @@ class UserStore:
 
     @staticmethod
     def _validar_rol(role: str) -> UserRole:
-        if role in ("master", "administrador", "operador", "consulta", "picker"):
-            return role  # type: ignore[return-value]
-        raise ValueError("El rol seleccionado no es válido.")
+        return validar_rol(role)
 
     @staticmethod
     def _validar_nombre(nombre: str) -> str:
-        if not nombre:
-            return ""
-        nombre_limpio = " ".join(str(nombre).strip().split())
-        if len(nombre_limpio) > 120:
-            raise ValueError("El nombre no puede superar los 120 caracteres.")
-        if any(ord(c) < 32 for c in nombre_limpio):
-            raise ValueError("El nombre contiene caracteres de control no permitidos.")
-        return nombre_limpio
+        return validar_nombre(nombre)
 
     @staticmethod
     def _validar_email(email: str) -> str:
-        if not email:
-            return ""
-        email_limpio = str(email).strip().lower()
-        if len(email_limpio) > 254:
-            raise ValueError("El correo electrónico no puede superar los 254 caracteres.")
-        if not EMAIL_REGEX.match(email_limpio):
-            raise ValueError("El formato del correo electrónico no es válido.")
-        return email_limpio
+        return validar_email(email)
 
     @staticmethod
     def _verificar_email_unico(
         connection: sqlite3.Connection, email: str, except_user_id: int | None = None
     ) -> None:
-        if not email:
-            return
-        query = "SELECT id, username FROM users WHERE email = ? COLLATE NOCASE"
-        params: list[object] = [email]
-        if except_user_id is not None:
-            query += " AND id != ?"
-            params.append(except_user_id)
-        row = connection.execute(query, params).fetchone()
-        if row is not None:
-            raise ValueError(
-                f"El correo electrónico '{email}' ya se encuentra registrado por el usuario '{row['username']}'."
-            )
+        verificar_email_unico(connection, email, except_user_id=except_user_id)
 
     @staticmethod
     def _hash_clave(password: str) -> str:
-        salt = os.urandom(16)
-        digest = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            PASSWORD_ITERATIONS,
-        )
-        return f"{salt.hex()}:{digest.hex()}"
+        return hash_clave(password)
 
     @staticmethod
     def _verificar_clave(password: str, stored_hash: str) -> bool:
-        try:
-            salt_text, digest_text = stored_hash.split(":", maxsplit=1)
-            salt = bytes.fromhex(salt_text)
-            expected = bytes.fromhex(digest_text)
-        except ValueError:
-            return False
-        actual = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            PASSWORD_ITERATIONS,
-        )
-        return hmac.compare_digest(actual, expected)
+        return verificar_clave(password, stored_hash)
 
     @property
     def has_users(self) -> bool:
@@ -371,19 +107,19 @@ class UserStore:
         nombre: str = "",
         email: str = "",
     ) -> User:
-        username = self._normalizar_usuario(username)
-        self._validar_clave(password)
-        nombre_valido = self._validar_nombre(nombre)
-        email_valido = self._validar_email(email)
-        password_hash = self._hash_clave(password)
+        username = normalizar_usuario(username)
+        validar_clave(password)
+        nombre_valido = validar_nombre(nombre)
+        email_valido = validar_email(email)
+        password_hash = hash_clave(password)
         try:
             with self._connect() as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
-                if connection.execute("SELECT 1 FROM users WHERE role = 'administrador' LIMIT 1").fetchone():
-                    raise UserStoreError(
-                        "La configuración inicial ya fue completada."
-                    )
-                self._verificar_email_unico(connection, email_valido)
+                if connection.execute(
+                    "SELECT 1 FROM users WHERE role = 'administrador' LIMIT 1"
+                ).fetchone():
+                    raise UserStoreError("La configuración inicial ya fue completada.")
+                verificar_email_unico(connection, email_valido)
                 cursor = connection.execute(
                     """
                     INSERT INTO users (username, password_hash, role, nombre, email)
@@ -392,10 +128,7 @@ class UserStore:
                     (username, password_hash, nombre_valido, email_valido),
                 )
                 row = connection.execute(
-                    """
-                    SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                    FROM users WHERE id = ?
-                    """,
+                    f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?",
                     (cursor.lastrowid,),
                 ).fetchone()
         except sqlite3.IntegrityError as error:
@@ -413,18 +146,18 @@ class UserStore:
         nombre: str = "",
         email: str = "",
     ) -> User:
-        username = self._normalizar_usuario(username)
-        self._validar_clave(password)
-        validated_role = self._validar_rol(role)
-        nombre_valido = self._validar_nombre(nombre)
-        email_valido = self._validar_email(email)
+        username = normalizar_usuario(username)
+        validar_clave(password)
+        validated_role = validar_rol(role)
+        nombre_valido = validar_nombre(nombre)
+        email_valido = validar_email(email)
         if validated_role in ("master", "administrador") and creator_role is not None and creator_role != "master":
             raise UserStoreError("Solo un usuario con rol master puede crear administradores.")
-        password_hash = self._hash_clave(password)
+        password_hash = hash_clave(password)
         try:
             with self._connect() as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
-                self._verificar_email_unico(connection, email_valido)
+                verificar_email_unico(connection, email_valido)
                 cursor = connection.execute(
                     """
                     INSERT INTO users (username, password_hash, role, nombre, email)
@@ -433,10 +166,7 @@ class UserStore:
                     (username, password_hash, validated_role, nombre_valido, email_valido),
                 )
                 row = connection.execute(
-                    """
-                    SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                    FROM users WHERE id = ?
-                    """,
+                    f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?",
                     (cursor.lastrowid,),
                 ).fetchone()
         except sqlite3.IntegrityError as error:
@@ -456,45 +186,23 @@ class UserStore:
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users WHERE id = ?
-                """,
+                f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
             if current is None:
                 raise UserStoreError("No se encontró el usuario.")
-
             if current["role"] == "master" and updater_role is not None and updater_role != "master":
                 raise UserStoreError("Solo el usuario master puede modificar los datos del usuario master.")
-
-            nuevo_nombre = (
-                self._validar_nombre(nombre)
-                if nombre is not None
-                else (current["nombre"] or "")
-            )
-            nuevo_email = (
-                self._validar_email(email)
-                if email is not None
-                else (current["email"] or "")
-            )
-
+            nuevo_nombre = validar_nombre(nombre) if nombre is not None else (current["nombre"] or "")
+            nuevo_email = validar_email(email) if email is not None else (current["email"] or "")
             if email is not None:
-                self._verificar_email_unico(connection, nuevo_email, except_user_id=user_id)
-
+                verificar_email_unico(connection, nuevo_email, except_user_id=user_id)
             connection.execute(
-                """
-                UPDATE users
-                SET nombre = ?, email = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
+                "UPDATE users SET nombre = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (nuevo_nombre, nuevo_email, user_id),
             )
             updated_row = connection.execute(
-                """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users WHERE id = ?
-                """,
+                f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return self._row_to_user(updated_row)
@@ -503,9 +211,7 @@ class UserStore:
         return self.authenticate_detailed(username, password).user
 
     def authenticate_detailed(self, username: str, password: str) -> AuthResult:
-        """Autentica aplicando bloqueo temporal tras varios intentos fallidos.
-        Permite ingresar tanto por nombre de usuario como por correo electrónico.
-        """
+        """Autentica aplicando bloqueo temporal y permitiendo usuario o correo electrónico."""
         identificador = username.strip()
         ahora = time.time()
         restante = self.segundos_bloqueo_restantes(identificador, ahora)
@@ -513,7 +219,7 @@ class UserStore:
             return AuthResult(None, "locked", retry_after=restante)
         with self._connect() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT id, username, password_hash, role, active, must_change_password, nombre, email, created_at, updated_at
                 FROM users
                 WHERE username = ? COLLATE NOCASE OR (email != '' AND email = ? COLLATE NOCASE)
@@ -528,7 +234,7 @@ class UserStore:
                         (DEFAULT_MASTER_USERNAME,),
                     ).fetchone()
             if row is None:
-                self._verificar_clave(password, self._hash_clave("invalid-user-password"))
+                verificar_clave(password, hash_clave("invalid-user-password"))
                 return self._registrar_fallo(identificador, ahora)
 
         nombre_cuenta = row["username"]
@@ -537,8 +243,7 @@ class UserStore:
             if restante_real > 0:
                 return AuthResult(None, "locked", retry_after=restante_real)
 
-        password_valid = self._verificar_clave(password, row["password_hash"])
-        if not password_valid:
+        if not verificar_clave(password, row["password_hash"]):
             return self._registrar_fallo(nombre_cuenta, ahora)
         if not row["active"]:
             return AuthResult(None, "inactive")
@@ -547,76 +252,9 @@ class UserStore:
             self._limpiar_intentos(identificador)
         return AuthResult(self._row_to_user(row), "ok")
 
-    def segundos_bloqueo_restantes(self, username: str, ahora: float | None = None) -> int:
-        ahora = time.time() if ahora is None else ahora
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT locked_until FROM login_attempts WHERE username = ?",
-                (username.strip(),),
-            ).fetchone()
-        if row is None or row["locked_until"] <= ahora:
-            return 0
-        return int(row["locked_until"] - ahora) + 1
-
-    def _registrar_fallo(self, username: str, ahora: float) -> AuthResult:
-        if not username:
-            return AuthResult(None, "invalid")
-        with self._connect() as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT failed_count, first_failed_at FROM login_attempts WHERE username = ?",
-                (username,),
-            ).fetchone()
-            if row is None or ahora - row["first_failed_at"] > FAILED_WINDOW_SECONDS:
-                cantidad, primero = 1, ahora
-            else:
-                cantidad, primero = row["failed_count"] + 1, row["first_failed_at"]
-            if cantidad >= MAX_FAILED_ATTEMPTS:
-                connection.execute(
-                    """
-                    INSERT INTO login_attempts (username, failed_count, first_failed_at, locked_until)
-                    VALUES (?, 0, 0, ?)
-                    ON CONFLICT(username) DO UPDATE SET
-                        failed_count = 0, first_failed_at = 0, locked_until = excluded.locked_until
-                    """,
-                    (username, ahora + LOCKOUT_SECONDS),
-                )
-                try:
-                    from ..telegram_notifier import notificar_seguridad_bloqueo_telegram
-                    notificar_seguridad_bloqueo_telegram(username, retry_after_minutos=15)
-                except Exception:
-                    pass
-                return AuthResult(None, "locked", retry_after=LOCKOUT_SECONDS)
-            connection.execute(
-                """
-                INSERT INTO login_attempts (username, failed_count, first_failed_at, locked_until)
-                VALUES (?, ?, ?, 0)
-                ON CONFLICT(username) DO UPDATE SET
-                    failed_count = excluded.failed_count,
-                    first_failed_at = excluded.first_failed_at
-                """,
-                (username, cantidad, primero),
-            )
-        return AuthResult(None, "invalid", attempts_left=MAX_FAILED_ATTEMPTS - cantidad)
-
-    def _limpiar_intentos(self, username: str) -> None:
-        with self._connect() as connection, connection:
-            connection.execute("DELETE FROM login_attempts WHERE username = ?", (username,))
-
-    def unlock_user(self, username: str) -> None:
-        """Desbloquea manualmente una cuenta (acción de administración)."""
-        self._limpiar_intentos(username.strip())
-
-    def list_locked_usernames(self) -> list[str]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT username FROM login_attempts WHERE locked_until > ?", (time.time(),)
-            ).fetchall()
-        return [r["username"] for r in rows]
-
     def change_password(self, user_id: int, current_password: str, new_password: str) -> None:
         """Cambia la clave del propio usuario verificando la actual."""
-        self._validar_clave(new_password)
+        validar_clave(new_password)
         if new_password == DEFAULT_MASTER_PASSWORD:
             raise ValueError("La nueva contraseña no puede ser la contraseña por defecto del sistema.")
         if new_password == current_password:
@@ -628,16 +266,14 @@ class UserStore:
             ).fetchone()
             if row is None:
                 raise UserStoreError("No se encontró el usuario.")
-            if not self._verificar_clave(current_password, row["password_hash"]):
+            if not verificar_clave(current_password, row["password_hash"]):
                 raise UserStoreError("La contraseña actual no es correcta.")
             connection.execute(
-                """
-                UPDATE users
-                SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (self._hash_clave(new_password), user_id),
+                "UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (hash_clave(new_password), user_id),
             )
+            connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        notify_session_revocation("user", user_id=user_id)
 
     def reset_password(
         self,
@@ -646,8 +282,8 @@ class UserStore:
         updater_role: str | None = None,
         must_change: bool = True,
     ) -> None:
-        """Restablece la clave de otro usuario; el afectado deberá cambiarla al ingresar."""
-        self._validar_clave(new_password)
+        """Restablece la clave de otro usuario y revoca sus sesiones activas."""
+        validar_clave(new_password)
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -656,18 +292,14 @@ class UserStore:
             if row is None:
                 raise UserStoreError("No se encontró el usuario.")
             if updater_role != "master" and row["role"] in ("master", "administrador"):
-                raise UserStoreError(
-                    "Solo el usuario master puede restablecer la clave de un administrador."
-                )
+                raise UserStoreError("Solo el usuario master puede restablecer la clave de un administrador.")
             connection.execute(
-                """
-                UPDATE users
-                SET password_hash = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (self._hash_clave(new_password), 1 if must_change else 0, user_id),
+                "UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (hash_clave(new_password), 1 if must_change else 0, user_id),
             )
             connection.execute("DELETE FROM login_attempts WHERE username = ?", (row["username"],))
+            connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        notify_session_revocation("user", user_id=user_id)
 
     def list_users(
         self,
@@ -676,10 +308,7 @@ class UserStore:
         current_user_id: int | None = None,
     ) -> list[User]:
         with self._connect() as connection:
-            query = """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users
-            """
+            query = f"SELECT {_USER_COLUMNS} FROM users"
             conditions: list[str] = []
             params: list[Any] = []
             if not include_master:
@@ -699,11 +328,7 @@ class UserStore:
     def get_user(self, user_id: int) -> User | None:
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users WHERE id = ?
-                """,
-                (user_id,),
+                f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?", (user_id,)
             ).fetchone()
         return self._row_to_user(row) if row is not None else None
 
@@ -717,10 +342,7 @@ class UserStore:
     def _buscar_usuario_por_nombre(self, username: str) -> User | None:
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users WHERE username = ? COLLATE NOCASE
-                """,
+                f"SELECT {_USER_COLUMNS} FROM users WHERE username = ? COLLATE NOCASE",
                 (username.strip(),),
             ).fetchone()
         return self._row_to_user(row) if row is not None else None
@@ -731,16 +353,12 @@ class UserStore:
             return None
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, username, role, active, must_change_password, nombre, email, created_at, updated_at
-                FROM users WHERE email = ? COLLATE NOCASE
-                """,
+                f"SELECT {_USER_COLUMNS} FROM users WHERE email = ? COLLATE NOCASE",
                 (email_norm,),
             ).fetchone()
         return self._row_to_user(row) if row is not None else None
 
     def get_user_by_identifier(self, identifier: str) -> User | None:
-        """Busca usuario por nombre de usuario o por correo electrónico."""
         ident = identifier.strip()
         if not ident:
             return None
@@ -752,7 +370,7 @@ class UserStore:
     def update_role(
         self, user_id: int, role: str, updater_role: str | None = None
     ) -> None:
-        validated_role = self._validar_rol(role)
+        validated_role = validar_rol(role)
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
@@ -787,6 +405,10 @@ class UserStore:
                 "UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (validated_role, user_id),
             )
+            if validated_role != current["role"]:
+                connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        if validated_role != current["role"]:
+            notify_session_revocation("user", user_id=user_id)
 
     def set_active(
         self, user_id: int, active: bool, updater_role: str | None = None
@@ -806,33 +428,27 @@ class UserStore:
                 and updater_role != "master"
             ):
                 raise UserStoreError("Solo el usuario master puede desactivar o activar a un administrador.")
-            if (
-                current["role"] == "administrador"
-                and current["active"]
-                and not active
-            ):
+            if current["role"] == "administrador" and current["active"] and not active:
                 self._require_another_active_admin(connection, user_id)
             connection.execute(
                 "UPDATE users SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (int(active), user_id),
             )
+            if not active:
+                connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        if not active:
+            notify_session_revocation("user", user_id=user_id)
 
     @staticmethod
     def _require_another_active_admin(
         connection: sqlite3.Connection, except_user_id: int
     ) -> None:
         another_admin = connection.execute(
-            """
-            SELECT 1 FROM users
-            WHERE role = 'administrador' AND active = 1 AND id != ?
-            LIMIT 1
-            """,
+            "SELECT 1 FROM users WHERE role = 'administrador' AND active = 1 AND id != ? LIMIT 1",
             (except_user_id,),
         ).fetchone()
         if another_admin is None:
-            raise UserStoreError(
-                "No se puede quitar o desactivar al único administrador activo."
-            )
+            raise UserStoreError("No se puede quitar o desactivar al único administrador activo.")
 
     @staticmethod
     def _row_to_user(row: sqlite3.Row) -> User:
@@ -840,152 +456,11 @@ class UserStore:
         return User(
             id=row["id"],
             username=row["username"],
-            role=UserStore._validar_rol(row["role"]),
+            role=validar_rol(row["role"]),
             active=bool(row["active"]),
-            must_change_password=(
-                bool(row["must_change_password"])
-                if "must_change_password" in keys
-                else False
-            ),
+            must_change_password=bool(row["must_change_password"]) if "must_change_password" in keys else False,
             nombre=str(row["nombre"] or "") if "nombre" in keys and row["nombre"] is not None else "",
             email=str(row["email"] or "") if "email" in keys and row["email"] is not None else "",
             created_at=str(row["created_at"] or "") if "created_at" in keys and row["created_at"] is not None else "",
             updated_at=str(row["updated_at"] or "") if "updated_at" in keys and row["updated_at"] is not None else "",
         )
-
-    # --- Gestión de Sesiones Persistentes y API Keys ---
-
-    def create_api_session(
-        self,
-        token_hash: str,
-        user_id: int,
-        username: str,
-        role: str,
-        nombre: str = "",
-        email: str = "",
-        created_at: float | None = None,
-        last_active: float | None = None,
-    ) -> None:
-        """Persiste una sesión de usuario con hash seguro del token."""
-        ahora = time.time()
-        c_at = created_at if created_at is not None else ahora
-        l_act = last_active if last_active is not None else ahora
-        with self._connect() as connection, connection:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO api_sessions (
-                    token_hash, user_id, username, role, nombre, email, created_at, last_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (token_hash, user_id, username, role, nombre, email, c_at, l_act),
-            )
-
-    def get_api_session(self, token_hash: str) -> dict | None:
-        """Recupera una sesión persistida por su hash de token."""
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT user_id, username, role, nombre, email, created_at, last_active
-                FROM api_sessions WHERE token_hash = ?
-                """,
-                (token_hash,),
-            ).fetchone()
-            if row:
-                return dict(row)
-        return None
-
-    def update_api_session_activity(self, token_hash: str, last_active: float | None = None) -> None:
-        """Actualiza la marca de última actividad de una sesión."""
-        with self._connect() as connection, connection:
-            l_act = last_active if last_active is not None else time.time()
-            connection.execute(
-                "UPDATE api_sessions SET last_active = ? WHERE token_hash = ?",
-                (l_act, token_hash),
-            )
-
-    def revoke_api_session(self, token_hash: str) -> bool:
-        """Revoca y elimina permanentemente una sesión activa."""
-        with self._connect() as connection, connection:
-            cur = connection.execute("DELETE FROM api_sessions WHERE token_hash = ?", (token_hash,))
-            return cur.rowcount > 0
-
-    def cleanup_expired_api_sessions(self, max_age_seconds: float) -> int:
-        """Limpia de SQLite sesiones que superaron el tiempo máximo de inactividad."""
-        limite = time.time() - max_age_seconds
-        with self._connect() as connection, connection:
-            cur = connection.execute("DELETE FROM api_sessions WHERE last_active < ?", (limite,))
-            return cur.rowcount
-
-    def create_api_key(self, client_name: str, role: str = "operador") -> tuple[str, str]:
-        """Genera una clave API estática para integración externa (ej: B2B/ERP).
-        
-        Retorna (raw_key, key_hash).
-        """
-        import secrets
-        raw_key = f"sk_live_{secrets.token_urlsafe(32)}"
-        key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-        ahora = datetime.now().isoformat(sep=" ", timespec="seconds")
-        with self._connect() as connection, connection:
-            connection.execute(
-                "INSERT INTO api_keys (key_hash, client_name, role, active, created_at) VALUES (?, ?, ?, 1, ?)",
-                (key_hash, client_name.strip(), role, ahora),
-            )
-        return raw_key, key_hash
-
-    def validate_api_key(self, raw_key: str) -> dict | None:
-        """Valida una API Key externa contra su hash en base de datos."""
-        if not raw_key:
-            return None
-        key_hash = hashlib.sha256(raw_key.strip().encode("utf-8")).hexdigest()
-        with self._connect() as connection, connection:
-            row = connection.execute(
-                "SELECT key_hash, client_name, role, active FROM api_keys WHERE key_hash = ? AND active = 1",
-                (key_hash,),
-            ).fetchone()
-            if row:
-                connection.execute(
-                    "UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE key_hash = ?",
-                    (key_hash,),
-                )
-                return dict(row)
-        return None
-
-    def list_api_keys(self) -> list[dict]:
-        """Lista todas las claves API registradas para control del administrador."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT key_hash, client_name, role, active, created_at, last_used FROM api_keys ORDER BY created_at DESC"
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    def revoke_api_key(self, key_hash: str) -> bool:
-        """Revoca de forma inmediata una clave API."""
-        with self._connect() as connection, connection:
-            cur = connection.execute("UPDATE api_keys SET active = 0 WHERE key_hash = ?", (key_hash,))
-            return cur.rowcount > 0
-
-    def delete_api_key(self, key_hash: str) -> bool:
-        """Elimina de forma permanente una clave API de la base de datos."""
-        with self._connect() as connection, connection:
-            cur = connection.execute("DELETE FROM api_keys WHERE key_hash = ?", (key_hash,))
-            return cur.rowcount > 0
-
-    def list_api_sessions(self, max_records: int = 100) -> list[dict]:
-        """Lista las sesiones API persistidas ordenadas por última actividad reciente."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT token_hash, user_id, username, role, nombre, email, created_at, last_active
-                FROM api_sessions
-                ORDER BY last_active DESC
-                LIMIT ?
-                """,
-                (max_records,),
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    def revoke_all_sessions(self) -> int:
-        """Revoca todas las sesiones activas persistidas."""
-        with self._connect() as connection, connection:
-            cur = connection.execute("DELETE FROM api_sessions")
-            return cur.rowcount

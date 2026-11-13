@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime
-from fastapi import APIRouter
+from typing import Any, Dict, Optional
+from fastapi import APIRouter, Depends
 
-from ..deps import _sesiones_activas
+from ..deps import _sesiones_activas, get_optional_current_user
 from ..schemas import EstadoSistemaResponse
-from ...server import obtener_ip_local
+from ...server_app.network_utils import obtener_ip_local
 
 router = APIRouter(prefix="/sistema", tags=["Sistema"])
 
@@ -21,8 +22,19 @@ async def ping():
 
 
 @router.get("/estado", response_model=EstadoSistemaResponse, summary="Estado general del servidor")
-async def estado_servidor():
-    """Informa versión, hora del sistema, IP local y sesiones activas en el servidor."""
+async def estado_servidor(
+    user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+):
+    """Informa estado del servidor; la telemetría de red y sesiones exige autenticación."""
+    if user is None:
+        return EstadoSistemaResponse(
+            ok=True,
+            version="1.0.0",
+            servidor_hora="",
+            ip_local="",
+            sesiones_activas=0,
+            modo_conexion="",
+        )
     return EstadoSistemaResponse(
         ok=True,
         version="1.0.0",

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 from contextlib import closing, contextmanager
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Generator
 
@@ -16,15 +14,13 @@ from .chat_repo import ChatRepositoryMixin
 from .client_repo import ClientRepositoryMixin
 from .closure_repo import ClosureRepositoryMixin
 from .concurrency_repo import ConcurrencyRepositoryMixin
-from .models import (
-    ESTADOS_DESPACHO,
-    LOGISTICA_OPCIONES,
-    _COLUMNAS_DESPACHO,
-    Pedido,
-)
+from .dispatch_repo import DispatchRepositoryMixin, _COLUMNAS_SELECT_PEDIDO
+from .models import LOGISTICA_OPCIONES, Pedido
+from .schema import inicializar_esquema_pedidos
 
 
 class OrderStore(
+    DispatchRepositoryMixin,
     ClientRepositoryMixin,
     ChatRepositoryMixin,
     ConcurrencyRepositoryMixin,
@@ -67,235 +63,7 @@ class OrderStore(
         if sig_before is not None and sig_before in self._initialized_dbs:
             return
         with self._connect() as connection, connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS clientes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                    activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    codigo TEXT NOT NULL DEFAULT '',
-                    direccion TEXT NOT NULL DEFAULT ''
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pedidos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nota_pedido TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                    numero_pedido TEXT NOT NULL DEFAULT '',
-                    cliente TEXT NOT NULL,
-                    bultos INTEGER NOT NULL DEFAULT 1 CHECK (bultos >= 1),
-                    logistica TEXT NOT NULL CHECK (
-                        logistica IN (
-                            'Domicilio',
-                            'Centro de distribución',
-                            'Transporte',
-                            'Comisionista',
-                            'Mabel',
-                            'Canje'
-                        )
-                    ),
-                    armador TEXT NOT NULL,
-                    tipo_archivo TEXT NOT NULL CHECK (tipo_archivo IN ('pdf', 'excel', 'docx')),
-                    nombre_archivo TEXT NOT NULL,
-                    agregado INTEGER NOT NULL DEFAULT 0 CHECK (agregado IN (0, 1)),
-                    articulos_descontados INTEGER NOT NULL DEFAULT 0,
-                    resumen_items TEXT,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    estado TEXT NOT NULL DEFAULT 'descontado' CHECK (estado IN ('descontado', 'anulado')),
-                    fecha_retiro TEXT NOT NULL DEFAULT '',
-                    archivo_descuento TEXT NOT NULL DEFAULT '',
-                    cierre_id INTEGER DEFAULT NULL,
-                    archivo_hash TEXT NOT NULL DEFAULT '',
-                    numero_guia TEXT NOT NULL DEFAULT '',
-                    items_sin_coincidencia TEXT NOT NULL DEFAULT '[]'
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS cierres_jornada (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario TEXT NOT NULL,
-                    cantidad_pedidos INTEGER NOT NULL,
-                    articulos_totales INTEGER NOT NULL,
-                    resumen_pedidos TEXT NOT NULL,
-                    archivo_pdf TEXT NOT NULL DEFAULT '',
-                    archivo_excel TEXT NOT NULL DEFAULT '',
-                    archivo_hoja_ruta TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pedido_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
-                    codigo TEXT NOT NULL,
-                    descripcion TEXT NOT NULL,
-                    cantidad INTEGER NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS logs_auditoria (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario TEXT NOT NULL,
-                    accion TEXT NOT NULL,
-                    detalle TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS mensajes_chat (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    emisor TEXT NOT NULL,
-                    destinatario TEXT NOT NULL DEFAULT 'Todos',
-                    mensaje TEXT NOT NULL,
-                    leido INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_mensajes_destinatario ON mensajes_chat(destinatario, leido)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos(estado)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre ON pedidos(cierre_id)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_cliente ON pedidos(cliente)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_fecha ON pedidos(created_at)"
-            )
-            cols_clientes = {r["name"] for r in connection.execute("PRAGMA table_info(clientes)").fetchall()}
-            if "codigo" not in cols_clientes:
-                connection.execute("ALTER TABLE clientes ADD COLUMN codigo TEXT NOT NULL DEFAULT ''")
-            if "direccion" not in cols_clientes:
-                connection.execute("ALTER TABLE clientes ADD COLUMN direccion TEXT NOT NULL DEFAULT ''")
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_clientes_codigo ON clientes(codigo)"
-            )
-            cols_cierres = {r["name"] for r in connection.execute("PRAGMA table_info(cierres_jornada)").fetchall()}
-            if "archivo_hoja_ruta" not in cols_cierres:
-                connection.execute("ALTER TABLE cierres_jornada ADD COLUMN archivo_hoja_ruta TEXT NOT NULL DEFAULT ''")
-
-            row_pedidos = connection.execute(
-                "SELECT sql FROM sqlite_master WHERE type='table' AND name='pedidos'"
-            ).fetchone()
-            if row_pedidos and row_pedidos[0] and "'docx'" not in row_pedidos[0]:
-                connection.execute("PRAGMA foreign_keys = OFF")
-                connection.execute(
-                    """
-                    CREATE TABLE pedidos_temp (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        nota_pedido TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                        numero_pedido TEXT NOT NULL DEFAULT '',
-                        cliente TEXT NOT NULL,
-                        bultos INTEGER NOT NULL DEFAULT 1 CHECK (bultos >= 1),
-                        logistica TEXT NOT NULL CHECK (
-                            logistica IN (
-                                'Domicilio',
-                                'Centro de distribución',
-                                'Transporte',
-                                'Comisionista',
-                                'Mabel',
-                                'Canje'
-                            )
-                        ),
-                        armador TEXT NOT NULL,
-                        tipo_archivo TEXT NOT NULL CHECK (tipo_archivo IN ('pdf', 'excel', 'docx')),
-                        nombre_archivo TEXT NOT NULL,
-                        agregado INTEGER NOT NULL DEFAULT 0 CHECK (agregado IN (0, 1)),
-                        articulos_descontados INTEGER NOT NULL DEFAULT 0,
-                        resumen_items TEXT,
-                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        estado TEXT NOT NULL DEFAULT 'descontado' CHECK (estado IN ('descontado', 'anulado')),
-                        fecha_retiro TEXT NOT NULL DEFAULT '',
-                        archivo_descuento TEXT NOT NULL DEFAULT '',
-                        cierre_id INTEGER DEFAULT NULL,
-                        items_sin_coincidencia TEXT NOT NULL DEFAULT '',
-                        numero_guia TEXT NOT NULL DEFAULT '',
-                        estado_despacho TEXT NOT NULL DEFAULT 'armado',
-                        despachado_at TEXT NOT NULL DEFAULT '',
-                        despachado_por TEXT NOT NULL DEFAULT '',
-                        entregado_at TEXT NOT NULL DEFAULT '',
-                        entregado_por TEXT NOT NULL DEFAULT ''
-                    )
-                    """
-                )
-                cols_viejas = {r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()}
-                cols_comunes = [
-                    c for c in [
-                        "id", "nota_pedido", "numero_pedido", "cliente", "bultos", "logistica",
-                        "armador", "tipo_archivo", "nombre_archivo", "agregado", "articulos_descontados",
-                        "resumen_items", "created_at", "estado", "fecha_retiro", "archivo_descuento", "cierre_id"
-                    ] if c in cols_viejas
-                ]
-                cols_str = ", ".join(cols_comunes)
-                connection.execute(f"INSERT INTO pedidos_temp ({cols_str}) SELECT {cols_str} FROM pedidos")
-                connection.execute("DROP TABLE pedidos")
-                connection.execute("ALTER TABLE pedidos_temp RENAME TO pedidos")
-                connection.execute("PRAGMA foreign_keys = ON")
-
-            columnas_actuales = {
-                r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()
-            }
-            if "archivo_hash" not in columnas_actuales:
-                connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
-            if "items_sin_coincidencia" not in columnas_actuales:
-                connection.execute("ALTER TABLE pedidos ADD COLUMN items_sin_coincidencia TEXT NOT NULL DEFAULT '[]'")
-            for columna, definicion in (
-                ("numero_guia", "TEXT NOT NULL DEFAULT ''"),
-                ("estado_despacho", "TEXT NOT NULL DEFAULT 'armado'"),
-                ("despachado_at", "TEXT NOT NULL DEFAULT ''"),
-                ("despachado_por", "TEXT NOT NULL DEFAULT ''"),
-                ("entregado_at", "TEXT NOT NULL DEFAULT ''"),
-                ("entregado_por", "TEXT NOT NULL DEFAULT ''"),
-            ):
-                if columna not in columnas_actuales:
-                    connection.execute(f"ALTER TABLE pedidos ADD COLUMN {columna} {definicion}")
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_turno ON pedidos(estado, cierre_id, id DESC)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_id ON pedido_items(pedido_id)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pedidos_bloqueos (
-                    pedido_id INTEGER PRIMARY KEY,
-                    usuario TEXT NOT NULL,
-                    bloqueado_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS transacciones_procesadas (
-                    tx_id TEXT PRIMARY KEY,
-                    accion TEXT NOT NULL,
-                    detalle TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
+            inicializar_esquema_pedidos(connection)
         sig_after = self._db_signature()
         if sig_after is not None:
             self._initialized_dbs.add(sig_after)
@@ -304,7 +72,7 @@ class OrderStore(
     def _map_pedido(row: sqlite3.Row) -> Pedido:
         claves = row.keys()
         c_id = row["cierre_id"] if "cierre_id" in claves else None
-        hash_val = row["archivo_hash"] if "archivo_hash" in row.keys() and row["archivo_hash"] else ""
+        hash_val = row["archivo_hash"] if "archivo_hash" in claves and row["archivo_hash"] else ""
         guia_val = (row["numero_guia"] if "numero_guia" in claves else "") or ""
         return Pedido(
             id=row["id"],
@@ -333,7 +101,14 @@ class OrderStore(
             entregado_por=(row["entregado_por"] if "entregado_por" in claves else "") or "",
         )
 
+    def _obtener_fila_pedido(self, connection: sqlite3.Connection, pedido_id: int) -> sqlite3.Row | None:
+        return connection.execute(
+            f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
+            (pedido_id,),
+        ).fetchone()
+
     def existe_nota_pedido(self, nota_pedido: str) -> bool:
+        """Indica si ya existe un pedido registrado con la nota especificada."""
         nota = nota_pedido.strip()
         with self._connect() as connection:
             row = connection.execute(
@@ -362,10 +137,11 @@ class OrderStore(
         numero_guia: str = "",
         items_sin_coincidencia: list[tuple[str, str]] | None = None,
     ) -> Pedido:
+        """Valida e inserta un nuevo pedido junto a sus ítems y registro de auditoría."""
         nota_pedido = nota_pedido.strip()
         numero_pedido = numero_pedido.strip()
         cliente = cliente.strip()
-        armador = armador.strip()
+        armador = armador.strip() or "Operario"
         nombre_archivo = nombre_archivo.strip()
         tipo_archivo = tipo_archivo.lower().strip()
         fecha_retiro = fecha_retiro.strip()
@@ -382,8 +158,6 @@ class OrderStore(
             raise ValueError(f"Logística inválida. Opciones permitidas: {', '.join(LOGISTICA_OPCIONES)}")
         if tipo_archivo not in ("pdf", "excel", "docx"):
             raise ValueError("Tipo de archivo inválido (debe ser pdf, excel o docx).")
-        if not armador:
-            armador = "Operario"
 
         try:
             with self._connect() as connection, connection:
@@ -416,25 +190,14 @@ class OrderStore(
                 )
                 nuevo_id = cursor.lastrowid
                 if items:
-                    for cod, desc, cant in items:
-                        connection.execute(
-                            """
-                            INSERT INTO pedido_items (pedido_id, codigo, descripcion, cantidad)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                            (nuevo_id, str(cod).strip(), str(desc).strip(), int(cant)),
-                        )
-
-                row = connection.execute(
-                    """
-                    SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                           tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                           resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash, numero_guia,
-                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
-                    FROM pedidos WHERE id = ?
-                    """,
-                    (nuevo_id,),
-                ).fetchone()
+                    connection.executemany(
+                        """
+                        INSERT INTO pedido_items (pedido_id, codigo, descripcion, cantidad)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        [(nuevo_id, str(cod).strip(), str(desc).strip(), int(cant)) for cod, desc, cant in items],
+                    )
+                row = self._obtener_fila_pedido(connection, nuevo_id)
         except sqlite3.IntegrityError as error:
             raise ValueError(f"La nota de pedido '{nota_pedido}' ya fue registrada previamente.") from error
 
@@ -447,43 +210,32 @@ class OrderStore(
         return ped_res
 
     def buscar_pedido_por_hash(self, archivo_hash: str) -> Pedido | None:
+        """Busca un pedido activo por el hash SHA-256 del archivo origen."""
         if not archivo_hash:
             return None
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash, numero_guia,
-                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
+                f"""
+                SELECT {_COLUMNAS_SELECT_PEDIDO}
                 FROM pedidos
                 WHERE archivo_hash = ? AND estado != 'anulado'
                 LIMIT 1
                 """,
                 (archivo_hash.strip(),),
             ).fetchone()
-            if row is None:
-                return None
-            return self._map_pedido(row)
+            return self._map_pedido(row) if row is not None else None
 
     def listar_pedidos(self, limit: int = 50) -> list[Pedido]:
+        """Lista los pedidos más recientes en orden descendente por ID."""
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, archivo_hash, numero_guia,
-                           estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
-                FROM pedidos
-                ORDER BY id DESC
-                LIMIT ?
-                """,
+                f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [self._map_pedido(r) for r in rows]
 
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
+        """Marca un pedido como anulado y registra el motivo en auditoría."""
         with self._connect() as connection, connection:
             row = connection.execute("SELECT nota_pedido FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
             remito = row["nota_pedido"] if row else f"ID {pedido_id}"
@@ -498,9 +250,11 @@ class OrderStore(
         )
 
     def obtener_items_sin_coincidencia(self, pedido_id: int) -> list[tuple[str, str]]:
+        """Devuelve la lista JSON de ítems sin coincidencia guardada para un pedido."""
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT items_sin_coincidencia FROM pedidos WHERE id = ?", (pedido_id,)
+                "SELECT items_sin_coincidencia FROM pedidos WHERE id = ?",
+                (pedido_id,),
             ).fetchone()
         if not row or not row["items_sin_coincidencia"]:
             return []
@@ -511,6 +265,7 @@ class OrderStore(
             return []
 
     def guardar_items_sin_coincidencia(self, pedido_id: int, items: list[tuple[str, str]]) -> None:
+        """Guarda el detalle JSON de ítems sin coincidencia para un pedido."""
         with self._connect() as connection, connection:
             connection.execute(
                 "UPDATE pedidos SET items_sin_coincidencia = ? WHERE id = ?",
@@ -518,6 +273,7 @@ class OrderStore(
             )
 
     def obtener_items_pedido(self, pedido_id: int) -> list[tuple[str, str, int]]:
+        """Retorna los ítems descontados asociados a un pedido."""
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -541,17 +297,9 @@ class OrderStore(
         usuario: str = "Sistema",
         numero_guia: str | None = None,
     ) -> Pedido:
+        """Actualiza metadatos editables de un pedido con validación y trazabilidad."""
         with self._connect() as connection:
-            row = connection.execute(
-                f"""
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id,
-                       archivo_hash, {_COLUMNAS_DESPACHO}
-                FROM pedidos WHERE id = ?
-                """,
-                (pedido_id,),
-            ).fetchone()
+            row = self._obtener_fila_pedido(connection, pedido_id)
             if row is None:
                 raise OrderStoreError(f"No se encontró el pedido con ID {pedido_id}.")
             pedido_actual = self._map_pedido(row)
@@ -608,166 +356,12 @@ class OrderStore(
             except Exception:
                 pass
 
-        detalle_cambios = f"Pedido #{pedido_actual.nota_pedido} modificado: " + "; ".join(cambios)
         self.registrar_auditoria(
             usuario=usuario,
             accion="MODIFICAR_PEDIDO",
-            detalle=detalle_cambios,
+            detalle=f"Pedido #{pedido_actual.nota_pedido} modificado: " + "; ".join(cambios),
         )
 
         with self._connect() as connection:
-            row_act = connection.execute(
-                f"""
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id,
-                       archivo_hash, {_COLUMNAS_DESPACHO}
-                FROM pedidos WHERE id = ?
-                """,
-                (pedido_id,),
-            ).fetchone()
+            row_act = self._obtener_fila_pedido(connection, pedido_id)
         return self._map_pedido(row_act)
-
-    @staticmethod
-    def extraer_remito_de_codigo(texto: str) -> str:
-        limpio = (texto or "").strip()
-        coincidencia = re.search(r"REMITO:\s*([^|]+)", limpio, re.IGNORECASE)
-        return coincidencia.group(1).strip() if coincidencia else limpio
-
-    def buscar_pedido_por_nota(self, nota_pedido: str) -> Pedido | None:
-        nota = (nota_pedido or "").strip()
-        if not nota:
-            return None
-        with self._connect() as connection:
-            row = connection.execute(
-                f"""
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash, {_COLUMNAS_DESPACHO}
-                FROM pedidos WHERE nota_pedido = ? COLLATE NOCASE LIMIT 1
-                """,
-                (nota,),
-            ).fetchone()
-        return self._map_pedido(row) if row is not None else None
-
-    def actualizar_estado_despacho(
-        self,
-        pedido_id: int,
-        nuevo_estado: str,
-        usuario: str = "Sistema",
-        permitir_retroceso: bool = False,
-    ) -> Pedido:
-        if nuevo_estado not in ESTADOS_DESPACHO:
-            raise ValueError(f"Estado de despacho inválido: {nuevo_estado}")
-        with self._connect() as connection, connection:
-            connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT nota_pedido, estado, estado_despacho FROM pedidos WHERE id = ?",
-                (pedido_id,),
-            ).fetchone()
-            if row is None:
-                raise OrderStoreError("No se encontró el pedido.")
-            if row["estado"] == "anulado":
-                raise OrderStoreError("El pedido está anulado y no admite cambios de estado.")
-            actual = row["estado_despacho"] or "armado"
-            idx_actual = ESTADOS_DESPACHO.index(actual)
-            idx_nuevo = ESTADOS_DESPACHO.index(nuevo_estado)
-            if idx_nuevo == idx_actual:
-                raise OrderStoreError(f"El pedido ya figura como '{actual}'.")
-            if idx_nuevo < idx_actual and not permitir_retroceso:
-                raise OrderStoreError("Solo un administrador puede retroceder el estado de un pedido.")
-            if idx_nuevo > idx_actual + 1:
-                raise OrderStoreError(
-                    f"Primero debe marcarse como '{ESTADOS_DESPACHO[idx_actual + 1]}'."
-                )
-            ahora = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
-            if nuevo_estado == "despachado":
-                connection.execute(
-                    f"UPDATE pedidos SET estado_despacho = ?, despachado_at = {ahora}, despachado_por = ?, "
-                    "entregado_at = '', entregado_por = '' WHERE id = ?",
-                    (nuevo_estado, usuario, pedido_id),
-                )
-            elif nuevo_estado == "entregado":
-                connection.execute(
-                    f"UPDATE pedidos SET estado_despacho = ?, entregado_at = {ahora}, entregado_por = ? WHERE id = ?",
-                    (nuevo_estado, usuario, pedido_id),
-                )
-            else:
-                connection.execute(
-                    "UPDATE pedidos SET estado_despacho = ?, despachado_at = '', despachado_por = '', "
-                    "entregado_at = '', entregado_por = '' WHERE id = ?",
-                    (nuevo_estado, pedido_id),
-                )
-            remito = row["nota_pedido"]
-        self.registrar_auditoria(
-            usuario=usuario,
-            accion="ESTADO_DESPACHO",
-            detalle=f"Remito {remito}: {actual} → {nuevo_estado}",
-        )
-        with self._connect() as connection:
-            fila = connection.execute(
-                f"""
-                SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                       tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash, {_COLUMNAS_DESPACHO}
-                FROM pedidos WHERE id = ?
-                """,
-                (pedido_id,),
-            ).fetchone()
-        return self._map_pedido(fila)
-
-    def avanzar_estado_lote(
-        self,
-        pedido_ids: list[int],
-        nuevo_estado: str,
-        usuario: str = "Operador",
-    ) -> int:
-        if not pedido_ids:
-            return 0
-        nuevo = nuevo_estado.strip().lower()
-        if nuevo not in ESTADOS_DESPACHO:
-            raise OrderStoreError(f"Estado de despacho inválido: '{nuevo_estado}'")
-        actualizados = 0
-        for pid in pedido_ids:
-            try:
-                self.actualizar_estado_despacho(pid, nuevo, usuario=usuario, permitir_retroceso=True)
-                actualizados += 1
-            except Exception:
-                continue
-        return actualizados
-
-    def avanzar_estado_por_codigo(
-        self,
-        codigo: str = "",
-        usuario: str = "Sistema",
-        *,
-        codigo_qr_o_remito: str = "",
-        nuevo_estado: str | None = None,
-    ) -> tuple[bool, str, Pedido | None]:
-        raw = codigo or codigo_qr_o_remito
-        remito = self.extraer_remito_de_codigo(raw)
-        pedido = self.buscar_pedido_por_nota(remito)
-        if pedido is None:
-            return False, f"No se encontró ningún pedido con el remito '{remito}'.", None
-        if pedido.estado == "anulado":
-            return False, f"El pedido {pedido.nota_pedido} se encuentra ANULADO.", pedido
-        if nuevo_estado:
-            destino = nuevo_estado.strip().lower()
-        else:
-            idx = ESTADOS_DESPACHO.index(pedido.estado_despacho)
-            if idx >= len(ESTADOS_DESPACHO) - 1:
-                return False, f"El pedido {pedido.nota_pedido} ya figura como ENTREGADO.", pedido
-            destino = ESTADOS_DESPACHO[idx + 1]
-        try:
-            actualizado = self.actualizar_estado_despacho(
-                pedido.id, destino, usuario=usuario, permitir_retroceso=True
-            )
-            return (
-                True,
-                f"Remito #{actualizado.nota_pedido} ({actualizado.cliente}) → {actualizado.estado_despacho.upper()}",
-                actualizado,
-            )
-        except Exception as e:
-            return False, str(e), pedido

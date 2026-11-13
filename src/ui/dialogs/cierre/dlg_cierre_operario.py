@@ -1,19 +1,30 @@
 """Diálogo para el Cierre de Jornada de pedidos por parte del operario."""
-from pathlib import Path
+
+from __future__ import annotations
+
 import sys
 from typing import Any
+
 import flet as ft
 
 from ....backup_manager import crear_backup_sistema
 from ....canjes_parser import parsear_canje_excel
-from ....consolidator import ItemConsolidado
 from ....dispatch_manifest import generar_hoja_ruta_pdf
 from ....mercado_libre_parser import parsear_pedido_mercado_libre
 from ....paths import application_root
-from ....remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo, parsear_remito
-from ....stock_manager import StockManager as _DefaultStockManager
+from ....remito_parser import parsear_remito
 from ...theme import ROJO
-from .hoja_ruta import resolver_archivos_cierre, gestionar_hoja_ruta_cierre, _get_stock_manager_cls
+from .cierre_operario_exec import (
+    ejecutar_tarea_cierre_operario,
+    poblar_historial_cierres,
+    poblar_items_pendientes,
+)
+from .hoja_ruta import (
+    _get_stock_manager_cls,
+    gestionar_hoja_ruta_cierre,
+    resolver_archivos_cierre,
+)
+
 
 def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
     """Abre el panel para cerrar la jornada operativa, descontar stock en bloque y generar la Hoja de Ruta."""
@@ -21,152 +32,19 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         interfaz.notificar("El cierre de jornada es una función exclusiva del rol operador.")
         return
 
-    # Usar las funciones auxiliares de flet_gui
     mod_gui = sys.modules.get("src.flet_gui")
     obtener_correo_fn = getattr(mod_gui, "obtener_correo_cierre_guardado", lambda: "")
     guardar_correo_fn = getattr(mod_gui, "guardar_correo_cierre", lambda _c: None)
 
     pedidos_pendientes = interfaz.order_store.listar_pedidos_pendientes_cierre()
     cierres_anteriores = interfaz.order_store.listar_cierres(limit=25)
-
-    items_pendientes = ft.ListView(expand=True, spacing=6)
     total_articulos_pendientes = sum(p.articulos_descontados for p in pedidos_pendientes)
 
-    if not pedidos_pendientes:
-        items_pendientes.controls.append(
-            ft.Container(
-                bgcolor=ft.Colors.GREEN_900 if interfaz.modo_oscuro else ft.Colors.GREEN_50,
-                border=ft.Border.all(1, ft.Colors.GREEN_700 if interfaz.modo_oscuro else ft.Colors.GREEN_300),
-                border_radius=8,
-                padding=12,
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400),
-                        ft.Text(
-                            "No hay pedidos pendientes de cierre. Todos los pedidos armados ya fueron incluidos en cierres anteriores.",
-                            size=12,
-                            color=interfaz.texto,
-                            expand=True,
-                        ),
-                    ],
-                    spacing=10,
-                ),
-            )
-        )
-    else:
-        for p in pedidos_pendientes:
-            if getattr(p, "numero_pedido", ""):
-                num_ped_txt = f"Pedido #{p.numero_pedido} · Remito: {p.nota_pedido}"
-            else:
-                num_ped_txt = f"Remito / Factura: {p.nota_pedido}"
-            items_pendientes.controls.append(
-                ft.Container(
-                    bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.GREY_50,
-                    border=ft.Border.all(1, interfaz.borde),
-                    border_radius=6,
-                    padding=8,
-                    content=ft.Row(
-                        [
-                            ft.Column(
-                                [
-                                    ft.Row(
-                                        [
-                                            ft.Text(num_ped_txt, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                            ft.Text(f"Cliente: {p.cliente}", size=11, color=interfaz.texto),
-                                        ],
-                                        spacing=10,
-                                    ),
-                                    ft.Row(
-                                        [
-                                            ft.Text(f"Bultos: {p.bultos}", size=11, color=interfaz.secundario),
-                                            ft.Text(f"Logística: {p.logistica}", size=11, color=interfaz.secundario),
-                                            ft.Text(f"Descuento: {p.resumen_items}", size=11, color=ft.Colors.GREEN_400),
-                                        ],
-                                        spacing=10,
-                                    ),
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                            ft.Text(p.created_at[11:16], size=11, color=interfaz.secundario),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                )
-            )
+    items_pendientes = ft.ListView(expand=True, spacing=6)
+    poblar_items_pendientes(interfaz, items_pendientes, pedidos_pendientes)
 
     lista_cierres = ft.ListView(expand=True, spacing=6)
-    if not cierres_anteriores:
-        lista_cierres.controls.append(
-            ft.Text("Aún no se han ejecutado cierres de jornada.", size=12, color=interfaz.secundario)
-        )
-    else:
-        for c in cierres_anteriores:
-            pdf_ruta, xls_ruta, hoja_ruta = resolver_archivos_cierre(interfaz, c)
-
-            boton_hoja_ruta_cierre = ft.IconButton(
-                icon=ft.Icons.LOCAL_SHIPPING,
-                tooltip="Ver / Imprimir Hoja de Ruta de Despacho",
-                icon_color=ft.Colors.TEAL_400 if interfaz.modo_oscuro else ft.Colors.TEAL_700,
-                on_click=lambda _e, cierre_obj=c, hr_path=hoja_ruta: gestionar_hoja_ruta_cierre(interfaz, cierre_obj, hr_path),
-            )
-            boton_imprimir_cierre = (
-                ft.IconButton(
-                    icon=ft.Icons.PRINT,
-                    tooltip="Imprimir / Abrir PDF de este cierre",
-                    icon_color=ROJO,
-                    on_click=(lambda _e, r=pdf_ruta: interfaz.abrir_informe(ruta_especifica=r)) if (pdf_ruta and pdf_ruta.exists()) else None,
-                )
-                if (pdf_ruta and pdf_ruta.exists())
-                else ft.Container()
-            )
-            boton_correo_cierre = (
-                ft.IconButton(
-                    icon=ft.Icons.EMAIL_OUTLINED,
-                    tooltip="Enviar este cierre por correo",
-                    icon_color=ft.Colors.BLUE_400,
-                    on_click=(
-                        lambda _e, cid=c.id, pdf=pdf_ruta, xls=xls_ruta, res=c.resumen_pedidos, usr=c.usuario, hr=hoja_ruta:
-                        interfaz.mostrar_dialogo_compartir_cierre(cid, pdf, xls, res, usr, hr)
-                    ),
-                )
-                if ((pdf_ruta and pdf_ruta.exists()) or (xls_ruta and xls_ruta.exists()) or (hoja_ruta and hoja_ruta.exists()))
-                else ft.Container()
-            )
-            lista_cierres.controls.append(
-                ft.Container(
-                    bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.GREY_50,
-                    border=ft.Border.all(1, interfaz.borde),
-                    border_radius=6,
-                    padding=8,
-                    content=ft.Row(
-                        [
-                            ft.Column(
-                                [
-                                    ft.Row(
-                                        [
-                                            ft.Text(f"Cierre #{c.id}", weight=ft.FontWeight.BOLD, size=13, color=interfaz.texto),
-                                            ft.Text(f"{c.cantidad_pedidos} pedidos ({c.articulos_totales} un.)", size=11, weight=ft.FontWeight.W_500, color=ROJO),
-                                            ft.Text(f"Armador: {c.usuario}", size=11, color=interfaz.secundario),
-                                        ],
-                                        spacing=10,
-                                    ),
-                                    ft.Text(
-                                        f"Fecha: {c.created_at[:16]} · Informe: {c.archivo_pdf or 'N/A'}"
-                                        + (f" · Hoja de Ruta: {c.archivo_hoja_ruta}" if c.archivo_hoja_ruta else ""),
-                                        size=10,
-                                        color=interfaz.secundario,
-                                    ),
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                            ft.Row([boton_correo_cierre, boton_hoja_ruta_cierre, boton_imprimir_cierre], spacing=2),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                )
-            )
+    poblar_historial_cierres(interfaz, lista_cierres, cierres_anteriores)
 
     correo_cierre_input = ft.TextField(
         label="Enviar copia de cierre por correo a (opcional)",
@@ -180,263 +58,20 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
     async def ejecutar_cierre(_e: ft.Event) -> None:
         if getattr(ejecutar_cierre, "_en_curso", False):
             return
-        ejecutar_cierre._en_curso = True
         if not pedidos_pendientes:
             interfaz.notificar("No hay pedidos pendientes para cerrar.")
             return
+        ejecutar_cierre._en_curso = True
 
         correo_destino = (correo_cierre_input.value or "").strip()
         if correo_destino:
             guardar_correo_fn(correo_destino)
 
         interfaz.page.pop_dialog()
-
         resultado_cierre: dict[str, Any] = {}
 
         def tarea_cierre() -> None:
-            items_pendientes_data = interfaz.order_store.obtener_items_pendientes_cierre()
-            items_consolidados: dict[str, ItemConsolidado] = {}
-
-            for cod, desc, cant, remitos in items_pendientes_data:
-                cod_n = normalizar_codigo(cod)
-                if cod_n not in items_consolidados:
-                    items_consolidados[cod_n] = ItemConsolidado(
-                        codigo=cod_n,
-                        descripcion=desc,
-                        cantidad_total=cant,
-                        remitos_origen=list(remitos),
-                    )
-                else:
-                    items_consolidados[cod_n].cantidad_total += cant
-                    for rem in remitos:
-                        if rem not in items_consolidados[cod_n].remitos_origen:
-                            items_consolidados[cod_n].remitos_origen.append(rem)
-
-            if not items_consolidados:
-                for ped in pedidos_pendientes:
-                    arch_path = application_root() / "data" / "pedidos_archivos" / ped.nombre_archivo
-                    if arch_path.exists():
-                        if ped.tipo_archivo == "pdf":
-                            res = parsear_remito(arch_path)
-                        else:
-                            res = parsear_canje_excel(arch_path)
-                        for it in res.items:
-                            cod_n = normalizar_codigo(it.codigo)
-                            if cod_n not in items_consolidados:
-                                items_consolidados[cod_n] = ItemConsolidado(
-                                    codigo=cod_n,
-                                    descripcion=it.descripcion,
-                                    cantidad_total=it.cantidad,
-                                    remitos_origen=[ped.nota_pedido],
-                                )
-                            else:
-                                items_consolidados[cod_n].cantidad_total += it.cantidad
-                                if ped.nota_pedido not in items_consolidados[cod_n].remitos_origen:
-                                    items_consolidados[cod_n].remitos_origen.append(ped.nota_pedido)
-
-            sm_cls = _get_stock_manager_cls()
-            stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
-
-            pedidos_doc = []
-            for p in pedidos_pendientes:
-                items_db = interfaz.order_store.obtener_items_pedido(p.id)
-                items_p = [
-                    ItemRemito(
-                        codigo=normalizar_codigo(cod),
-                        descripcion=desc,
-                        cantidad=cant,
-                        origen_remito=p.nota_pedido,
-                    )
-                    for cod, desc, cant in items_db
-                ]
-                sin_coincidencia_p: list[tuple[str, str]] = []
-                if hasattr(interfaz.order_store, "obtener_items_sin_coincidencia"):
-                    try:
-                        sin_coincidencia_p = interfaz.order_store.obtener_items_sin_coincidencia(p.id)
-                    except Exception:
-                        sin_coincidencia_p = []
-
-                arch_p = application_root() / "data" / "pedidos_archivos" / p.nombre_archivo
-                if not arch_p.exists():
-                    candidatos = [
-                        interfaz.menu.carpeta_descontados / "MercadoLibre" / p.nombre_archivo,
-                        interfaz.menu.carpeta_descontados / "Mayoristas" / p.nombre_archivo,
-                        interfaz.menu.carpeta_descontados / "Canjes" / p.nombre_archivo,
-                        interfaz.menu.carpeta_descontados / "Fabrica" / p.nombre_archivo,
-                        interfaz.menu.carpeta_descontados / p.nombre_archivo,
-                    ]
-                    for cand in candidatos:
-                        if cand.exists():
-                            arch_p = cand
-                            break
-
-                if arch_p.exists():
-                    try:
-                        sufijo = arch_p.suffix.lower()
-                        if sufijo == ".pdf" or p.tipo_archivo == "pdf":
-                            res_doc = parsear_remito(arch_p)
-                            if not sin_coincidencia_p:
-                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
-                            if not items_p:
-                                items_p = res_doc.items
-                        elif sufijo == ".docx" or p.tipo_archivo == "docx":
-                            prods_cat = [(c, n) for _, c, n, _ in stock_mgr.productos_base]
-                            res_doc = parsear_pedido_mercado_libre(arch_p, prods_cat)
-                            if not sin_coincidencia_p:
-                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
-                            if not items_p:
-                                items_p = res_doc.items
-                        elif sufijo in (".xlsx", ".xls") or p.tipo_archivo == "excel":
-                            res_doc = parsear_canje_excel(arch_p)
-                            if not sin_coincidencia_p:
-                                sin_coincidencia_p = list(res_doc.descripciones_sin_coincidencia)
-                            if not items_p:
-                                items_p = res_doc.items
-                    except Exception as e:
-                        print(f"[AVISO] Error al re-parsear {arch_p.name} para cierre: {e}")
-
-                if sin_coincidencia_p and hasattr(interfaz.order_store, "guardar_items_sin_coincidencia"):
-                    try:
-                        interfaz.order_store.guardar_items_sin_coincidencia(p.id, sin_coincidencia_p)
-                    except Exception:
-                        pass
-
-                pedidos_doc.append(
-                    ResultadoRemito(
-                        archivo=p.nombre_archivo,
-                        numero_remito=p.nota_pedido,
-                        fecha=p.created_at[:10],
-                        cliente=p.cliente,
-                        articulos_declarados=p.articulos_descontados,
-                        articulos_extraidos=p.articulos_descontados,
-                        items=items_p,
-                        descripciones_sin_coincidencia=sin_coincidencia_p,
-                        verificacion_ok=True,
-                    )
-                )
-            rep = stock_mgr.aplicar_descuentos(
-                items_consolidados=items_consolidados,
-                carpeta_destino=interfaz.menu.carpeta_descuentos,
-                pedidos_procesados=pedidos_doc,
-                guardar_archivo=True,
-                prefijo_archivo="Cierre_Descuento",
-                descuento_ya_aplicado=True,
-            )
-
-            pdf_path = Path(rep.archivo_pdf) if rep.archivo_pdf else None
-            xls_path = Path(rep.archivo_guardado) if rep.archivo_guardado else None
-
-            total_arts = sum(it.cantidad_total for it in items_consolidados.values())
-            resumen_p = f"{len(pedidos_pendientes)} pedidos ({total_arts} un.)"
-
-            cierre_id = interfaz.order_store.registrar_cierre(
-                usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                pedidos_ids=[p.id for p in pedidos_pendientes],
-                articulos_totales=total_arts,
-                resumen_pedidos=resumen_p,
-                archivo_pdf=pdf_path.name if pdf_path else "",
-                archivo_excel=xls_path.name if xls_path else "",
-            )
-
-            total_bultos = sum(p.bultos for p in pedidos_pendientes)
-            try:
-                from ...telegram_notifier import notificar_cierre_jornada_telegram
-                notificar_cierre_jornada_telegram(
-                    responsable=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                    pedidos=len(pedidos_pendientes),
-                    bultos=total_bultos,
-                    articulos=total_arts,
-                )
-            except Exception:
-                pass
-
-            try:
-                sm_cierre = _get_stock_manager_cls()(ruta_excel_base=interfaz.menu.ruta_excel_base)
-                if hasattr(sm_cierre, "sincronizar_catalogo_completo_excel"):
-                    sm_cierre.sincronizar_catalogo_completo_excel()
-            except Exception:
-                pass
-
-            art_quiebre = rep.articulos_quiebre
-            art_criticos = rep.articulos_criticos
-            alerta_texto_correo = ""
-            alerta_resumen_notif = ""
-            if art_quiebre or art_criticos:
-                lineas_alerta = []
-                if art_quiebre:
-                    lineas_alerta.append(f"🔴 {len(art_quiebre)} producto(s) en QUIEBRE (stock <= 0)")
-                if art_criticos:
-                    lineas_alerta.append(f"🟠 {len(art_criticos)} producto(s) en STOCK CRÍTICO (1 a 5 un.)")
-                alerta_resumen_notif = " · ".join(lineas_alerta)
-                alerta_texto_correo = alerta_resumen_notif
-                for r in art_quiebre:
-                    alerta_texto_correo += f"\n  - [QUIEBRE] {r.codigo}: {r.nombre_producto} (Stock: {r.stock_nuevo})"
-                for r in art_criticos:
-                    alerta_texto_correo += f"\n  - [CRÍTICO] {r.codigo}: {r.nombre_producto} (Stock: {r.stock_nuevo})"
-
-                interfaz.order_store.registrar_auditoria(
-                    usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                    accion="ALERTA_STOCK",
-                    detalle=f"Cierre #{cierre_id}: {len(art_quiebre)} quiebres, {len(art_criticos)} críticos",
-                )
-
-            hoja_ruta_pdf: Path | None = None
-            try:
-                hoja_ruta_pdf = generar_hoja_ruta_pdf(
-                    cierre_id=cierre_id,
-                    pedidos=pedidos_pendientes,
-                    usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                    carpeta_destino=interfaz.menu.carpeta_descuentos,
-                )
-                if hoja_ruta_pdf:
-                    interfaz.order_store.actualizar_hoja_ruta_cierre(cierre_id, hoja_ruta_pdf.name)
-            except Exception as ex_hr:
-                print(f"Error generando hoja de ruta de despacho: {ex_hr}")
-
-            try:
-                bk_zip = crear_backup_sistema(
-                    ruta_excel_base=interfaz.menu.ruta_excel_base,
-                    usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                )
-                interfaz.order_store.registrar_auditoria(
-                    usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                    accion="BACKUP_AUTOMATICO",
-                    detalle=f"Respaldo automático en cierre #{cierre_id}: {bk_zip.name}",
-                )
-            except Exception as ex_bk:
-                print(f"Error en backup automático: {ex_bk}")
-
-            try:
-                from ...webhook_manager import despachar_evento_webhook
-                despachar_evento_webhook("CIERRE_JORNADA", {
-                    "cierre_id": cierre_id,
-                    "usuario": interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario",
-                    "resumen_pedidos": resumen_p,
-                    "total_quiebres": len(art_quiebre) if 'art_quiebre' in locals() else 0,
-                    "total_criticos": len(art_criticos) if 'art_criticos' in locals() else 0,
-                    "hoja_ruta": hoja_ruta_pdf.name if hoja_ruta_pdf else None,
-                    "archivo_pdf": pdf_path.name if pdf_path else None,
-                    "archivo_excel": xls_path.name if xls_path else None,
-                })
-                if 'art_quiebre' in locals() and art_quiebre:
-                    for r_q in art_quiebre:
-                        despachar_evento_webhook("QUIEBRE_STOCK", {
-                            "codigo": r_q.codigo,
-                            "nombre": r_q.nombre_producto,
-                            "stock_actual": r_q.stock_nuevo,
-                            "origen": f"Cierre #{cierre_id}",
-                            "estado": "AGOTADO" if r_q.stock_nuevo <= 0 else "CRITICO",
-                        })
-            except Exception as ex_wh:
-                print(f"Error despachando webhook de cierre: {ex_wh}")
-
-            resultado_cierre["cierre_id"] = cierre_id
-            resultado_cierre["pdf_path"] = pdf_path
-            resultado_cierre["xls_path"] = xls_path
-            resultado_cierre["hoja_ruta_pdf"] = hoja_ruta_pdf
-            resultado_cierre["resumen_p"] = resumen_p
-            resultado_cierre["alerta_resumen_notif"] = alerta_resumen_notif
-            resultado_cierre["alerta_texto_correo"] = alerta_texto_correo
+            resultado_cierre.update(ejecutar_tarea_cierre_operario(interfaz, pedidos_pendientes))
 
         try:
             exito = await interfaz.ejecutar_tarea("Cierre de Jornada", tarea_cierre)
@@ -547,12 +182,7 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         visible=False,
     )
 
-    boton_tab_pendientes = ft.Button(
-        f"Pendientes ({len(pedidos_pendientes)})",
-        icon=ft.Icons.PENDING_ACTIONS,
-        bgcolor=ROJO,
-        color=ft.Colors.WHITE,
-    )
+    boton_tab_pendientes = ft.Button(f"Pendientes ({len(pedidos_pendientes)})", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ROJO, color=ft.Colors.WHITE)
     boton_tab_historial = ft.Button(
         f"Historial de Cierres ({len(cierres_anteriores)})",
         icon=ft.Icons.HISTORY,
@@ -561,53 +191,37 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
     )
 
     def switch_tab(tab_idx: int) -> None:
-        if tab_idx == 0:
-            vista_pendientes.visible = True
-            vista_historial.visible = False
-            boton_tab_pendientes.bgcolor = ROJO
-            boton_tab_pendientes.color = ft.Colors.WHITE
-            boton_tab_historial.bgcolor = ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100
-            boton_tab_historial.color = interfaz.texto
-        else:
-            vista_pendientes.visible = False
-            vista_historial.visible = True
-            boton_tab_pendientes.bgcolor = ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100
-            boton_tab_pendientes.color = interfaz.texto
-            boton_tab_historial.bgcolor = ROJO
-            boton_tab_historial.color = ft.Colors.WHITE
+        es_pend = tab_idx == 0
+        vista_pendientes.visible = es_pend
+        vista_historial.visible = not es_pend
+        bg_inact = ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100
+        boton_tab_pendientes.bgcolor = ROJO if es_pend else bg_inact
+        boton_tab_pendientes.color = ft.Colors.WHITE if es_pend else interfaz.texto
+        boton_tab_historial.bgcolor = bg_inact if es_pend else ROJO
+        boton_tab_historial.color = interfaz.texto if es_pend else ft.Colors.WHITE
         interfaz.page.update()
 
     boton_tab_pendientes.on_click = lambda _e: switch_tab(0)
     boton_tab_historial.on_click = lambda _e: switch_tab(1)
 
-    cuerpo_cierre = ft.Column(
-        [
-            ft.Row([boton_tab_pendientes, boton_tab_historial], spacing=10),
-            vista_pendientes,
-            vista_historial,
-        ],
-        spacing=12,
-        expand=True,
-    )
-
+    cuerpo_cierre = ft.Column([ft.Row([boton_tab_pendientes, boton_tab_historial], spacing=10), vista_pendientes, vista_historial], spacing=12, expand=True)
     dialogo = ft.AlertDialog(
-        title=ft.Row(
-            [
-                ft.Icon(ft.Icons.TASK_ALT, color=ROJO),
-                ft.Text("Cierre de Jornada de Pedidos", weight=ft.FontWeight.BOLD),
-            ],
-            spacing=8,
-        ),
-        content=ft.Container(
-            width=720,
-            height=520,
-            content=cuerpo_cierre,
-        ),
-        actions=[
-            interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())
-        ],
+        title=ft.Row([ft.Icon(ft.Icons.TASK_ALT, color=ROJO), ft.Text("Cierre de Jornada de Pedidos", weight=ft.FontWeight.BOLD)], spacing=8),
+        content=ft.Container(width=720, height=520, content=cuerpo_cierre),
+        actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )
     interfaz.page.show_dialog(dialogo)
 
 
-
+__all__ = [
+    "_get_stock_manager_cls",
+    "application_root",
+    "crear_backup_sistema",
+    "generar_hoja_ruta_pdf",
+    "gestionar_hoja_ruta_cierre",
+    "mostrar_dialogo_cierre_jornada",
+    "parsear_canje_excel",
+    "parsear_pedido_mercado_libre",
+    "parsear_remito",
+    "resolver_archivos_cierre",
+]

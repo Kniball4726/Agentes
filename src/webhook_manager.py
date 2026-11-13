@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,14 @@ def obtener_webhooks() -> list[dict[str, Any]]:
     return []
 
 
+def _validar_url_webhook(url: str) -> str:
+    limpia = str(url or "").strip()
+    parsed = urllib.parse.urlparse(limpia)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        raise ValueError("La URL del webhook debe comenzar con http:// o https:// y contener un host válido.")
+    return limpia
+
+
 def guardar_webhook(
     url: str,
     eventos: list[str] | None = None,
@@ -48,6 +57,7 @@ def guardar_webhook(
     activo: bool = True,
 ) -> dict[str, Any]:
     """Registra o actualiza una suscripción de webhook."""
+    url_valida = _validar_url_webhook(url)
     ruta = _ruta_webhooks()
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
@@ -61,7 +71,7 @@ def guardar_webhook(
 
     item = {
         "id": webhook_id,
-        "url": url.strip(),
+        "url": url_valida,
         "descripcion": descripcion.strip(),
         "eventos": eventos_filtrados or list(EVENTOS_DISPONIBLES),
         "activo": activo,
@@ -134,11 +144,12 @@ def despachar_evento_webhook(evento: str, datos: dict[str, Any]) -> None:
 
 
 def _enviar_http(url: str, payload: dict[str, Any]) -> tuple[bool, str]:
-    """Envía un payload JSON mediante HTTP POST con timeout estricto."""
+    """Envía un payload JSON mediante HTTP/HTTPS POST con timeout estricto."""
     try:
+        url_valida = _validar_url_webhook(url)
         data_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            url,
+            url_valida,
             data=data_bytes,
             headers={
                 "Content-Type": "application/json; charset=utf-8",

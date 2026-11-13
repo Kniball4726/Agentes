@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import Depends, Header, HTTPException, Query, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from ..auth.store import register_session_revocation_listener
 from ..paths import application_root
 from ..user_store import User, UserStore
 from ..product_store import ProductStore
@@ -17,7 +19,29 @@ from ..stock_manager import StockManager
 
 # Configuración de sesiones
 SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de vigencia por token
+DOC_TOKEN_TTL_SECONDS = 300  # 5 minutos para tokens efímeros de visor/descarga web
 _sesiones_activas: Dict[str, Dict[str, Any]] = {}
+_doc_tokens: Dict[str, Dict[str, Any]] = {}
+
+
+def _on_user_store_session_revocation(
+    event: str, user_id: Optional[int], token_hash: Optional[str]
+) -> None:
+    """Mantiene sincronizada la caché en memoria ante revocaciones en UserStore."""
+    if event == "all":
+        _sesiones_activas.clear()
+        _doc_tokens.clear()
+    elif event == "token" and token_hash:
+        _sesiones_activas.pop(token_hash, None)
+    elif event == "user" and user_id is not None:
+        objetivo = int(user_id)
+        for th in [k for k, v in _sesiones_activas.items() if int(v.get("user_id", 0) or 0) == objetivo]:
+            _sesiones_activas.pop(th, None)
+        for dh in [k for k, v in _doc_tokens.items() if int(v.get("user_id", 0) or 0) == objetivo]:
+            _doc_tokens.pop(dh, None)
+
+
+register_session_revocation_listener(_on_user_store_session_revocation)
 
 security_bearer = HTTPBearer(auto_error=False)
 
@@ -131,11 +155,136 @@ def _limpiar_sesiones_expiradas() -> None:
         pass
 
 
+def _normalizar_recurso_doc(recurso: str) -> str:
+    return str(recurso or "").strip().replace("\\", "/").lstrip("/")
+
+
+def _limpiar_doc_tokens_expirados(ahora: Optional[float] = None) -> None:
+    ref = time.time() if ahora is None else ahora
+    expirados = [dh for dh, info in _doc_tokens.items() if ref > float(info.get("exp", 0))]
+    for dh in expirados:
+        _doc_tokens.pop(dh, None)
+
+
+def crear_token_documento(
+    usuario: User | Dict[str, Any],
+    recurso: str = "",
+    ttl_seconds: int = DOC_TOKEN_TTL_SECONDS,
+) -> str:
+    """Genera un token efímero acotado exclusivamente a lectura/descarga de un documento."""
+    ahora = time.time()
+    _limpiar_doc_tokens_expirados(ahora)
+
+    if isinstance(usuario, dict):
+        uid = int(usuario.get("user_id", 0) or 0)
+        username = str(usuario.get("username", ""))
+        role = str(usuario.get("role", "operador"))
+        nombre = str(usuario.get("nombre", "") or username)
+        email = str(usuario.get("email", ""))
+    else:
+        uid = int(getattr(usuario, "id", 0) or 0)
+        username = str(getattr(usuario, "username", ""))
+        role = str(getattr(usuario, "role", "operador"))
+        nombre = str(getattr(usuario, "nombre", "") or username)
+        email = str(getattr(usuario, "email", ""))
+
+    raw_token = f"doc_{secrets.token_urlsafe(24)}"
+    token_hash = _hash_token(raw_token)
+    _doc_tokens[token_hash] = {
+        "user_id": uid,
+        "username": username,
+        "role": role,
+        "nombre": nombre,
+        "email": email,
+        "recurso": _normalizar_recurso_doc(recurso),
+        "exp": ahora + max(1, int(ttl_seconds)),
+        "is_doc_token": True,
+    }
+    return raw_token
+
+
+def validar_token_documento(
+    raw_token: str,
+    recurso_solicitado: str = "",
+    user_store: Optional[UserStore] = None,
+) -> Optional[Dict[str, Any]]:
+    """Valida un token efímero de documento verificando vigencia, recurso y usuario activo."""
+    if not raw_token or not raw_token.strip():
+        return None
+    ahora = time.time()
+    _limpiar_doc_tokens_expirados(ahora)
+    token_hash = _hash_token(raw_token)
+    entry = _doc_tokens.get(token_hash)
+    if not entry or ahora > float(entry.get("exp", 0)):
+        _doc_tokens.pop(token_hash, None)
+        return None
+
+    recurso_esperado = entry.get("recurso", "")
+    if recurso_esperado:
+        recurso_norm = _normalizar_recurso_doc(recurso_solicitado)
+        if recurso_norm != recurso_esperado:
+            return None
+
+    uid = int(entry.get("user_id", 0) or 0)
+    if user_store is not None and uid > 0:
+        try:
+            db_user = user_store.get_user(uid)
+        except Exception:
+            db_user = None
+        if isinstance(db_user, User):
+            if not db_user.active:
+                _doc_tokens.pop(token_hash, None)
+                return None
+        elif db_user is None:
+            _doc_tokens.pop(token_hash, None)
+            return None
+
+    return dict(entry)
+
+
+def _validar_y_sincronizar_usuario(
+    sesion: Dict[str, Any],
+    token_hash: str,
+    user_store: UserStore,
+) -> Dict[str, Any]:
+    uid = int(sesion.get("user_id", 0) or 0)
+    if uid > 0:
+        try:
+            db_user = user_store.get_user(uid)
+        except Exception:
+            db_user = None
+        if isinstance(db_user, User):
+            if not db_user.active:
+                _sesiones_activas.pop(token_hash, None)
+                try:
+                    user_store.revoke_api_session(token_hash)
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="La cuenta de usuario se encuentra deshabilitada.",
+                )
+            sesion["role"] = db_user.role
+            sesion["username"] = db_user.username
+            sesion["nombre"] = db_user.nombre or db_user.username
+            sesion["email"] = db_user.email
+        elif db_user is None:
+            _sesiones_activas.pop(token_hash, None)
+            try:
+                user_store.revoke_api_session(token_hash)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario inexistente o sesión revocada.",
+            )
+    return sesion
+
+
 async def get_current_user(
     auth_header: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
     x_token: Optional[str] = Header(None, alias="X-Auth-Token"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    token_param: Optional[str] = Query(None, alias="token"),
     user_store: UserStore = Depends(get_user_store),
 ) -> Dict[str, Any]:
     """Valida el token enviado por encabezado Bearer, X-Auth-Token o X-API-Key externa."""
@@ -158,14 +307,12 @@ async def get_current_user(
             "last_active": time.time(),
         }
 
-    # 2. Autenticación mediante token de sesión
+    # 2. Autenticación mediante token de sesión en encabezado HTTP
     token: Optional[str] = None
     if auth_header and auth_header.credentials:
         token = auth_header.credentials
     elif x_token:
         token = x_token
-    elif token_param:
-        token = token_param
 
     if not token:
         raise HTTPException(
@@ -174,17 +321,27 @@ async def get_current_user(
         )
 
     token_hash = _hash_token(token)
+    ahora = time.time()
     sesion = _sesiones_activas.get(token_hash)
+
+    if sesion and ahora - float(sesion.get("last_active", 0)) > SESSION_TTL_SECONDS:
+        _sesiones_activas.pop(token_hash, None)
+        try:
+            user_store.revoke_api_session(token_hash)
+        except Exception:
+            pass
+        sesion = None
 
     # 3. Si no está en memoria, consultar SQLite (ej: tras reinicio del servidor)
     if not sesion:
         try:
             db_session = user_store.get_api_session(token_hash)
             if db_session:
-                ahora = time.time()
-                if ahora - db_session["last_active"] <= SESSION_TTL_SECONDS:
+                if ahora - float(db_session.get("last_active", 0)) <= SESSION_TTL_SECONDS:
                     sesion = db_session
                     _sesiones_activas[token_hash] = sesion
+                else:
+                    user_store.revoke_api_session(token_hash)
         except Exception:
             pass
 
@@ -194,8 +351,9 @@ async def get_current_user(
             detail="Token inválido o sesión expirada. Inicie sesión nuevamente.",
         )
 
+    sesion = _validar_y_sincronizar_usuario(sesion, token_hash, user_store)
+
     # Actualizar última actividad
-    ahora = time.time()
     sesion["last_active"] = ahora
     try:
         user_store.update_api_session_activity(token_hash, ahora)
@@ -203,6 +361,63 @@ async def get_current_user(
         pass
 
     return sesion
+
+
+async def get_optional_current_user(
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
+    x_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    user_store: UserStore = Depends(get_user_store),
+) -> Optional[Dict[str, Any]]:
+    """Devuelve la sesión autenticada si se enviaron credenciales válidas, o None si no hay sesión."""
+    if not (auth_header and auth_header.credentials) and not x_token and not (x_api_key and x_api_key.strip()):
+        return None
+    try:
+        return await get_current_user(
+            auth_header=auth_header,
+            x_token=x_token,
+            x_api_key=x_api_key,
+            user_store=user_store,
+        )
+    except HTTPException:
+        return None
+
+
+async def require_document_access(
+    request: Request,
+    auth_header: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
+    x_token: Optional[str] = Header(None, alias="X-Auth-Token"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    dt: Optional[str] = Query(None, alias="dt", description="Token efímero acotado al documento"),
+    user_store: UserStore = Depends(get_user_store),
+) -> Dict[str, Any]:
+    """Exige sesión API válida o token efímero `dt` emitido para el recurso solicitado."""
+    if (auth_header and auth_header.credentials) or x_token or (x_api_key and x_api_key.strip()):
+        return await get_current_user(
+            auth_header=auth_header,
+            x_token=x_token,
+            x_api_key=x_api_key,
+            user_store=user_store,
+        )
+
+    if dt:
+        recurso_req = (
+            request.query_params.get("p")
+            or request.path_params.get("nombre_archivo")
+            or Path(request.url.path).name
+        )
+        doc_sesion = validar_token_documento(dt, recurso_solicitado=recurso_req, user_store=user_store)
+        if doc_sesion:
+            return doc_sesion
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de documento inválido, expirado o no autorizado para este archivo.",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Se requiere autenticación para acceder a documentos o informes.",
+    )
 
 
 def require_roles(*roles_permitidos: str):

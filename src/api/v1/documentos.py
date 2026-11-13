@@ -6,10 +6,12 @@ import logging
 import mimetypes
 import urllib.parse
 from pathlib import Path
+from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from ..deps import require_document_access
 from ...paths import application_root
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,10 @@ PARTES_PROHIBIDAS = {
     "usuarios.sqlite3",
     "usuarios.db",
     "secretos.py",
+    "certs",
+    "backups",
+    "logs",
+    ".clave_secretos",
 }
 
 
@@ -53,6 +59,10 @@ def resolver_ruta_documento(ruta_param: str) -> Path:
 
     # Limpiar prefijos y normalizar separadores
     ruta_limpia = ruta_param.strip().replace("\\", "/").lstrip("/")
+    if PARTES_PROHIBIDAS.intersection({p.lower() for p in Path(ruta_limpia).parts}):
+        logger.warning("Intento de acceso a ruta confidencial: %s", ruta_param)
+        raise HTTPException(status_code=403, detail="Acceso denegado a recurso restringido.")
+
     candidato = (app_root / ruta_limpia).resolve()
 
     # Si no existe directamente, intentar ubicarlo en las carpetas estándar de documentos
@@ -64,7 +74,6 @@ def resolver_ruta_documento(ruta_param: str) -> Path:
             app_root / "data",
             app_root / "Descuentos",
             app_root / "Documentacion",
-            app_root / "scratch",
         ]
         for carpeta in carpetas_busqueda:
             if not carpeta.exists():
@@ -82,18 +91,18 @@ def resolver_ruta_documento(ruta_param: str) -> Path:
     except (ValueError, AttributeError):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
 
-    # 2. Existencia del archivo
+    # 2. Validar partes prohibidas antes de verificar existencia (evita enumeración)
+    partes_lower = {p.lower() for p in candidato.parts}
+    if PARTES_PROHIBIDAS.intersection(partes_lower):
+        logger.warning("Intento de acceso a recurso confidencial: %s", candidato)
+        raise HTTPException(status_code=403, detail="Acceso denegado a recurso restringido.")
+
+    # 3. Existencia del archivo
     if not candidato.exists() or not candidato.is_file():
         raise HTTPException(
             status_code=404,
             detail=f"El documento '{Path(ruta_param).name}' no fue encontrado en el servidor.",
         )
-
-    # 3. Validar partes prohibidas
-    partes_lower = {p.lower() for p in candidato.parts}
-    if PARTES_PROHIBIDAS.intersection(partes_lower):
-        logger.warning("Intento de acceso a recurso confidencial: %s", candidato)
-        raise HTTPException(status_code=403, detail="Acceso denegado a recurso restringido.")
 
     # 4. Validar extensión
     ext = candidato.suffix.lower()
@@ -111,6 +120,7 @@ def resolver_ruta_documento(ruta_param: str) -> Path:
 async def ver_documento(
     p: str = Query(..., description="Ruta relativa o nombre del documento"),
     descargar: bool = Query(False, description="Forzar descarga en vez de visualización inline"),
+    _user: Dict[str, Any] = Depends(require_document_access),
 ):
     """Sirve un documento con cabecera Content-Disposition: inline por defecto.
 
@@ -159,6 +169,7 @@ async def ver_documento(
 async def ver_documento_path(
     nombre_archivo: str,
     descargar: bool = Query(False),
+    _user: Dict[str, Any] = Depends(require_document_access),
 ):
     """Alias para visualización directa mediante ruta en path."""
-    return await ver_documento(p=nombre_archivo, descargar=descargar)
+    return await ver_documento(p=nombre_archivo, descargar=descargar, _user=_user)

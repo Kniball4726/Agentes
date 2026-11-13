@@ -16,6 +16,7 @@ from .models import (
     _master_default_credentials,
 )
 from ..core.exceptions import UserStoreError
+from .events import register_session_revocation_listener
 from .store import UserStore
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "UserStoreError",
     "UserStore",
     "_master_default_credentials",
+    "register_session_revocation_listener",
 ]

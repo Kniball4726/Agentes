@@ -217,8 +217,16 @@ def restaurar_backup_sistema(
 
     with tempfile.TemporaryDirectory(prefix="restore_stockagent_") as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
+        tmp_resolved = tmp_dir.resolve()
         try:
             with zipfile.ZipFile(ruta_zip, mode="r") as zf:
+                for info in zf.infolist():
+                    miembro = Path(info.filename)
+                    if miembro.is_absolute() or ".." in miembro.parts:
+                        return False, "El archivo .zip contiene rutas inválidas.", []
+                    destino_miembro = (tmp_dir / info.filename).resolve()
+                    if not destino_miembro.is_relative_to(tmp_resolved):
+                        return False, "El archivo .zip contiene rutas fuera del destino.", []
                 zf.extractall(tmp_dir)
         except Exception as exc:
             return False, f"Error al extraer el archivo .zip: {exc}", []

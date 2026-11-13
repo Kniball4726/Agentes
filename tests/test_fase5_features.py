@@ -4,7 +4,7 @@
 3. Pantalla de contingencia offline (assets/offline.html) con auto-reconectador.
 4. Cola resiliente de escaneos offline (assets/js/scanner.js) con buffer local y sincronización.
 5. Registro y banner visual de microcortes en assets/index.html.
-6. Mapeo de endpoints PWA en la inicialización web de src/server.py / src/flet_gui.py.
+6. Mapeo de endpoints PWA en la inicialización web de src/server.py / src/server_app/.
 """
 
 import json
@@ -105,17 +105,22 @@ class TestFase5Features(unittest.TestCase):
         self.assertIn("addEventListener('online'", content)
 
     def test_flet_gui_mapeo_endpoints_pwa(self):
-        """Verifica que el código de server.py / flet_gui.py registre los manejadores estáticos de PWA."""
-        server_path = self.root / "src" / "server.py"
-        target_path = server_path if server_path.exists() else (self.root / "src" / "flet_gui.py")
-        content = target_path.read_text(encoding="utf-8")
+        """Verifica que el servidor web registre y sirva los endpoints estáticos PWA."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from src.server import registrar_rutas_pwa
 
-        self.assertIn('self.get("/sw.js")', content)
-        self.assertIn('self.get("/service-worker.js")', content)
-        self.assertIn('self.get("/manifest.json")', content)
-        self.assertIn('self.get("/offline.html")', content)
-        self.assertIn('self.get("/scanner.html")', content)
-        self.assertIn('Service-Worker-Allowed', content)
+        app = FastAPI()
+        registrar_rutas_pwa(app, self.assets_dir)
+        client = TestClient(app)
+
+        for ruta in ("/sw.js", "/service-worker.js"):
+            res = client.get(ruta)
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.headers.get("Service-Worker-Allowed"), "/")
+
+        for ruta in ("/manifest.json", "/offline.html", "/scanner.html"):
+            self.assertEqual(client.get(ruta).status_code, 200)
 
 
 if __name__ == "__main__":

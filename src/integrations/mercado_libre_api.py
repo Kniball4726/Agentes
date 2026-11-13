@@ -21,6 +21,7 @@ import urllib.request
 
 from docx import Document
 
+from .. import secretos
 from ..parsers.mercado_libre_parser import _buscar_codigo
 from ..paths import application_root
 from ..stock.models import RegistroDescuento
@@ -28,6 +29,7 @@ from ..stock_manager import normalizar_codigo
 
 CONFIG_ML_PATH_DEFAULT = "data/config_mercadolibre.json"
 API_BASE_URL = "https://api.mercadolibre.com"
+_CAMPOS_SECRETOS_ML = ("client_secret", "access_token", "refresh_token")
 
 
 def _obtener_ruta_config_ml(root_path: Path | None = None) -> Path:
@@ -50,22 +52,44 @@ def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
         "auto_descontar": False,
         "ultima_sincronizacion": "",
     }
+    necesita_migracion = False
     if ruta.exists():
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                raw_secretos = {
+                    campo: str(data.get(campo, "")).strip()
+                    for campo in _CAMPOS_SECRETOS_ML
+                }
+                necesita_migracion = any(
+                    val and not secretos.esta_cifrado(val)
+                    for val in raw_secretos.values()
+                )
+                secretos_descifrados: dict[str, str] = {}
+                for campo, raw_val in raw_secretos.items():
+                    try:
+                        secretos_descifrados[campo] = secretos.descifrar(raw_val)
+                    except secretos.SecretoError:
+                        secretos_descifrados[campo] = ""
+
                 res = {
                     "app_id": str(data.get("app_id", "")).strip(),
-                    "client_secret": str(data.get("client_secret", "")).strip(),
+                    "client_secret": secretos_descifrados["client_secret"],
                     "seller_id": str(data.get("seller_id", "")).strip(),
-                    "access_token": str(data.get("access_token", "")).strip(),
-                    "refresh_token": str(data.get("refresh_token", "")).strip(),
+                    "access_token": secretos_descifrados["access_token"],
+                    "refresh_token": secretos_descifrados["refresh_token"],
                     "activo": bool(data.get("activo", False)),
                     "filtro_estado": str(data.get("filtro_estado", "paid")).strip() or "paid",
                     "horas_atras": int(data.get("horas_atras", 48)),
                     "auto_descontar": bool(data.get("auto_descontar", False)),
                     "ultima_sincronizacion": str(data.get("ultima_sincronizacion", "")),
                 }
+        except Exception:
+            pass
+
+    if necesita_migracion:
+        try:
+            guardar_config_mercadolibre(res, root_path=root_path)
         except Exception:
             pass
 
@@ -87,11 +111,14 @@ def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
 
 
 def guardar_config_mercadolibre(config: dict[str, Any], root_path: Path | None = None) -> None:
-    """Persiste la configuración de la API de Mercado Libre en disco."""
+    """Persiste la configuración de la API de Mercado Libre en disco cifrando secretos."""
     ruta = _obtener_ruta_config_ml(root_path)
     ruta.parent.mkdir(parents=True, exist_ok=True)
+    a_guardar = dict(config)
+    for campo in _CAMPOS_SECRETOS_ML:
+        a_guardar[campo] = secretos.cifrar(str(a_guardar.get(campo) or "").strip())
     with open(ruta, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+        json.dump(a_guardar, f, indent=2, ensure_ascii=False)
 
 
 def renovar_token_ml(
