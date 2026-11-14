@@ -21,6 +21,7 @@ from ..dialogs import (
     mostrar_dialogo_api_master,
     mostrar_dialogo_backup,
     mostrar_dialogo_cierre_jornada,
+    mostrar_dialogo_cierre_mercado,
     mostrar_dialogo_cierres_operarios,
     mostrar_dialogo_compartir_cierre,
     mostrar_dialogo_confirmar_anulacion_pedido,
@@ -159,6 +160,12 @@ class DialogDispatcherMixin:
             except Exception:
                 pass
         mostrar_dialogo_cierre_jornada(self)
+
+    def mostrar_cierre_mercado(self, _evento: ft.Event | None = None) -> None:
+        """Abre el panel de cierre de tanda de Mercado Libre y Mercado Full para pickers y supervisores."""
+        if not self.exigir_roles("picker", "operador", "administrador", "master"):
+            return
+        mostrar_dialogo_cierre_mercado(self)
 
     def mostrar_historial_cierres_admin(self, _evento: ft.Event | None = None) -> None:
         if not self.exigir_roles("administrador", "master"):

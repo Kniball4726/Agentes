@@ -13,7 +13,7 @@ _COLUMNAS_SELECT_PEDIDO = (
     "id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador, "
     "tipo_archivo, nombre_archivo, agregado, articulos_descontados, "
     "resumen_items, created_at, estado, fecha_retiro, archivo_descuento, "
-    f"cierre_id, archivo_hash, {_COLUMNAS_DESPACHO}"
+    f"cierre_id, cierre_mercado_id, archivo_hash, {_COLUMNAS_DESPACHO}"
 )
 
 

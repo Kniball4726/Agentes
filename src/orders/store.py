@@ -72,6 +72,7 @@ class OrderStore(
     def _map_pedido(row: sqlite3.Row) -> Pedido:
         claves = row.keys()
         c_id = row["cierre_id"] if "cierre_id" in claves else None
+        c_m_id = row["cierre_mercado_id"] if "cierre_mercado_id" in claves else None
         hash_val = row["archivo_hash"] if "archivo_hash" in claves and row["archivo_hash"] else ""
         guia_val = (row["numero_guia"] if "numero_guia" in claves else "") or ""
         return Pedido(
@@ -92,6 +93,7 @@ class OrderStore(
             fecha_retiro=row["fecha_retiro"] or "",
             archivo_descuento=row["archivo_descuento"] or "",
             cierre_id=c_id,
+            cierre_mercado_id=c_m_id,
             archivo_hash=hash_val,
             numero_guia=guia_val,
             estado_despacho=(row["estado_despacho"] if "estado_despacho" in claves else "armado") or "armado",

@@ -86,6 +86,21 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS cierres_mercado (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT NOT NULL,
+            tipo_mercado TEXT NOT NULL DEFAULT 'TODOS',
+            cantidad_pedidos INTEGER NOT NULL,
+            articulos_totales INTEGER NOT NULL,
+            resumen_pedidos TEXT NOT NULL,
+            archivo_pdf TEXT NOT NULL DEFAULT '',
+            archivo_excel TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS pedido_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
@@ -144,6 +159,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     for ddl in (
         "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_turno ON pedidos(estado, cierre_id, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre_mercado ON pedidos(cierre_mercado_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_id ON pedido_items(pedido_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)",
     ):
@@ -236,6 +252,8 @@ def _migrar_columnas_pedidos(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
     if "items_sin_coincidencia" not in columnas_actuales:
         connection.execute("ALTER TABLE pedidos ADD COLUMN items_sin_coincidencia TEXT NOT NULL DEFAULT '[]'")
+    if "cierre_mercado_id" not in columnas_actuales:
+        connection.execute("ALTER TABLE pedidos ADD COLUMN cierre_mercado_id INTEGER DEFAULT NULL")
     for columna, definicion in _COLUMNAS_MIGRACION_DESPACHO:
         if columna not in columnas_actuales:
             connection.execute(f"ALTER TABLE pedidos ADD COLUMN {columna} {definicion}")

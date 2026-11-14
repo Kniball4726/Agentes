@@ -70,6 +70,21 @@ class CierreJornada:
 
 
 @dataclass(frozen=True)
+class CierreMercado:
+    """Resumen consolidado de una tanda de cierre de Mercado Libre / Full por un picker."""
+
+    id: int
+    usuario: str
+    tipo_mercado: str
+    cantidad_pedidos: int
+    articulos_totales: int
+    resumen_pedidos: str
+    archivo_pdf: str
+    archivo_excel: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class RegistroAuditoria:
     """Entrada inmutable del registro de eventos de auditoría forense."""
 
@@ -101,6 +116,7 @@ class Pedido:
     fecha_retiro: str = ""
     archivo_descuento: str = ""
     cierre_id: int | None = None
+    cierre_mercado_id: int | None = None
     archivo_hash: str = ""
     numero_guia: str = ""
     estado_despacho: str = "armado"

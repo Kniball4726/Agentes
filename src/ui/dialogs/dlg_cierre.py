@@ -16,6 +16,7 @@ from .cierre.dlg_cierres_admin import (
     mostrar_detalle_pedidos_cierre,
     mostrar_dialogo_cierres_operarios,
 )
+from .cierre.dlg_cierre_mercado import mostrar_dialogo_cierre_mercado
 
 __all__ = [
     "_get_stock_manager_cls",
@@ -24,4 +25,5 @@ __all__ = [
     "mostrar_dialogo_cierre_jornada",
     "mostrar_detalle_pedidos_cierre",
     "mostrar_dialogo_cierres_operarios",
+    "mostrar_dialogo_cierre_mercado",
 ]

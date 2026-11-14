@@ -19,11 +19,13 @@ from .dlg_productos import (
 )
 from .dlg_ver_stock import mostrar_dialogo_ver_stock
 from .dlg_informes import mostrar_dialogo_informes
+from .dlg_document_options import mostrar_dialogo_opciones_documento
 from .dlg_escaner import mostrar_dialogo_escaner_qr_despacho
 from .dlg_cierre import (
     mostrar_dialogo_cierre_jornada,
     mostrar_dialogo_cierres_operarios,
     mostrar_detalle_pedidos_cierre,
+    mostrar_dialogo_cierre_mercado,
 )
 from .dlg_pedidos import (
     mostrar_dialogo_crear_pedido,
@@ -109,10 +111,12 @@ __all__ = [
     "mostrar_dialogo_formulario_producto",
     "mostrar_dialogo_ver_stock",
     "mostrar_dialogo_informes",
+    "mostrar_dialogo_opciones_documento",
     # Escáner & Despacho
     "mostrar_dialogo_escaner_qr_despacho",
     # Cierre de Jornada
     "mostrar_dialogo_cierre_jornada",
+    "mostrar_dialogo_cierre_mercado",
     "mostrar_dialogo_cierres_operarios",
     "mostrar_detalle_pedidos_cierre",
     # Pedidos

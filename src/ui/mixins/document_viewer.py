@@ -20,6 +20,7 @@ from ..dialogs import (
     compartir_whatsapp,
     enviar_correo_cierre,
     mostrar_dialogo_informes,
+    mostrar_dialogo_opciones_documento,
 )
 from ...paths import application_root
 
@@ -152,7 +153,13 @@ class DocumentViewerMixin:
         except OSError as error:
             self.notificar(f"No se pudo abrir el manual:\n{error}")
 
-    def abrir_informe(self, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
+    def abrir_informe(
+        self,
+        _evento: ft.Event | None = None,
+        ruta_especifica: Path | None = None,
+        directo: bool = False,
+        **kwargs: Any,
+    ) -> None:
         if hasattr(self, "exigir_roles") and not self.exigir_roles(
             "operador", "picker", "administrador", "master", "consulta"
         ):
@@ -207,6 +214,17 @@ class DocumentViewerMixin:
                 webbrowser.open(ruta_path.resolve().as_uri())
             except Exception:
                 self.notificar(f"No se pudo abrir el archivo:\n{error}")
+
+    def mostrar_opciones_documento(
+        self,
+        ruta_archivo: str | Path | None = None,
+        _evento: ft.Event | None = None,
+    ) -> None:
+        """Muestra el diálogo modal con opciones de descarga e impresión de Windows para un archivo."""
+        target = ruta_archivo or self.ruta_informe()
+        if target is None:
+            return
+        mostrar_dialogo_opciones_documento(self, target)
 
     def abrir_carpeta_informe(self, ruta: Path | None = None, ruta_especifica: Path | None = None) -> None:
         target = ruta or ruta_especifica

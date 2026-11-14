@@ -206,8 +206,48 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
             print(f"[OK] Mercado Full: {len(res)} productos descontados desde {arch.name}.")
             dest = interfaz.menu.carpeta_descontados / "MercadoFull"
             dest.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(arch), str(dest / arch.name))
-            print(f"[OK] Archivo movido a: {dest / arch.name}")
+            ruta_archivada = dest / arch.name
+            shutil.move(str(arch), str(ruta_archivada))
+            print(f"[OK] Archivo movido a: {ruta_archivada}")
+
+            if hasattr(interfaz, "order_store") and interfaz.order_store:
+                armador_nom = (
+                    interfaz.usuario_actual.nombre_identificador
+                    if getattr(interfaz, "usuario_actual", None)
+                    else "Picker"
+                )
+                total_unidades = sum(items_a_descontar.values())
+                nota_full = f"FULL-{arch.stem}"
+                if interfaz.order_store.existe_nota_pedido(nota_full):
+                    nota_full = f"{nota_full}_{datetime.now().strftime('%H%M%S')}"
+                items_pedido: list[tuple[str, str, int]] = []
+                for cod, cant in items_a_descontar.items():
+                    nombre_p = f"Producto {cod}"
+                    if hasattr(sm, "catalogo") and cod in sm.catalogo:
+                        nombre_p = sm.catalogo[cod][1]
+                    items_pedido.append((cod, nombre_p, cant))
+                hash_full = calcular_hash_archivo(ruta_archivada) if ruta_archivada.exists() else ""
+                resumen_it = f"{len(items_a_descontar)} productos ({total_unidades} un.)"
+                try:
+                    interfaz.order_store.registrar_pedido(
+                        nota_pedido=nota_full,
+                        numero_pedido=arch.stem,
+                        cliente="Mercado Envíos Full",
+                        bultos=1,
+                        logistica="Transporte",
+                        armador=armador_nom,
+                        tipo_archivo="excel",
+                        nombre_archivo=arch.name,
+                        agregado=False,
+                        articulos_descontados=total_unidades,
+                        resumen_items=resumen_it,
+                        fecha_retiro=datetime.now().strftime("%Y-%m-%d"),
+                        archivo_descuento="",
+                        items=items_pedido,
+                        archivo_hash=hash_full,
+                    )
+                except Exception as exc_order:
+                    print(f"[WARN] No se pudo registrar pedido en store para Mercado Full: {exc_order}")
 
         await interfaz.ejecutar_tarea(f"Descuento Mercado Full ({arch.name})", ejecutar)
         interfaz.actualizar_estado()
