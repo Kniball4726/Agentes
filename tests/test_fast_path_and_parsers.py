@@ -9,10 +9,10 @@ import unittest
 from unittest.mock import patch
 import openpyxl
 
-from src.canjes_parser import parsear_canje_excel
-from src.mercado_full_parser import parsear_archivo_mercado_full
-from src.product_store import ProductStore
-from src.stock_manager import StockManager
+from src.inventory import StockManager
+from src.parsers.canjes_parser import parsear_canje_excel
+from src.parsers.mercado_full_parser import parsear_archivo_mercado_full
+from src.products import ProductStore
 
 
 class FastPathAndParsersTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class FastPathAndParsersTests(unittest.TestCase):
             self.assertIn("fila_inicio_datos", metadata)
 
             # 2. Segunda instanciación: Con openpyxl.load_workbook mockeado/espiado
-            with patch("src.stock_manager.openpyxl.load_workbook") as mock_load:
+            with patch("src.inventory.catalog_loader.openpyxl.load_workbook") as mock_load:
                 sm2 = StockManager(excel_path, ruta_base_datos=db_path)
                 # openpyxl.load_workbook NO debió ser llamado gracias al fast-path
                 mock_load.assert_not_called()

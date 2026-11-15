@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import PageBreak, SimpleDocTemplate, Table, TableStyle
 
 if TYPE_CHECKING:
-    from src.orders_store import Pedido
+    from ..orders import Pedido
 
 ETIQUETAS_POR_HOJA = 10
 FILAS_POR_HOJA = 5

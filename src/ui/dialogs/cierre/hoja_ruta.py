@@ -4,10 +4,10 @@ import sys
 from typing import Any
 import flet as ft
 
-from ....dispatch_manifest import generar_hoja_ruta_pdf
+from ....inventory import StockManager as _DefaultStockManager
 from ....paths import application_root
+from ....stock.manifest_pdf import generar_hoja_ruta_pdf
 from ...theme import ROJO
-from ....stock_manager import StockManager as _DefaultStockManager
 
 def _get_stock_manager_cls():
     mod = sys.modules.get("src.flet_gui")

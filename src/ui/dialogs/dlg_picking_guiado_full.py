@@ -11,7 +11,7 @@ import flet as ft
 
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito
 from ..theme import ROJO
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 
 
 def _get_stock_manager():

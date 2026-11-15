@@ -6,7 +6,7 @@ from typing import Any
 
 import flet as ft
 
-from ...user_store import USER_ROLES, UserStoreError
+from ...auth import USER_ROLES, UserStoreError
 from ..theme import ROJO
 from .auth_styles import (
     _borde_espejo,

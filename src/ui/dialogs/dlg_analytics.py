@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from .analytics_auditoria_notif import (
     mostrar_notificaciones_admin,
     mostrar_registro_auditoria,

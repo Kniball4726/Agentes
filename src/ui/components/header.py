@@ -32,7 +32,7 @@ def _crear_badge_qa(tamano: str = "desktop") -> ft.Control | None:
 def construir_encabezado(interfaz: Any) -> ft.Control:
     """Construye el encabezado superior con acciones de usuario, tema y estado de red."""
     assert interfaz.usuario_actual is not None
-    from ...flet_gui import PUERTO_WEB_DEFAULT, obtener_ip_local
+    from ...server_app import PUERTO_WEB_DEFAULT, obtener_ip_local
 
     boton_tema = ft.Button(
         content="Modo claro" if interfaz.modo_oscuro else "Modo oscuro",

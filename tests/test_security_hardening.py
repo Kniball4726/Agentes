@@ -237,7 +237,7 @@ class TestAuthAndSistemaSecurity(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import patch
         from src.api.deps import validar_token_documento
-        from src.ui.mixins.document_viewer import DocumentViewerMixin
+        from src.ui.controllers.document_viewer_service import DocumentViewerService
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -247,7 +247,7 @@ class TestAuthAndSistemaSecurity(unittest.TestCase):
 
             urls_abiertas: list[str] = []
 
-            class _FakeViewer(DocumentViewerMixin):
+            class _FakeHost:
                 page = SimpleNamespace(web=True)
                 usuario_actual = self.operador
                 informes = []
@@ -259,8 +259,8 @@ class TestAuthAndSistemaSecurity(unittest.TestCase):
                 def notificar(self, _msg: str) -> None:
                     pass
 
-            with patch("src.ui.mixins.document_viewer.application_root", return_value=root):
-                _FakeViewer().mostrar_manual_usuario()
+            with patch("src.ui.controllers.document_viewer_service.application_root", return_value=root):
+                DocumentViewerService(_FakeHost()).mostrar_manual_usuario()
 
             self.assertEqual(len(urls_abiertas), 1)
             parsed = urllib.parse.urlparse(urls_abiertas[0])

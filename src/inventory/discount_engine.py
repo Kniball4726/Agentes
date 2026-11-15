@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import openpyxl
 
 from ..consolidator import ItemConsolidado
-from ..remito_parser import ResultadoRemito, normalizar_codigo
+from ..parsers.remito_parser import ResultadoRemito, normalizar_codigo
 from ..stock.models import RegistroDescuento, ReporteStock
 from ..stock.reports import copiar_estilo_fila, guardar_informe_pdf, guardar_informe_xls
 from .excel_sync import crear_informe_desde_plantilla
@@ -251,6 +251,15 @@ class DiscountEngineMixin:
 
         actualizaciones = {d.codigo: d.stock_nuevo for d in existentes}
         total_unidades = sum(d.cantidad_descontada for d in existentes)
+
+        if sincronizar_excel:
+            filas_actualizadas = self.sincronizar_stocks(actualizaciones)
+        else:
+            filas_actualizadas = self.product_store.update_stocks(actualizaciones)
+            self._actualizar_stocks_en_memoria(actualizaciones)
+
+        # Registrar despacho después de actualizar stock para que record_dispatch
+        # enriquezca las filas recién insertadas por trg_auditoria_stock.
         try:
             detalles = [(d.codigo, d.cantidad_descontada, d.stock_anterior, d.stock_nuevo) for d in existentes]
             self.product_store.record_dispatch(
@@ -278,11 +287,6 @@ class DiscountEngineMixin:
             except Exception as notif_err:
                 print(f"[AVISO] No se pudo generar notificación para administrador: {notif_err}")
 
-        if sincronizar_excel:
-            return self.sincronizar_stocks(actualizaciones)
-
-        filas_actualizadas = self.product_store.update_stocks(actualizaciones)
-        self._actualizar_stocks_en_memoria(actualizaciones)
         return filas_actualizadas
 
     def obtener_notificaciones_admin(self, solo_no_leidas: bool = False) -> list:
@@ -330,6 +334,12 @@ class DiscountEngineMixin:
         if not actualizaciones:
             return {}
 
+        if sincronizar_excel:
+            self.sincronizar_stocks(actualizaciones)
+        else:
+            self.product_store.update_stocks(actualizaciones)
+            self._cargar_catalogo()
+
         try:
             self.product_store.record_dispatch(
                 tipo_origen="MercadoFull",
@@ -339,11 +349,5 @@ class DiscountEngineMixin:
             )
         except Exception as e:
             print(f"[AVISO] No se pudo registrar despacho de Mercado Full: {e}")
-
-        if sincronizar_excel:
-            self.sincronizar_stocks(actualizaciones)
-        else:
-            self.product_store.update_stocks(actualizaciones)
-            self._cargar_catalogo()
 
         return resumen

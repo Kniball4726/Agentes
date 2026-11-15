@@ -14,7 +14,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from ..remito_parser import ResultadoRemito
+from ..parsers.remito_parser import ResultadoRemito
 from ..stock.reports import copiar_estilo_fila, guardar_informe_pdf, guardar_informe_xls
 
 
@@ -101,8 +101,37 @@ def leer_stock(
     return 0
 
 
+def _crear_plantilla_virtual(nombre_hoja: str) -> openpyxl.Workbook:
+    """Construye una plantilla estilizada en memoria cuando no existe `Productos.xlsx`."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = (nombre_hoja or "Stock")[:31]
+    ws.column_dimensions["A"].width = 14
+    ws.column_dimensions["B"].width = 48
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 22
+    ws["A1"] = "CODIGO"
+    ws["B1"] = "PRODUCTOS"
+    ws["C1"] = "DESCUENTO"
+    ws["B3"] = "PRODUCTOS"
+    ws["C3"] = "DESCUENTO"
+    fuente_base = Font(name="Arial", size=9)
+    borde_base = Border(
+        left=Side(style="thin", color="E2E8F0"),
+        right=Side(style="thin", color="E2E8F0"),
+        top=Side(style="thin", color="E2E8F0"),
+        bottom=Side(style="thin", color="E2E8F0"),
+    )
+    for fila in (1, 2, 3, 4):
+        for col in range(1, 5):
+            celda = ws.cell(fila, col)
+            celda.font = copy(fuente_base)
+            celda.border = copy(borde_base)
+    return wb
+
+
 def crear_informe_desde_plantilla(
-    ruta_excel_base: Path,
+    ruta_excel_base: Optional[Path],
     nombre_hoja: str,
     col_codigo: int,
     col_nombre: int,
@@ -117,8 +146,11 @@ def crear_informe_desde_plantilla(
     pedidos_descontados: List[ResultadoRemito],
     productos_sin_coincidencia: List[Tuple[str, str, str, str]],
 ) -> Tuple[openpyxl.Workbook, openpyxl.worksheet.worksheet.Worksheet]:
-    """Genera el libro de Excel con formato visual idéntico a la plantilla para el informe."""
-    libro_plantilla = openpyxl.load_workbook(ruta_excel_base)
+    """Genera el libro de Excel para el informe usando la plantilla si existe o estilos en memoria."""
+    if ruta_excel_base and Path(ruta_excel_base).exists():
+        libro_plantilla = openpyxl.load_workbook(ruta_excel_base)
+    else:
+        libro_plantilla = _crear_plantilla_virtual(nombre_hoja)
     hoja_plantilla = (
         libro_plantilla[nombre_hoja]
         if nombre_hoja in libro_plantilla.sheetnames

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .catalog_repo import CatalogRepositoryMixin
 from .movements_repo import MovementsRepositoryMixin
+from .movements_report_repo import MovementsReportMixin
 from .notifications_repo import NotificationsRepositoryMixin
 from .physical_repo import PhysicalRepositoryMixin
 
@@ -17,6 +18,7 @@ from .physical_repo import PhysicalRepositoryMixin
 class ProductStore(
     CatalogRepositoryMixin,
     MovementsRepositoryMixin,
+    MovementsReportMixin,
     PhysicalRepositoryMixin,
     NotificationsRepositoryMixin,
 ):

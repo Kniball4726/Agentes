@@ -8,11 +8,11 @@ import shutil
 from pathlib import Path
 
 from ..agent import AgenteRemitosStock
-from ..factory_parser import parsear_archivo_fabrica
-from ..mercado_full_parser import parsear_archivo_mercado_full
-from ..physical_stock_parser import parsear_excel_stock_fisico
-from ..remito_parser import normalizar_codigo
-from ..stock_manager import StockManager
+from ..inventory import StockManager
+from ..parsers.factory_parser import parsear_archivo_fabrica
+from ..parsers.mercado_full_parser import parsear_archivo_mercado_full
+from ..parsers.physical_stock_parser import parsear_excel_stock_fisico
+from ..parsers.remito_parser import normalizar_codigo
 
 
 class InteractiveFlowsMixin:

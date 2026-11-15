@@ -5,8 +5,8 @@
 """
 from unittest.mock import MagicMock
 import flet as ft
+from src.auth import User
 from src.ui.dialogs.dlg_mercadolibre import mostrar_dialogo_mercadolibre
-from src.user_store import User
 
 
 def test_dialogo_ml_solo_master_ve_credenciales():

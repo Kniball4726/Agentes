@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import flet as ft
 
+from src.auth import User, UserRole
 from src.flet_gui import InterfazFlet
-from src.user_store import User, UserRole
 
 
 def _loopback_disponible() -> bool:
@@ -565,7 +565,7 @@ class FletGuiTests(unittest.TestCase):
             self.assertEqual(guardados[0].read_bytes(), b"%PDF-1.4...")
 
     def test_actualizar_estado_refleja_pedidos_descontados_de_la_jornada(self):
-        from src.orders_store import OrderStore
+        from src.orders import OrderStore
 
         interfaz, _, _ = self.crear_interfaz(role="operador")
         with tempfile.TemporaryDirectory() as temp_dir:

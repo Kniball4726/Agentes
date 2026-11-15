@@ -9,11 +9,12 @@ Orquesta el flujo completo para remitos PDF, canjes Excel y pedidos de Mercado L
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
-from .canjes_parser import parsear_canje_excel
 from .consolidator import ItemConsolidado, consolidar_productos
-from .mercado_libre_parser import parsear_pedido_mercado_libre
-from .remito_parser import ItemRemito, ResultadoRemito, parsear_remito
-from .stock_manager import ReporteStock, StockManager
+from .inventory import StockManager
+from .parsers.canjes_parser import parsear_canje_excel
+from .parsers.mercado_libre_parser import parsear_pedido_mercado_libre
+from .parsers.remito_parser import ItemRemito, ResultadoRemito, parsear_remito
+from .stock.models import ReporteStock
 
 
 @dataclass

@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from src.internal_chat import (
+from src.chat import (
     detectar_intencion,
     extraer_termino_busqueda,
     formatear_diagnostico_archivos,

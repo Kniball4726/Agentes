@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import openpyxl
 
-from src.mercado_full_parser import parsear_archivo_mercado_full
+from src.parsers.mercado_full_parser import parsear_archivo_mercado_full
 
 
 class TestMercadoFullParser(unittest.TestCase):

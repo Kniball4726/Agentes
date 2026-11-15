@@ -108,7 +108,7 @@ class TestFase5Features(unittest.TestCase):
         """Verifica que el servidor web registre y sirva los endpoints estáticos PWA."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
-        from src.server import registrar_rutas_pwa
+        from src.server_app import registrar_rutas_pwa
 
         app = FastAPI()
         registrar_rutas_pwa(app, self.assets_dir)

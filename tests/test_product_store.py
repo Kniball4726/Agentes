@@ -4,7 +4,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from src.product_store import ProductStore
+from src.products import ProductStore
 
 
 class ProductStoreTests(unittest.TestCase):

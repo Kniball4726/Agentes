@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from ..remito_parser import normalizar_codigo
+from ..parsers.remito_parser import normalizar_codigo
 
 
 def comparar_stock_fisico_dict(

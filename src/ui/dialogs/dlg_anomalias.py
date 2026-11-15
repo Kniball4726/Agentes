@@ -87,7 +87,7 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
 
     def actualizar_datos() -> None:
         try:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
             sm = StockManager(interfaz.menu.ruta_excel_base)
             diag = ejecutar_diagnostico_integral_anomalias(sm.product_store)
         except Exception as e:
@@ -153,7 +153,7 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
             interfaz.notificar("No hay anomalías detectadas para notificar.")
             return
 
-        from ...stock_manager import StockManager
+        from ...inventory import StockManager
         sm = StockManager(interfaz.menu.ruta_excel_base)
         enviadas = notificar_anomalias_detectadas(todas, sm.product_store, notificar_telegram=True)
         interfaz.notificar(f"Se registraron y despacharon {enviadas} alertas analíticas correctamente.")

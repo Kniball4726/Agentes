@@ -8,7 +8,7 @@ from typing import Any
 
 import flet as ft
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from ..theme import ROJO
 
 

@@ -133,8 +133,8 @@ class CatalogWriteMixin:
         name: str,
         reference_code: str,
         stock: int,
-        synchronize_template: Callable[[int], list[int]],
-        restore_template: Callable[[], None],
+        synchronize_template: Callable[[int], list[int]] | None = None,
+        restore_template: Callable[[], None] | None = None,
         stock_minimo: int = 5,
         stock_maximo: int = 100,
         cod_barras: str = "",
@@ -185,13 +185,15 @@ class CatalogWriteMixin:
                     """,
                     (code, name, orden),
                 )
-                _sincronizar_filas_plantilla(connection, synchronize_template(orden))
+                if synchronize_template is not None:
+                    _sincronizar_filas_plantilla(connection, synchronize_template(orden))
                 connection.commit()
                 self.invalidar_cache()
                 return orden, referencia["display_name"]
             except BaseException:
                 connection.rollback()
-                _revertir_plantilla(restore_template, "el alta")
+                if restore_template is not None:
+                    _revertir_plantilla(restore_template, "el alta")
                 raise
 
     def update_product(self, *args, **kwargs):
@@ -205,8 +207,8 @@ class CatalogWriteMixin:
         new_code: str,
         name: str,
         stock: int,
-        synchronize_template: Callable[[], list[int]],
-        restore_template: Callable[[], None],
+        synchronize_template: Callable[[], list[int]] | None = None,
+        restore_template: Callable[[], None] | None = None,
         stock_minimo: int | None = None,
         stock_maximo: int | None = None,
         cod_barras: str | None = None,
@@ -255,11 +257,13 @@ class CatalogWriteMixin:
                         (name, old_code),
                     )
 
-                _sincronizar_filas_plantilla(connection, synchronize_template())
+                if synchronize_template is not None:
+                    _sincronizar_filas_plantilla(connection, synchronize_template())
                 connection.commit()
             except BaseException:
                 connection.rollback()
-                _revertir_plantilla(restore_template, "la edición")
+                if restore_template is not None:
+                    _revertir_plantilla(restore_template, "la edición")
                 raise
 
     def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:

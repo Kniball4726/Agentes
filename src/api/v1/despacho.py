@@ -15,7 +15,7 @@ from ..schemas import (
     ListarPedidosResponse,
     PedidoDetalleResponse,
 )
-from ...orders_store import OrderStore, Pedido
+from ...orders import OrderStore, Pedido
 
 router = APIRouter(prefix="/despacho", tags=["Despacho y Logística"])
 

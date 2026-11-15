@@ -33,7 +33,7 @@ def mostrar_dialogo_sincronizar_excel(interfaz: Any) -> None:
         interfaz.page.update()
 
         try:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
 
             sm = StockManager(ruta_excel)
             total = sm.sincronizar_catalogo_completo_excel()
@@ -69,7 +69,7 @@ def mostrar_dialogo_sincronizar_excel(interfaz: Any) -> None:
         interfaz.page.update()
 
         try:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
 
             sm = StockManager(ruta_excel)
             res = sm.importar_catalogo_desde_excel()

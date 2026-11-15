@@ -5,12 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 import flet as ft
 
-from src.orders_store import OrderStore
-from src.product_store import ProductStore
-from src.stock_manager import StockManager
+from src.auth import User
+from src.inventory import StockManager
+from src.orders import OrderStore
+from src.products import ProductStore
 from src.ui.dialogs.dlg_stock_ops import mostrar_ingreso_fabrica
 from src.ui.components.sidebar import construir_sidebar_controls
-from src.user_store import User
 
 
 class TestFabricaScannerWorkflow(unittest.TestCase):

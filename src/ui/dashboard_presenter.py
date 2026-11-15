@@ -9,8 +9,8 @@ from typing import Any
 import flet as ft
 
 from .theme import ROJO
-from ..user_store import USER_ROLES
-from ..stock_manager import StockManager
+from ..auth import USER_ROLES
+from ..inventory import StockManager
 
 
 def renderizar_auditoria_master(interfaz: Any, eventos_auditoria: list[Any]) -> None:

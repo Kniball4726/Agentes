@@ -306,7 +306,7 @@ def iniciar_servidor_web(
     tray_service = None
     if con_tray:
         try:
-            from ..tray_icon import iniciar_icono_bandeja
+            from ..tray import iniciar_icono_bandeja
 
             tray_service = iniciar_icono_bandeja(port=port, host=host, https=https)
         except Exception as exc_tray:

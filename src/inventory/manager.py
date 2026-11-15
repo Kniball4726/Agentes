@@ -43,6 +43,8 @@ class StockManager(
 
     def programar_sincronizacion_excel(self, delay_s: float = 0.6) -> None:
         """Programa la sincronización de Productos.xlsx en segundo plano (con debounce) sin bloquear la UI."""
+        if not getattr(self, "ruta_excel_base", None) or not self.ruta_excel_base.exists():
+            return
         key = str(self.ruta_excel_base.resolve()) if self.ruta_excel_base.exists() else str(self.ruta_excel_base)
         ruta_excel = self.ruta_excel_base
         nombre_hoja = self.nombre_hoja
@@ -69,11 +71,16 @@ class StockManager(
 
     def __init__(
         self,
-        ruta_excel_base: str | Path,
+        ruta_excel_base: str | Path | None = None,
         nombre_hoja: str = "Stock",
         ruta_base_datos: str | Path | None = None,
     ):
-        self.ruta_excel_base = Path(ruta_excel_base)
+        if ruta_excel_base is not None:
+            self.ruta_excel_base = Path(ruta_excel_base)
+        else:
+            from ..paths import get_descuentos_dir
+            self.ruta_excel_base = get_descuentos_dir() / "Productos.xlsx"
+
         self.nombre_hoja = nombre_hoja
         if ruta_base_datos is not None:
             self.ruta_base_datos = Path(ruta_base_datos)

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 import openpyxl
 
-from ..remito_parser import normalizar_codigo
+from ..parsers.remito_parser import normalizar_codigo
 from .excel_sync import detectar_esquema, leer_stock, normalizar_encabezado
 
 
@@ -55,7 +55,7 @@ class CatalogLoaderMixin:
 
     def _asegurar_esquema(self) -> None:
         """Detecta el esquema del archivo Excel si no fue detectado aún."""
-        if not self.ruta_excel_base.exists():
+        if not getattr(self, "ruta_excel_base", None) or not self.ruta_excel_base.exists():
             return
         wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
         try:
@@ -136,45 +136,68 @@ class CatalogLoaderMixin:
             self.catalogo[cod] = (fila_catalogo, nombre_catalogo, stock_num)
 
     def _cargar_catalogo(self, forzar_excel: bool = False) -> None:
-        """Importa el catálogo inicial y después carga productos desde SQLite (fast-path)."""
-        if not self.ruta_excel_base.exists():
-            raise FileNotFoundError(f"No se encontró el archivo de stock en: {self.ruta_excel_base}")
-
+        """Carga productos desde SQLite como fuente de verdad, o desde Excel si SQLite está vacío."""
         self.productos_base.clear()
         self.filas_catalogo.clear()
         self.catalogo.clear()
         self._filas_por_codigo.clear()
 
+        # 1. Fast-path: cargar directamente desde SQLite si ya está disponible
         if not forzar_excel:
             importado, meta_fast, filas_fast = self.product_store.load_catalog_fast()
-            if importado:
+            if importado and filas_fast:
                 self._cargar_desde_sqlite(meta_fast, filas_fast)
                 return
 
-        wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
-        try:
-            sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
-            if sheet is None:
-                raise ValueError(f"No se encontró una hoja activa en {self.ruta_excel_base}.")
-            self._detectar_esquema(sheet)
-            productos_plantilla = []
-            for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
-                val_cod = sheet.cell(row=fila, column=self._col_codigo).value
-                if val_cod is not None and str(val_cod).strip() != "":
-                    cod = normalizar_codigo(str(val_cod))
-                    nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
-                    if not nombre:
-                        continue
-                    stock_num = self._leer_stock(sheet, fila)
-                    productos_plantilla.append((fila, cod, nombre, stock_num))
-        finally:
-            wb.close()
+        # 2. Si se forzó Excel o no está importado, pero existe el archivo Excel: importar una vez
+        tiene_excel = bool(getattr(self, "ruta_excel_base", None) and self.ruta_excel_base.exists())
+        if tiene_excel:
+            wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
+            try:
+                sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+                if sheet is None:
+                    raise ValueError(f"No se encontró una hoja activa en {self.ruta_excel_base}.")
+                self._detectar_esquema(sheet)
+                productos_plantilla = []
+                for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
+                    val_cod = sheet.cell(row=fila, column=self._col_codigo).value
+                    if val_cod is not None and str(val_cod).strip() != "":
+                        cod = normalizar_codigo(str(val_cod))
+                        nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
+                        if not nombre:
+                            continue
+                        stock_num = self._leer_stock(sheet, fila)
+                        productos_plantilla.append((fila, cod, nombre, stock_num))
+            finally:
+                wb.close()
 
-        self.product_store.import_template_once(
-            productos_plantilla,
-            metadata=self._serializar_esquema_meta(),
-        )
-        self._cargar_desde_sqlite()
+            self.product_store.import_template_once(
+                productos_plantilla,
+                metadata=self._serializar_esquema_meta(),
+            )
+            self._cargar_desde_sqlite()
+            return
+
+        # 3. Si no existe archivo Excel pero hay productos en la tabla `products` de SQLite
+        prods = self.product_store.list_products(solo_activos=True)
+        if prods:
+            primera_aparicion: set[str] = set()
+            for indice, prod in enumerate(prods):
+                cod = normalizar_codigo(str(prod["code"]))
+                nom = str(prod["name"])
+                stk = int(prod["stock"])
+                fila_cat = indice + self._fila_inicio_datos
+                self.filas_catalogo.append((fila_cat, cod, nom, stk))
+                self._filas_por_codigo.setdefault(cod, []).append(fila_cat)
+                if cod not in primera_aparicion:
+                    primera_aparicion.add(cod)
+                    self.productos_base.append((fila_cat, cod, nom, stk))
+                    self.catalogo[cod] = (fila_cat, nom, stk)
+            return
+
+        # 4. Si se forzó Excel explícitamente y el archivo no existe, notificar
+        if forzar_excel and not tiene_excel:
+            raise FileNotFoundError(f"No se encontró el archivo de stock en: {getattr(self, 'ruta_excel_base', '')}")
 
     def listar_productos(self) -> List[sqlite3.Row]:
         """Devuelve todos los productos para la pantalla de administración."""

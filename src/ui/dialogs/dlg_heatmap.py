@@ -110,11 +110,11 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         p_store = getattr(interfaz, "product_store", None)
         if p_store is None:
             try:
-                from ...stock_manager import StockManager
+                from ...inventory import StockManager
                 p_store = StockManager(getattr(interfaz.menu, "ruta_excel_base", "Productos.xlsx")).product_store
             except Exception:
                 from ...paths import application_root
-                from ...product_store import ProductStore
+                from ...products import ProductStore
                 p_store = ProductStore(application_root() / "data" / "productos.sqlite3")
 
         analisis_actual = analizar_rotacion_abc(p_store, order_store=order_store, dias=30)

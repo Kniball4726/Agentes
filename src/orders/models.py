@@ -19,7 +19,42 @@ LOGISTICA_OPCIONES: tuple[str, ...] = (
 )
 
 ESTADOS_DESPACHO: tuple[str, ...] = ("armado", "despachado", "entregado")
+CANAL_PEDIDO_OPCIONES: tuple[str, ...] = ("mayorista", "mercado_libre", "full", "canje", "otro")
 _COLUMNAS_DESPACHO = "numero_guia, estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por"
+
+
+def clasificar_canal_pedido(
+    tipo_archivo: str = "",
+    cliente: str = "",
+    nombre_archivo: str = "",
+    nota_pedido: str = "",
+    logistica: str = "",
+    canal_explicito: str = "",
+) -> str:
+    """Clasifica de forma determinista el canal de venta de un pedido.
+
+    Retorna `'mayorista'`, `'mercado_libre'`, `'full'`, `'canje'` u `'otro'`.
+    """
+    canal_clean = (canal_explicito or "").strip().lower()
+    if canal_clean in CANAL_PEDIDO_OPCIONES:
+        return canal_clean
+
+    tipo = (tipo_archivo or "").strip().lower()
+    cli = (cliente or "").strip().lower()
+    arch = (nombre_archivo or "").strip().lower()
+    nota = (nota_pedido or "").strip().lower()
+    log = (logistica or "").strip().lower()
+    texto = f"{cli} {arch} {nota}"
+
+    if "full" in texto:
+        return "full"
+    if tipo == "docx" or "mercado libre" in cli or nota.startswith("ml") or arch.startswith("ml_"):
+        return "mercado_libre"
+    if log == "canje" or tipo == "excel":
+        return "canje"
+    if tipo == "pdf" or cli or nota:
+        return "mayorista"
+    return "otro"
 
 
 def calcular_hash_archivo(ruta_o_bytes: Path | bytes | str) -> str:
@@ -124,6 +159,19 @@ class Pedido:
     despachado_por: str = ""
     entregado_at: str = ""
     entregado_por: str = ""
+    canal: str = ""
+
+    @property
+    def canal_efectivo(self) -> str:
+        """Devuelve el canal normalizado del pedido (explícito o inferido)."""
+        return clasificar_canal_pedido(
+            tipo_archivo=self.tipo_archivo,
+            cliente=self.cliente,
+            nombre_archivo=self.nombre_archivo,
+            nota_pedido=self.nota_pedido,
+            logistica=self.logistica,
+            canal_explicito=self.canal,
+        )
 
 
 @dataclass(frozen=True)

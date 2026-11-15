@@ -10,6 +10,7 @@ from typing import Generator
 
 from ..core.exceptions import OrderStoreError
 from .audit_repo import AuditRepositoryMixin
+from .channel_report_repo import ChannelReportMixin
 from .chat_repo import ChatRepositoryMixin
 from .client_repo import ClientRepositoryMixin
 from .closure_repo import ClosureRepositoryMixin
@@ -18,7 +19,7 @@ from .dispatch_repo import DispatchRepositoryMixin, _COLUMNAS_SELECT_PEDIDO
 from .factory_plan_repo import FactoryPlanRepositoryMixin
 from .full_plan_repo import FullPlanRepositoryMixin
 from .stock_flow_repo import StockFlowRepositoryMixin
-from .models import LOGISTICA_OPCIONES, Pedido
+from .models import LOGISTICA_OPCIONES, Pedido, clasificar_canal_pedido
 from .schema import inicializar_esquema_pedidos
 
 
@@ -29,6 +30,7 @@ class OrderStore(
     ConcurrencyRepositoryMixin,
     AuditRepositoryMixin,
     ClosureRepositoryMixin,
+    ChannelReportMixin,
     FullPlanRepositoryMixin,
     FactoryPlanRepositoryMixin,
     StockFlowRepositoryMixin,
@@ -107,6 +109,7 @@ class OrderStore(
             despachado_por=(row["despachado_por"] if "despachado_por" in claves else "") or "",
             entregado_at=(row["entregado_at"] if "entregado_at" in claves else "") or "",
             entregado_por=(row["entregado_por"] if "entregado_por" in claves else "") or "",
+            canal=(row["canal"] if "canal" in claves else "") or "",
         )
 
     def _obtener_fila_pedido(self, connection: sqlite3.Connection, pedido_id: int) -> sqlite3.Row | None:
@@ -144,6 +147,7 @@ class OrderStore(
         archivo_hash: str = "",
         numero_guia: str = "",
         items_sin_coincidencia: list[tuple[str, str]] | None = None,
+        canal: str = "",
     ) -> Pedido:
         """Valida e inserta un nuevo pedido junto a sus ítems y registro de auditoría."""
         nota_pedido = nota_pedido.strip()
@@ -155,6 +159,14 @@ class OrderStore(
         fecha_retiro = fecha_retiro.strip()
         archivo_descuento = archivo_descuento.strip()
         archivo_hash = archivo_hash.strip()
+        canal_normalizado = clasificar_canal_pedido(
+            tipo_archivo=tipo_archivo,
+            cliente=cliente,
+            nombre_archivo=nombre_archivo,
+            nota_pedido=nota_pedido,
+            logistica=logistica,
+            canal_explicito=canal,
+        )
 
         if not nota_pedido:
             raise ValueError("La nota de pedido no puede estar vacía.")
@@ -174,8 +186,8 @@ class OrderStore(
                     INSERT INTO pedidos (
                         nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                         tipo_archivo, nombre_archivo, agregado, articulos_descontados, resumen_items,
-                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia, items_sin_coincidencia
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia, items_sin_coincidencia, canal
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         nota_pedido,
@@ -194,6 +206,7 @@ class OrderStore(
                         archivo_hash,
                         (numero_guia or "").strip(),
                         json.dumps(items_sin_coincidencia or [], ensure_ascii=False),
+                        canal_normalizado,
                     ),
                 )
                 nuevo_id = cursor.lastrowid

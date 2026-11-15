@@ -6,6 +6,7 @@ import flet as ft
 
 from ....paths import application_root
 from ...theme import ROJO
+from .cierre_reportes_helper import generar_reporte_admin_para_cierre
 from .hoja_ruta import resolver_archivos_cierre, gestionar_hoja_ruta_cierre
 
 def mostrar_detalle_pedidos_cierre(interfaz: Any, cierre_obj: Any) -> None:
@@ -226,6 +227,20 @@ def mostrar_dialogo_cierres_operarios(interfaz: Any) -> None:
                     else ft.Container()
                 )
 
+                def abrir_consolidado_admin(cierre_obj=c) -> None:
+                    try:
+                        ruta_admin = generar_reporte_admin_para_cierre(interfaz, cierre_obj, formato="pdf")
+                        interfaz.abrir_informe(ruta_especifica=ruta_admin)
+                    except Exception as exc_adm:
+                        interfaz.notificar(f"No se pudo generar consolidado administrador: {exc_adm}")
+
+                boton_admin_consolidado = ft.IconButton(
+                    icon=ft.Icons.SUMMARIZE,
+                    tooltip="Reporte Consolidado Administrador (Suma total por producto)",
+                    icon_color=ft.Colors.INDIGO_300 if interfaz.modo_oscuro else ft.Colors.INDIGO_700,
+                    on_click=lambda _e, fn=abrir_consolidado_admin: fn(),
+                )
+
                 boton_correo = (
                     ft.IconButton(
                         icon=ft.Icons.EMAIL_OUTLINED,
@@ -278,6 +293,7 @@ def mostrar_dialogo_cierres_operarios(interfaz: Any) -> None:
                                         ft.Row(
                                             [
                                                 boton_ver_pedidos,
+                                                boton_admin_consolidado,
                                                 boton_hoja_ruta,
                                                 boton_pdf,
                                                 boton_excel,

@@ -15,7 +15,7 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, 
 from .utils import _crear_qr_drawing, _formatear_cliente_etiqueta
 
 if TYPE_CHECKING:
-    from src.orders_store import Pedido
+    from ..orders import Pedido
 
 
 def _construir_elementos_etiqueta_termica(

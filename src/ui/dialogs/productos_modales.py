@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 
 
 def _resolver_stock_manager_cls():

@@ -16,8 +16,8 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .integrations.telegram_notifier import notificar_anomalia_demanda_telegram
 from .paths import application_root
-from .telegram_notifier import notificar_anomalia_demanda_telegram
 
 
 @dataclass

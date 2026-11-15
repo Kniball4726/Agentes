@@ -9,8 +9,8 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ...factory_parser import parsear_archivo_fabrica
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
+from ...parsers.factory_parser import parsear_archivo_fabrica
 
 
 def _get_stock_manager():

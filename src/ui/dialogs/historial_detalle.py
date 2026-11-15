@@ -7,7 +7,7 @@ from typing import Any
 
 import flet as ft
 
-from ...orders_store import Pedido
+from ...orders import Pedido
 from ..theme import ROJO
 from .historial_archivos import (
     abrir_comprobante_pedido,

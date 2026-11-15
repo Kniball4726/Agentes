@@ -10,7 +10,7 @@ import sys
 # Asegurar raíz del proyecto en sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.product_store import ProductStore
+from src.products import ProductStore
 from src.products.barcode_utils import normalizar_codigo_lector
 
 

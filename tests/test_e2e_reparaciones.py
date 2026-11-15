@@ -4,13 +4,15 @@ from pathlib import Path
 import tempfile
 import pytest
 
-from src.product_store import ProductStore
-from src.stock_manager import AlertaStock, RegistroDescuento, ReporteStock
+from src.integrations import sheets_manager
+from src.products import ProductStore
+from src.stock.models import AlertaStock, RegistroDescuento, ReporteStock
 from src.stock.models import AlertaStock as AlertaStockModel
 
 
 def test_sheets_manager_and_stock_models_imports():
-    """Verifica que AlertaStock se pueda importar desde stock_manager y stock.models."""
+    """Verifica que AlertaStock se pueda importar desde sheets_manager y stock.models."""
+    assert sheets_manager.AlertaStock is AlertaStockModel
     assert AlertaStock is AlertaStockModel
     alerta = AlertaStock(
         codigo="XYZ123",

@@ -18,7 +18,7 @@ def actualizar_alerta_quiebre(interfaz: Any, criticos: list | None = None) -> No
 
     if criticos is None:
         try:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
 
             sm = StockManager(interfaz.menu.ruta_excel_base)
             criticos = sm.obtener_analisis_reposicion(solo_criticos=True)
@@ -43,7 +43,7 @@ def actualizar_alerta_quiebre(interfaz: Any, criticos: list | None = None) -> No
         if cod_c and cod_c not in interfaz._quiebres_telegram_notificados:
             interfaz._quiebres_telegram_notificados.add(cod_c)
             try:
-                from ...telegram_notifier import notificar_quiebre_stock_telegram
+                from ...integrations.telegram_notifier import notificar_quiebre_stock_telegram
 
                 notificar_quiebre_stock_telegram(
                     codigo=cod_c,
@@ -307,7 +307,7 @@ def mostrar_detalle_quiebre(interfaz: Any, criticos: list | None = None) -> None
 
     if criticos is None:
         try:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
 
             sm = StockManager(interfaz.menu.ruta_excel_base)
             criticos = sm.obtener_analisis_reposicion(solo_criticos=True)

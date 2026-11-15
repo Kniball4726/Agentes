@@ -17,6 +17,7 @@ _COLUMNAS_MIGRACION_DESPACHO = (
     ("despachado_por", "TEXT NOT NULL DEFAULT ''"),
     ("entregado_at", "TEXT NOT NULL DEFAULT ''"),
     ("entregado_por", "TEXT NOT NULL DEFAULT ''"),
+    ("canal", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -252,6 +253,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_plan_id ON plan_ingreso_fabrica_items(plan_id)",
         "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_codigo ON plan_ingreso_fabrica_items(plan_id, codigo)",
         "CREATE INDEX IF NOT EXISTS idx_cierres_fabrica_plan ON cierres_parciales_fabrica(plan_id)",
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_canal ON pedidos(canal)",
     ):
         connection.execute(ddl)
 
@@ -347,3 +349,19 @@ def _migrar_columnas_pedidos(connection: sqlite3.Connection) -> None:
     for columna, definicion in _COLUMNAS_MIGRACION_DESPACHO:
         if columna not in columnas_actuales:
             connection.execute(f"ALTER TABLE pedidos ADD COLUMN {columna} {definicion}")
+    connection.execute(
+        """
+        UPDATE pedidos
+        SET canal = CASE
+            WHEN LOWER(COALESCE(cliente, '') || ' ' || COALESCE(nombre_archivo, '') || ' ' || COALESCE(nota_pedido, '')) LIKE '%full%' THEN 'full'
+            WHEN LOWER(COALESCE(tipo_archivo, '')) = 'docx'
+                 OR LOWER(COALESCE(cliente, '')) LIKE '%mercado libre%'
+                 OR UPPER(COALESCE(nota_pedido, '')) LIKE 'ML%'
+                 OR UPPER(COALESCE(nombre_archivo, '')) LIKE 'ML_%' THEN 'mercado_libre'
+            WHEN LOWER(COALESCE(logistica, '')) = 'canje'
+                 OR LOWER(COALESCE(tipo_archivo, '')) = 'excel' THEN 'canje'
+            ELSE 'mayorista'
+        END
+        WHERE COALESCE(canal, '') = ''
+        """
+    )

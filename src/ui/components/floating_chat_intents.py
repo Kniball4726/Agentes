@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from typing import Any
 
-from ...internal_chat import (
+from ...chat import (
     detectar_intencion,
     extraer_termino_busqueda,
     formatear_diagnostico_archivos,
@@ -17,8 +17,8 @@ from ...internal_chat import (
     obtener_mensaje_bienvenida,
     obtener_pie_ayuda,
 )
+from ...inventory import StockManager as _DefaultStockManager
 from ...paths import application_root as _default_app_root
-from ...stock_manager import StockManager as _DefaultStockManager
 
 _INTENCIONES_BLOQUEADAS_MASTER = frozenset({
     "simular",

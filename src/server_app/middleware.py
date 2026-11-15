@@ -23,7 +23,7 @@ class _RegistroConexionesMiddleware:
         try:
             cliente = (scope.get("client") or ("desconocido", 0))[0]
             try:
-                from ..tray_icon import cliente_ws_abierto, registrar_actividad_cliente
+                from ..tray import cliente_ws_abierto, registrar_actividad_cliente
 
                 registrar_actividad_cliente(cliente)
                 if scope["type"] == "websocket":
@@ -50,7 +50,7 @@ class _RegistroConexionesMiddleware:
                     flush=True,
                 )
                 try:
-                    from ..tray_icon import notificar_conexion_cliente
+                    from ..tray import notificar_conexion_cliente
 
                     notificar_conexion_cliente(cliente, agente)
                 except Exception:
@@ -91,7 +91,7 @@ class _RegistroConexionesMiddleware:
         finally:
             if cliente_ws is not None:
                 try:
-                    from ..tray_icon import cliente_ws_cerrado
+                    from ..tray import cliente_ws_cerrado
 
                     cliente_ws_cerrado(cliente_ws)
                 except Exception:

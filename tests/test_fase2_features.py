@@ -10,10 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.orders_store import OrderStore
-from src.product_store import ProductStore
-from src.stock_manager import StockManager
-from src.telegram_notifier import (
+from src.auth import UserStore
+from src.integrations.telegram_notifier import (
     cargar_config_telegram,
     enviar_mensaje_telegram,
     guardar_config_telegram,
@@ -21,7 +19,9 @@ from src.telegram_notifier import (
     notificar_quiebre_stock_telegram,
     notificar_seguridad_bloqueo_telegram,
 )
-from src.user_store import UserStore
+from src.inventory import StockManager
+from src.orders import OrderStore
+from src.products import ProductStore
 
 
 class TestFase2Features(unittest.TestCase):
@@ -96,7 +96,7 @@ class TestFase2Features(unittest.TestCase):
                 "notificar_seguridad": True,
                 "notificar_cierre": True,
             }, tmp_root)
-            with patch("src.integrations.telegram_notifier.enviar_mensaje_telegram", return_value=True) as mock_send, patch("src.telegram_notifier.enviar_mensaje_telegram", return_value=True):
+            with patch("src.integrations.telegram_notifier.enviar_mensaje_telegram", return_value=True) as mock_send:
                 self.assertTrue(notificar_quiebre_stock_telegram("100", "Prod", 0, 5, tmp_root))
                 self.assertTrue(notificar_seguridad_bloqueo_telegram("operario1", root_path=tmp_root))
                 self.assertTrue(notificar_cierre_jornada_telegram("Admin", 10, 20, 50, tmp_root))
@@ -110,7 +110,7 @@ class TestFase2Features(unittest.TestCase):
             store = UserStore(db_path)
             store.create_user("usuario_test", "ClaveValida2026!", "operador")
 
-            with patch("src.telegram_notifier.notificar_seguridad_bloqueo_telegram") as mock_notif:
+            with patch("src.integrations.telegram_notifier.notificar_seguridad_bloqueo_telegram") as mock_notif:
                 # 4 intentos fallidos
                 for _ in range(4):
                     res = store.authenticate_detailed("usuario_test", "ClaveErronea123!")

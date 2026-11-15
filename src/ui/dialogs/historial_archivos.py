@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from ...orders_store import Pedido
+from ...orders import Pedido
 from ...paths import application_root as _default_app_root
 
 

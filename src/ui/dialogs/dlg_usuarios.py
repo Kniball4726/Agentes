@@ -1,7 +1,7 @@
 """Diálogo modal para la gestión de usuarios (administración)."""
 from typing import Any
 import flet as ft
-from ...user_store import USER_ROLES, User, UserStoreError
+from ...auth import USER_ROLES, User, UserStoreError
 from ..theme import ROJO
 
 

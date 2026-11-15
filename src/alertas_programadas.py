@@ -12,10 +12,10 @@ import threading
 from datetime import date, datetime
 from pathlib import Path
 
-from .email_sender import enviar_via_smtp, guardar_config_email, obtener_config_email
-from .orders_store import OrderStore
+from .integrations.email_sender import enviar_via_smtp, guardar_config_email, obtener_config_email
+from .orders import OrderStore
 from .paths import application_root
-from .product_store import ProductStore
+from .products import ProductStore
 
 logger = logging.getLogger("stockagent.alertas")
 

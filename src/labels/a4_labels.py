@@ -20,7 +20,7 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from src.orders_store import Pedido
+    from ..orders import Pedido
 
 
 def _construir_tarjeta_etiqueta(

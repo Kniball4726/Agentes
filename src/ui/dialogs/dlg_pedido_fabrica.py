@@ -8,7 +8,7 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 
 def _get_stock_manager():
     mod = sys.modules.get("src.flet_gui")

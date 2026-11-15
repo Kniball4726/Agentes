@@ -10,12 +10,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from ..auth import User, UserStore
 from ..auth.store import register_session_revocation_listener
+from ..inventory import StockManager
+from ..orders import OrderStore
 from ..paths import application_root
-from ..user_store import User, UserStore
-from ..product_store import ProductStore
-from ..orders_store import OrderStore
-from ..stock_manager import StockManager
+from ..products import ProductStore
 
 # Configuración de sesiones
 SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de vigencia por token

@@ -6,9 +6,10 @@ import tempfile
 import openpyxl
 
 from src.consolidator import ItemConsolidado
-from src.orders_store import OrderStore, Pedido
-from src.product_store import ProductStore
-from src.stock_manager import StockManager, RegistroDescuento
+from src.inventory import StockManager
+from src.orders import OrderStore, Pedido
+from src.products import ProductStore
+from src.stock.models import RegistroDescuento
 from src.ui.dialogs.dlg_pedidos import _restituir_stock_pedido
 
 

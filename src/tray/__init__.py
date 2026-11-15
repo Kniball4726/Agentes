@@ -15,6 +15,14 @@ from .net_and_images import (
     describir_dispositivo,
     generar_imagen_estado,
 )
+from .service import (
+    _INSTANCIA_ACTIVA,
+    cliente_ws_abierto,
+    cliente_ws_cerrado,
+    iniciar_icono_bandeja,
+    notificar_conexion_cliente,
+    registrar_actividad_cliente,
+)
 from .tray_controller import TrayIconServidor
 
 __all__ = [
@@ -32,4 +40,10 @@ __all__ = [
     "describir_dispositivo",
     "generar_imagen_estado",
     "TrayIconServidor",
+    "_INSTANCIA_ACTIVA",
+    "iniciar_icono_bandeja",
+    "registrar_actividad_cliente",
+    "cliente_ws_abierto",
+    "cliente_ws_cerrado",
+    "notificar_conexion_cliente",
 ]

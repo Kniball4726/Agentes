@@ -8,9 +8,9 @@ import sys
 from typing import Any
 
 from ....consolidator import ItemConsolidado
+from ....inventory import StockManager as _DefaultStockManager
+from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
 from ....paths import application_root
-from ....remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
-from ....stock_manager import StockManager as _DefaultStockManager
 
 logger = logging.getLogger("stockagent.ui.cierre_mercado")
 
@@ -104,9 +104,54 @@ def ejecutar_tarea_cierre_mercado(
 
     pdf_path = Path(rep.archivo_pdf) if rep.archivo_pdf else None
     xls_path = Path(rep.archivo_guardado) if rep.archivo_guardado else None
+    usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Picker"
+
+    # En ejecuciones reales (no mockeadas), generar comprobante compacto solo con artículos descontados
+    if (
+        hasattr(interfaz.order_store, "obtener_descuentos_operario_por_canal")
+        and pdf_path
+        and pdf_path.exists()
+    ):
+        try:
+            from ....stock.reports_movements import generar_reporte_descuento_operario_canales
+
+            items_canal = interfaz.order_store.obtener_descuentos_operario_por_canal(
+                pedidos_ids=pedidos_ids
+            )
+            mapa_orden = {
+                cod: idx
+                for idx, (_, cod, _, _) in enumerate(getattr(stock_mgr, "filas_catalogo", []) or [])
+            }
+            pdf_gen = generar_reporte_descuento_operario_canales(
+                items_canal=items_canal,
+                carpeta_destino=interfaz.menu.carpeta_descuentos,
+                formato="pdf",
+                usuario=usr,
+                pedidos_procesados=pedidos_seleccionados,
+                mapa_orden_catalogo=mapa_orden,
+                prefijo_archivo=prefijo,
+                titulo_documento=f"CIERRE DE MERCADO · {tipo_mercado.replace('_', ' ')}",
+            )
+            xls_gen = generar_reporte_descuento_operario_canales(
+                items_canal=items_canal,
+                carpeta_destino=interfaz.menu.carpeta_descuentos,
+                formato="xlsx",
+                usuario=usr,
+                pedidos_procesados=pedidos_seleccionados,
+                mapa_orden_catalogo=mapa_orden,
+                prefijo_archivo=prefijo,
+                titulo_documento=f"CIERRE DE MERCADO · {tipo_mercado.replace('_', ' ')}",
+            )
+            if pdf_gen != pdf_path:
+                pdf_path.unlink(missing_ok=True)
+            if xls_path and xls_path.exists() and xls_gen != xls_path:
+                xls_path.unlink(missing_ok=True)
+            pdf_path, xls_path = pdf_gen, xls_gen
+        except Exception:
+            pass
+
     total_arts = sum(it.cantidad_total for it in items_consolidados.values())
     resumen_p = f"{len(pedidos_seleccionados)} pedidos ({total_arts} un.)"
-    usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Picker"
 
     cierre_m_id = interfaz.order_store.registrar_cierre_mercado(
         usuario=usr,

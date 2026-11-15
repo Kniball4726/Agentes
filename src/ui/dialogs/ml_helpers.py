@@ -9,7 +9,7 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ...orders_store import calcular_hash_archivo
+from ...orders import calcular_hash_archivo
 
 try:
     from docx import Document

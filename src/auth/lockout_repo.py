@@ -52,7 +52,7 @@ class LockoutRepositoryMixin:
                     (username, ahora + LOCKOUT_SECONDS),
                 )
                 try:
-                    from ..telegram_notifier import notificar_seguridad_bloqueo_telegram
+                    from ..integrations.telegram_notifier import notificar_seguridad_bloqueo_telegram
 
                     notificar_seguridad_bloqueo_telegram(username, retry_after_minutos=15)
                 except Exception:

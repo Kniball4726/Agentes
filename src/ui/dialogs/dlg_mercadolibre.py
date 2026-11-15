@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 import flet as ft
 
-from ...mercado_libre_api import (
+from ...integrations.mercado_libre_api import (
     cargar_config_mercadolibre,
     consultar_ordenes_ml,
     descontar_orden_ml_api,
@@ -264,7 +264,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
                 interfaz.page.update()
                 return
 
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
             sm = StockManager(interfaz.menu.ruta_excel_base)
 
             ordenes_cargadas.clear()
@@ -305,7 +305,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         armador = interfaz.usuario_actual.nombre_identificador if interfaz.usuario_actual else "Operario"
 
         def tarea_descuento_masivo() -> None:
-            from ...stock_manager import StockManager
+            from ...inventory import StockManager
             sm = StockManager(interfaz.menu.ruta_excel_base)
 
             exitos = 0

@@ -8,8 +8,8 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ...orders_store import LOGISTICA_OPCIONES, Pedido
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
+from ...orders import LOGISTICA_OPCIONES, Pedido
 from ..theme import ROJO
 
 

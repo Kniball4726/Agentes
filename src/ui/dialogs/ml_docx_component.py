@@ -11,11 +11,11 @@ from typing import Any, Callable
 import flet as ft
 
 from ...agent import AgenteRemitosStock
-from ...mercado_libre_parser import parsear_pedido_mercado_libre
-from ...orders_store import calcular_hash_archivo
+from ...inventory import StockManager as _DefaultStockManager
+from ...orders import calcular_hash_archivo
+from ...parsers.mercado_libre_parser import parsear_pedido_mercado_libre
+from ...parsers.remito_parser import ResultadoRemito, normalizar_codigo
 from ...paths import application_root
-from ...remito_parser import ResultadoRemito, normalizar_codigo
-from ...stock_manager import StockManager as _DefaultStockManager
 
 
 def _resolver_sm():
@@ -128,7 +128,7 @@ class MercadoLibreDocxComponent:
 
         try:
             if arch.suffix.lower() == ".pdf":
-                from ...remito_parser import parsear_remito
+                from ...parsers.remito_parser import parsear_remito
                 res = parsear_remito(arch)
             else:
                 res = parsear_pedido_mercado_libre(arch, productos_catalogo)

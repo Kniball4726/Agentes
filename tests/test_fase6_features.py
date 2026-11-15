@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import flet as ft
 
-from src.product_store import ProductStore
+from src.products import ProductStore
 from src.warehouse_slotting import (
     DEFAULT_RACKS,
     SlotInfo,

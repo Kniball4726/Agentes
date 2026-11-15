@@ -115,15 +115,19 @@ src/
 │
 ├── tray/                       # Icono en Bandeja del Sistema (System Tray de Windows)
 │   ├── net_and_images.py       # Obtención de IP LAN y badges de estado PIL
-│   └── tray_controller.py      # Ciclo de vida pystray y menú contextual
+│   ├── service.py              # Ciclo de vida global del icono y notificaciones de red
+│   └── tray_controller.py      # Controlador pystray y menú contextual
 │
 ├── ui/                         # Capa de presentación gráfica y vistas (Flet)
 │   ├── theme.py                # Paleta de colores corporativos Ultratech y tokens visuales
 │   ├── app_config.py           # Constantes de configuración GUI
+│   ├── protocols.py            # Contratos tipados (Protocol) e inyección de AppDependencies
 │   ├── user_preferences.py     # Persistencia desacoplada de preferencias UI por usuario
 │   ├── dashboard_presenter.py  # Presentador desacoplado del Dashboard reactivo
-│   ├── mixins/                 # auth_session, batch_processor, chat_panel, dialog_dispatcher,
-│   │                           # document_viewer, file_transfer, responsive, session_sync
+│   ├── controllers/            # Controladores desacoplados por composición pura:
+│   │                           # auth_controller, batch_controller, chat_controller,
+│   │                           # dialog_coordinator, document_viewer_service, file_transfer_service,
+│   │                           # responsive_controller, session_sync_service, theme_controller
 │   ├── components/             # admin_flow_analytics, admin_operations_bar, audio_manager,
 │   │                           # debounce, docking_manager, floating_chat, floating_chat_intents,
 │   │                           # header, mobile_nav, network_heartbeat, panels, print_labels,
@@ -155,11 +159,7 @@ src/
 ├── paths.py                    # Resolución segura de rutas relativas a la aplicación
 ├── logger_config.py            # Configuración de logging rotativo en data/logs/stockagent.log
 ├── menu.py / agent.py          # Orquestación CLI y de procesamiento por lotes
-├── flet_gui.py                 # Orquestador UI ensamblado con mixins modulares
-└── *.py (fachadas)             # server.py, user_store.py, orders_store.py, product_store.py,
-                                # stock_manager.py, label_generator.py, dispatch_manifest.py,
-                                # internal_chat.py, tray_icon.py, email_sender.py, telegram_notifier.py,
-                                # mercado_libre_api.py, sheets_manager.py y *_parser.py (100% compatibilidad)
+└── flet_gui.py                 # Orquestador UI por composición pura (delegación a controladores)
 ```
 
 ---
@@ -210,7 +210,7 @@ Reemplaza el antiguo archivo monolítico `user_store.py` (anteriormente de más 
   * Gestión en SQLite con modo WAL (`usuarios.sqlite3`).
   * Conteo de intentos fallidos y bloqueo temporal tras 5 fallos consecutivos.
   * Registro de sesiones activas concurrentes y auditoría de accesos.
-* **`src/user_store.py` (Fachada):** Proporciona retrocompatibilidad del 100% para todo el código y tests existentes.
+* *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.auth`.)*
 
 ---
 
@@ -226,8 +226,8 @@ Reemplaza el antiguo archivo monolítico `orders_store.py` (anteriormente de má
   * Registro de idempotencia con tokens SHA-256 para prevenir procesamientos duplicados por microcortes de red.
 * **`audit_repo.py` (`AuditRepositoryMixin`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de usuario, rol, IP y detalles del cambio.
 * **`closure_repo.py` (`ClosureRepositoryMixin`):** Consolidación de cierres de turno, cálculo de métricas de bultos y archivo seguro de informes.
-* **`store.py` (`OrderStore`):** Repositorio central que compone todos los mixins y garantiza la inicialización de esquemas y migraciones automáticas.
-* **`src/orders_store.py` (Fachada):** Mantiene retrocompatibilidad transparente.
+* **`store.py` (`OrderStore`):** Repositorio central que compone los repositorios y garantiza la inicialización de esquemas y migraciones automáticas.
+* *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.orders`.)*
 
 ---
 
@@ -239,8 +239,8 @@ Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líne
 * **`movements_repo.py` (`MovementsRepositoryMixin`):** Historial paginado de movimientos de inventario (`stock_movements`), registro de despachos con trazabilidad a nivel de ítem (`despachos`, `despacho_detalles`) y cálculo de KPIs.
 * **`physical_repo.py` (`PhysicalRepositoryMixin`):** Registro de conteos físicos de operarios, cálculo de diferencias vs. stock digital y almacenamiento de comparativas históricas.
 * **`notifications_repo.py` (`NotificationsRepositoryMixin`):** Notificaciones operativas para administradores y consulta a la vista `v_analisis_reposicion` para alertas de quiebre o sobrestock.
-* **`store.py` (`ProductStore`):** Ensambla los mixins, orquesta el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
-* **`src/product_store.py` (Fachada):** Mantiene retrocompatibilidad del 100%.
+* **`store.py` (`ProductStore`):** Orquesta los repositorios de catálogo, el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
+* *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.products`.)*
 
 ---
 
@@ -251,17 +251,19 @@ Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líne
 * **`excel_sync.py`:** Aísla la manipulación de bajo nivel con `openpyxl`: detección de esquemas dinámicos, normalización de encabezados, copiado exacto de estilos visuales y construcción de informes idénticos a la plantilla de producción.
 * **`template_sync.py`:** Sincronización transaccional bidireccional (`SQLite ➔ Excel` y `Excel ➔ SQLite`). Incluye la regla de integridad de catálogo: los productos ausentes en `Productos.xlsx` quedan automáticamente inactivos (`active = 0`) en SQLite, y los productos presentes se reactivan.
 * **`manager.py` (`StockManager`):** Orquestación del catálogo, sincronización atómica con debounce entre SQLite y `Productos.xlsx`, aplicación de remitos mayoristas, canjes y despachos de Mercado Envíos Full.
-* **`src/stock_manager.py` (Fachada):** Re-exporta `StockManager`, `RegistroDescuento`, `ReporteStock` y utilidades para compatibilidad absoluta.
+* *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.inventory`.)*
 
 ---
 
-## 🎨 6. Mixins y Componentes de Interfaz de Usuario (`src/ui/`)
+## 🎨 6. Controladores por Composición y Componentes UI (`src/ui/`)
 
-### Mixins de Orquestación GUI (`src/ui/mixins/`):
-1. **`ResponsiveLayoutMixin`:** Detección precisa de viewports móviles (< 768px), redimensionamiento dinámico y drawer táctil.
-2. **`DocumentViewerMixin`:** Previsualización inline de informes, manuales SOP en PDF según rol y compartición.
-3. **`SessionSyncMixin`:** Sincronización de eventos en tiempo real entre múltiples terminales LAN y chat colaborativo.
-4. **`DialogDispatcherMixin`:** Despacho centralizado de diálogos modales e impresión de rótulos térmicos/A4.
+### Arquitectura por Composición Pura (`src/ui/protocols.py` + `src/ui/controllers/`):
+`InterfazFlet` (`src/flet_gui.py`) delega sus capacidades mediante inyección de dependencias (`AppDependencies`), contratos estructurales `Protocol` y controladores dedicados sin herencia de mixins ni shims intermedios:
+1. **`ResponsiveController` (`responsive_controller.py`):** Detección precisa de viewports móviles (< 768px), redimensionamiento dinámico y drawer táctil.
+2. **`DocumentViewerService` (`document_viewer_service.py`):** Previsualización inline de informes, manuales SOP en PDF según rol y compartición.
+3. **`SessionSyncService` (`session_sync_service.py`):** Sincronización de eventos en tiempo real entre múltiples terminales LAN, carga de catálogo/informes y avisos colaborativos.
+4. **`DialogCoordinator` (`dialog_coordinator.py`):** Despacho centralizado de diálogos modales e impresión de rótulos térmicos/A4.
+5. **Resto de controladores especializados:** `AuthController`, `BatchController`, `ChatController`, `FileTransferService` y `ThemeController`.
 
 ### Componentes y Mejoras UX/UI:
 * **`Debouncer` (`src/ui/components/debounce.py`):** Temporizador reactivo para campos de búsqueda (ej. 200 ms en visor de stock e historial de pedidos), evitando re-renderizados innecesarios y garantizando fluidez a 60 FPS.

@@ -15,7 +15,7 @@ from src.stock.reportes_service import (
     generar_reporte_cierres_historicos,
 )
 from src.ui.dialogs.dlg_reportes import mostrar_centro_reportes
-from src.orders_store import Pedido, CierreJornada
+from src.orders import Pedido, CierreJornada
 
 
 class TestReportesService(unittest.TestCase):

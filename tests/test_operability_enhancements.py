@@ -9,10 +9,10 @@ from unittest.mock import MagicMock
 from reportlab.lib.pagesizes import A4
 import pypdf
 
-from src.dispatch_manifest import generar_hoja_ruta_pdf
-from src.orders_store import Pedido
+from src.auth import User
+from src.orders import Pedido
+from src.stock.manifest_pdf import generar_hoja_ruta_pdf
 from src.ui.components.header import construir_encabezado
-from src.user_store import User
 
 
 def test_hoja_ruta_por_transporte(tmp_path: Path):

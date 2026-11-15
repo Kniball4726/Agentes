@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 import flet as ft
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from ..theme import ROJO
 from ._shared import safe_focus
 from .inventario_vivo_views import (

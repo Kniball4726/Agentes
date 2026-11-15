@@ -4,8 +4,8 @@ from pathlib import Path
 import tempfile
 import flet as ft
 
-from src.user_store import User, UserStore
-from src.orders_store import OrderStore, Pedido
+from src.auth import User, UserStore
+from src.orders import OrderStore, Pedido
 from src.ui.dialogs.dlg_cierre import (
     mostrar_dialogo_cierres_operarios,
     mostrar_detalle_pedidos_cierre,

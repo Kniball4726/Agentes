@@ -9,8 +9,8 @@ from typing import Any
 
 import flet as ft
 
-from ...physical_stock_parser import parsear_excel_stock_fisico
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
+from ...parsers.physical_stock_parser import parsear_excel_stock_fisico
 from ..theme import ROJO
 from ._shared import safe_focus
 from .stock_fisico_views import (

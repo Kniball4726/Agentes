@@ -210,8 +210,8 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "nombre_boton": "Cierre de Jornada",
                 "icono_str": "[✅]",
                 "modulo": "CONTROL Y CIERRE",
-                "proposito_funcional": "Función exclusiva del Operador. Exhibe contador vivo `'Cierre de Jornada (N)'`, consolida pedidos preparados pendientes, sincroniza `Productos.xlsx`, genera informe PDF/Excel y emite Hoja de Ruta.",
-                "datos_modificados": "Crea registro en `cierres_jornada`, vincula pedidos con `cierre_id`, vuelca a `Productos.xlsx` y emite `Cierre_#ID.pdf` y `Hoja_Ruta_#ID.pdf`.",
+                "proposito_funcional": "Función exclusiva del Operador. Exhibe contador vivo `'Cierre de Jornada (N)'`, consolida pedidos preparados pendientes y movimientos en SQLite (sin requerir `Productos.xlsx`) y emite reporte compacto de cierre (solo productos con movimiento discriminados en 3 columnas: Mayoristas / Mercado Libre / Full, más Ingresos), el Consolidado Administrador y Hoja de Ruta.",
+                "datos_modificados": "Crea registro en `cierres_jornada`, vincula pedidos con `cierre_id` en SQLite y emite `Cierre_Descuento` (Operario por canales), `Cierre_Admin_Consolidado` (suma total por producto) y `Hoja_Ruta_#ID.pdf`.",
                 "pasos_procedimiento": [
                     "Al finalizar el turno, pulsar <b>'Cierre de Jornada'</b> y revisar la pestaña Pendientes.",
                     "(Opcional) Indicar correo destinatario y pulsar <b>'Ejecutar Cierre de Jornada'</b>.",
@@ -245,7 +245,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "nombre_boton": "Centro de Reportes / Abrir Informe",
                 "icono_str": "[📊]",
                 "modulo": "INFORMES",
-                "proposito_funcional": "Consulta el catálogo de informes PDF/Excel generados y los abre en el visor autenticado con token temporal `?dt=`.",
+                "proposito_funcional": "Genera reportes estandarizados desde SQLite (`Movimientos Estándar` de Salidas/Ingresos/Consolidado, `Descuentos por Canal`, `Planilla Toma de Inventario Físico`, `Auditoría Física`, `Kardex SKU`, `Rotación y Cobertura`) y abre los PDF/Excel generados en el visor autenticado con token temporal `?dt=`.",
                 "datos_modificados": "Ninguno (visualización segura mediante rutas autenticadas `/api/v1/documentos/`).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Centro de Reportes'</b> o <b>'Abrir informe'</b> en el panel lateral.",

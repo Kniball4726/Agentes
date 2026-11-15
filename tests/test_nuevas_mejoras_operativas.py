@@ -14,12 +14,12 @@ from unittest.mock import MagicMock
 import pypdf
 import pytest
 
+from src.auth import User
 from src.backup_manager import crear_backup_sistema, guardar_config_backup, obtener_config_backup
-from src.dispatch_manifest import generar_hoja_ruta_pdf
-from src.label_generator import generar_etiquetas_termicas_pdf
-from src.orders_store import OrderStore, Pedido
+from src.labels import generar_etiquetas_termicas_pdf
+from src.orders import OrderStore, Pedido
+from src.stock.manifest_pdf import generar_hoja_ruta_pdf
 from src.ui.dialogs.dlg_command_palette import mostrar_command_palette
-from src.user_store import User
 
 
 def test_rotulos_termicos_continuos(tmp_path: Path):

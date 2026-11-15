@@ -4,7 +4,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from src.user_store import UserStore, UserStoreError
+from src.auth import UserStore, UserStoreError
 
 
 class UserStoreTests(unittest.TestCase):

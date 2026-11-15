@@ -10,9 +10,9 @@ import flet as ft
 
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
 from ..theme import ROJO
+from ...inventory import StockManager as _DefaultStockManager
 from ...paths import application_root
 from ...stock.models import RegistroDescuento
-from ...stock_manager import StockManager as _DefaultStockManager
 from ._shared import safe_focus
 from .ml_helpers import generar_docx_respaldo_escaner, mostrar_prompt_rotulo_ml
 

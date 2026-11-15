@@ -8,8 +8,9 @@ import xlrd
 from pypdf import PdfReader
 
 from src.consolidator import ItemConsolidado
-from src.remito_parser import ItemRemito, ResultadoRemito
-from src.stock_manager import RegistroDescuento, StockManager
+from src.inventory import StockManager
+from src.parsers.remito_parser import ItemRemito, ResultadoRemito
+from src.stock.models import RegistroDescuento
 
 
 class StockManagerTests(unittest.TestCase):

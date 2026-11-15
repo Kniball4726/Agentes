@@ -105,7 +105,7 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
 
 ### Icono en la Bandeja del Sistema (System Tray de Windows)
 
-Al arrancar el servidor web, StockAgent incorpora un controlador de bandeja del sistema (`src/tray_icon.py`) ejecutado mediante un hilo desacoplado con la biblioteca `pystray`:
+Al arrancar el servidor web, StockAgent incorpora un controlador de bandeja del sistema (`src/tray/service.py` y `src/tray/tray_controller.py`) ejecutado mediante un hilo desacoplado con la biblioteca `pystray`:
 
 * **Indicador Visual de Estado en Tiempo Real:**
   * 🟢 **Verde (Online):** Servidor activo y respondiendo peticiones.
@@ -939,19 +939,18 @@ StockAgent/
 │   ├── integrations/                  # Conectores externos (email_sender, mercado_libre_api, sheets_manager, telegram_notifier)
 │   ├── chat/                          # Asistente virtual e intenciones semánticas por rol (intent_parser, role_help, formatters)
 │   ├── cli/                           # Interfaz de consola y procesamiento por lotes (archive_ops, interactive_flows)
-│   ├── tray/                          # Bandeja del sistema Windows pystray (net_and_images, tray_controller)
+│   ├── tray/                          # Bandeja del sistema Windows pystray (net_and_images, service, tray_controller)
 │   ├── ui/                            # Capa de presentación gráfica Flet
-│   │   ├── theme.py / app_config.py / user_preferences.py / dashboard_presenter.py
-│   │   ├── mixins/                    # auth_session, batch_processor, chat_panel, dialog_dispatcher, document_viewer, file_transfer, responsive, session_sync
+│   │   ├── theme.py / app_config.py / audio_feedback.py / protocols.py / user_preferences.py / dashboard_presenter.py
+│   │   ├── controllers/               # auth_controller, batch_controller, chat_controller, dialog_coordinator, document_viewer_service, file_transfer_service, responsive_controller, session_sync_service, theme_controller
 │   │   ├── components/                # audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_sections), window_manager
 │   │   └── dialogs/                   # Vistas y subcomponentes desacoplados por caso de uso (auth_*, analytics_*, api_panel_tabs, cierre/, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, ml_*, movimientos_rapidos_ops, pedidos_*, productos_modales, stock_fisico_views)
 │   ├── agent.py / menu.py             # Orquestadores CLI y de lotes
-│   ├── flet_gui.py                    # Fachada y orquestador GUI principal compuesto con mixins
+│   ├── flet_gui.py                    # Orquestador GUI principal basado en composición pura e inyección de dependencias
 │   ├── secretos.py                    # Cifrado en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
 │   ├── ssl_manager.py                 # Generador automático de certificados X.509 SAN para HTTPS
 │   ├── webhook_manager.py             # Webhooks salientes con validación anti-SSRF
-│   ├── anomaly_detector.py / warehouse_slotting.py / system_telemetry.py / alertas_programadas.py / archive_manager.py / backup_manager.py / logger_config.py / paths.py
-│   └── *.py (fachadas retrocompatibles) # server, user_store, orders_store, product_store, stock_manager, label_generator, dispatch_manifest, internal_chat, tray_icon, email_sender, telegram_notifier, mercado_libre_api, sheets_manager y *_parser
+│   └── anomaly_detector.py / warehouse_slotting.py / system_telemetry.py / alertas_programadas.py / archive_manager.py / backup_manager.py / logger_config.py / paths.py
 ├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
 │   ├── lib/                           # Código fuente Dart (controllers, models, screens, services, theme, widgets, main.dart)
 │   ├── android/                       # Configuración y manifiestos nativos Android
@@ -1030,8 +1029,8 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
 4. **Compatibilidad Inversa al 100%:**
    * Tanto `InterfazFlet` como `StockManager` actúan como fachadas limpias que delegan en sus respectivos submódulos, preservando intactos todos los nombres de métodos, firmas de parámetros y contratos de API. Ningún script externo, test ni empaquetado de PyInstaller requiere modificaciones.
 
-5. **Desacoplamiento de Servidor e Infraestructura de Red (`src/server_app/` + fachada `src/server.py`):**
-   * Se desacopló íntegramente la capa de servidor web de `src/flet_gui.py` hacia el paquete `src/server_app/` (con fachada `src/server.py`), reduciendo `flet_gui.py` y eliminando código monolítico para facilitar su testeo unitario.
+5. **Desacoplamiento de Servidor e Infraestructura de Red (`src/server_app/`):**
+   * Se desacopló íntegramente la capa de servidor web de `src/flet_gui.py` hacia el paquete canónico `src/server_app/`, reduciendo `flet_gui.py` y eliminando código monolítico para facilitar su testeo unitario.
    * **Servicios Encapsulados:** Gestión del ciclo de vida ASGI / Starlette / Uvicorn (`__init__.py`), middleware CORS/cabeceras de seguridad y tracking activo (`middleware.py`), resolución automática de IPs LAN y Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con HMAC `?dt=` (`protected_docs_routes.py`), parcheo Flet (`flet_patch.py`), endpoints PWA/escáner y distribución OTA APK (`static_routes.py`).
 
 6. **Especialización Modular de Diálogos (`dlg_quiebre.py` y `dlg_restaurar.py`):**
@@ -1040,7 +1039,7 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
 
 7. **Optimización Fast-Path (SQLite-First) y Concurrencia Robusta:**
    * **Carga Inmediata de Catálogo:** `StockManager` comprueba de forma atómica si SQLite ya posee la importación inicial (`is_template_imported()`). De ser así, recupera el catálogo y los metadatos de columnas en `< 2 ms`, sin instanciar `openpyxl` ni bloquear el archivo `Productos.xlsx` en disco.
-   * **Cierre Seguro de Descriptores en Parsers:** Se encapsuló la lectura de libros en `canjes_parser.py`, `mercado_full_parser.py` y `factory_parser.py` bajo bloques `try ... finally: wb.close()` garantizando la liberación inmediata de manejadores de archivo en Windows.
+   * **Cierre Seguro de Descriptores en Parsers (`src/parsers/`):** Se encapsuló la lectura de libros en `canjes_parser.py`, `mercado_full_parser.py` y `factory_parser.py` bajo bloques `try ... finally: wb.close()` garantizando la liberación inmediata de manejadores de archivo en Windows.
    * **Protección de Auditoría Concurrente:** `ProductStore.enrich_latest_movements()` incluye guardas atómicas para evitar sobreescrituras accidentales de metadatos cuando múltiples operarios descuentan inventario en paralelo.
 
 8. **Arquitectura Modular de Descuento Mercado Libre (`dlg_mercadolibre_descuento.py`):**
@@ -1085,37 +1084,35 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
     * Cada excepción transporta código de error estandarizado (`code`), código de respuesta HTTP (`status_code`) y diccionario de metadatos contextuales (`context`) para auditoría forense inmediata.
 
 15. **Modularización Integral del Dominio de Usuarios y Seguridad (`src/auth/`):**
-    * Deconstrucción completa del archivo monolítico `src/user_store.py` (anteriormente de más de 1,040 líneas) en el paquete `src/auth/`:
+    * Deconstrucción completa de la lógica de autenticación y permisos en el paquete canónico `src/auth/`:
       - **`models.py`:** Entidades inmutables `User`, `ApiKey`, `UserRole` y tuplas de autorización `USER_ROLES`.
       - **`password.py`:** Módulo criptográfico aislado con hashing `PBKDF2-HMAC-SHA256`, sal aleatoria de 16 bytes (32 caracteres hexadecimales), `600,000` iteraciones (`PASSWORD_ITERATIONS`) y verificación segura contra ataques de temporización (`hmac.compare_digest`).
       - **`store.py`:** Repositorio transaccional `UserStore` en SQLite WAL, gestión de intentos fallidos, bloqueo preventivo y preferencias de interfaz.
-      - **`src/user_store.py` (Fachada):** Fachada retrocompatible de 35 líneas que re-exporta los símbolos con 100% de paridad funcional para toda la aplicación y tests.
 
 16. **Modularización Integral del Dominio de Pedidos y Auditoría (`src/orders/`):**
-    * Deconstrucción del archivo monolítico `src/orders_store.py` (anteriormente de más de 1,690 líneas) en el paquete `src/orders/` bajo el patrón Repository Mixin:
+    * Modularización del dominio de pedidos y auditoría en el paquete canónico `src/orders/` bajo el patrón Repository Mixin:
       - **`models.py`:** Modelos de datos `Pedido`, `Cliente`, `MensajeChat`, `LogAuditoria`, `CierreJornada`.
       - **`client_repo.py` (`ClientRepositoryMixin`):** CRUD de clientes, gestión de domicilios/teléfonos y autogeneración de códigos únicos (`CLI-XXXXXX`).
       - **`chat_repo.py` (`ChatRepositoryMixin`):** Canal de mensajería interna, contadores de no leídos por usuario y etiquetado dinámico de pedidos (`#PED-XXXX`).
       - **`concurrency_repo.py` (`ConcurrencyRepositoryMixin`):** Concesiones temporales de edición (Lease/TTL de 5 min) e idempotencia criptográfica SHA-256 para evitar duplicación ante microcortes.
       - **`audit_repo.py` (`AuditRepositoryMixin`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de IPs, sesiones y usuarios.
       - **`closure_repo.py` (`ClosureRepositoryMixin`):** Consolidación de cierres de turno, cálculo de métricas de bultos y archivo seguro de informes.
-      - **`store.py` (`OrderStore`):** Repositorio central que compone todos los mixins, gestiona transacciones atómicas y migraciones del esquema SQLite.
-      - **`src/orders_store.py` (Fachada):** Fachada retrocompatible de 30 líneas que preserva íntegramente las importaciones históricas.
+      - **`store.py` (`OrderStore`):** Repositorio central que compone los sub-repositorios, gestiona transacciones atómicas y migraciones del esquema SQLite.
 
-17. **Desacoplamiento de la GUI en Mixins de Composición (`src/ui/mixins/`):**
-    * Descomposición de la clase coordinadora `InterfazFlet` (`src/flet_gui.py`) en mixins de responsabilidad única:
-      - **`ResponsiveLayoutMixin` (`src/ui/mixins/responsive.py`):** Detección de dispositivos móviles y tablets, dimensiones adaptables de ancho/alto, control del ciclo de vida del drawer y adaptación reactiva a redimensionamientos.
-      - **`DocumentViewerMixin` (`src/ui/mixins/document_viewer.py`):** Visualización de informes, generación dinámica de manuales de rol en PDF, exploración de carpetas del sistema y compartición por correo o WhatsApp.
-      - **`SessionSyncMixin` (`src/ui/mixins/session_sync.py`):** Sincronización colaborativa entre pestañas/terminales LAN, toasts contextuales, insignias dinámicas y chat de equipo.
-      - **`DialogDispatcherMixin` (`src/ui/mixins/dialog_dispatcher.py`):** Despacho centralizado y apertura de todos los modales de la plataforma e impresión de rótulos térmicos y A4.
-    * La clase `InterfazFlet` ahora hereda de 8 mixins modulares (`ResponsiveLayoutMixin`, `DocumentViewerMixin`, `SessionSyncMixin`, `DialogDispatcherMixin`, `AuthSessionMixin`, `BatchProcessorMixin`, `ChatPanelMixin`, `FileTransferMixin`), eliminando código monolítico sin alterar ninguna signatura pública ni objetivos de prueba.
+17. **Patrón de Composición Pura e Inyección de Dependencias en GUI (`src/ui/protocols.py` + `src/ui/controllers/`):**
+    * Desacoplamiento completo de `InterfazFlet` (`src/flet_gui.py`) reemplazando la herencia de mixins por composición explícita y contratos `typing.Protocol` + `AppDependencies` (`src/ui/protocols.py`):
+      - **`ResponsiveController` (`responsive_controller.py`):** Detección de dispositivos móviles y tablets, dimensiones adaptables de ancho/alto, control del ciclo de vida del drawer y adaptación reactiva a redimensionamientos.
+      - **`DocumentViewerService` (`document_viewer_service.py`):** Visualización de informes, generación dinámica de manuales de rol en PDF, exploración de carpetas del sistema y compartición por correo o WhatsApp.
+      - **`SessionSyncService` (`session_sync_service.py`):** Sincronización colaborativa entre pestañas/terminales LAN, recarga de estado/catálogo, toasts contextuales e insignias dinámicas.
+      - **`DialogCoordinator` (`dialog_coordinator.py`):** Despacho centralizado y apertura de todos los modales de la plataforma e impresión de rótulos térmicos y A4.
+      - **`AuthController`, `BatchController`, `ChatController`, `FileTransferService` y `ThemeController`:** Completan los 9 controladores independientes ensamblados en `InterfazFlet`.
 
-18. **Desacoplamiento Integral de Paquetes de Infraestructura, Dominio, UI y Documentación:**
-    * **`src/server_app/`:** Reemplaza el antiguo `src/server.py` monolítico dividiendo parcheo Flet (`flet_patch.py`), CORS/cabeceras HTTP (`middleware.py`), resolución IP LAN/Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con token `?dt=` (`protected_docs_routes.py`) y rutas estáticas PWA/OTA (`static_routes.py`).
-    * **`src/labels/`, `src/parsers/`, `src/integrations/`, `src/chat/`, `src/cli/`, `src/tray/`:** Cada dominio queda aislado en paquetes con submódulos pequeños (`<= 450` líneas en la gran mayoría del código) y fachadas retrocompatibles en la raíz de `src/` (`label_generator.py`, `remito_parser.py`, `email_sender.py`, `internal_chat.py`, `menu.py`, `tray_icon.py`, etc.).
-    * **`src/inventory/` y `src/stock/`:** Se dividieron en `catalog_loader.py`, `discount_engine.py`, `excel_sync.py`, `template_sync.py`, `report_styles.py`, `reports_stock.py`, `reports_ops.py`, `xls_exporter.py`, `pdf_exporter.py`, `manifest_pdf.py` y `reportes_service.py`.
+18. **Desacoplamiento Integral y Limpieza de Puentes Legacy (`src/`):**
+    * **`src/server_app/`:** Divide el servidor web en parcheo Flet (`flet_patch.py`), CORS/cabeceras HTTP (`middleware.py`), resolución IP LAN/Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con token `?dt=` (`protected_docs_routes.py`) y rutas estáticas PWA/OTA (`static_routes.py`).
+    * **`src/labels/`, `src/parsers/`, `src/integrations/`, `src/chat/`, `src/cli/`, `src/tray/` (`service.py`, `tray_controller.py`, `net_and_images.py`):** Cada dominio opera en su paquete canónico con importaciones directas desde módulos, scripts y tests, habiéndose eliminado todas las fachadas puente redundantes de la raíz de `src/` y el antiguo directorio `src/ui/mixins/`.
+    * **`src/inventory/` y `src/stock/`:** Incluyen `catalog_loader.py`, `discount_engine.py`, `excel_sync.py`, `template_sync.py`, `report_styles.py`, `reports_stock.py`, `reports_ops.py`, `xls_exporter.py`, `pdf_exporter.py`, `manifest_pdf.py` y `reportes_service.py`.
     * **Descomposición de Diálogos Extensos (`src/ui/dialogs/`):** Todos los modales grandes fueron separados en vistas y ayudantes enfocados (`auth_*`, `analytics_*`, `api_panel_tabs`, `heatmap_render`, `historial_*`, `ingreso_fabrica_archivo`, `inventario_vivo_views`, `ml_scanner_component` + `ml_docx_component` + `ml_helpers`, `movimientos_rapidos_ops`, `pedidos_crear` + `pedidos_gestion`, `productos_modales`, `stock_fisico_views`) y `floating_chat_intents.py` en componentes.
-    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Eliminan los antiguos monolitos de documentación (`> 1,800` y `> 2,500` líneas), manteniendo `generar_manual_pdf.py` y `manuales_procedimientos.py` como fachadas 100% compatibles.
+    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Estructuran de forma modular la generación de manuales PDF e instructivos de procedimientos.
 
 ### Esquema de Bases de Datos SQLite
 
@@ -1565,7 +1562,7 @@ El proyecto cuenta con una cobertura integral de pruebas unitarias y de integrac
     - Desencadenamiento automático de alertas de seguridad en `UserStore.authenticate_detailed` ante ataques de diccionario/fuerza bruta.
     - Sincronización atómica y masiva de catálogo SQLite hacia la planilla maestra `Productos.xlsx` con verificación de celdas.
 17. `tests/test_fase3_features.py`:
-    - Conector oficial con la API REST de Mercado Libre (`src/mercado_libre_api.py` y `dlg_mercadolibre.py`).
+    - Conector oficial con la API REST de Mercado Libre (`src/integrations/mercado_libre_api.py` y `dlg_mercadolibre.py`).
     - Flujo OAuth 2.0: verificación de credenciales en `/users/me` y renovación desatendida mediante `/oauth/token`.
     - Consulta de órdenes pagadas recientes en `/orders/search` con filtrado por rango de fecha y estado.
     - Emparejamiento híbrido inteligente de productos: prioridad por SKU del vendedor y fallback a matching semántico de títulos.
@@ -1647,7 +1644,7 @@ El lanzador optimizado `stockagent_mobile/iniciar_servidor_movil.bat` (y su viso
 * **Ejecución Silenciosa / Segundo Plano:** Sin argumentos, se lanza de forma invisible en segundo plano mediante `iniciar_servidor_movil_en_segundo_plano.vbs` alojándose en la bandeja del sistema. Con `--consola` muestra el estado y los registros en pantalla.
 * **HTTPS Cifrado por Defecto (`STOCKAGENT_HTTPS=1`):** Inicia el servidor web seguro en `https://0.0.0.0:8550` reutilizando `data/certs/stockagent.crt`. Para estaciones Windows de la LAN se recomienda instalar el certificado con `instalar_certificado.bat` o generar el acceso directo con `crear_acceso_directo_cliente.bat`.
 * **Opción HTTP Legacy (`--http`):** En redes LAN estrictamente privadas donde un dispositivo móvil o WebView rechace el certificado autofirmado local, puede ejecutarse explícitamente con `iniciar_servidor_movil.bat --consola --http` (muestra un aviso de seguridad indicando tráfico sin cifrar).
-* **Puerto Listo al Instante:** Libera procesos previos escuchando en el puerto `8550` antes de levantar la instancia (`src/server_app/` a través de `src/server.py`).
+* **Puerto Listo al Instante:** Libera procesos previos escuchando en el puerto `8550` antes de levantar la instancia (`src/server_app/`).
 
 ---
 

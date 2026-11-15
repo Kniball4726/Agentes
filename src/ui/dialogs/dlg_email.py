@@ -8,9 +8,9 @@ import webbrowser
 import flet as ft
 
 from ..theme import ROJO
-from ...email_sender import despachar_correo, guardar_config_email, obtener_config_email
+from ...auth import USER_ROLES
+from ...integrations.email_sender import despachar_correo, guardar_config_email, obtener_config_email
 from ...paths import application_root
-from ...user_store import USER_ROLES
 
 
 def compartir_correo(interfaz: Any, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
@@ -51,7 +51,7 @@ def enviar_correo_cierre(
     dest_limpio = destinatarios.strip()
     if not dest_limpio:
         return
-    from ...flet_gui import guardar_correo_cierre
+    from ..app_config import guardar_correo_cierre
     guardar_correo_cierre(dest_limpio)
     fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M")
     asunto_txt = f"Cierre de Jornada #{cierre_id} - {fecha_str} ({resumen_pedidos})"
@@ -139,7 +139,7 @@ def mostrar_dialogo_enviar_correo(
     if not interfaz.exigir_roles(*USER_ROLES):
         return
 
-    from ...flet_gui import guardar_correo_cierre, obtener_correo_cierre_guardado
+    from ..app_config import guardar_correo_cierre, obtener_correo_cierre_guardado
 
     adjuntos_lista: list[Path] = []
     if archivos_iniciales:
@@ -331,7 +331,7 @@ def mostrar_dialogo_enviar_correo(
         asunto_final = (asunto_input.value or "").strip() or "Informe de Depósito"
         cuerpo_final = cuerpo_input.value or ""
 
-        from ...flet_gui import guardar_correo_cierre
+        from ..app_config import guardar_correo_cierre
         guardar_correo_cierre(dest_raw)
         cfg = obtener_config_email()
         cfg["destinatarios_guardados"] = dest_raw

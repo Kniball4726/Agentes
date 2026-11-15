@@ -4,8 +4,8 @@ se generen exactamente N etiquetas sin repetir hasta llenar la hoja A4.
 from pathlib import Path
 import pypdf
 
-from src.label_generator import generar_etiquetas_bultos_pdf
-from src.orders_store import Pedido
+from src.labels import generar_etiquetas_bultos_pdf
+from src.orders import Pedido
 
 
 def test_etiquetas_exactas_sin_repeticion(tmp_path: Path):
@@ -38,7 +38,7 @@ def test_etiquetas_exactas_sin_repeticion(tmp_path: Path):
 
 def test_etiquetas_agregado_concatena_nombre_cliente(tmp_path: Path):
     """Verifica que si el pedido es un agregado se concatene 'Agregado' al nombre del cliente."""
-    from src.label_generator import generar_etiquetas_termicas_pdf
+    from src.labels import generar_etiquetas_termicas_pdf
 
     # 1. Pedido normal (no agregado)
     p_normal = Pedido(

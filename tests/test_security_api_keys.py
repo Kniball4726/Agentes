@@ -18,9 +18,9 @@ from src.api.deps import (
     _sesiones_activas,
 )
 from src.api.v1.auth import _ip_attempts, _verificar_rate_limit_ip
-from src.user_store import UserStore
-from src.product_store import ProductStore
-from src.orders_store import OrderStore
+from src.auth import UserStore
+from src.orders import OrderStore
+from src.products import ProductStore
 
 
 class TestSecurityApiKeys(unittest.TestCase):

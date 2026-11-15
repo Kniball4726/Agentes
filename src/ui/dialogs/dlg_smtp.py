@@ -1,7 +1,7 @@
 """Diálogo modal para configuración del servidor de correo SMTP y alertas automáticas."""
 from typing import Any
 import flet as ft
-from ...email_sender import (
+from ...integrations.email_sender import (
     guardar_config_email,
     obtener_config_email,
     probar_conexion_smtp,

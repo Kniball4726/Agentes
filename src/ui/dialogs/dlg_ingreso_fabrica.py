@@ -7,7 +7,7 @@ from typing import Any
 
 import flet as ft
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
 from ..theme import ROJO
 from ._shared import safe_focus

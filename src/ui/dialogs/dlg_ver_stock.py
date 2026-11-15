@@ -42,7 +42,7 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
                     d = dict(f) if not isinstance(f, dict) else f
                     cache_productos.append(d)
             elif hasattr(interfaz, "menu") and hasattr(interfaz.menu, "ruta_excel_base"):
-                from ...stock_manager import StockManager
+                from ...inventory import StockManager
                 sm = StockManager(interfaz.menu.ruta_excel_base)
                 cache_productos = sm.obtener_catalogo_completo()
         except Exception as exc:

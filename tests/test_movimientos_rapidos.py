@@ -293,7 +293,7 @@ class TestMovimientosRapidos(unittest.TestCase):
         from pathlib import Path
         import tempfile
         import openpyxl
-        from src.stock_manager import StockManager
+        from src.inventory import StockManager
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -314,7 +314,7 @@ class TestMovimientosRapidos(unittest.TestCase):
             self.interfaz.stock_manager = None
             self.interfaz.menu.ruta_excel_base = excel_path
 
-            with patch("src.stock_manager.StockManager", return_value=sm_real):
+            with patch("src.inventory.StockManager", return_value=sm_real):
                 mostrar_dialogo_ingreso_rapido(self.interfaz)
                 dlg = self.dialogo_mostrado
                 col = dlg.content

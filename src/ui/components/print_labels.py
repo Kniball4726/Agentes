@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ...label_generator import (
+from ...labels import (
     generar_etiquetas_bultos_pdf,
     generar_etiquetas_lote_pedidos_pdf,
     generar_etiquetas_termicas_pdf,

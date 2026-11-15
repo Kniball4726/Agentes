@@ -17,7 +17,7 @@ class ClosureRepositoryMixin:
                 """
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                        tipo_archivo, nombre_archivo, agregado, articulos_descontados,
-                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, cierre_mercado_id, archivo_hash, numero_guia,
+                       resumen_items, created_at, estado, fecha_retiro, archivo_descuento, cierre_id, cierre_mercado_id, archivo_hash, canal, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id IS NULL AND estado = 'descontado'
@@ -158,7 +158,7 @@ class ClosureRepositoryMixin:
                 SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica,
                        armador, tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                        resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                       cierre_id, archivo_hash, numero_guia,
+                       cierre_id, archivo_hash, canal, numero_guia,
                            estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
                 FROM pedidos
                 WHERE cierre_id = ?
@@ -191,7 +191,7 @@ class ClosureRepositoryMixin:
             SELECT id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
                    tipo_archivo, nombre_archivo, agregado, articulos_descontados,
                    resumen_items, created_at, estado, fecha_retiro, archivo_descuento,
-                   cierre_id, cierre_mercado_id, archivo_hash, numero_guia,
+                   cierre_id, cierre_mercado_id, archivo_hash, canal, numero_guia,
                    estado_despacho, despachado_at, despachado_por, entregado_at, entregado_por
             FROM pedidos
             WHERE cierre_mercado_id IS NULL AND estado = 'descontado'

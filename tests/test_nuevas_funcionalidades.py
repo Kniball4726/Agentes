@@ -12,18 +12,18 @@ from unittest.mock import patch
 import flet as ft
 
 from src.alertas_programadas import PlanificadorAlertas, construir_resumen
+from src.auth import UserStore
 from src.backup_manager import (
     crear_backup_sistema,
     guardar_config_backup,
     restaurar_backup_sistema,
 )
-from src.email_sender import guardar_config_email, obtener_config_email
+from src.integrations.email_sender import guardar_config_email, obtener_config_email
 from src.logger_config import configurar_logging
-from src.orders_store import OrderStore
-from src.product_store import ProductStore
+from src.orders import OrderStore
+from src.products import ProductStore
 from src.secretos import PREFIJO as ESTA_CIFRADO_PREFIJO, cifrar as cifrar_secreto, descifrar as descifrar_secreto, esta_cifrado
 from src.ssl_manager import asegurar_certificado_ssl
-from src.user_store import UserStore
 from tests.test_flet_gui import FakeMenu, FakePage, InterfazFlet
 
 
@@ -43,7 +43,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
     def test_email_config_cifra_password_en_disco_y_descifra_en_memoria(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            with patch("src.integrations.email_sender.application_root", return_value=tmp_path), patch("src.email_sender.application_root", return_value=tmp_path), patch.dict(os.environ, {"STOCKAGENT_SMTP_PASSWORD": ""}):
+            with patch("src.integrations.email_sender.application_root", return_value=tmp_path), patch.dict(os.environ, {"STOCKAGENT_SMTP_PASSWORD": ""}):
                 guardar_config_email(
                     {
                         "smtp_servidor": "smtp.gmail.com",
@@ -263,7 +263,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertIn("AGOTADOS", cuerpo)
 
             with patch("src.alertas_programadas.application_root", return_value=raiz), patch(
-                "src.email_sender.application_root", return_value=raiz
+                "src.integrations.email_sender.application_root", return_value=raiz
             ), patch("src.alertas_programadas.enviar_resumen_ahora", return_value=(True, "Enviado OK")) as mock_env:
                 guardar_config_email(
                     {
@@ -403,7 +403,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(len(store.listar_clientes()), 2)
 
     def test_modal_gestion_clientes_flet_gui(self):
-        from src.user_store import User
+        from src.auth import User
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             page = FakePage()
@@ -422,7 +422,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(len(page.dialogos), 0)
 
     def test_adaptacion_responsive_mobile_deteccion_y_layout(self):
-        from src.user_store import User
+        from src.auth import User
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             page = FakePage()

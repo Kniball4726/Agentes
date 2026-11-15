@@ -12,7 +12,7 @@ from ..schemas import (
     InventarioItemComparativa,
     InventarioResultadoResponse,
 )
-from ...stock_manager import StockManager
+from ...inventory import StockManager
 
 router = APIRouter(prefix="/inventario", tags=["Inventario en Vivo"])
 

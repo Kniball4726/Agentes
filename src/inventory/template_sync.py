@@ -13,7 +13,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 import openpyxl
 
-from ..remito_parser import normalizar_codigo
+from ..parsers.remito_parser import normalizar_codigo
 
 logger = logging.getLogger(__name__)
 
@@ -102,67 +102,75 @@ class TemplateSyncMixin:
         stock_maximo: Optional[int] = None,
         cod_barras: Optional[str] = None,
     ) -> None:
-        """Actualiza código, descripción, stock y parámetros en SQLite y en Productos.xlsx."""
+        """Actualiza código, descripción, stock y parámetros en SQLite y opcionalmente en Productos.xlsx."""
         codigo_actual = normalizar_codigo(codigo_actual)
         codigo_nuevo = normalizar_codigo(codigo_nuevo)
         nombre = nombre.strip()
         if not codigo_actual or not codigo_nuevo or not nombre:
             raise ValueError("El código y el nombre del producto son obligatorios.")
 
-        contenido_original = self.ruta_excel_base.read_bytes()
-        respaldo = self.ruta_excel_base.with_name(
-            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
-        )
-        plantilla_actualizada = False
+        tiene_excel = bool(getattr(self, "ruta_excel_base", None) and self.ruta_excel_base.exists())
+        sync_fn = None
+        restore_fn = None
 
-        def sincronizar_plantilla() -> list[int]:
-            nonlocal plantilla_actualizada
-            shutil.copy2(self.ruta_excel_base, respaldo)
-            libro, hoja = self._abrir_libro_editable()
-            try:
-                filas_producto: list[int] = []
-                filas_validas: list[int] = []
-                for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
-                    val_c = hoja.cell(fila, self._col_codigo).value
-                    val_n = hoja.cell(fila, self._col_nombre).value
-                    if val_c is not None and str(val_n or "").strip():
-                        filas_validas.append(fila)
-                        if normalizar_codigo(str(val_c)) == codigo_actual:
-                            filas_producto.append(fila)
+        if tiene_excel:
+            contenido_original = self.ruta_excel_base.read_bytes()
+            respaldo = self.ruta_excel_base.with_name(
+                f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
+            )
+            plantilla_actualizada = False
 
-                filas_catalogo_producto = [
-                    producto
-                    for producto in self.product_store.list_catalog_rows(include_inactive=True)
-                    if str(producto["code"]) == codigo_actual
-                ]
-                if not filas_producto or len(filas_producto) != len(filas_catalogo_producto):
-                    raise RuntimeError(
-                        f"Las filas de '{codigo_actual}' en Productos.xlsx no coinciden con el catálogo."
-                    )
+            def sincronizar_plantilla() -> list[int]:
+                nonlocal plantilla_actualizada
+                shutil.copy2(self.ruta_excel_base, respaldo)
+                libro, hoja = self._abrir_libro_editable()
+                try:
+                    filas_producto: list[int] = []
+                    filas_validas: list[int] = []
+                    for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
+                        val_c = hoja.cell(fila, self._col_codigo).value
+                        val_n = hoja.cell(fila, self._col_nombre).value
+                        if val_c is not None and str(val_n or "").strip():
+                            filas_validas.append(fila)
+                            if normalizar_codigo(str(val_c)) == codigo_actual:
+                                filas_producto.append(fila)
 
-                codigo_excel = int(codigo_nuevo) if codigo_nuevo.isdigit() else codigo_nuevo
-                for fila in filas_producto:
-                    hoja.cell(fila, self._col_codigo, codigo_excel)
-                    hoja.cell(fila, self._col_nombre, nombre)
-                    self._escribir_stock_en_celdas(hoja, fila, stock)
+                    filas_catalogo_producto = [
+                        producto
+                        for producto in self.product_store.list_catalog_rows(include_inactive=True)
+                        if str(producto["code"]) == codigo_actual
+                    ]
+                    if not filas_producto or len(filas_producto) != len(filas_catalogo_producto):
+                        raise RuntimeError(
+                            f"Las filas de '{codigo_actual}' en Productos.xlsx no coinciden con el catálogo."
+                        )
 
-                _reemplazar_atomicamente(self.ruta_excel_base, lambda p: libro.save(p))
-                plantilla_actualizada = True
-                return filas_validas
-            finally:
-                libro.close()
+                    codigo_excel = int(codigo_nuevo) if codigo_nuevo.isdigit() else codigo_nuevo
+                    for fila in filas_producto:
+                        hoja.cell(fila, self._col_codigo, codigo_excel)
+                        hoja.cell(fila, self._col_nombre, nombre)
+                        self._escribir_stock_en_celdas(hoja, fila, stock)
 
-        def restaurar_plantilla() -> None:
-            if plantilla_actualizada:
-                self._restaurar_desde_bytes(contenido_original)
+                    _reemplazar_atomicamente(self.ruta_excel_base, lambda p: libro.save(p))
+                    plantilla_actualizada = True
+                    return filas_validas
+                finally:
+                    libro.close()
+
+            def restaurar_plantilla() -> None:
+                if plantilla_actualizada:
+                    self._restaurar_desde_bytes(contenido_original)
+
+            sync_fn = sincronizar_plantilla
+            restore_fn = restaurar_plantilla
 
         self.product_store.update_product(
             old_code=codigo_actual,
             new_code=codigo_nuevo,
             name=nombre,
             stock=stock,
-            synchronize_template=sincronizar_plantilla,
-            restore_template=restaurar_plantilla,
+            synchronize_template=sync_fn,
+            restore_template=restore_fn,
             stock_minimo=stock_minimo,
             stock_maximo=stock_maximo,
             cod_barras=cod_barras,
@@ -182,7 +190,7 @@ class TemplateSyncMixin:
         stock_inicial: Optional[int] = None,
         cod_barras: str = "",
     ) -> Tuple[bool, str, Optional[int]]:
-        """Inserta un nuevo producto en SQLite y Excel inmediatamente debajo de `codigo_arriba`."""
+        """Inserta un nuevo producto en SQLite (y en Excel si está presente) inmediatamente debajo de `codigo_arriba`."""
         cod_nuevo_norm = normalizar_codigo(codigo_nuevo)
         cod_arriba_norm = normalizar_codigo(codigo_arriba)
 
@@ -193,73 +201,81 @@ class TemplateSyncMixin:
         if cod_arriba_norm not in self.catalogo:
             return False, f"No se encontro el producto de referencia con codigo '{cod_arriba_norm}' en el catalogo.", None
 
-        contenido_original = self.ruta_excel_base.read_bytes()
-        respaldo = self.ruta_excel_base.with_name(
-            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
-        )
-        plantilla_actualizada = False
+        tiene_excel = bool(getattr(self, "ruta_excel_base", None) and self.ruta_excel_base.exists())
+        sync_fn = None
+        restore_fn = None
 
-        def sincronizar_plantilla(orden: int) -> list[int]:
-            nonlocal plantilla_actualizada
-            shutil.copy2(self.ruta_excel_base, respaldo)
-            libro, hoja = self._abrir_libro_editable()
-            try:
-                fila_referencia = next(
-                    (
+        if tiene_excel:
+            contenido_original = self.ruta_excel_base.read_bytes()
+            respaldo = self.ruta_excel_base.with_name(
+                f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
+            )
+            plantilla_actualizada = False
+
+            def sincronizar_plantilla(orden: int) -> list[int]:
+                nonlocal plantilla_actualizada
+                shutil.copy2(self.ruta_excel_base, respaldo)
+                libro, hoja = self._abrir_libro_editable()
+                try:
+                    fila_referencia = next(
+                        (
+                            fila
+                            for fila in range(self._fila_inicio_datos, hoja.max_row + 1)
+                            if normalizar_codigo(str(hoja.cell(fila, self._col_codigo).value or "")) == cod_arriba_norm
+                        ),
+                        None,
+                    )
+                    if fila_referencia is None:
+                        raise ValueError(f"No se encontró el código de referencia '{cod_arriba_norm}' en Productos.xlsx.")
+
+                    fila_nueva = fila_referencia + 1
+                    hoja.insert_rows(fila_nueva, 1)
+                    for columna in range(1, hoja.max_column + 1):
+                        origen = hoja.cell(fila_referencia, columna)
+                        destino = hoja.cell(fila_nueva, columna)
+                        if origen.has_style:
+                            destino._style = copy(origen._style)
+                        if origen.number_format:
+                            destino.number_format = origen.number_format
+                    hoja.row_dimensions[fila_nueva].height = hoja.row_dimensions[fila_referencia].height
+
+                    codigo_excel = int(cod_nuevo_norm) if cod_nuevo_norm.isdigit() else cod_nuevo_norm
+                    hoja.cell(fila_nueva, self._col_codigo, codigo_excel)
+                    hoja.cell(fila_nueva, self._col_nombre, str(nombre_nuevo).strip())
+                    self._escribir_stock_en_celdas(hoja, fila_nueva, stock_inicial or 0)
+
+                    _reemplazar_atomicamente(self.ruta_excel_base, lambda p: libro.save(p))
+                    plantilla_actualizada = True
+                finally:
+                    libro.close()
+
+                libro_verif = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True, read_only=True)
+                try:
+                    hoja_verif = (
+                        libro_verif[self.nombre_hoja]
+                        if self.nombre_hoja in libro_verif.sheetnames
+                        else libro_verif.active
+                    )
+                    if hoja_verif is None:
+                        raise ValueError("No se pudo verificar la plantilla después del alta.")
+                    filas_plantilla = [
                         fila
-                        for fila in range(self._fila_inicio_datos, hoja.max_row + 1)
-                        if normalizar_codigo(str(hoja.cell(fila, self._col_codigo).value or "")) == cod_arriba_norm
-                    ),
-                    None,
-                )
-                if fila_referencia is None:
-                    raise ValueError(f"No se encontró el código de referencia '{cod_arriba_norm}' en Productos.xlsx.")
+                        for fila in range(self._fila_inicio_datos, hoja_verif.max_row + 1)
+                        if hoja_verif.cell(fila, self._col_codigo).value is not None
+                        and str(hoja_verif.cell(fila, self._col_nombre).value or "").strip()
+                    ]
+                    if orden >= len(filas_plantilla) or filas_plantilla[orden] != fila_nueva:
+                        raise RuntimeError("El orden insertado en Productos.xlsx no coincide con el orden de SQLite.")
+                    return filas_plantilla
+                finally:
+                    libro_verif.close()
 
-                fila_nueva = fila_referencia + 1
-                hoja.insert_rows(fila_nueva, 1)
-                for columna in range(1, hoja.max_column + 1):
-                    origen = hoja.cell(fila_referencia, columna)
-                    destino = hoja.cell(fila_nueva, columna)
-                    if origen.has_style:
-                        destino._style = copy(origen._style)
-                    if origen.number_format:
-                        destino.number_format = origen.number_format
-                hoja.row_dimensions[fila_nueva].height = hoja.row_dimensions[fila_referencia].height
+            def restaurar_plantilla() -> None:
+                if plantilla_actualizada:
+                    self._restaurar_desde_bytes(contenido_original)
 
-                codigo_excel = int(cod_nuevo_norm) if cod_nuevo_norm.isdigit() else cod_nuevo_norm
-                hoja.cell(fila_nueva, self._col_codigo, codigo_excel)
-                hoja.cell(fila_nueva, self._col_nombre, str(nombre_nuevo).strip())
-                self._escribir_stock_en_celdas(hoja, fila_nueva, stock_inicial or 0)
-
-                _reemplazar_atomicamente(self.ruta_excel_base, lambda p: libro.save(p))
-                plantilla_actualizada = True
-            finally:
-                libro.close()
-
-            libro_verif = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True, read_only=True)
-            try:
-                hoja_verif = (
-                    libro_verif[self.nombre_hoja]
-                    if self.nombre_hoja in libro_verif.sheetnames
-                    else libro_verif.active
-                )
-                if hoja_verif is None:
-                    raise ValueError("No se pudo verificar la plantilla después del alta.")
-                filas_plantilla = [
-                    fila
-                    for fila in range(self._fila_inicio_datos, hoja_verif.max_row + 1)
-                    if hoja_verif.cell(fila, self._col_codigo).value is not None
-                    and str(hoja_verif.cell(fila, self._col_nombre).value or "").strip()
-                ]
-                if orden >= len(filas_plantilla) or filas_plantilla[orden] != fila_nueva:
-                    raise RuntimeError("El orden insertado en Productos.xlsx no coincide con el orden de SQLite.")
-                return filas_plantilla
-            finally:
-                libro_verif.close()
-
-        def restaurar_plantilla() -> None:
-            if plantilla_actualizada:
-                self._restaurar_desde_bytes(contenido_original)
+            sync_fn = sincronizar_plantilla
+            restore_fn = restaurar_plantilla
 
         try:
             orden, nombre_arriba = self.product_store.add_product_after(
@@ -267,8 +283,8 @@ class TemplateSyncMixin:
                 name=str(nombre_nuevo).strip(),
                 reference_code=cod_arriba_norm,
                 stock=stock_inicial or 0,
-                synchronize_template=sincronizar_plantilla,
-                restore_template=restaurar_plantilla,
+                synchronize_template=sync_fn,
+                restore_template=restore_fn,
                 cod_barras=cod_barras,
             )
         except (ValueError, OSError, RuntimeError) as error:
@@ -282,85 +298,67 @@ class TemplateSyncMixin:
         ), fila_nueva
 
     def sincronizar_stocks(self, stocks: Dict[str, int]) -> int:
-        """Actualiza el stock en la base SQLite y sincroniza Productos.xlsx."""
+        """Actualiza el stock en la base SQLite de forma atómica e instantánea (sin tocar Excel)."""
         if not stocks:
             return 0
 
         stocks_normalizados = {normalizar_codigo(k): int(v) for k, v in stocks.items()}
-        contenido_original = self.ruta_excel_base.read_bytes()
-        respaldo = self.ruta_excel_base.with_name(
-            f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
-        )
-        plantilla_actualizada = False
-        codigos_detectados: set[str] = set()
-
-        def sincronizar_plantilla() -> list[int]:
-            nonlocal plantilla_actualizada
-            shutil.copy2(self.ruta_excel_base, respaldo)
-            libro, hoja = self._abrir_libro_editable()
-            try:
-                filas_validas: list[int] = []
-                for fila in range(self._fila_inicio_datos, hoja.max_row + 1):
-                    val_cod = hoja.cell(fila, self._col_codigo).value
-                    if val_cod is None:
-                        continue
-                    val_nom = hoja.cell(fila, self._col_nombre).value
-                    if str(val_nom or "").strip():
-                        filas_validas.append(fila)
-                    cod = normalizar_codigo(str(val_cod))
-                    codigos_detectados.add(cod)
-                    if cod in stocks_normalizados:
-                        self._escribir_stock_en_celdas(hoja, fila, stocks_normalizados[cod])
-
-                _reemplazar_atomicamente(self.ruta_excel_base, lambda p: libro.save(p))
-                plantilla_actualizada = True
-                return filas_validas
-            finally:
-                libro.close()
-
-        def restaurar_plantilla() -> None:
-            if plantilla_actualizada:
-                self._restaurar_desde_bytes(contenido_original)
-
-        filas_actualizadas = self.product_store.update_stocks(
-            stocks=stocks_normalizados,
-            synchronize_template=sincronizar_plantilla,
-            restore_template=restaurar_plantilla,
-        )
-
-        # Sincronizar estado de productos: los productos ausentes en Productos.xlsx
-        # se marcan automáticamente como inactivos (active = 0) en SQLite.
-        if hasattr(self, "product_store") and self.product_store and codigos_detectados:
-            try:
-                _, desact = self.product_store.sync_active_status_with_codes(codigos_detectados)
-                self._ultimos_desactivados = desact
-            except Exception as err:
-                logger.warning("No se pudo sincronizar estado activo con Excel: %s", err)
-
+        filas_actualizadas = self.product_store.update_stocks(stocks=stocks_normalizados)
         self._actualizar_stocks_en_memoria(stocks_normalizados)
-        if hasattr(self, "_cargar_catalogo"):
-            self._cargar_catalogo(forzar_excel=False)
         return filas_actualizadas
 
+    def exportar_catalogo_a_excel(self, ruta_destino: Path | str | None = None) -> int:
+        """Exporta el catálogo completo y saldos vigentes desde SQLite hacia un archivo Excel."""
+        from .excel_exporter import exportar_catalogo_a_excel as _exportar
+
+        destino = Path(ruta_destino) if ruta_destino else self.ruta_excel_base
+        return _exportar(
+            product_store=self.product_store,
+            ruta_destino=destino,
+            nombre_hoja=self.nombre_hoja,
+        )
+
     def sincronizar_catalogo_completo_excel(self) -> int:
-        """Vuelca todo el stock y productos consolidados desde SQLite hacia Productos.xlsx."""
+        """Sincroniza y vuelca el stock de SQLite con Productos.xlsx.
+
+        Si Productos.xlsx ya existe, valida los códigos presentes desactivando
+        en SQLite los que hayan sido quitados de la planilla. Luego exporta/actualiza.
+        """
         if not hasattr(self, "product_store") or not self.product_store:
             return 0
-        rows = self.product_store.list_products(solo_activos=True)
-        if not rows:
-            return 0
-        stocks = {str(r["code"]).strip(): int(r["stock"]) for r in rows}
-        return self.sincronizar_stocks(stocks)
+        if getattr(self, "ruta_excel_base", None) and self.ruta_excel_base.exists():
+            try:
+                wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True, read_only=True)
+                sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+                if sheet:
+                    codigos_en_plantilla = set()
+                    for r in range(self._fila_inicio_datos, sheet.max_row + 1):
+                        val = sheet.cell(r, self._col_codigo).value
+                        if val is not None and str(val).strip():
+                            codigos_en_plantilla.add(normalizar_codigo(str(val)))
+                    if codigos_en_plantilla:
+                        _, desact = self.product_store.sync_active_status_with_codes(codigos_en_plantilla)
+                        self._ultimos_desactivados = desact
+                        if hasattr(self, "_cargar_catalogo"):
+                            self._cargar_catalogo(forzar_excel=False)
+                wb.close()
+            except Exception as e:
+                logger.warning("No se pudo leer códigos existentes de la plantilla: %s", e)
 
-    def importar_catalogo_desde_excel(self) -> ResultadoSincronizacionExcel:
-        """Lee Productos.xlsx e importa o actualiza los productos y stocks en SQLite.
+        return self.exportar_catalogo_a_excel()
+
+    def importar_catalogo_desde_excel(
+        self, ruta_excel: Path | str | None = None
+    ) -> ResultadoSincronizacionExcel:
+        """Lee Productos.xlsx (o una ruta provista) e importa o actualiza los productos y stocks en SQLite.
 
         Aquellos productos en la base de datos que ya no figuren en la planilla
         se marcan automáticamente como inactivos (active = 0).
         """
-        if not self.ruta_excel_base.exists():
-            raise FileNotFoundError(f"No se encontró el archivo: {self.ruta_excel_base}")
-        wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
+        origen = Path(ruta_excel) if ruta_excel else self.ruta_excel_base
+        if not origen.exists():
+            raise FileNotFoundError(f"No se encontró el archivo: {origen}")
+        wb = openpyxl.load_workbook(str(origen), data_only=True)
         try:
             sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
             if sheet is None:

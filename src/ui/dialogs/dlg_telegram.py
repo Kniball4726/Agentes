@@ -3,7 +3,7 @@
 from typing import Any
 import flet as ft
 
-from ...telegram_notifier import (
+from ...integrations.telegram_notifier import (
     cargar_config_telegram,
     enviar_mensaje_telegram,
     guardar_config_telegram,

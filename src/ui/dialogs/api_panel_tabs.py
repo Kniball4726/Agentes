@@ -13,9 +13,9 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ...server import PUERTO_WEB_DEFAULT as _DEFAULT_PUERTO
-from ...server import obtener_ip_local as _default_ip_local
-from ...server import obtener_ip_tailscale as _default_ip_tailscale
+from ...server_app import PUERTO_WEB_DEFAULT as _DEFAULT_PUERTO
+from ...server_app import obtener_ip_local as _default_ip_local
+from ...server_app import obtener_ip_tailscale as _default_ip_tailscale
 from ..theme import ROJO, SECUNDARIO
 
 

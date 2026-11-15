@@ -21,7 +21,7 @@ def obtener_stock_manager_movimiento(interfaz: Any, cache_sm: list[Any]) -> Any:
     ruta_excel = getattr(getattr(interfaz, "menu", None), "ruta_excel_base", None)
     if ruta_excel:
         try:
-            from src.stock_manager import StockManager
+            from src.inventory import StockManager
 
             cache_sm[0] = StockManager(ruta_excel)
             return cache_sm[0]

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from src.api.v1.documentos import router as documentos_router
 from src.paths import application_root
 from src.flet_gui import InterfazFlet
-from src.user_store import User, UserRole
+from src.auth import User, UserRole
 
 
 class TestDocumentosVisor(unittest.TestCase):

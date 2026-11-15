@@ -8,11 +8,11 @@ from typing import Any
 import flet as ft
 
 from ....backup_manager import crear_backup_sistema
-from ....canjes_parser import parsear_canje_excel
-from ....dispatch_manifest import generar_hoja_ruta_pdf
-from ....mercado_libre_parser import parsear_pedido_mercado_libre
+from ....parsers.canjes_parser import parsear_canje_excel
+from ....parsers.mercado_libre_parser import parsear_pedido_mercado_libre
+from ....parsers.remito_parser import parsear_remito
 from ....paths import application_root
-from ....remito_parser import parsear_remito
+from ....stock.manifest_pdf import generar_hoja_ruta_pdf
 from ...theme import ROJO
 from .cierre_operario_exec import (
     ejecutar_tarea_cierre_operario,

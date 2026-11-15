@@ -6,7 +6,7 @@ import inspect
 import sys
 from typing import Any
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 
 
 def resolve_stock_manager(*mod_names: str):

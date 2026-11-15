@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import flet as ft
 
-from src.orders_store import Cliente, OrderStore
-from src.remito_parser import ResultadoRemito, parsear_remito
+from src.orders import Cliente, OrderStore
+from src.parsers.remito_parser import ResultadoRemito, parsear_remito
 
 
 class TestClientCodeAndOrderFields(unittest.TestCase):
@@ -124,7 +124,7 @@ class TestClientCodeAndOrderFields(unittest.TestCase):
             "Cant. Articulos: 1\n"
         )
         fake_page = SimpleNamespace(extract_text=lambda: pdf_text)
-        with patch("src.remito_parser.PdfReader", return_value=SimpleNamespace(pages=[fake_page])):
+        with patch("src.parsers.remito_parser.PdfReader", return_value=SimpleNamespace(pages=[fake_page])):
             res = parsear_remito(Path("remito_mock.pdf"))
 
         self.assertEqual(res.codigo_cliente, "00714")
@@ -137,7 +137,7 @@ class TestClientCodeAndOrderFields(unittest.TestCase):
     def test_dialogo_pedidos_stepper_y_logistica_obligatoria(self):
         """Prueba los controles de UI de bultos (stepper +/-) y obligatoriedad de logística."""
         from src.ui.dialogs.dlg_pedidos import mostrar_dialogo_crear_pedido
-        from src.user_store import User
+        from src.auth import User
 
         class FakePage:
             def __init__(self):
@@ -183,7 +183,7 @@ class TestClientCodeAndOrderFields(unittest.TestCase):
         """Verifica que el boton Adjuntar Comprobante este presente y llame a subir_archivos_desde_pc."""
         import asyncio
         from src.ui.dialogs.dlg_pedidos import mostrar_dialogo_crear_pedido
-        from src.user_store import User
+        from src.auth import User
 
         class FakePage:
             def __init__(self):
@@ -241,7 +241,7 @@ class TestClientCodeAndOrderFields(unittest.TestCase):
         import asyncio
         from unittest.mock import AsyncMock
         from src.ui.dialogs.dlg_pedidos import mostrar_dialogo_crear_pedido
-        from src.user_store import User
+        from src.auth import User
 
         class FakePage:
             def __init__(self):

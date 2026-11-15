@@ -2,7 +2,7 @@ import socket
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.tray_icon import (
+from src.tray import (
     ESTADO_CLIENTE,
     ESTADO_DETENIDO,
     ESTADO_ERROR,
@@ -53,13 +53,13 @@ class TestTrayIcon(unittest.TestCase):
         self.assertEqual(tray.estado, ESTADO_ERROR)
         self.assertIn("Servidor caído", mock_icon.title)
 
-    @patch("src.tray_icon.subprocess.run")
+    @patch("src.tray.net_and_images.subprocess.run")
     def test_copiar_al_portapapeles(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         res = _copiar_al_portapapeles("test")
         self.assertTrue(res)
 
-    @patch("src.tray_icon.socket.create_connection")
+    @patch("src.tray.tray_controller.socket.create_connection")
     def test_verificar_servidor_activo(self, mock_conn):
         tray = TrayIconServidor(port=8550)
         mock_conn.return_value = MagicMock()
@@ -68,7 +68,7 @@ class TestTrayIcon(unittest.TestCase):
         mock_conn.side_effect = OSError("Conexión rechazada")
         self.assertFalse(tray._verificar_servidor_activo())
 
-    @patch("src.tray_icon.TrayIconServidor.iniciar")
+    @patch("src.tray.tray_controller.TrayIconServidor.iniciar")
     def test_iniciar_icono_bandeja_helper(self, mock_iniciar):
         mock_iniciar.return_value = True
         tray = iniciar_icono_bandeja(port=8550, https=True)

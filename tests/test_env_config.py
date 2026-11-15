@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.email_sender import obtener_config_email
-from src.mercado_libre_api import cargar_config_mercadolibre
-from src.telegram_notifier import cargar_config_telegram
-from src.user_store import UserStore
+from src.auth import UserStore
+from src.integrations.email_sender import obtener_config_email
+from src.integrations.mercado_libre_api import cargar_config_mercadolibre
+from src.integrations.telegram_notifier import cargar_config_telegram
 
 
 class TestEnvConfig(unittest.TestCase):

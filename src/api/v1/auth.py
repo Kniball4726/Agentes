@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..deps import crear_sesion, get_current_user, get_user_store, require_roles, revocar_sesion
 from ..schemas import LoginRequest, LoginResponse, UsuarioResponse
-from ...auth.models import USER_ROLES
-from ...user_store import UserStore
+from ...auth import USER_ROLES, UserStore
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 

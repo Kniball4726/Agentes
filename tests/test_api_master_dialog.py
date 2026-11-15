@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import flet as ft
 
-from src.orders_store import OrderStore
-from src.user_store import UserStore
+from src.auth import UserStore
+from src.orders import OrderStore
 from src.ui.dialogs.dlg_api import (
     mostrar_dialogo_api_master,
     mostrar_gestion_api_keys,

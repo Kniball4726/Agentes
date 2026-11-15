@@ -9,14 +9,15 @@ from typing import Any
 import flet as ft
 
 from ....backup_manager import crear_backup_sistema as _default_crear_backup
-from ....canjes_parser import parsear_canje_excel as _default_parsear_canje
 from ....consolidator import ItemConsolidado
-from ....dispatch_manifest import generar_hoja_ruta_pdf as _default_generar_hoja_ruta
-from ....mercado_libre_parser import parsear_pedido_mercado_libre as _default_parsear_ml
+from ....parsers.canjes_parser import parsear_canje_excel as _default_parsear_canje
+from ....parsers.mercado_libre_parser import parsear_pedido_mercado_libre as _default_parsear_ml
+from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
+from ....parsers.remito_parser import parsear_remito as _default_parsear_remito
 from ....paths import application_root
-from ....remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
-from ....remito_parser import parsear_remito as _default_parsear_remito
+from ....stock.manifest_pdf import generar_hoja_ruta_pdf as _default_generar_hoja_ruta
 from ...theme import ROJO
+from .cierre_reportes_helper import generar_reportes_cierre_jornada
 from .hoja_ruta import (
     _get_stock_manager_cls as _default_get_sm_cls,
     gestionar_hoja_ruta_cierre,
@@ -233,17 +234,20 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
 
         arch_p = deps["app_root"]() / "data" / "pedidos_archivos" / p.nombre_archivo
         if not arch_p.exists():
-            candidatos = [
-                interfaz.menu.carpeta_descontados / "MercadoLibre" / p.nombre_archivo,
-                interfaz.menu.carpeta_descontados / "Mayoristas" / p.nombre_archivo,
-                interfaz.menu.carpeta_descontados / "Canjes" / p.nombre_archivo,
-                interfaz.menu.carpeta_descontados / "Fabrica" / p.nombre_archivo,
-                interfaz.menu.carpeta_descontados / p.nombre_archivo,
-            ]
-            for cand in candidatos:
-                if cand.exists():
-                    arch_p = cand
-                    break
+            carp_desc = getattr(interfaz.menu, "carpeta_descontados", None)
+            if carp_desc:
+                carp_desc_path = Path(carp_desc)
+                candidatos = [
+                    carp_desc_path / "MercadoLibre" / p.nombre_archivo,
+                    carp_desc_path / "Mayoristas" / p.nombre_archivo,
+                    carp_desc_path / "Canjes" / p.nombre_archivo,
+                    carp_desc_path / "Fabrica" / p.nombre_archivo,
+                    carp_desc_path / p.nombre_archivo,
+                ]
+                for cand in candidatos:
+                    if cand.exists():
+                        arch_p = cand
+                        break
 
         if arch_p.exists():
             try:
@@ -289,16 +293,36 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
         items_consolidados=items_consolidados,
         carpeta_destino=interfaz.menu.carpeta_descuentos,
         pedidos_procesados=pedidos_doc,
-        guardar_archivo=True,
+        guardar_archivo=False,
         prefijo_archivo="Cierre_Descuento",
         descuento_ya_aplicado=True,
     )
 
-    pdf_path = Path(rep.archivo_pdf) if rep.archivo_pdf else None
-    xls_path = Path(rep.archivo_guardado) if rep.archivo_guardado else None
+    usr_cierre = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario"
+    if hasattr(interfaz.order_store, "obtener_ventana_ultimo_cierre"):
+        fecha_desde, fecha_hasta, cierre_ant_id = interfaz.order_store.obtener_ventana_ultimo_cierre()
+    else:
+        from datetime import datetime
+        hoy_str = datetime.now().strftime("%Y-%m-%d")
+        fecha_desde, fecha_hasta, cierre_ant_id = f"{hoy_str}T00:00:00", f"{hoy_str}T23:59:59", None
+
+    archivos_rep = generar_reportes_cierre_jornada(
+        interfaz=interfaz,
+        stock_mgr=stock_mgr,
+        pedidos_pendientes=pedidos_pendientes,
+        pedidos_doc=pedidos_doc,
+        items_consolidados=items_consolidados,
+        reporte_simulado=rep,
+        usr_cierre=usr_cierre,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cierre_anterior_id=cierre_ant_id,
+    )
+    pdf_path = archivos_rep.get("pdf_path")
+    xls_path = archivos_rep.get("xls_path")
+    admin_pdf_path = archivos_rep.get("admin_pdf_path")
     total_arts = sum(it.cantidad_total for it in items_consolidados.values())
     resumen_p = f"{len(pedidos_pendientes)} pedidos ({total_arts} un.)"
-    usr_cierre = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operario"
 
     cierre_id = interfaz.order_store.registrar_cierre(
         usuario=usr_cierre,
@@ -311,7 +335,7 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
 
     total_bultos = sum(p.bultos for p in pedidos_pendientes)
     try:
-        from ....telegram_notifier import notificar_cierre_jornada_telegram
+        from ....integrations.telegram_notifier import notificar_cierre_jornada_telegram
         notificar_cierre_jornada_telegram(
             responsable=usr_cierre,
             pedidos=len(pedidos_pendientes),
@@ -322,9 +346,11 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
         pass
 
     try:
-        sm_cierre = deps["get_sm_cls"]()(ruta_excel_base=interfaz.menu.ruta_excel_base)
-        if hasattr(sm_cierre, "sincronizar_catalogo_completo_excel"):
-            sm_cierre.sincronizar_catalogo_completo_excel()
+        ruta_xl = getattr(interfaz.menu, "ruta_excel_base", None)
+        if ruta_xl and Path(ruta_xl).exists():
+            sm_cierre = deps["get_sm_cls"]()(ruta_excel_base=ruta_xl)
+            if hasattr(sm_cierre, "sincronizar_catalogo_completo_excel"):
+                sm_cierre.sincronizar_catalogo_completo_excel()
     except Exception:
         pass
 
@@ -407,6 +433,7 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
         "cierre_id": cierre_id,
         "pdf_path": pdf_path,
         "xls_path": xls_path,
+        "admin_pdf_path": admin_pdf_path,
         "hoja_ruta_pdf": hoja_ruta_pdf,
         "resumen_p": resumen_p,
         "alerta_resumen_notif": alerta_resumen_notif,

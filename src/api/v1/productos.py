@@ -13,7 +13,7 @@ from ..schemas import (
     BuscarProductosResponse,
     ProductoItemResponse,
 )
-from ...product_store import ProductStore
+from ...products import ProductStore
 
 router = APIRouter(prefix="/productos", tags=["Productos y Stock"])
 

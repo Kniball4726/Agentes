@@ -10,11 +10,11 @@ import pytest
 from reportlab.lib.pagesizes import A4
 import pypdf
 
-from src.orders_store import OrderStore, LOGISTICA_OPCIONES, Pedido
 from src.agent import AgenteRemitosStock
-from src.stock_manager import StockManager
-from src.label_generator import generar_etiquetas_bultos_pdf
+from src.inventory import StockManager
+from src.labels import generar_etiquetas_bultos_pdf
 from src.menu import MenuAgente
+from src.orders import OrderStore, LOGISTICA_OPCIONES, Pedido
 
 
 def test_logistica_canje_disponible_y_persistente(tmp_path: Path):
@@ -247,7 +247,7 @@ def test_obtener_items_y_desarmar_pedido(tmp_path: Path):
 
 def test_resultado_remito_compatibilidad_discrepancia():
     """Verifica que ResultadoRemito no falle por 'discrepancia' u otros argumentos en __init__."""
-    from src.remito_parser import ResultadoRemito, ItemRemito
+    from src.parsers.remito_parser import ResultadoRemito, ItemRemito
 
     # Con discrepancia explícita (para compatibilidad hacia atrás)
     r1 = ResultadoRemito(
@@ -281,7 +281,7 @@ def test_resultado_remito_compatibilidad_discrepancia():
 
 def test_cierre_jornada_y_actualizar_hoja_ruta(tmp_path: Path):
     """Verifica que el flujo de cierre de jornada y la actualización de hoja de ruta en OrderStore funcionen correctamente."""
-    from src.dispatch_manifest import generar_hoja_ruta_pdf
+    from src.stock.manifest_pdf import generar_hoja_ruta_pdf
 
     db_path = tmp_path / "test_cierre.sqlite3"
     store = OrderStore(db_path)
@@ -334,7 +334,7 @@ def test_cierre_jornada_y_actualizar_hoja_ruta(tmp_path: Path):
 
 def test_etiquetas_llenar_hoja_a4_pedido_individual(tmp_path: Path):
     """Verifica que un pedido individual con pocos bultos complete los 6 espacios de la hoja A4."""
-    from src.label_generator import generar_etiquetas_bultos_pdf
+    from src.labels import generar_etiquetas_bultos_pdf
     destino = tmp_path / "etiquetas_llenado"
     destino.mkdir()
 
@@ -371,7 +371,7 @@ def test_etiquetas_llenar_hoja_a4_pedido_individual(tmp_path: Path):
 
 def test_etiquetas_lote_pedidos_a4(tmp_path: Path):
     """Verifica la generacion de rotulos por lote empaquetando 6 rotulos por pagina A4."""
-    from src.label_generator import generar_etiquetas_lote_pedidos_pdf
+    from src.labels import generar_etiquetas_lote_pedidos_pdf
     destino = tmp_path / "etiquetas_lote"
     destino.mkdir()
 

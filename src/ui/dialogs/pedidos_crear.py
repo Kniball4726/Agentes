@@ -9,9 +9,9 @@ from typing import Any, Callable
 import flet as ft
 
 from ...agent import AgenteRemitosStock
-from ...orders_store import LOGISTICA_OPCIONES, calcular_hash_archivo
+from ...inventory import StockManager as _DefaultStockManager
+from ...orders import LOGISTICA_OPCIONES, calcular_hash_archivo
 from ...paths import application_root
-from ...stock_manager import StockManager as _DefaultStockManager
 from ..theme import ROJO
 
 
@@ -373,14 +373,14 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             try:
                 ext_c = arch_candidato.suffix.lower()
                 if ext_c == ".pdf":
-                    from ...remito_parser import parsear_remito
+                    from ...parsers.remito_parser import parsear_remito
                     datos_doc = parsear_remito(arch_candidato)
                 elif ext_c == ".docx":
-                    from ...mercado_libre_parser import parsear_pedido_mercado_libre
+                    from ...parsers.mercado_libre_parser import parsear_pedido_mercado_libre
                     sm = _resolver_sm_cls()(interfaz.menu.ruta_excel_base)
                     datos_doc = parsear_pedido_mercado_libre(arch_candidato, [(cod, val[1]) for cod, val in sm.catalogo.items()])
                 else:
-                    from ...canjes_parser import parsear_canje_excel
+                    from ...parsers.canjes_parser import parsear_canje_excel
                     datos_doc = parsear_canje_excel(arch_candidato)
 
                 if datos_doc:

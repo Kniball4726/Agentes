@@ -3,11 +3,11 @@ import unittest
 from pathlib import Path
 import openpyxl
 
-from src.factory_parser import (
+from src.inventory import StockManager
+from src.parsers.factory_parser import (
     parsear_archivo_fabrica,
     parsear_pedido_fabrica_excel,
 )
-from src.stock_manager import StockManager
 
 
 class FactoryIngestionTests(unittest.TestCase):

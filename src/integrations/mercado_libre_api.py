@@ -23,9 +23,9 @@ from docx import Document
 
 from .. import secretos
 from ..parsers.mercado_libre_parser import _buscar_codigo
+from ..parsers.remito_parser import normalizar_codigo
 from ..paths import application_root
 from ..stock.models import RegistroDescuento
-from ..stock_manager import normalizar_codigo
 
 CONFIG_ML_PATH_DEFAULT = "data/config_mercadolibre.json"
 API_BASE_URL = "https://api.mercadolibre.com"

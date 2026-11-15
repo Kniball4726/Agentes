@@ -8,8 +8,8 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
+from ...inventory import StockManager as _DefaultStockManager
 from ...parsers.mercado_full_parser import parsear_archivo_mercado_full
-from ...stock_manager import StockManager as _DefaultStockManager
 import sys
 
 

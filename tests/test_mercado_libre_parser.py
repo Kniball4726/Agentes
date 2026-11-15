@@ -4,7 +4,7 @@ from pathlib import Path
 
 from docx import Document
 
-from src.mercado_libre_parser import _buscar_codigo, parsear_pedido_mercado_libre
+from src.parsers.mercado_libre_parser import _buscar_codigo, parsear_pedido_mercado_libre
 
 
 class MercadoLibreParserTests(unittest.TestCase):

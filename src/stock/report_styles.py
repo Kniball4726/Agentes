@@ -97,6 +97,21 @@ def crear_hoja_reporte_excel(
     return wb, ws
 
 
+def estilizar_fila_excel(
+    ws: openpyxl.worksheet.worksheet.Worksheet,
+    row_idx: int,
+    num_cols: int,
+    es_zebra: bool = False,
+) -> None:
+    """Aplica fuente, borde y relleno cebreado uniforme a una fila Excel."""
+    fill_row = _FILL_ZEBRA if es_zebra else _FILL_WHITE
+    for c_idx in range(1, num_cols + 1):
+        celda = ws.cell(row_idx, c_idx)
+        celda.font = _FONT_BODY
+        celda.border = _BORDER_THIN
+        celda.fill = fill_row
+
+
 def crear_estilos_pdf() -> dict[str, ParagraphStyle]:
     """Devuelve estilos tipográficos compartidos para reportes PDF de servicio."""
     estilos = getSampleStyleSheet()

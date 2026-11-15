@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 import openpyxl
 
-from src.product_store import ProductStore
-from src.stock_manager import StockManager
+from src.inventory import StockManager
+from src.products import ProductStore
 
 
 class TestExcelInactiveSync(unittest.TestCase):

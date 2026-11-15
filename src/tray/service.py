@@ -1,26 +1,11 @@
-"""Fachada de compatibilidad para el icono del System Tray y seguimiento de clientes."""
+"""Gestión de ciclo de vida y notificaciones de red para el servicio System Tray."""
 
 from __future__ import annotations
 
-import socket
-import subprocess
 from typing import Callable, Optional
 
-from .logger_config import configurar_logging
-from .tray import (
-    COLORES_BADGE,
-    ESTADO_CLIENTE,
-    ESTADO_DETENIDO,
-    ESTADO_ERROR,
-    ESTADO_INICIANDO,
-    ESTADO_ONLINE,
-    TEXTOS_ESTADO,
-    TrayIconServidor,
-    _buscar_icono_base,
-    _copiar_al_portapapeles,
-    _obtener_ip_local,
-    _obtener_ip_tailscale,
-)
+from ..logger_config import configurar_logging
+from .tray_controller import TrayIconServidor
 
 logger = configurar_logging()
 
@@ -79,20 +64,6 @@ def notificar_conexion_cliente(ip: str, agente: str = "") -> bool:
 
 
 __all__ = [
-    "socket",
-    "subprocess",
-    "ESTADO_INICIANDO",
-    "ESTADO_ONLINE",
-    "ESTADO_CLIENTE",
-    "ESTADO_ERROR",
-    "ESTADO_DETENIDO",
-    "TEXTOS_ESTADO",
-    "COLORES_BADGE",
-    "_obtener_ip_local",
-    "_obtener_ip_tailscale",
-    "_copiar_al_portapapeles",
-    "_buscar_icono_base",
-    "TrayIconServidor",
     "_INSTANCIA_ACTIVA",
     "iniciar_icono_bandeja",
     "registrar_actividad_cliente",

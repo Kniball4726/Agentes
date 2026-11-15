@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.remito_parser import parsear_remito
+from src.parsers.remito_parser import parsear_remito
 
 
 class RemitoParserTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class RemitoParserTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.remito_parser.PdfReader",
+            "src.parsers.remito_parser.PdfReader",
             return_value=SimpleNamespace(pages=pages),
         ):
             resultado = parsear_remito(Path("remito.pdf"))

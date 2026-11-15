@@ -8,8 +8,8 @@ import sys
 from dotenv import load_dotenv
 
 from .cli import ArchiveOpsMixin, InteractiveFlowsMixin
+from .parsers.remito_parser import normalizar_codigo
 from .paths import application_root, get_descuentos_dir
-from .remito_parser import normalizar_codigo
 
 __all__ = ["MenuAgente", "normalizar_codigo"]
 

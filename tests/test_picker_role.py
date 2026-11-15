@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import flet as ft
 
-from src.orders_store import OrderStore, Pedido
-from src.user_store import USER_ROLES, UserStore
+from src.auth import USER_ROLES, UserStore
+from src.orders import OrderStore, Pedido
 from src.ui.components.sidebar import obtener_secciones_rol
 from src.ui.components.panels import construir_panel_informes_actividad, construir_panel_metricas
 from src.ui.dashboard_presenter import renderizar_pedidos_preparados_turno, actualizar_estado_dashboard

@@ -12,7 +12,7 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from ._shared import safe_focus
 from .ml_docx_component import MercadoLibreDocxComponent
 from .ml_scanner_component import MercadoLibreScannerComponent

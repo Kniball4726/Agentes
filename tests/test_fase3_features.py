@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import openpyxl
 
-from src.mercado_libre_api import (
+from src.integrations.mercado_libre_api import (
     cargar_config_mercadolibre,
     consultar_ordenes_ml,
     descontar_orden_ml_api,
@@ -23,8 +23,8 @@ from src.mercado_libre_api import (
     renovar_token_ml,
     verificar_credenciales_ml,
 )
-from src.orders_store import OrderStore
-from src.stock_manager import StockManager
+from src.inventory import StockManager
+from src.orders import OrderStore
 
 
 class TestFase3Features(unittest.TestCase):

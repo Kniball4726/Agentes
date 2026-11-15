@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import flet as ft
 
-from src.orders_store import Pedido
+from src.orders import Pedido
 from src.ui.dialogs.dlg_historial_pedidos import (
     abrir_comprobante_pedido,
     abrir_descuento_pedido,

@@ -9,10 +9,10 @@ import flet as ft
 
 from ..theme import ROJO
 from ...agent import AgenteRemitosStock
-from ...mercado_full_parser import parsear_archivo_mercado_full
-from ...orders_store import calcular_hash_archivo
+from ...inventory import StockManager as _DefaultStockManager
+from ...orders import calcular_hash_archivo
+from ...parsers.mercado_full_parser import parsear_archivo_mercado_full
 from ...paths import application_root
-from ...stock_manager import StockManager as _DefaultStockManager
 
 def _get_stock_manager():
     mod = sys.modules.get("src.flet_gui")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...stock_manager import StockManager as _DefaultStockManager
+from ...inventory import StockManager as _DefaultStockManager
 from .pedidos_crear import mostrar_dialogo_crear_pedido
 from .pedidos_gestion import (
     _restituir_stock_pedido,

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import openpyxl
 
-from src.physical_stock_parser import parsear_excel_stock_fisico
+from src.parsers.physical_stock_parser import parsear_excel_stock_fisico
 
 
 class TestPhysicalStockParser(unittest.TestCase):

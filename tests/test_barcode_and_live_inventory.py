@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 import openpyxl
 
-from src.product_store import ProductStore
-from src.stock_manager import StockManager
-from src.user_store import User
+from src.auth import User
+from src.inventory import StockManager
+from src.products import ProductStore
 
 
 class BarcodeAndLiveInventoryTests(unittest.TestCase):

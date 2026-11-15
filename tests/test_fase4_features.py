@@ -23,7 +23,7 @@ from src.anomaly_detector import (
     ejecutar_diagnostico_integral_anomalias,
     notificar_anomalias_detectadas,
 )
-from src.product_store import ProductStore
+from src.products import ProductStore
 
 
 class TestFase4Features(unittest.TestCase):

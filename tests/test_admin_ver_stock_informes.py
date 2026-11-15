@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.user_store import User
+from src.auth import User
 from src.ui.components.panels import construir_panel_acceso_rapido
 from src.ui.components.sidebar import obtener_secciones_rol
 from src.ui.dialogs.dlg_ver_stock import mostrar_dialogo_ver_stock

@@ -1,4 +1,6 @@
-"""Prototipo de escritorio en Flet para el agente de control de stock."""
+"""Interfaz gráfica principal en Flet ensamblada por composición e inyección de dependencias."""
+
+from __future__ import annotations
 
 import weakref
 from datetime import datetime
@@ -7,13 +9,13 @@ from typing import Any, Callable
 
 import flet as ft
 
-from .internal_chat import obtener_mensaje_bienvenida
+from .chat import obtener_mensaje_bienvenida
 from .logger_config import configurar_logging
 from .menu import MenuAgente
-from .orders_store import OrderStore
+from .orders import OrderStore
 from .paths import application_root, get_data_dir
-from .product_store import ProductStore
-from .server import (
+from .products import ProductStore
+from .server_app import (
     _RegistroConexionesMiddleware,
     _puerto_local_activo,
     iniciar_servidor_web,
@@ -21,8 +23,8 @@ from .server import (
     obtener_ip_local,
     obtener_ip_tailscale,
 )
-from .stock_manager import StockManager
-from .user_store import USER_ROLES, User, UserRole, UserStore, UserStoreError
+from .auth import USER_ROLES, User, UserRole, UserStore, UserStoreError
+from .inventory import StockManager
 from .ui.app_config import (
     INACTIVIDAD_MAX_MINUTOS,
     PUERTO_WEB_DEFAULT,
@@ -43,23 +45,24 @@ from .ui.components import (
     manejar_cambio_navegacion_movil,
     reproducir_sonido_web,
 )
+from .ui.controllers import (
+    AuthSessionController,
+    BatchTaskController,
+    ChatAssistantController,
+    DialogCoordinator,
+    DocumentViewerService,
+    FileTransferService,
+    ResponsiveController,
+    SessionSyncService,
+    ThemeController,
+)
 from .ui.dashboard_presenter import actualizar_estado_dashboard
 from .ui.dialogs import (
     actualizar_alerta_quiebre,
     mostrar_command_palette,
-    mostrar_detalle_quiebre,
 )
-from .ui.mixins import (
-    AuthSessionMixin,
-    BatchProcessingMixin,
-    ChatPanelMixin,
-    DialogDispatcherMixin,
-    DocumentViewerMixin,
-    FileTransferMixin,
-    ResponsiveLayoutMixin,
-    SessionSyncMixin,
-)
-from .ui.theme import BORDE, FONDO, ROJO, SECUNDARIO, SUPERFICIE, TEXTO
+from .ui.protocols import AppDependencies
+from .ui.theme import ROJO
 
 logger = configurar_logging()
 
@@ -67,35 +70,203 @@ SESIONES_ACTIVAS: weakref.WeakSet["InterfazFlet"] = weakref.WeakSet()
 PROCESAMIENTO_GLOBAL_ACTIVO: bool = False
 
 
-class InterfazFlet(
-    ResponsiveLayoutMixin,
-    DocumentViewerMixin,
-    SessionSyncMixin,
-    DialogDispatcherMixin,
-    FileTransferMixin,
-    ChatPanelMixin,
-    BatchProcessingMixin,
-    AuthSessionMixin,
-):
-    """Controlador principal de la interfaz Flet (Desktop y Web)."""
+class _Delegado:
+    """Descriptor de fachada no-datos que delega en un controlador compuesto."""
 
-    def __init__(self, page: ft.Page) -> None:
+    def __init__(
+        self,
+        ctrl_attr: str,
+        factory: Callable[[Any], Any],
+        target_name: str | None = None,
+    ) -> None:
+        self.ctrl_attr = ctrl_attr
+        self.factory = factory
+        self.target_name = target_name
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        if self.target_name is None:
+            self.target_name = name
+
+    def __get__(self, instance: Any, owner: type | None = None) -> Any:
+        if instance is None:
+            return self
+        ctrl = instance._obtener_ctrl(self.ctrl_attr, self.factory)
+        return getattr(ctrl, self.target_name)  # type: ignore[arg-type]
+
+
+class InterfazFlet:
+    """Controlador principal de la interfaz Flet (Desktop y Web) basado en composición."""
+
+    # --- Fachada delegada a ThemeController ---
+    alternar_tema = _Delegado("theme_ctrl", lambda h: h._crear_theme_ctrl())
+
+    # --- Fachada delegada a ResponsiveController ---
+    ancho_adaptable = _Delegado("responsive_ctrl", lambda h: h._crear_responsive_ctrl())
+    alto_adaptable = _Delegado("responsive_ctrl", lambda h: h._crear_responsive_ctrl())
+    cerrar_drawer_si_movil = _Delegado("responsive_ctrl", lambda h: h._crear_responsive_ctrl())
+    _asegurar_drawer_movil = _Delegado(
+        "responsive_ctrl", lambda h: h._crear_responsive_ctrl(), "asegurar_drawer_movil"
+    )
+    _mostrar_menu_movil_fallback = _Delegado(
+        "responsive_ctrl", lambda h: h._crear_responsive_ctrl(), "mostrar_menu_movil_fallback"
+    )
+    _abrir_drawer_click = _Delegado(
+        "responsive_ctrl", lambda h: h._crear_responsive_ctrl(), "abrir_drawer_click"
+    )
+    _al_redimensionar = _Delegado(
+        "responsive_ctrl", lambda h: h._crear_responsive_ctrl(), "al_redimensionar"
+    )
+
+    # --- Fachada delegada a FileTransferService ---
+    _asegurar_file_picker = _Delegado(
+        "file_transfer_svc", lambda h: h._crear_file_transfer_svc(), "asegurar_file_picker"
+    )
+    _descargar_archivo_navegador = _Delegado(
+        "file_transfer_svc", lambda h: h._crear_file_transfer_svc(), "descargar_archivo_navegador"
+    )
+    subir_archivos_desde_pc = _Delegado("file_transfer_svc", lambda h: h._crear_file_transfer_svc())
+
+    # --- Fachada delegada a DocumentViewerService ---
+    abrir_url_en_navegador = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    ruta_informe = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    mostrar_manual_usuario = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    abrir_informe = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    mostrar_opciones_documento = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    abrir_carpeta_informe = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    compartir_correo = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    compartir_whatsapp = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+    enviar_correo_cierre = _Delegado("doc_viewer_svc", lambda h: h._crear_doc_viewer_svc())
+
+    # --- Fachada delegada a AuthSessionController ---
+    mostrar_inicio_sesion = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    mostrar_cambio_clave_obligatorio = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    mostrar_cambiar_mi_clave = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    mostrar_mi_perfil = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    mostrar_configuracion_inicial = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    cerrar_sesion = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+    exigir_roles = _Delegado("auth_ctrl", lambda h: h._crear_auth_ctrl())
+
+    # --- Fachada delegada a BatchTaskController ---
+    resumen_estado = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    resumen_informes = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    fuentes_seleccionadas = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    simular = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    procesar_real = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    confirmar_procesar_real = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    procesar = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    ejecutar_tarea = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    actualizar_progreso = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+    _actualizar_estado_boton_cierre = _Delegado(
+        "batch_ctrl", lambda h: h._crear_batch_ctrl(), "actualizar_estado_boton_cierre"
+    )
+    actualizar_estado_botones = _Delegado("batch_ctrl", lambda h: h._crear_batch_ctrl())
+
+    # --- Fachada delegada a ChatAssistantController ---
+    _enriquecer_mensaje_con_pedidos = _Delegado(
+        "chat_ctrl", lambda h: h._crear_chat_ctrl(), "enriquecer_mensaje_con_pedidos"
+    )
+    alternar_chat_flotante = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    cerrar_chat_flotante = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    limpiar_chat = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    ejecutar_comando_rapido = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    cambiar_pestaña_chat = _Delegado(
+        "chat_ctrl", lambda h: h._crear_chat_ctrl(), "cambiar_pestana_chat"
+    )
+    crear_ventana_chat_flotante = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    panel_chat = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    escribir_chat = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+    enviar_chat = _Delegado("chat_ctrl", lambda h: h._crear_chat_ctrl())
+
+    # --- Fachada delegada a SessionSyncService ---
+    sincronizar_sesiones = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
+    actualizar_badge_chat = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
+    refrescar_usuarios_chat_equipo = _Delegado(
+        "session_sync_svc", lambda h: h._crear_session_sync_svc()
+    )
+    cargar_mensajes_equipo = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
+    enviar_mensaje_equipo = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
+
+    # --- Fachada delegada a DialogCoordinator ---
+    mostrar_dialogo_compartir_cierre = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_enviar_correo = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_api_master = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_gestion_api_keys = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_estado_api = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_sesiones_api = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_configuracion_smtp = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    confirmar_restaurar = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    restaurar = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_gestion_usuarios = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_api_keys = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_gestion_clientes = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_crear_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_historial_pedidos = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_centro_reportes = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_detalle_pedido_modal = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_escaner_qr_despacho = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_imprimir_descuentos = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_cierre_jornada = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_cierre_mercado = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_historial_cierres_admin = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_acceso_admin = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_ver_stock = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_gestion_productos = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_historial_movimientos_stock = _Delegado(
+        "dialog_coord", lambda h: h._crear_dialog_coord()
+    )
+    mostrar_formulario_producto = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    imprimir_rotulos_termicos_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    imprimir_rotulos_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    imprimir_rotulos_lote = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    confirmar_anulacion_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_editar_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    confirmar_desarmar_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_backup = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_archivo_historico = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_configuracion_telegram = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_sincronizacion_mercadolibre = _Delegado(
+        "dialog_coord", lambda h: h._crear_dialog_coord()
+    )
+    mostrar_dialogo_anomalias = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_heatmap = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    sincronizar_catalogo_excel = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_detalle_quiebre = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dashboard_metricas = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_registro_auditoria = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_estadisticas = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    generar_pedido_fabrica = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_ingreso_fabrica = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_planificar_ingreso_fabrica = _Delegado(
+        "dialog_coord", lambda h: h._crear_dialog_coord()
+    )
+    mostrar_control_ingreso_fabrica = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_descuento_mercado_full = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_planificar_full = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_picking_guiado_full = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_descuento_mercado_libre = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_notificaciones_admin = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_stock_fisico_operario = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_comparativa_stock_fisico_admin = _Delegado(
+        "dialog_coord", lambda h: h._crear_dialog_coord()
+    )
+    mostrar_dialogo_ingreso_rapido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_salida_rapida = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_dialogo_inventario_vivo = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_gestion_ambientes = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+
+    def __init__(self, page: ft.Page, deps: AppDependencies | None = None) -> None:
         self.page = page
         SESIONES_ACTIVAS.add(self)
-        data_dir = get_data_dir()
-        self.user_store = UserStore(data_dir / "usuarios.sqlite3")
-        self.order_store = OrderStore(data_dir / "pedidos.sqlite3")
-        self.product_store = ProductStore(data_dir / "productos.sqlite3")
-        (data_dir / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
+        deps_activas = deps or self._construir_dependencias_por_defecto()
+        self._deps = deps_activas
+        self.user_store = deps_activas.user_store
+        self.order_store = deps_activas.order_store
+        self.product_store = deps_activas.product_store
+        self.menu = deps_activas.menu
+        self._stock_manager_factory = deps_activas.stock_manager_factory or StockManager
+        self._app_root_fn = deps_activas.app_root_fn or application_root
+
         self.usuario_actual: User | None = None
-        self.modo_oscuro = True
-        self.fondo = ft.Colors.BLACK
-        self.superficie = ft.Colors.BLUE_GREY_900
-        self.texto = ft.Colors.WHITE
-        self.secundario = ft.Colors.BLUE_GREY_300
-        self.borde = ft.Colors.BLUE_GREY_700
-        self.fondo_acento = ft.Colors.RED_700
-        self.menu = MenuAgente()
         self.ocupado = False
         self.informes: list[Path] = []
         self.informe_seleccionado: Path | None = None
@@ -103,6 +274,136 @@ class InterfazFlet(
         self.controles_tarea: list[ft.Button] = []
         self.btn_cierre_jornada: ft.Button | None = None
         self.botones_cierre_jornada: list[ft.Button] = []
+        self.contadores: dict[str, ft.Text] = {}
+        self.banner_alerta_quiebre = ft.Container(visible=False)
+        self.contenedor_notificaciones = ft.Container()
+        self.file_picker = ft.FilePicker()
+        self.posicion_sidebar = "izquierda"
+        self.semaforo_conexion: ft.Container | None = None
+        self.semaforo_conexion_movil: ft.Container | None = None
+        self._estado_red_actual: str = "online"
+        self._heartbeat_activo: bool = True
+        self._heartbeat_iniciado: bool = False
+        self.chat_visible = False
+        self.modo_chat_activo: str = "bot"
+        self.ventana_chat_flotante: ft.Container | None = None
+        self.boton_chat_flotante: ft.FloatingActionButton | None = None
+        self.ultima_actividad: datetime = datetime.now()
+
+        self._inicializar_controladores()
+        self.theme_ctrl.aplicar_paleta(modo_oscuro=True, usar_paleta_preferencia=False)
+        self._inicializar_controles_ui()
+
+        self._asegurar_file_picker()
+        self._configurar_ventana()
+        if self.user_store.has_users:
+            self.mostrar_inicio_sesion()
+        else:
+            self.mostrar_configuracion_inicial()
+
+    # ------------------------------------------------------------------
+    # Fábricas e Inyección de Dependencias
+    # ------------------------------------------------------------------
+    def _construir_dependencias_por_defecto(self) -> AppDependencies:
+        data_dir = get_data_dir()
+        (data_dir / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
+        return AppDependencies(
+            user_store=UserStore(data_dir / "usuarios.sqlite3"),
+            order_store=OrderStore(data_dir / "pedidos.sqlite3"),
+            product_store=ProductStore(data_dir / "productos.sqlite3"),
+            menu=MenuAgente(),
+            stock_manager_factory=StockManager,
+            app_root_fn=application_root,
+        )
+
+    def _crear_theme_ctrl(self) -> ThemeController:
+        return ThemeController(self, on_rebuild=lambda: self.construir())
+
+    def _crear_responsive_ctrl(self) -> ResponsiveController:
+        return ResponsiveController(
+            self,
+            get_sidebar_controls=lambda: self._sidebar_controls(),
+            on_rebuild=lambda: self.construir(),
+            on_show_login=lambda: self.mostrar_inicio_sesion(),
+            on_show_setup=lambda: self.mostrar_configuracion_inicial(),
+        )
+
+    def _crear_file_transfer_svc(self) -> FileTransferService:
+        return FileTransferService(
+            self,
+            notify_fn=lambda msg: self.notificar(msg),
+            on_files_saved=lambda: (self.actualizar_estado(), self.sincronizar_sesiones()),
+        )
+
+    def _crear_doc_viewer_svc(self) -> DocumentViewerService:
+        root_fn = getattr(self, "_app_root_fn", None) or application_root
+        return DocumentViewerService(
+            self,
+            check_roles_fn=lambda *r: self.exigir_roles(*r),
+            notify_fn=lambda msg: self.notificar(msg),
+            app_root_fn=root_fn,
+        )
+
+    def _crear_auth_ctrl(self) -> AuthSessionController:
+        return AuthSessionController(
+            self,
+            inactivity_limit_fn=lambda: INACTIVIDAD_MAX_MINUTOS,
+            notify_fn=lambda msg: self.notificar(msg),
+            ensure_file_picker_fn=lambda forzar_recrear=False: self._asegurar_file_picker(
+                forzar_recrear=forzar_recrear
+            ),
+        )
+
+    def _crear_batch_ctrl(self) -> BatchTaskController:
+        return BatchTaskController(
+            self,
+            get_global_lock_fn=lambda: bool(PROCESAMIENTO_GLOBAL_ACTIVO),
+            set_global_lock_fn=_fijar_procesamiento_global,
+            check_roles_fn=lambda *r: self.exigir_roles(*r),
+            notify_fn=lambda msg: self.notificar(msg),
+            refresh_dashboard_fn=lambda: self.actualizar_estado(),
+            sync_sessions_fn=lambda: self.sincronizar_sesiones(),
+        )
+
+    def _crear_chat_ctrl(self) -> ChatAssistantController:
+        return ChatAssistantController(self, check_roles_fn=lambda *r: self.exigir_roles(*r))
+
+    def _crear_session_sync_svc(self) -> SessionSyncService:
+        return SessionSyncService(
+            self,
+            sessions_provider=lambda: list(SESIONES_ACTIVAS),
+            check_roles_fn=lambda *r: self.exigir_roles(*r),
+            enrich_message_fn=lambda txt: self._enriquecer_mensaje_con_pedidos(txt),
+        )
+
+    def _crear_dialog_coord(self) -> DialogCoordinator:
+        return DialogCoordinator(
+            self,
+            check_roles_fn=lambda *r: self.exigir_roles(*r),
+            close_drawer_fn=lambda: self.cerrar_drawer_si_movil(),
+            ensure_file_picker_fn=lambda: self._asegurar_file_picker(),
+            notify_fn=lambda msg: self.notificar(msg),
+        )
+
+    def _inicializar_controladores(self) -> None:
+        self.theme_ctrl = self._crear_theme_ctrl()
+        self.responsive_ctrl = self._crear_responsive_ctrl()
+        self.file_transfer_svc = self._crear_file_transfer_svc()
+        self.doc_viewer_svc = self._crear_doc_viewer_svc()
+        self.auth_ctrl = self._crear_auth_ctrl()
+        self.batch_ctrl = self._crear_batch_ctrl()
+        self.chat_ctrl = self._crear_chat_ctrl()
+        self.session_sync_svc = self._crear_session_sync_svc()
+        self.dialog_coord = self._crear_dialog_coord()
+
+    def _obtener_ctrl(self, attr: str, factory: Callable[[Any], Any]) -> Any:
+        ctrl = self.__dict__.get(attr)
+        if ctrl is None:
+            ctrl = factory(self)
+            self.__dict__[attr] = ctrl
+        return ctrl
+
+    def _inicializar_controles_ui(self) -> None:
         self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
         self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
         self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
@@ -111,13 +412,21 @@ class InterfazFlet(
             size=14,
             color=ft.Colors.GREEN_400,
         )
-        self.estado_tarea = ft.Text("Sistema listo", color=self.secundario, size=11, weight=ft.FontWeight.W_500)
+        self.estado_tarea = ft.Text(
+            "Sistema listo", color=self.secundario, size=11, weight=ft.FontWeight.W_500
+        )
         self.progreso_barra = ft.ProgressBar(width=160, value=None, color=ROJO, visible=False)
         self.lista_informes = ft.ListView(expand=True, spacing=4)
         self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
-        self.header_pedidos_fecha = ft.Text("Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto)
-        self.header_pedidos_subtitulo = ft.Text("0 pedidos preparados", size=11, color=self.secundario)
-        self.header_pedidos_bultos = ft.Text("0 bultos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+        self.header_pedidos_fecha = ft.Text(
+            "Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto
+        )
+        self.header_pedidos_subtitulo = ft.Text(
+            "0 pedidos preparados", size=11, color=self.secundario
+        )
+        self.header_pedidos_bultos = ft.Text(
+            "0 bultos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE
+        )
         self.lista_pedidos_preparados = ft.ListView(expand=True, spacing=6)
         self.conversacion = ft.ListView(expand=True, spacing=8, auto_scroll=True)
         self.entrada_chat = ft.TextField(
@@ -127,7 +436,6 @@ class InterfazFlet(
             max_lines=3,
             on_submit=self.enviar_chat,
         )
-        self.modo_chat_activo: str = "bot"
         self.conversacion_equipo = ft.ListView(expand=True, spacing=8, auto_scroll=True)
         self.entrada_chat_equipo = ft.TextField(
             hint_text="Escribe un mensaje para el equipo...",
@@ -151,47 +459,16 @@ class InterfazFlet(
             visible=False,
         )
         self.texto_badge_tab = ft.Text("", size=10, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD)
-        self.contadores: dict[str, ft.Text] = {}
         self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
-        self.banner_alerta_quiebre = ft.Container(visible=False)
-        self.contenedor_notificaciones = ft.Container()
-        self.file_picker = ft.FilePicker()
-        self.posicion_sidebar = "izquierda"
-        self.semaforo_conexion: ft.Container | None = None
-        self.semaforo_conexion_movil: ft.Container | None = None
-        self._estado_red_actual: str = "online"
-        self._heartbeat_activo: bool = True
-        self._heartbeat_iniciado: bool = False
-        self.chat_visible = False
 
-        self.ventana_chat_flotante: ft.Container | None = None
-        self.boton_chat_flotante: ft.FloatingActionButton | None = None
-        self.ultima_actividad: datetime = datetime.now()
-        self._asegurar_file_picker()
-        self._configurar_ventana()
-        if self.user_store.has_users:
-            self.mostrar_inicio_sesion()
-        else:
-            self.mostrar_configuracion_inicial()
+    @property
+    def es_pantalla_movil(self) -> bool:
+        ctrl = self._obtener_ctrl("responsive_ctrl", lambda h: h._crear_responsive_ctrl())
+        return bool(ctrl.es_pantalla_movil)
 
-    def alternar_tema(self, _evento: ft.Event | None = None) -> None:
-        self.modo_oscuro = not self.modo_oscuro
-        if self.modo_oscuro:
-            self.fondo = ft.Colors.BLACK
-            self.superficie = ft.Colors.BLUE_GREY_900
-            self.texto = ft.Colors.WHITE
-            self.secundario = ft.Colors.BLUE_GREY_300
-            self.borde = ft.Colors.BLUE_GREY_700
-            self.fondo_acento = ft.Colors.RED_700
-        else:
-            self.fondo = ft.Colors.GREY_100
-            self.superficie = ft.Colors.WHITE
-            self.texto = ft.Colors.BLUE_GREY_900
-            self.secundario = ft.Colors.BLUE_GREY_600
-            self.borde = ft.Colors.GREY_300
-            self.fondo_acento = ft.Colors.RED_50
-        self.construir()
-
+    # ------------------------------------------------------------------
+    # Ventana, Layout Principal y Controles Compartidos
+    # ------------------------------------------------------------------
     def _configurar_dialogos_adaptables(self) -> None:
         """Interpreta dimensiones en diálogos para adaptarlos a pantallas pequeñas."""
         if hasattr(self.page, "show_dialog") and not getattr(self.page, "_dialogos_adaptables_configurados", False):
@@ -234,7 +511,7 @@ class InterfazFlet(
         return construir_sidebar_horizontal_controls(self)
 
     def cambiar_posicion_sidebar(self, nueva_posicion: str) -> None:
-        """Cambia la ubicación del menú (izquierda, derecha, arriba, abajo, oculto) y reconstruye la vista."""
+        """Cambia la ubicación del menú y reconstruye la vista."""
         if nueva_posicion in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
             self.posicion_sidebar = nueva_posicion
             self.construir()
@@ -270,7 +547,7 @@ class InterfazFlet(
         aplicar_posicion_sidebar_ui(self, dashboard, sidebar)
 
     def _al_cambiar_navegacion_movil(self, e: Any) -> None:
-        """Acceso rápido inferior (Thumb Zone) para operarios con una sola mano en depósito."""
+        """Acceso rápido inferior (Thumb Zone) para operarios con una sola mano."""
         manejar_cambio_navegacion_movil(self, e)
 
     def _sidebar_controls(self) -> list[ft.Control]:
@@ -280,27 +557,8 @@ class InterfazFlet(
         if self.usuario_actual is None:
             self.mostrar_inicio_sesion()
             return
-        if not getattr(self, "_prefs_cargadas_usuario", False) and self.usuario_actual:
-            try:
-                from .ui.components.sidebar import obtener_preferencias_usuario
-                prefs = obtener_preferencias_usuario(self.usuario_actual.username)
-                if "posicion_sidebar" in prefs and prefs["posicion_sidebar"] in (
-                    "izquierda", "derecha", "arriba", "abajo", "oculto"
-                ):
-                    self.posicion_sidebar = prefs["posicion_sidebar"]
-                if "modo_oscuro" in prefs:
-                    deseado_oscuro = bool(prefs["modo_oscuro"])
-                    if deseado_oscuro != self.modo_oscuro:
-                        self.modo_oscuro = deseado_oscuro
-                        self.fondo = FONDO if self.modo_oscuro else ft.Colors.WHITE
-                        self.superficie = SUPERFICIE if self.modo_oscuro else ft.Colors.GREY_50
-                        self.texto = TEXTO if self.modo_oscuro else ft.Colors.BLACK
-                        self.secundario = SECUNDARIO if self.modo_oscuro else ft.Colors.GREY_700
-                        self.borde = BORDE if self.modo_oscuro else ft.Colors.GREY_300
-                        self.fondo_acento = ft.Colors.GREY_900 if self.modo_oscuro else ft.Colors.GREY_100
-                self._prefs_cargadas_usuario = True
-            except Exception:
-                pass
+        self.theme_ctrl.aplicar_preferencias_usuario(self.usuario_actual)
+
         self.page.bgcolor = self.fondo
         self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
         self.controles_tarea.clear()
@@ -447,7 +705,8 @@ class InterfazFlet(
             self.contenedor_notificaciones.content = None
             return
         try:
-            sm = StockManager(self.menu.ruta_excel_base)
+            sm_factory = getattr(self, "_stock_manager_factory", None) or StockManager
+            sm = sm_factory(self.menu.ruta_excel_base)
             raw_no_leidas = sm.contar_notificaciones_no_leidas()
             no_leidas = raw_no_leidas if isinstance(raw_no_leidas, int) else 0
         except Exception:
@@ -552,11 +811,12 @@ class InterfazFlet(
 
     def recargar_ambiente(self) -> None:
         """Recarga los almacenes de datos y el menú según el ambiente activo (Producción o QA)."""
-        data_dir = get_data_dir()
-        self.user_store = UserStore(data_dir / "usuarios.sqlite3")
-        self.order_store = OrderStore(data_dir / "pedidos.sqlite3")
-        self.product_store = ProductStore(data_dir / "productos.sqlite3")
-        self.menu = MenuAgente()
+        deps = self._construir_dependencias_por_defecto()
+        self._deps = deps
+        self.user_store = deps.user_store
+        self.order_store = deps.order_store
+        self.product_store = deps.product_store
+        self.menu = deps.menu
         self.actualizar_estado()
         try:
             self.page.update()
@@ -565,9 +825,6 @@ class InterfazFlet(
 
     def actualizar_alerta_quiebre(self, criticos: list | None = None) -> None:
         actualizar_alerta_quiebre(self, criticos)
-
-    def mostrar_detalle_quiebre(self, criticos: list) -> None:
-        mostrar_detalle_quiebre(self, criticos)
 
     def seleccionar_informe(self, ruta: Path) -> None:
         self.informe_seleccionado = ruta
@@ -624,6 +881,11 @@ class InterfazFlet(
 
     def mostrar_command_palette(self, _evento: ft.Event | None = None) -> None:
         mostrar_command_palette(self, _evento)
+
+
+def _fijar_procesamiento_global(valor: bool) -> None:
+    global PROCESAMIENTO_GLOBAL_ACTIVO
+    PROCESAMIENTO_GLOBAL_ACTIVO = bool(valor)
 
 
 async def main(page: ft.Page) -> None:

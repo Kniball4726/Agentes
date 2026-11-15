@@ -70,22 +70,57 @@ class MovementsRepositoryMixin:
         usuario: str = "sistema",
         detalle: str = "",
     ) -> None:
-        """Registra movimientos de stock en el historial.
+        """Registra o enriquece movimientos de stock en el historial sin duplicar filas del trigger.
 
         Cada elemento de `movements` es (product_code, product_name, quantity, movement_type).
-        movement_type: 'descuento' | 'ingreso_fabrica' | 'ajuste_manual'
+        movement_type: 'descuento' | 'ingreso_fabrica' | 'ingreso_rapido' | 'salida_rapida' | 'ajuste_manual'
         quantity: positivo para ingresos, negativo para descuentos.
         """
         if not movements:
             return
+        usuario_limpio = (usuario or "sistema").strip() or "sistema"
+        detalle_limpio = (detalle or "").strip()
         with closing(self._connect()) as connection, connection:
-            connection.executemany(
-                """
-                INSERT INTO stock_movements (product_code, product_name, quantity, movement_type, usuario, detalle)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                [(cod, nom, qty, mtype, usuario, detalle) for cod, nom, qty, mtype in movements],
-            )
+            por_insertar: list[tuple[str, str, int, str, str, str]] = []
+            for cod, nom, qty, mtype in movements:
+                qty_int = int(qty)
+                # Si trg_auditoria_stock acaba de insertar esta misma variación sin enriquecer,
+                # actualizamos esa fila en lugar de duplicar el conteo en stock_movements.
+                row_trig = connection.execute(
+                    """
+                    SELECT id
+                    FROM stock_movements
+                    WHERE product_code = ?
+                      AND quantity = ?
+                      AND usuario = 'sistema'
+                      AND detalle = ''
+                      AND registered_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', '-15 seconds')
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (cod, qty_int),
+                ).fetchone()
+                if row_trig is not None:
+                    connection.execute(
+                        """
+                        UPDATE stock_movements
+                        SET usuario = ?, detalle = ?, movement_type = ?,
+                            product_name = COALESCE(NULLIF(?, ''), product_name)
+                        WHERE id = ?
+                        """,
+                        (usuario_limpio, detalle_limpio, mtype, nom, int(row_trig["id"])),
+                    )
+                else:
+                    por_insertar.append((cod, nom, qty_int, mtype, usuario_limpio, detalle_limpio))
+
+            if por_insertar:
+                connection.executemany(
+                    """
+                    INSERT INTO stock_movements (product_code, product_name, quantity, movement_type, usuario, detalle)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    por_insertar,
+                )
 
     def enrich_latest_movements(
         self,

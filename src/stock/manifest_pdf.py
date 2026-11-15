@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 if TYPE_CHECKING:
-    from src.orders_store import Pedido
+    from ..orders import Pedido
 
 
 class _NumberedCanvas(canvas.Canvas):

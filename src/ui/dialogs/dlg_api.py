@@ -6,7 +6,7 @@ from typing import Any
 
 import flet as ft
 
-from ...server import PUERTO_WEB_DEFAULT, obtener_ip_local, obtener_ip_tailscale
+from ...server_app import PUERTO_WEB_DEFAULT, obtener_ip_local, obtener_ip_tailscale
 from ..theme import ROJO, SECUNDARIO
 from .api_panel_tabs import (
     construir_estado_vacio_api,

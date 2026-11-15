@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 from docx import Document
 import flet as ft
 
-from src.orders_store import OrderStore, calcular_hash_archivo
+from src.auth import User
+from src.orders import OrderStore, calcular_hash_archivo
 from src.ui.dialogs.dlg_stock_ops import mostrar_descuento_mercado_libre
-from src.user_store import User
 
 
 class TestMercadoLibreDocxDialog(unittest.TestCase):

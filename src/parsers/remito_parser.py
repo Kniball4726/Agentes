@@ -44,14 +44,6 @@ def normalizar_codigo(codigo_raw: str) -> str:
     return cod
 
 
-def _get_pdf_reader():
-    import sys
-    mod = sys.modules.get('src.remito_parser')
-    if mod and hasattr(mod, 'PdfReader'):
-        return getattr(mod, 'PdfReader')
-    return PdfReader
-
-
 def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
     """
     Parsea un remito en formato PDF extrayendo sus metadatos y detalle de artículos.
@@ -61,7 +53,7 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
 
     if path.exists():
         with open(path, "rb") as _f_pdf:
-            reader = _get_pdf_reader()(_f_pdf)
+            reader = PdfReader(_f_pdf)
             for page in reader.pages:
                 full_text += (page.extract_text() or "") + "\n"
             if hasattr(reader, "close"):
@@ -70,7 +62,7 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
                 except Exception:
                     pass
     else:
-        reader = _get_pdf_reader()(None)
+        reader = PdfReader(None)
         for page in reader.pages:
             full_text += (page.extract_text() or "") + "\n"
         if hasattr(reader, "close"):

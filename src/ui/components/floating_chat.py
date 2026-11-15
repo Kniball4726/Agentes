@@ -6,12 +6,12 @@ from typing import Any
 
 import flet as ft
 
-from ...internal_chat import (
+from ...chat import (
     obtener_chips_configuracion,
     obtener_pie_ayuda,
 )
+from ...inventory import StockManager
 from ...paths import application_root
-from ...stock_manager import StockManager
 from ..theme import ROJO
 from .floating_chat_intents import procesar_mensaje_chat_agente
 
