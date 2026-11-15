@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import csv
 from pathlib import Path
 import sqlite3
@@ -53,7 +54,7 @@ def ejecutar_importacion(csv_path: Path, db_path: Path) -> dict:
 
     store.invalidar_cache()
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         cur = conn.cursor()
         total_con_bar = cur.execute(
             "SELECT count(code) FROM products WHERE cod_barras != ''"

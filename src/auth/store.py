@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
 from ..core.exceptions import UserStoreError
-from .api_tokens_repo import ApiTokensRepositoryMixin
+from ..core.sqlite_utils import sqlite_connection
+from .api_tokens_repo import ApiTokensRepository
 from .events import notify_session_revocation, register_session_revocation_listener
-from .lockout_repo import LockoutRepositoryMixin
+from .lockout_repo import LockoutRepository
 from .models import (
     DEFAULT_MASTER_PASSWORD,
     DEFAULT_MASTER_USERNAME,
@@ -36,21 +37,19 @@ _USER_COLUMNS = (
 )
 
 
-class UserStore(LockoutRepositoryMixin, ApiTokensRepositoryMixin):
+class UserStore:
     """Gestor de acceso a datos para usuarios, credenciales, sesiones y claves API."""
 
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lockout_repo = LockoutRepository(self._connect)
+        self.api_tokens_repo = ApiTokensRepository(self._connect)
         self._initialize()
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA busy_timeout = 10000")
+        with sqlite_connection(self.database_path) as connection:
             yield connection
 
     def _initialize(self) -> None:
@@ -464,3 +463,82 @@ class UserStore(LockoutRepositoryMixin, ApiTokensRepositoryMixin):
             created_at=str(row["created_at"] or "") if "created_at" in keys and row["created_at"] is not None else "",
             updated_at=str(row["updated_at"] or "") if "updated_at" in keys and row["updated_at"] is not None else "",
         )
+
+    # Delegación explícita a repositorios desacoplados (bloqueo y sesiones/claves API)
+
+    def segundos_bloqueo_restantes(self, username: str, ahora: float | None = None) -> int:
+        return self.lockout_repo.segundos_bloqueo_restantes(username, ahora=ahora)
+
+    def _registrar_fallo(self, username: str, ahora: float) -> AuthResult:
+        return self.lockout_repo.registrar_fallo(username, ahora)
+
+    def _limpiar_intentos(self, username: str) -> None:
+        self.lockout_repo.limpiar_intentos(username)
+
+    def unlock_user(self, username: str) -> None:
+        self.lockout_repo.unlock_user(username)
+
+    def list_locked_usernames(self) -> list[str]:
+        return self.lockout_repo.list_locked_usernames()
+
+    def create_api_session(
+        self,
+        token_hash: str,
+        user_id: int,
+        username: str,
+        role: str,
+        nombre: str = "",
+        email: str = "",
+        created_at: float | None = None,
+        last_active: float | None = None,
+    ) -> None:
+        self.api_tokens_repo.create_api_session(
+            token_hash=token_hash,
+            user_id=user_id,
+            username=username,
+            role=role,
+            nombre=nombre,
+            email=email,
+            created_at=created_at,
+            last_active=last_active,
+        )
+
+    def get_api_session(self, token_hash: str) -> dict | None:
+        return self.api_tokens_repo.get_api_session(token_hash)
+
+    def update_api_session_activity(
+        self, token_hash: str, last_active: float | None = None
+    ) -> None:
+        self.api_tokens_repo.update_api_session_activity(token_hash, last_active=last_active)
+
+    def revoke_api_session(self, token_hash: str) -> bool:
+        return self.api_tokens_repo.revoke_api_session(token_hash)
+
+    def revoke_user_api_sessions(self, user_id: int) -> int:
+        return self.api_tokens_repo.revoke_user_api_sessions(user_id)
+
+    def cleanup_expired_api_sessions(self, max_age_seconds: float) -> int:
+        return self.api_tokens_repo.cleanup_expired_api_sessions(max_age_seconds)
+
+    def create_api_key(
+        self, client_name: str, role: str = "operador"
+    ) -> tuple[str, str]:
+        return self.api_tokens_repo.create_api_key(client_name, role=role)
+
+    def validate_api_key(self, raw_key: str) -> dict | None:
+        return self.api_tokens_repo.validate_api_key(raw_key)
+
+    def list_api_keys(self) -> list[dict]:
+        return self.api_tokens_repo.list_api_keys()
+
+    def revoke_api_key(self, key_hash: str) -> bool:
+        return self.api_tokens_repo.revoke_api_key(key_hash)
+
+    def delete_api_key(self, key_hash: str) -> bool:
+        return self.api_tokens_repo.delete_api_key(key_hash)
+
+    def list_api_sessions(self, max_records: int = 100) -> list[dict]:
+        return self.api_tokens_repo.list_api_sessions(max_records=max_records)
+
+    def revoke_all_sessions(self) -> int:
+        return self.api_tokens_repo.revoke_all_sessions()

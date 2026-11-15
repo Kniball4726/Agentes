@@ -1,17 +1,19 @@
-"""Repositorio mixin para consolidación de descuentos por canal y ventanas de cierre."""
+"""Repositorio desacoplado para consolidación de descuentos por canal y ventanas de cierre."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from .models import clasificar_canal_pedido
+from .protocols import OrderConnectFn
 
 
-class ChannelReportMixin:
+class ChannelReportRepository:
     """Agrega consultas de salidas por canal (Mayoristas, Mercado Libre, Full) y ventanas de jornada."""
 
-    _connect: Callable[[], Any]
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def obtener_descuentos_operario_por_canal(
         self,

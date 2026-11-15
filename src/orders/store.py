@@ -2,39 +2,35 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
-from ..core.exceptions import OrderStoreError
-from .audit_repo import AuditRepositoryMixin
-from .channel_report_repo import ChannelReportMixin
-from .chat_repo import ChatRepositoryMixin
-from .client_repo import ClientRepositoryMixin
-from .closure_repo import ClosureRepositoryMixin
-from .concurrency_repo import ConcurrencyRepositoryMixin
-from .dispatch_repo import DispatchRepositoryMixin, _COLUMNAS_SELECT_PEDIDO
-from .factory_plan_repo import FactoryPlanRepositoryMixin
-from .full_plan_repo import FullPlanRepositoryMixin
-from .stock_flow_repo import StockFlowRepositoryMixin
-from .models import LOGISTICA_OPCIONES, Pedido, clasificar_canal_pedido
+from ..core.sqlite_utils import sqlite_connection
+from .audit_repo import AuditRepository
+from .channel_report_repo import ChannelReportRepository
+from .chat_repo import ChatRepository
+from .client_repo import ClientRepository
+from .closure_repo import ClosureRepository
+from .concurrency_repo import ConcurrencyRepository
+from .dispatch_repo import DispatchRepository
+from .factory_plan_repo import FactoryPlanRepository
+from .full_plan_repo import FullPlanRepository
+from .order_core_repo import OrderCoreRepository
+from .stock_flow_repo import StockFlowRepository
+from .models import (
+    CierreJornada,
+    CierreMercado,
+    Cliente,
+    MensajeChat,
+    Pedido,
+    RegistroAuditoria,
+)
 from .schema import inicializar_esquema_pedidos
 
 
-class OrderStore(
-    DispatchRepositoryMixin,
-    ClientRepositoryMixin,
-    ChatRepositoryMixin,
-    ConcurrencyRepositoryMixin,
-    AuditRepositoryMixin,
-    ClosureRepositoryMixin,
-    ChannelReportMixin,
-    FullPlanRepositoryMixin,
-    FactoryPlanRepositoryMixin,
-    StockFlowRepositoryMixin,
-):
+class OrderStore:
     """Gestor unificado de almacenamiento y operaciones de pedidos, clientes y despachos."""
 
     _initialized_dbs: set[tuple[str, int, int]] = set()
@@ -42,17 +38,528 @@ class OrderStore(
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def _audit_cb(*args: object, **kwargs: object) -> Any:
+            return self.registrar_auditoria(*args, **kwargs)  # type: ignore[arg-type]
+
+        def _map_cb(row: Any) -> Pedido:
+            return self._map_pedido(row)
+
+        def _lookup_cb(nota_pedido: str) -> Pedido | None:
+            return self.buscar_pedido_por_nota(nota_pedido)
+
+        def _reg_client_cb(nombre: str) -> Any:
+            return self.registrar_cliente(nombre)
+
+        self.audit_repo = AuditRepository(self._connect)
+        self.channel_report_repo = ChannelReportRepository(self._connect)
+        self.concurrency_repo = ConcurrencyRepository(self._connect)
+        self.factory_plan_repo = FactoryPlanRepository(self._connect)
+        self.full_plan_repo = FullPlanRepository(self._connect)
+        self.stock_flow_repo = StockFlowRepository(self._connect)
+        self.client_repo = ClientRepository(self._connect, audit_fn=_audit_cb)
+        self.dispatch_repo = DispatchRepository(
+            self._connect,
+            map_pedido_fn=_map_cb,
+            audit_fn=_audit_cb,
+        )
+        self.closure_repo = ClosureRepository(
+            self._connect,
+            map_pedido_fn=_map_cb,
+            audit_fn=_audit_cb,
+        )
+        self.chat_repo = ChatRepository(self._connect, lookup_order_fn=_lookup_cb)
+        self.order_core_repo = OrderCoreRepository(
+            self._connect,
+            audit_fn=_audit_cb,
+            register_client_fn=_reg_client_cb,
+        )
         self._initialize()
+
+    # ------------------------------------------------------------------
+    # Delegadores de repositorios compuestos
+    # ------------------------------------------------------------------
+
+    def registrar_auditoria(self, usuario: str, accion: str, detalle: str) -> None:
+        self.audit_repo.registrar_auditoria(usuario, accion, detalle)
+
+    def listar_auditoria(
+        self,
+        limit: int = 150,
+        filtro_usuario: str = "",
+        filtro_accion: str = "",
+        filtro_texto: str = "",
+        filtro: str = "",
+    ) -> list[RegistroAuditoria]:
+        return self.audit_repo.listar_auditoria(
+            limit=limit,
+            filtro_usuario=filtro_usuario,
+            filtro_accion=filtro_accion,
+            filtro_texto=filtro_texto,
+            filtro=filtro,
+        )
+
+    @staticmethod
+    def _filtro_fechas(
+        columna: str,
+        fecha_desde: str | None,
+        fecha_hasta: str | None,
+    ) -> tuple[str, list[str]]:
+        return AuditRepository._filtro_fechas(columna, fecha_desde, fecha_hasta)
+
+    def obtener_metricas_dashboard(
+        self,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict:
+        return self.audit_repo.obtener_metricas_dashboard(
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+        )
+
+    def obtener_descuentos_operario_por_canal(
+        self,
+        pedidos_ids: list[int] | None = None,
+        solo_pendientes: bool = True,
+        fecha_desde: str = "",
+        fecha_hasta: str = "",
+        cierre_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.channel_report_repo.obtener_descuentos_operario_por_canal(
+            pedidos_ids=pedidos_ids,
+            solo_pendientes=solo_pendientes,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            cierre_id=cierre_id,
+        )
+
+    def obtener_ventana_ultimo_cierre(
+        self,
+        cierre_id: int | None = None,
+    ) -> tuple[str, str, int | None]:
+        return self.channel_report_repo.obtener_ventana_ultimo_cierre(cierre_id=cierre_id)
+
+    def obtener_pedido_resumen_chat(self, nota_pedido: str) -> str:
+        return self.chat_repo.obtener_pedido_resumen_chat(nota_pedido)
+
+    def enviar_mensaje_chat(
+        self,
+        emisor: str,
+        mensaje: str,
+        destinatario: str = "Todos",
+    ) -> MensajeChat:
+        return self.chat_repo.enviar_mensaje_chat(
+            emisor,
+            mensaje,
+            destinatario=destinatario,
+        )
+
+    def listar_mensajes_chat(self, usuario: str, limite: int = 60) -> list[MensajeChat]:
+        return self.chat_repo.listar_mensajes_chat(usuario, limite=limite)
+
+    def contar_mensajes_no_leidos(self, usuario: str) -> int:
+        return self.chat_repo.contar_mensajes_no_leidos(usuario)
+
+    def marcar_mensajes_leidos(self, usuario: str) -> None:
+        self.chat_repo.marcar_mensajes_leidos(usuario)
+
+    def listar_clientes(self) -> list[Cliente]:
+        return self.client_repo.listar_clientes()
+
+    def listar_nombres_clientes(self) -> list[str]:
+        return self.client_repo.listar_nombres_clientes()
+
+    def buscar_clientes(self, query: str = "") -> list[Cliente]:
+        return self.client_repo.buscar_clientes(query=query)
+
+    def crear_cliente(
+        self,
+        nombre: str,
+        usuario: str = "Sistema",
+        codigo: str = "",
+        direccion: str = "",
+    ) -> Cliente:
+        return self.client_repo.crear_cliente(
+            nombre,
+            usuario=usuario,
+            codigo=codigo,
+            direccion=direccion,
+        )
+
+    def registrar_cliente(
+        self,
+        nombre: str,
+        usuario: str = "Sistema",
+        codigo: str = "",
+        direccion: str = "",
+    ) -> Cliente:
+        return self.client_repo.registrar_cliente(
+            nombre,
+            usuario=usuario,
+            codigo=codigo,
+            direccion=direccion,
+        )
+
+    def obtener_o_crear_cliente(
+        self,
+        nombre: str,
+        codigo: str = "",
+        direccion: str = "",
+        usuario: str = "Sistema",
+    ) -> Cliente:
+        return self.client_repo.obtener_o_crear_cliente(
+            nombre,
+            codigo=codigo,
+            direccion=direccion,
+            usuario=usuario,
+        )
+
+    def actualizar_cliente(
+        self,
+        cliente_id: int,
+        nuevo_nombre: str,
+        actualizar_pedidos: bool = True,
+        usuario: str = "Sistema",
+        codigo: str | None = None,
+        direccion: str | None = None,
+    ) -> Cliente:
+        return self.client_repo.actualizar_cliente(
+            cliente_id,
+            nuevo_nombre,
+            actualizar_pedidos=actualizar_pedidos,
+            usuario=usuario,
+            codigo=codigo,
+            direccion=direccion,
+        )
+
+    def eliminar_cliente(self, cliente_id: int, usuario: str = "Sistema") -> None:
+        self.client_repo.eliminar_cliente(cliente_id, usuario=usuario)
+
+    def listar_pedidos_pendientes_cierre(self) -> list[Pedido]:
+        return self.closure_repo.listar_pedidos_pendientes_cierre()
+
+    def contar_pedidos_pendientes_cierre_por_tipo(self) -> dict[str, int]:
+        return self.closure_repo.contar_pedidos_pendientes_cierre_por_tipo()
+
+    def obtener_items_pendientes_cierre(self) -> list[tuple[str, str, int, list[str]]]:
+        return self.closure_repo.obtener_items_pendientes_cierre()
+
+    def registrar_cierre(
+        self,
+        usuario: str,
+        pedidos_ids: list[int],
+        articulos_totales: int,
+        resumen_pedidos: str,
+        archivo_pdf: str = "",
+        archivo_excel: str = "",
+        archivo_hoja_ruta: str = "",
+    ) -> int:
+        return self.closure_repo.registrar_cierre(
+            usuario,
+            pedidos_ids,
+            articulos_totales,
+            resumen_pedidos,
+            archivo_pdf=archivo_pdf,
+            archivo_excel=archivo_excel,
+            archivo_hoja_ruta=archivo_hoja_ruta,
+        )
+
+    def listar_cierres(self, limit: int = 50) -> list[CierreJornada]:
+        return self.closure_repo.listar_cierres(limit=limit)
+
+    def obtener_pedidos_por_cierre(self, cierre_id: int) -> list[Pedido]:
+        return self.closure_repo.obtener_pedidos_por_cierre(cierre_id)
+
+    def actualizar_hoja_ruta_cierre(self, cierre_id: int, archivo_hoja_ruta: str) -> None:
+        self.closure_repo.actualizar_hoja_ruta_cierre(cierre_id, archivo_hoja_ruta)
+
+    def listar_pedidos_mercado_pendientes_cierre(
+        self,
+        tipo: str = "TODOS",
+        armador: str | None = None,
+    ) -> list[Pedido]:
+        return self.closure_repo.listar_pedidos_mercado_pendientes_cierre(
+            tipo=tipo,
+            armador=armador,
+        )
+
+    def obtener_items_mercado_pendientes(
+        self,
+        pedidos_ids: list[int],
+    ) -> list[tuple[str, str, int, list[str]]]:
+        return self.closure_repo.obtener_items_mercado_pendientes(pedidos_ids)
+
+    def registrar_cierre_mercado(
+        self,
+        usuario: str,
+        tipo_mercado: str,
+        pedidos_ids: list[int],
+        articulos_totales: int,
+        resumen_pedidos: str,
+        archivo_pdf: str = "",
+        archivo_excel: str = "",
+    ) -> int:
+        return self.closure_repo.registrar_cierre_mercado(
+            usuario,
+            tipo_mercado,
+            pedidos_ids,
+            articulos_totales,
+            resumen_pedidos,
+            archivo_pdf=archivo_pdf,
+            archivo_excel=archivo_excel,
+        )
+
+    def listar_cierres_mercado(self, limit: int = 50) -> list[CierreMercado]:
+        return self.closure_repo.listar_cierres_mercado(limit=limit)
+
+    def adquirir_bloqueo_pedido(
+        self,
+        pedido_id: int,
+        usuario: str,
+        expiracion_minutos: int = 5,
+    ) -> tuple[bool, str, str]:
+        return self.concurrency_repo.adquirir_bloqueo_pedido(
+            pedido_id,
+            usuario,
+            expiracion_minutos=expiracion_minutos,
+        )
+
+    def liberar_bloqueo_pedido(self, pedido_id: int, usuario: str | None = None) -> None:
+        self.concurrency_repo.liberar_bloqueo_pedido(pedido_id, usuario=usuario)
+
+    def consultar_bloqueo_pedido(
+        self,
+        pedido_id: int,
+        expiracion_minutos: int = 5,
+    ) -> tuple[str, str] | None:
+        return self.concurrency_repo.consultar_bloqueo_pedido(
+            pedido_id,
+            expiracion_minutos=expiracion_minutos,
+        )
+
+    def registrar_transaccion_idempotente(
+        self,
+        tx_id: str,
+        accion: str,
+        detalle: str = "",
+    ) -> bool:
+        return self.concurrency_repo.registrar_transaccion_idempotente(
+            tx_id,
+            accion,
+            detalle=detalle,
+        )
+
+    @staticmethod
+    def extraer_remito_de_codigo(texto: str) -> str:
+        return DispatchRepository.extraer_remito_de_codigo(texto)
+
+    def buscar_pedido_por_nota(self, nota_pedido: str) -> Pedido | None:
+        return self.dispatch_repo.buscar_pedido_por_nota(nota_pedido)
+
+    def actualizar_estado_despacho(
+        self,
+        pedido_id: int,
+        nuevo_estado: str,
+        usuario: str = "Sistema",
+        permitir_retroceso: bool = False,
+    ) -> Pedido:
+        return self.dispatch_repo.actualizar_estado_despacho(
+            pedido_id,
+            nuevo_estado,
+            usuario=usuario,
+            permitir_retroceso=permitir_retroceso,
+        )
+
+    def avanzar_estado_lote(
+        self,
+        pedido_ids: list[int],
+        nuevo_estado: str,
+        usuario: str = "Operador",
+    ) -> int:
+        return self.dispatch_repo.avanzar_estado_lote(
+            pedido_ids,
+            nuevo_estado,
+            usuario=usuario,
+        )
+
+    def avanzar_estado_por_codigo(
+        self,
+        codigo: str = "",
+        usuario: str = "Sistema",
+        *,
+        codigo_qr_o_remito: str = "",
+        nuevo_estado: str | None = None,
+    ) -> tuple[bool, str, Pedido | None]:
+        return self.dispatch_repo.avanzar_estado_por_codigo(
+            codigo=codigo,
+            usuario=usuario,
+            codigo_qr_o_remito=codigo_qr_o_remito,
+            nuevo_estado=nuevo_estado,
+        )
+
+    def crear_plan_ingreso_fabrica(
+        self,
+        nombre_remito: str,
+        archivo_remito: str,
+        creado_por: str,
+        items: list[tuple[str, str, int]],
+    ) -> int:
+        return self.factory_plan_repo.crear_plan_ingreso_fabrica(
+            nombre_remito,
+            archivo_remito,
+            creado_por,
+            items,
+        )
+
+    def obtener_plan_ingreso_fabrica(self, plan_id: int) -> dict[str, Any] | None:
+        return self.factory_plan_repo.obtener_plan_ingreso_fabrica(plan_id)
+
+    def obtener_plan_activo_ingreso_fabrica(self) -> dict[str, Any] | None:
+        return self.factory_plan_repo.obtener_plan_activo_ingreso_fabrica()
+
+    def listar_planes_ingreso_fabrica(
+        self,
+        estado: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.factory_plan_repo.listar_planes_ingreso_fabrica(estado=estado)
+
+    def obtener_items_plan_ingreso_fabrica(self, plan_id: int) -> list[dict[str, Any]]:
+        return self.factory_plan_repo.obtener_items_plan_ingreso_fabrica(plan_id)
+
+    def registrar_escaneo_item_ingreso_fabrica(
+        self,
+        plan_id: int,
+        codigo_escaneado: str,
+        cantidad: int = 1,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.factory_plan_repo.registrar_escaneo_item_ingreso_fabrica(
+            plan_id,
+            codigo_escaneado,
+            cantidad=cantidad,
+            picker=picker,
+        )
+
+    def ajustar_cantidad_item_ingreso_fabrica(
+        self,
+        plan_id: int,
+        codigo: str,
+        nueva_cantidad: int,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.factory_plan_repo.ajustar_cantidad_item_ingreso_fabrica(
+            plan_id,
+            codigo,
+            nueva_cantidad,
+            picker=picker,
+        )
+
+    def registrar_cierre_parcial_ingreso_fabrica(
+        self,
+        plan_id: int,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.factory_plan_repo.registrar_cierre_parcial_ingreso_fabrica(
+            plan_id,
+            picker=picker,
+        )
+
+    def finalizar_plan_ingreso_fabrica(
+        self,
+        plan_id: int,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.factory_plan_repo.finalizar_plan_ingreso_fabrica(
+            plan_id,
+            picker=picker,
+        )
+
+    def listar_cierres_parciales_fabrica(self, plan_id: int) -> list[dict[str, Any]]:
+        return self.factory_plan_repo.listar_cierres_parciales_fabrica(plan_id)
+
+    def cancelar_plan_ingreso_fabrica(self, plan_id: int) -> bool:
+        return self.factory_plan_repo.cancelar_plan_ingreso_fabrica(plan_id)
+
+    def crear_plan_mercado_full(
+        self,
+        nombre_envio: str,
+        archivo_excel: str,
+        creado_por: str,
+        items: list[tuple[str, str, int]],
+    ) -> int:
+        return self.full_plan_repo.crear_plan_mercado_full(
+            nombre_envio,
+            archivo_excel,
+            creado_por,
+            items,
+        )
+
+    def obtener_plan_mercado_full(self, plan_id: int) -> dict[str, Any] | None:
+        return self.full_plan_repo.obtener_plan_mercado_full(plan_id)
+
+    def obtener_plan_activo_mercado_full(self) -> dict[str, Any] | None:
+        return self.full_plan_repo.obtener_plan_activo_mercado_full()
+
+    def listar_planes_mercado_full(
+        self,
+        estado: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.full_plan_repo.listar_planes_mercado_full(estado=estado)
+
+    def obtener_items_plan_full(self, plan_id: int) -> list[dict[str, Any]]:
+        return self.full_plan_repo.obtener_items_plan_full(plan_id)
+
+    def registrar_escaneo_item_plan(
+        self,
+        plan_id: int,
+        codigo_escaneado: str,
+        cantidad: int = 1,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.full_plan_repo.registrar_escaneo_item_plan(
+            plan_id,
+            codigo_escaneado,
+            cantidad=cantidad,
+            picker=picker,
+        )
+
+    def ajustar_cantidad_item_plan(
+        self,
+        plan_id: int,
+        codigo: str,
+        nueva_cantidad: int,
+        picker: str = "",
+    ) -> dict[str, Any]:
+        return self.full_plan_repo.ajustar_cantidad_item_plan(
+            plan_id,
+            codigo,
+            nueva_cantidad,
+            picker=picker,
+        )
+
+    def finalizar_plan_mercado_full(
+        self,
+        plan_id: int,
+        picker: str = "",
+    ) -> bool:
+        return self.full_plan_repo.finalizar_plan_mercado_full(
+            plan_id,
+            picker=picker,
+        )
+
+    def cancelar_plan_mercado_full(self, plan_id: int) -> bool:
+        return self.full_plan_repo.cancelar_plan_mercado_full(plan_id)
+
+    def obtener_flujo_stock_diario(self, fecha: str = "") -> dict[str, Any]:
+        return self.stock_flow_repo.obtener_flujo_stock_diario(fecha=fecha)
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA synchronous = NORMAL")
-            connection.execute("PRAGMA temp_store = MEMORY")
-            connection.execute("PRAGMA busy_timeout = 10000")
+        with sqlite_connection(
+            self.database_path,
+            synchronous_normal=True,
+            temp_store_memory=True,
+        ) as connection:
             yield connection
 
     def _db_signature(self) -> tuple[str, int, int] | None:
@@ -78,55 +585,14 @@ class OrderStore(
 
     @staticmethod
     def _map_pedido(row: sqlite3.Row) -> Pedido:
-        claves = row.keys()
-        c_id = row["cierre_id"] if "cierre_id" in claves else None
-        c_m_id = row["cierre_mercado_id"] if "cierre_mercado_id" in claves else None
-        hash_val = row["archivo_hash"] if "archivo_hash" in claves and row["archivo_hash"] else ""
-        guia_val = (row["numero_guia"] if "numero_guia" in claves else "") or ""
-        return Pedido(
-            id=row["id"],
-            nota_pedido=row["nota_pedido"],
-            numero_pedido=row["numero_pedido"],
-            cliente=row["cliente"],
-            bultos=row["bultos"],
-            logistica=row["logistica"],
-            armador=row["armador"],
-            tipo_archivo=row["tipo_archivo"],
-            nombre_archivo=row["nombre_archivo"],
-            agregado=bool(row["agregado"]),
-            articulos_descontados=row["articulos_descontados"],
-            resumen_items=row["resumen_items"],
-            created_at=row["created_at"],
-            estado=row["estado"],
-            fecha_retiro=row["fecha_retiro"] or "",
-            archivo_descuento=row["archivo_descuento"] or "",
-            cierre_id=c_id,
-            cierre_mercado_id=c_m_id,
-            archivo_hash=hash_val,
-            numero_guia=guia_val,
-            estado_despacho=(row["estado_despacho"] if "estado_despacho" in claves else "armado") or "armado",
-            despachado_at=(row["despachado_at"] if "despachado_at" in claves else "") or "",
-            despachado_por=(row["despachado_por"] if "despachado_por" in claves else "") or "",
-            entregado_at=(row["entregado_at"] if "entregado_at" in claves else "") or "",
-            entregado_por=(row["entregado_por"] if "entregado_por" in claves else "") or "",
-            canal=(row["canal"] if "canal" in claves else "") or "",
-        )
+        return OrderCoreRepository.map_pedido(row)
 
     def _obtener_fila_pedido(self, connection: sqlite3.Connection, pedido_id: int) -> sqlite3.Row | None:
-        return connection.execute(
-            f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
-            (pedido_id,),
-        ).fetchone()
+        return self.order_core_repo.obtener_fila_pedido(connection, pedido_id)
 
     def existe_nota_pedido(self, nota_pedido: str) -> bool:
         """Indica si ya existe un pedido registrado con la nota especificada."""
-        nota = nota_pedido.strip()
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT 1 FROM pedidos WHERE nota_pedido = ? COLLATE NOCASE LIMIT 1",
-                (nota,),
-            ).fetchone()
-            return row is not None
+        return self.order_core_repo.existe_nota_pedido(nota_pedido)
 
     def registrar_pedido(
         self,
@@ -150,162 +616,50 @@ class OrderStore(
         canal: str = "",
     ) -> Pedido:
         """Valida e inserta un nuevo pedido junto a sus ítems y registro de auditoría."""
-        nota_pedido = nota_pedido.strip()
-        numero_pedido = numero_pedido.strip()
-        cliente = cliente.strip()
-        armador = armador.strip() or "Operario"
-        nombre_archivo = nombre_archivo.strip()
-        tipo_archivo = tipo_archivo.lower().strip()
-        fecha_retiro = fecha_retiro.strip()
-        archivo_descuento = archivo_descuento.strip()
-        archivo_hash = archivo_hash.strip()
-        canal_normalizado = clasificar_canal_pedido(
-            tipo_archivo=tipo_archivo,
-            cliente=cliente,
-            nombre_archivo=nombre_archivo,
+        return self.order_core_repo.registrar_pedido(
             nota_pedido=nota_pedido,
+            numero_pedido=numero_pedido,
+            cliente=cliente,
+            bultos=bultos,
             logistica=logistica,
-            canal_explicito=canal,
+            armador=armador,
+            tipo_archivo=tipo_archivo,
+            nombre_archivo=nombre_archivo,
+            agregado=agregado,
+            articulos_descontados=articulos_descontados,
+            resumen_items=resumen_items,
+            fecha_retiro=fecha_retiro,
+            archivo_descuento=archivo_descuento,
+            items=items,
+            archivo_hash=archivo_hash,
+            numero_guia=numero_guia,
+            items_sin_coincidencia=items_sin_coincidencia,
+            canal=canal,
         )
-
-        if not nota_pedido:
-            raise ValueError("La nota de pedido no puede estar vacía.")
-        if not cliente:
-            raise ValueError("Debes especificar un cliente.")
-        if bultos < 1:
-            raise ValueError("La cantidad de bultos debe ser de al menos 1.")
-        if logistica not in LOGISTICA_OPCIONES:
-            raise ValueError(f"Logística inválida. Opciones permitidas: {', '.join(LOGISTICA_OPCIONES)}")
-        if tipo_archivo not in ("pdf", "excel", "docx"):
-            raise ValueError("Tipo de archivo inválido (debe ser pdf, excel o docx).")
-
-        try:
-            with self._connect() as connection, connection:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO pedidos (
-                        nota_pedido, numero_pedido, cliente, bultos, logistica, armador,
-                        tipo_archivo, nombre_archivo, agregado, articulos_descontados, resumen_items,
-                        fecha_retiro, archivo_descuento, archivo_hash, numero_guia, items_sin_coincidencia, canal
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        nota_pedido,
-                        numero_pedido,
-                        cliente,
-                        bultos,
-                        logistica,
-                        armador,
-                        tipo_archivo,
-                        nombre_archivo,
-                        int(agregado),
-                        articulos_descontados,
-                        resumen_items,
-                        fecha_retiro,
-                        archivo_descuento,
-                        archivo_hash,
-                        (numero_guia or "").strip(),
-                        json.dumps(items_sin_coincidencia or [], ensure_ascii=False),
-                        canal_normalizado,
-                    ),
-                )
-                nuevo_id = cursor.lastrowid
-                if items:
-                    connection.executemany(
-                        """
-                        INSERT INTO pedido_items (pedido_id, codigo, descripcion, cantidad)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        [(nuevo_id, str(cod).strip(), str(desc).strip(), int(cant)) for cod, desc, cant in items],
-                    )
-                row = self._obtener_fila_pedido(connection, nuevo_id)
-        except sqlite3.IntegrityError as error:
-            raise ValueError(f"La nota de pedido '{nota_pedido}' ya fue registrada previamente.") from error
-
-        ped_res = self._map_pedido(row)
-        self.registrar_auditoria(
-            usuario=armador,
-            accion="CARGAR_PEDIDO",
-            detalle=f"Remito {ped_res.nota_pedido} cargado para '{ped_res.cliente}' ({ped_res.bultos} bulto(s), {ped_res.logistica})",
-        )
-        return ped_res
 
     def buscar_pedido_por_hash(self, archivo_hash: str) -> Pedido | None:
         """Busca un pedido activo por el hash SHA-256 del archivo origen."""
-        if not archivo_hash:
-            return None
-        with self._connect() as connection:
-            row = connection.execute(
-                f"""
-                SELECT {_COLUMNAS_SELECT_PEDIDO}
-                FROM pedidos
-                WHERE archivo_hash = ? AND estado != 'anulado'
-                LIMIT 1
-                """,
-                (archivo_hash.strip(),),
-            ).fetchone()
-            return self._map_pedido(row) if row is not None else None
+        return self.order_core_repo.buscar_pedido_por_hash(archivo_hash)
 
     def listar_pedidos(self, limit: int = 50) -> list[Pedido]:
         """Lista los pedidos más recientes en orden descendente por ID."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [self._map_pedido(r) for r in rows]
+        return self.order_core_repo.listar_pedidos(limit=limit)
 
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
         """Marca un pedido como anulado y registra el motivo en auditoría."""
-        with self._connect() as connection, connection:
-            row = connection.execute("SELECT nota_pedido FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
-            remito = row["nota_pedido"] if row else f"ID {pedido_id}"
-            connection.execute(
-                "UPDATE pedidos SET estado = 'anulado' WHERE id = ?",
-                (pedido_id,),
-            )
-        self.registrar_auditoria(
-            usuario=usuario,
-            accion="ANULAR_PEDIDO",
-            detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
-        )
+        self.order_core_repo.anular_pedido(pedido_id, motivo=motivo, usuario=usuario)
 
     def obtener_items_sin_coincidencia(self, pedido_id: int) -> list[tuple[str, str]]:
         """Devuelve la lista JSON de ítems sin coincidencia guardada para un pedido."""
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT items_sin_coincidencia FROM pedidos WHERE id = ?",
-                (pedido_id,),
-            ).fetchone()
-        if not row or not row["items_sin_coincidencia"]:
-            return []
-        try:
-            items = json.loads(row["items_sin_coincidencia"])
-            return [(str(desc), str(mot)) for desc, mot in items]
-        except Exception:
-            return []
+        return self.order_core_repo.obtener_items_sin_coincidencia(pedido_id)
 
     def guardar_items_sin_coincidencia(self, pedido_id: int, items: list[tuple[str, str]]) -> None:
         """Guarda el detalle JSON de ítems sin coincidencia para un pedido."""
-        with self._connect() as connection, connection:
-            connection.execute(
-                "UPDATE pedidos SET items_sin_coincidencia = ? WHERE id = ?",
-                (json.dumps(items or [], ensure_ascii=False), pedido_id),
-            )
+        self.order_core_repo.guardar_items_sin_coincidencia(pedido_id, items)
 
     def obtener_items_pedido(self, pedido_id: int) -> list[tuple[str, str, int]]:
         """Retorna los ítems descontados asociados a un pedido."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT codigo, descripcion, cantidad
-                FROM pedido_items
-                WHERE pedido_id = ?
-                ORDER BY id ASC
-                """,
-                (pedido_id,),
-            ).fetchall()
-        return [(r["codigo"], r["descripcion"], int(r["cantidad"])) for r in rows]
+        return self.order_core_repo.obtener_items_pedido(pedido_id)
 
     def actualizar_datos_pedido(
         self,
@@ -319,70 +673,13 @@ class OrderStore(
         numero_guia: str | None = None,
     ) -> Pedido:
         """Actualiza metadatos editables de un pedido con validación y trazabilidad."""
-        with self._connect() as connection:
-            row = self._obtener_fila_pedido(connection, pedido_id)
-            if row is None:
-                raise OrderStoreError(f"No se encontró el pedido con ID {pedido_id}.")
-            pedido_actual = self._map_pedido(row)
-
-        cambios: list[str] = []
-        nuevo_cliente = pedido_actual.cliente if cliente is None else cliente.strip()
-        if nuevo_cliente != pedido_actual.cliente:
-            if not nuevo_cliente:
-                raise OrderStoreError("El nombre del cliente no puede estar vacío.")
-            cambios.append(f"Cliente: '{pedido_actual.cliente}' → '{nuevo_cliente}'")
-
-        nuevo_num_pedido = pedido_actual.numero_pedido if numero_pedido is None else numero_pedido.strip()
-        if nuevo_num_pedido != pedido_actual.numero_pedido:
-            cambios.append(f"N° Pedido: '{pedido_actual.numero_pedido}' → '{nuevo_num_pedido}'")
-
-        nuevo_bultos = pedido_actual.bultos if bultos is None else int(bultos)
-        if nuevo_bultos < 1:
-            raise OrderStoreError("La cantidad de bultos debe ser al menos 1.")
-        if nuevo_bultos != pedido_actual.bultos:
-            cambios.append(f"Bultos: {pedido_actual.bultos} → {nuevo_bultos}")
-
-        nueva_logistica = pedido_actual.logistica if logistica is None else logistica.strip()
-        if nueva_logistica not in LOGISTICA_OPCIONES:
-            raise OrderStoreError(
-                f"Logística inválida: '{nueva_logistica}'. Debe ser una de: {', '.join(LOGISTICA_OPCIONES)}"
-            )
-        if nueva_logistica != pedido_actual.logistica:
-            cambios.append(f"Logística: '{pedido_actual.logistica}' → '{nueva_logistica}'")
-
-        nueva_fecha_retiro = pedido_actual.fecha_retiro if fecha_retiro is None else fecha_retiro.strip()
-        if nueva_fecha_retiro != pedido_actual.fecha_retiro:
-            cambios.append(f"Fecha Retiro: '{pedido_actual.fecha_retiro}' → '{nueva_fecha_retiro}'")
-
-        nuevo_numero_guia = pedido_actual.numero_guia if numero_guia is None else numero_guia.strip()
-        if nuevo_numero_guia != pedido_actual.numero_guia:
-            cambios.append(f"N° Guía: '{pedido_actual.numero_guia}' → '{nuevo_numero_guia}'")
-
-        if not cambios:
-            return pedido_actual
-
-        with self._connect() as connection, connection:
-            connection.execute(
-                """
-                UPDATE pedidos
-                SET cliente = ?, numero_pedido = ?, bultos = ?, logistica = ?, fecha_retiro = ?, numero_guia = ?
-                WHERE id = ?
-                """,
-                (nuevo_cliente, nuevo_num_pedido, nuevo_bultos, nueva_logistica, nueva_fecha_retiro, nuevo_numero_guia, pedido_id),
-            )
-
-        if nuevo_cliente:
-            try:
-                self.registrar_cliente(nuevo_cliente)
-            except Exception:
-                pass
-
-        self.registrar_auditoria(
+        return self.order_core_repo.actualizar_datos_pedido(
+            pedido_id=pedido_id,
+            cliente=cliente,
+            numero_pedido=numero_pedido,
+            bultos=bultos,
+            logistica=logistica,
+            fecha_retiro=fecha_retiro,
             usuario=usuario,
-            accion="MODIFICAR_PEDIDO",
-            detalle=f"Pedido #{pedido_actual.nota_pedido} modificado: " + "; ".join(cambios),
+            numero_guia=numero_guia,
         )
-
-        with self._connect() as connection:
-            row_act = self._obtener_fila_pedido(connection, pedido_id)
-        return self._map_pedido(row_act)

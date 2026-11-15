@@ -30,10 +30,11 @@ def _unir_textos_unicos(valores: list[str], limite: int = 3) -> str:
     return ", ".join(unicos[:limite]) + f" (+{len(unicos) - limite})"
 
 
-class MovementsReportMixin:
+class MovementsReportRepository:
     """Provee consultas consolidadas de salidas, ingresos, kardex y rotación sin dependencia de Excel."""
 
-    _connect: Callable[[], sqlite3.Connection]
+    def __init__(self, connect_fn: Callable[[], sqlite3.Connection]) -> None:
+        self._connect = connect_fn
 
     def get_period_movements_summary(
         self,

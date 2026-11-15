@@ -1,8 +1,11 @@
-"""Mixin para control de intentos fallidos y bloqueo temporal anti fuerza bruta."""
+"""Repositorio desacoplado para control de intentos fallidos y bloqueo temporal anti fuerza bruta."""
 
 from __future__ import annotations
 
+import sqlite3
 import time
+from contextlib import AbstractContextManager
+from typing import Callable
 
 from .models import (
     FAILED_WINDOW_SECONDS,
@@ -12,8 +15,11 @@ from .models import (
 )
 
 
-class LockoutRepositoryMixin:
+class LockoutRepository:
     """Gestiona bloqueos temporales por intentos fallidos en `login_attempts`."""
+
+    def __init__(self, connect_fn: Callable[[], AbstractContextManager[sqlite3.Connection]]) -> None:
+        self._connect = connect_fn
 
     def segundos_bloqueo_restantes(
         self, username: str, ahora: float | None = None
@@ -28,7 +34,7 @@ class LockoutRepositoryMixin:
             return 0
         return int(row["locked_until"] - ahora) + 1
 
-    def _registrar_fallo(self, username: str, ahora: float) -> AuthResult:
+    def registrar_fallo(self, username: str, ahora: float) -> AuthResult:
         if not username:
             return AuthResult(None, "invalid")
         with self._connect() as connection, connection:
@@ -70,7 +76,7 @@ class LockoutRepositoryMixin:
             )
         return AuthResult(None, "invalid", attempts_left=MAX_FAILED_ATTEMPTS - cantidad)
 
-    def _limpiar_intentos(self, username: str) -> None:
+    def limpiar_intentos(self, username: str) -> None:
         with self._connect() as connection, connection:
             connection.execute(
                 "DELETE FROM login_attempts WHERE username = ?", (username,)
@@ -78,7 +84,7 @@ class LockoutRepositoryMixin:
 
     def unlock_user(self, username: str) -> None:
         """Desbloquea manualmente una cuenta (acción de administración)."""
-        self._limpiar_intentos(username.strip())
+        self.limpiar_intentos(username.strip())
 
     def list_locked_usernames(self) -> list[str]:
         with self._connect() as connection:

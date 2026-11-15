@@ -9,8 +9,14 @@ from ..parsers.remito_parser import normalizar_codigo
 from ..products.barcode_utils import coincide_codigo_o_barras
 
 
-class FullPlanRepositoryMixin:
-    """Mixin que gestiona la creación, escaneo guiado y seguimiento en tiempo real de planes Mercado Full."""
+from .protocols import OrderConnectFn
+
+
+class FullPlanRepository:
+    """Repositorio que gestiona la creación, escaneo guiado y seguimiento en tiempo real de planes Mercado Full."""
+
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def crear_plan_mercado_full(
         self,

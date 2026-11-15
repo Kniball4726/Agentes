@@ -151,11 +151,11 @@ class TestFase2Features(unittest.TestCase):
             filas_sincronizadas = sm.sincronizar_catalogo_completo_excel()
             self.assertEqual(filas_sincronizadas, 2)
 
-            # Verificar que el archivo Excel contenga los nuevos valores
+            # Verificar que el archivo Excel exportado contenga la hoja estándar y los nuevos valores
             wb_verif = openpyxl.load_workbook(ruta_excel, data_only=True)
-            ws_verif = wb_verif["Productos"]
-            stock_101 = ws_verif.cell(3, 3).value
-            stock_102 = ws_verif.cell(4, 3).value
+            ws_verif = wb_verif[sm.nombre_hoja]
+            stock_101 = ws_verif.cell(4, 5).value
+            stock_102 = ws_verif.cell(5, 5).value
             wb_verif.close()
 
             self.assertEqual(stock_101, 8)

@@ -6,9 +6,14 @@ from datetime import datetime, timedelta
 from typing import Any
 import sqlite3
 
+from .protocols import OrderConnectFn
 
-class ConcurrencyRepositoryMixin:
-    """Mixin para gestión de bloqueos temporales de edición y transacciones idempotentes."""
+
+class ConcurrencyRepository:
+    """Repositorio para gestión de bloqueos temporales de edición y transacciones idempotentes."""
+
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def adquirir_bloqueo_pedido(
         self, pedido_id: int, usuario: str, expiracion_minutos: int = 5

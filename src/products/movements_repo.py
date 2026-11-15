@@ -1,4 +1,4 @@
-"""Repositorio mixin para el registro y consulta de movimientos de stock y despachos."""
+"""Repositorio desacoplado para el registro y consulta de movimientos de stock y despachos."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from contextlib import closing
 from typing import Callable, Iterable
 
 
-class MovementsRepositoryMixin:
-    """Mixin que encapsula el historial de movimientos de inventario y trazabilidad de despachos."""
+class MovementsRepository:
+    """Encapsula el historial de movimientos de inventario y trazabilidad de despachos."""
 
-    _connect: Callable[[], sqlite3.Connection]
+    def __init__(self, connect_fn: Callable[[], sqlite3.Connection]) -> None:
+        self._connect = connect_fn
 
     def record_dispatch(
         self,

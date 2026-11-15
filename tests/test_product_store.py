@@ -85,7 +85,7 @@ class ProductStoreTests(unittest.TestCase):
 
             def sincronizar() -> list[int]:
                 plantilla.write_bytes(b"plantilla modificada")
-                return []
+                raise RuntimeError("Fallo simulado al sincronizar plantilla")
 
             def restaurar() -> None:
                 plantilla.write_bytes(b"plantilla original")
@@ -157,7 +157,7 @@ class ProductStoreTests(unittest.TestCase):
 
             def sincronizar(_orden: int) -> list[int]:
                 plantilla.write_bytes(b"plantilla actualizada")
-                return []
+                raise RuntimeError("Fallo simulado al sincronizar plantilla")
 
             def restaurar() -> None:
                 plantilla.write_bytes(b"plantilla original")

@@ -36,7 +36,6 @@ from .ui.components import (
     actualizar_estado_conexion_ui,
     aplicar_posicion_sidebar_ui,
     construir_encabezado,
-    construir_navigation_bar_movil,
     construir_panel_acceso_rapido,
     construir_panel_informes_actividad,
     construir_panel_metricas,
@@ -44,6 +43,18 @@ from .ui.components import (
     iniciar_heartbeat_red_daemon,
     manejar_cambio_navegacion_movil,
     reproducir_sonido_web,
+)
+from .ui.shell_builder import (
+    actualizar_icono_notificaciones_ui,
+    configurar_dialogos_adaptables_shell,
+    configurar_ventana_shell,
+    construir_barra_estado_ui,
+    construir_dashboard_shell,
+    construir_tarjeta_ui,
+    copiar_al_portapapeles_ui,
+    establecer_posicion_sidebar_ui,
+    fijar_estado_tarea_ui,
+    inicializar_controles_shell,
 )
 from .ui.controllers import (
     AuthSessionController,
@@ -404,62 +415,7 @@ class InterfazFlet:
         return ctrl
 
     def _inicializar_controles_ui(self) -> None:
-        self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
-        self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
-        self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
-        self.icono_estado_tarea = ft.Icon(
-            ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED,
-            size=14,
-            color=ft.Colors.GREEN_400,
-        )
-        self.estado_tarea = ft.Text(
-            "Sistema listo", color=self.secundario, size=11, weight=ft.FontWeight.W_500
-        )
-        self.progreso_barra = ft.ProgressBar(width=160, value=None, color=ROJO, visible=False)
-        self.lista_informes = ft.ListView(expand=True, spacing=4)
-        self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
-        self.header_pedidos_fecha = ft.Text(
-            "Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto
-        )
-        self.header_pedidos_subtitulo = ft.Text(
-            "0 pedidos preparados", size=11, color=self.secundario
-        )
-        self.header_pedidos_bultos = ft.Text(
-            "0 bultos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE
-        )
-        self.lista_pedidos_preparados = ft.ListView(expand=True, spacing=6)
-        self.conversacion = ft.ListView(expand=True, spacing=8, auto_scroll=True)
-        self.entrada_chat = ft.TextField(
-            hint_text="Escribe una consulta o /ayuda",
-            expand=True,
-            min_lines=1,
-            max_lines=3,
-            on_submit=self.enviar_chat,
-        )
-        self.conversacion_equipo = ft.ListView(expand=True, spacing=8, auto_scroll=True)
-        self.entrada_chat_equipo = ft.TextField(
-            hint_text="Escribe un mensaje para el equipo...",
-            expand=True,
-            dense=True,
-            on_submit=self.enviar_mensaje_equipo,
-        )
-        self.selector_destinatario_equipo = ft.Dropdown(
-            label="Destinatario",
-            options=[ft.dropdown.Option("Todos", "📢 Todos (Canal General)")],
-            value="Todos",
-            dense=True,
-            expand=True,
-        )
-        self.texto_badge_chat = ft.Text("", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
-        self.badge_chat_container = ft.Container(
-            content=self.texto_badge_chat,
-            bgcolor=ft.Colors.RED_600,
-            border_radius=10,
-            padding=ft.Padding.symmetric(horizontal=5, vertical=1),
-            visible=False,
-        )
-        self.texto_badge_tab = ft.Text("", size=10, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD)
-        self.pendientes_texto = ft.Text("", color=self.secundario, size=12)
+        inicializar_controles_shell(self)
 
     @property
     def es_pantalla_movil(self) -> bool:
@@ -471,40 +427,11 @@ class InterfazFlet:
     # ------------------------------------------------------------------
     def _configurar_dialogos_adaptables(self) -> None:
         """Interpreta dimensiones en diálogos para adaptarlos a pantallas pequeñas."""
-        if hasattr(self.page, "show_dialog") and not getattr(self.page, "_dialogos_adaptables_configurados", False):
-            orig_show = self.page.show_dialog
-
-            def show_dialog_adaptable(dialogo):
-                self.cerrar_drawer_si_movil()
-                if hasattr(dialogo, "content") and dialogo.content is not None:
-                    for c in [dialogo.content, getattr(dialogo.content, "content", None)]:
-                        if c is not None:
-                            w_orig = getattr(c, "width", None)
-                            if isinstance(w_orig, (int, float)):
-                                c.width = self.ancho_adaptable(int(w_orig))
-                            h_orig = getattr(c, "height", None)
-                            if isinstance(h_orig, (int, float)):
-                                c.height = self.alto_adaptable(int(h_orig))
-                return orig_show(dialogo)
-
-            self.page.show_dialog = show_dialog_adaptable
-            self.page._dialogos_adaptables_configurados = True
+        configurar_dialogos_adaptables_shell(self)
 
     def _configurar_ventana(self) -> None:
-        self.page.title = "Control de Inventario Depósito Pasteur"
-        if hasattr(self.page, "window"):
-            self.page.window.icon = str(Path(__file__).resolve().parent / "img" / "ultratech.ico")
-            self.page.window.maximized = True
-            self.page.window.min_width = 360
-            self.page.window.min_height = 480
-        self.page.padding = 0
-        self.page.bgcolor = self.fondo
-        self.page.theme_mode = ft.ThemeMode.DARK
-        self.page.theme = ft.Theme(color_scheme_seed=ROJO)
-        if hasattr(self.page, "on_resize"):
-            self.page.on_resize = self._al_redimensionar
-        self.page.on_keyboard_event = self._manejar_teclas_globales
-        self._configurar_dialogos_adaptables()
+        icon_path = Path(__file__).resolve().parent / "img" / "ultratech.ico"
+        configurar_ventana_shell(self, icon_path)
 
     def _sidebar_horizontal_controls(self) -> list[ft.Control]:
         from .ui.components.sidebar import construir_sidebar_horizontal_controls
@@ -512,36 +439,7 @@ class InterfazFlet:
 
     def cambiar_posicion_sidebar(self, nueva_posicion: str) -> None:
         """Cambia la ubicación del menú y reconstruye la vista."""
-        if nueva_posicion in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
-            self.posicion_sidebar = nueva_posicion
-            self.construir()
-            nombre_pos = {
-                "izquierda": "a la izquierda",
-                "derecha": "a la derecha",
-                "arriba": "en barra superior (horizontal)",
-                "abajo": "en barra inferior (horizontal)",
-                "oculto": "oculto (pantalla completa · usa F2 para módulos)",
-            }.get(nueva_posicion, nueva_posicion)
-            try:
-                snack = ft.SnackBar(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.DOCK, color=ft.Colors.WHITE, size=16),
-                            ft.Text(
-                                f"Menú ubicado {nombre_pos}. Atajo rápido: F2 o Ctrl+K.",
-                                color=ft.Colors.WHITE,
-                                size=12,
-                            ),
-                        ],
-                        spacing=8,
-                    ),
-                    bgcolor=ROJO,
-                    duration=2500,
-                )
-                self.page.show_dialog(snack)
-                self.page.update()
-            except Exception:
-                pass
+        establecer_posicion_sidebar_ui(self, nueva_posicion)
 
     def _aplicar_posicion_sidebar(self, dashboard: ft.Control, sidebar: ft.Control) -> None:
         aplicar_posicion_sidebar_ui(self, dashboard, sidebar)
@@ -554,124 +452,7 @@ class InterfazFlet:
         return construir_sidebar_controls(self)
 
     def construir(self) -> None:
-        if self.usuario_actual is None:
-            self.mostrar_inicio_sesion()
-            return
-        self.theme_ctrl.aplicar_preferencias_usuario(self.usuario_actual)
-
-        self.page.bgcolor = self.fondo
-        self.page.theme_mode = ft.ThemeMode.DARK if self.modo_oscuro else ft.ThemeMode.LIGHT
-        self.controles_tarea.clear()
-        if hasattr(self, "botones_cierre_jornada") and self.botones_cierre_jornada is not None:
-            self.botones_cierre_jornada.clear()
-        self.btn_cierre_jornada = None
-        self.chat_visible = False
-
-        self.page.floating_action_button = None
-        if hasattr(self.page, "overlay") and self.page.overlay is not None:
-            self.page.overlay.clear()
-        self.page.controls.clear()
-
-        sidebar_items = self._sidebar_controls()
-        es_movil = self.es_pantalla_movil
-        self._modo_movil_previo = es_movil
-
-        if es_movil and hasattr(self.page, "drawer"):
-            self.page.drawer = ft.NavigationDrawer(
-                bgcolor=self.superficie,
-                controls=[
-                    ft.Container(
-                        padding=16,
-                        content=ft.Column(sidebar_items, spacing=8, tight=True),
-                    )
-                ],
-            )
-        elif hasattr(self.page, "drawer"):
-            self.page.drawer = None
-
-        self.page.navigation_bar = construir_navigation_bar_movil(self) if es_movil else None
-
-        dashboard = ft.Column(
-            [
-                self.encabezado(),
-                self.banner_alerta_quiebre,
-                self.panel_metricas(),
-                self.panel_acceso_rapido(),
-                self.panel_informes_actividad(),
-                self.barra_estado(),
-            ],
-            expand=True,
-            spacing=16,
-            scroll=ft.ScrollMode.AUTO if es_movil else None,
-        )
-
-        if es_movil:
-            self.page.add(
-                ft.Container(
-                    expand=True,
-                    padding=ft.Padding(left=10, right=10, top=10, bottom=10),
-                    content=dashboard,
-                )
-            )
-        else:
-            sidebar = ft.Container(
-                width=258,
-                bgcolor=self.superficie,
-                padding=20,
-                content=ft.Column(sidebar_items, spacing=8, scroll=ft.ScrollMode.AUTO),
-            )
-            self.page.add(
-                ft.Row(
-                    [
-                        sidebar,
-                        ft.Container(expand=True, padding=22, content=dashboard),
-                    ],
-                    expand=True,
-                    spacing=0,
-                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-                )
-            )
-            self._aplicar_posicion_sidebar(dashboard, sidebar)
-
-        ventana_chat = self.crear_ventana_chat_flotante()
-        if not hasattr(self.page, "overlay") or self.page.overlay is None:
-            self.page.overlay = []
-        else:
-            self.page.overlay.clear()
-        self._asegurar_file_picker(forzar_recrear=True)
-        self.page.overlay.append(ventana_chat)
-
-        self.boton_chat_flotante = ft.FloatingActionButton(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=18 if es_movil else 20),
-                    ft.Text(
-                        "Chat" if es_movil else "Asistente",
-                        color=ft.Colors.WHITE,
-                        weight=ft.FontWeight.BOLD,
-                        size=12 if es_movil else 13,
-                    ),
-                    self.badge_chat_container,
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=4 if es_movil else 5,
-            ),
-            bgcolor=ROJO,
-            tooltip="Asistente Virtual y Chat de Equipo",
-            on_click=self.alternar_chat_flotante,
-            shape=ft.RoundedRectangleBorder(radius=16),
-            width=110 if es_movil else 140,
-        )
-        self.page.floating_action_button = self.boton_chat_flotante
-        if not self.conversacion.controls:
-            rol_actual = self.usuario_actual.role if self.usuario_actual else "operador"
-            nom_actual = self.usuario_actual.username if self.usuario_actual else ""
-            self.escribir_chat("Agente", obtener_mensaje_bienvenida(rol_actual, nom_actual))
-        self.actualizar_estado()
-        self.refrescar_usuarios_chat_equipo()
-        self._iniciar_heartbeat_red()
-        self.cargar_mensajes_equipo()
-        self.actualizar_badge_chat()
+        construir_dashboard_shell(self)
 
     def boton(
         self,
@@ -701,32 +482,8 @@ class InterfazFlet:
         )
 
     def _actualizar_icono_notificaciones(self) -> None:
-        if self.usuario_actual is None or self.usuario_actual.role != "administrador":
-            self.contenedor_notificaciones.content = None
-            return
-        try:
-            sm_factory = getattr(self, "_stock_manager_factory", None) or StockManager
-            sm = sm_factory(self.menu.ruta_excel_base)
-            raw_no_leidas = sm.contar_notificaciones_no_leidas()
-            no_leidas = raw_no_leidas if isinstance(raw_no_leidas, int) else 0
-        except Exception:
-            no_leidas = 0
-
-        if no_leidas > 0:
-            self.contenedor_notificaciones.content = ft.IconButton(
-                icon=ft.Icons.NOTIFICATIONS_ACTIVE,
-                icon_color=ft.Colors.AMBER_400,
-                tooltip=f"{no_leidas} notificación(es) de operarios sin leer",
-                on_click=self.mostrar_notificaciones_admin,
-                badge=ft.Badge(label=str(no_leidas)),
-            )
-        else:
-            self.contenedor_notificaciones.content = ft.IconButton(
-                icon=ft.Icons.NOTIFICATIONS_NONE,
-                icon_color=self.secundario,
-                tooltip="Notificaciones de operarios",
-                on_click=self.mostrar_notificaciones_admin,
-            )
+        sm_cls = getattr(self, "_stock_manager_factory", None) or StockManager
+        actualizar_icono_notificaciones_ui(self, sm_cls)
 
     def encabezado(self) -> ft.Control:
         return construir_encabezado(self)
@@ -742,64 +499,14 @@ class InterfazFlet:
 
     def barra_estado(self) -> ft.Control:
         """Barra de estado inferior con diseño sutil e indicador de actividad del sistema."""
-        return ft.Container(
-            content=ft.Row(
-                [
-                    ft.Row(
-                        [
-                            self.icono_estado_tarea,
-                            self.estado_tarea,
-                        ],
-                        spacing=7,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    self.progreso_barra,
-                ],
-                spacing=12,
-                alignment=ft.MainAxisAlignment.START,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.Padding(left=12, right=14, top=6, bottom=6),
-            border_radius=8,
-            bgcolor=ft.Colors.with_opacity(0.04, self.texto),
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.08, self.texto)),
-        )
+        return construir_barra_estado_ui(self)
 
     def fijar_estado_tarea(self, texto: str, estado: str = "listo") -> None:
         """Actualiza el texto y el ícono de la barra de estado inferior."""
-        self.estado_tarea.value = texto
-        if hasattr(self, "icono_estado_tarea") and self.icono_estado_tarea:
-            texto_lower = (texto or "").lower()
-            if estado == "listo" or "listo" in texto_lower or "finalizad" in texto_lower:
-                self.icono_estado_tarea.name = ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED
-                self.icono_estado_tarea.color = ft.Colors.GREEN_400
-            elif estado == "error" or "error" in texto_lower or "fall" in texto_lower:
-                self.icono_estado_tarea.name = ft.Icons.ERROR_OUTLINE_ROUNDED
-                self.icono_estado_tarea.color = ft.Colors.RED_400
-            elif estado == "en_curso" or "curso" in texto_lower or "progreso" in texto_lower:
-                self.icono_estado_tarea.name = ft.Icons.SYNC_ROUNDED
-                self.icono_estado_tarea.color = ft.Colors.AMBER_400
-            elif estado == "archivo":
-                self.icono_estado_tarea.name = ft.Icons.DESCRIPTION_OUTLINED
-                self.icono_estado_tarea.color = ft.Colors.LIGHT_BLUE_400
-            else:
-                self.icono_estado_tarea.name = ft.Icons.INFO_OUTLINE_ROUNDED
-                self.icono_estado_tarea.color = self.secundario
-        if hasattr(self, "page") and self.page:
-            try:
-                self.page.update()
-            except Exception:
-                pass
+        fijar_estado_tarea_ui(self, texto, estado)
 
     def tarjeta(self, contenido: ft.Control, expand: bool = False) -> ft.Container:
-        return ft.Container(
-            expand=expand,
-            bgcolor=self.superficie,
-            border=ft.Border.all(1, self.borde),
-            border_radius=14,
-            padding=16,
-            content=contenido,
-        )
+        return construir_tarjeta_ui(self, contenido, expand=expand)
 
     def actualizar_listas(self, _evento: ft.Event | None = None) -> None:
         """Alias de compatibilidad para actualizar el estado e informes."""
@@ -841,14 +548,7 @@ class InterfazFlet:
 
     def copiar_al_portapapeles(self, texto: str) -> None:
         """Copia texto al portapapeles del cliente de forma segura."""
-        try:
-            if self.page:
-                cb = ft.Clipboard()
-                self.page.overlay.append(cb)
-                self.page.update()
-                cb.set(str(texto))
-        except Exception:
-            pass
+        copiar_al_portapapeles_ui(self, texto)
 
     def actualizar_estado_conexion(
         self,

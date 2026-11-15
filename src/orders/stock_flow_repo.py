@@ -1,17 +1,20 @@
-"""Repositorio mixin para estadísticas y flujo de stock en tiempo real (entradas vs salidas)."""
+"""Repositorio desacoplado para estadísticas y flujo de stock en tiempo real (entradas vs salidas)."""
 
 from __future__ import annotations
 
 from datetime import datetime
 import json
 import sqlite3
-from typing import Any, Callable
+from typing import Any
+
+from .protocols import OrderConnectFn
 
 
-class StockFlowRepositoryMixin:
-    """Mixin para calcular analítica operativa de entradas y salidas en tiempo real."""
+class StockFlowRepository:
+    """Repositorio para calcular analítica operativa de entradas y salidas en tiempo real."""
 
-    _connect: Callable[[], Any]
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def obtener_flujo_stock_diario(self, fecha: str = "") -> dict[str, Any]:
         """

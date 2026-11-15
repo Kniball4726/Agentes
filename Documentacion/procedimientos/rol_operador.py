@@ -43,7 +43,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "icono_str": "[➕ Entrada]",
                 "modulo": "ACCESO RÁPIDO (CABECERA)",
                 "proposito_funcional": "Recepción instantánea por devoluciones, transferencias o sobrantes con modo pistoleo continuo y motivo tipificado obligatorio.",
-                "datos_modificados": "Incremento atómico en SQLite (`productos.sqlite3`) y `Productos.xlsx`; asiento en `stock_movements` (`ingreso_rapido`), `logs_auditoria` y webhook saliente.",
+                "datos_modificados": "Incremento atómico SQLite-first en `productos.sqlite3` (sincronizable a `Productos.xlsx`); asiento en `stock_movements` (`ingreso_rapido`), `logs_auditoria` y webhook saliente.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Entrada'</b> en la cabecera (o F2 / Ctrl+K -> 'Entrada Rápida').",
                     "Escanear el código de barras con pistola o tipear SKU y presionar Enter.",
@@ -58,7 +58,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "icono_str": "[➖ Salida]",
                 "modulo": "ACCESO RÁPIDO (CABECERA)",
                 "proposito_funcional": "Baja inmediata por roturas, mermas, muestras comerciales, consumo interno o devoluciones a proveedor con motivo obligatorio.",
-                "datos_modificados": "Decremento en `productos.sqlite3` y `Productos.xlsx`; asiento en `stock_movements` (`salida_rapida`), auditoría y evento webhook.",
+                "datos_modificados": "Decremento SQLite-first en `productos.sqlite3` (con exportación a `Productos.xlsx`); asiento en `stock_movements` (`salida_rapida`), auditoría y evento webhook.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Salida'</b> en la cabecera (o F2 / Ctrl+K -> 'Salida Rápida').",
                     "Escanear código de barras o tipear SKU y revisar stock proyectado.",
@@ -86,7 +86,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "icono_str": "[🛒 MeLi]",
                 "modulo": "ACCESO RÁPIDO (CABECERA)",
                 "proposito_funcional": "Acceso directo para escanear paquetes con pistola o cargar comprobantes DOCX de Mercado Libre.",
-                "datos_modificados": "Descuenta existencias en SQLite y `Productos.xlsx` con auditoría y hash SHA-256.",
+                "datos_modificados": "Descuenta existencias SQLite-first en `productos.sqlite3` (con exportación opcional a `Productos.xlsx`) usando auditoría y hash SHA-256.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Mercado Libre'</b> en la cabecera.",
                     "Escanear ítems con el lector (EAN-13 / SKU) o cambiar a pestaña Archivo (.docx).",
@@ -108,7 +108,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "icono_str": "[📥]",
                 "modulo": "ENTRADA DE MERCADERÍA",
                 "proposito_funcional": "Recepción ágil de mercadería entrante de planta mediante lector de barras/SKU, bultos múltiplos de 12 y ajustes (+/-).",
-                "datos_modificados": "Incremento atómico en `productos.sqlite3` y `Productos.xlsx`; historial `stock_movements` (`ingreso_fabrica`).",
+                "datos_modificados": "Incremento atómico SQLite-first en `productos.sqlite3` (con sincronización opcional a `Productos.xlsx`); historial `stock_movements` (`ingreso_fabrica`).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Ingreso de Fábrica'</b> en el menú lateral.",
                     "Elegir lote de entrada ([12], [24], [36], [48], [60], [120]) o ajustar (+/-).",
@@ -137,7 +137,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "icono_str": "[🏪]",
                 "modulo": "PREPARACIÓN Y DESPACHO",
                 "proposito_funcional": "Despacho de órdenes de Mercado Libre en modo Escáner en Vivo (con botón Undo) o carga de archivos DOCX.",
-                "datos_modificados": "Deducción en SQLite y `Productos.xlsx`, creación del pedido `docx` con hash SHA-256.",
+                "datos_modificados": "Deducción SQLite-first en `productos.sqlite3` (sincronizable con `Productos.xlsx`), creación del pedido `docx` con hash SHA-256.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Descontar Mercado Libre'</b>.",
                     "Pistolear códigos de barras (usar <b>'↩️ Deshacer Último'</b> si hubo lectura errónea).",

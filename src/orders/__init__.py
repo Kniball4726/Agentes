@@ -19,15 +19,17 @@ from ..core.exceptions import (
     OrderConcurrencyError,
 )
 from .schema import inicializar_esquema_pedidos
-from .client_repo import ClientRepositoryMixin
-from .chat_repo import ChatRepositoryMixin
-from .concurrency_repo import ConcurrencyRepositoryMixin
-from .audit_repo import AuditRepositoryMixin
-from .closure_repo import ClosureRepositoryMixin
-from .dispatch_repo import DispatchRepositoryMixin
-from .factory_plan_repo import FactoryPlanRepositoryMixin
-from .full_plan_repo import FullPlanRepositoryMixin
-from .stock_flow_repo import StockFlowRepositoryMixin
+from .audit_repo import AuditRepository
+from .channel_report_repo import ChannelReportRepository
+from .chat_repo import ChatRepository
+from .client_repo import ClientRepository
+from .closure_repo import ClosureRepository
+from .concurrency_repo import ConcurrencyRepository
+from .dispatch_repo import DispatchRepository
+from .factory_plan_repo import FactoryPlanRepository
+from .full_plan_repo import FullPlanRepository
+from .order_core_repo import OrderCoreRepository
+from .stock_flow_repo import StockFlowRepository
 from .store import OrderStore
 
 __all__ = [
@@ -46,14 +48,16 @@ __all__ = [
     "RegistroAuditoria",
     "Pedido",
     "MensajeChat",
-    "ClientRepositoryMixin",
-    "ChatRepositoryMixin",
-    "ConcurrencyRepositoryMixin",
-    "AuditRepositoryMixin",
-    "ClosureRepositoryMixin",
-    "DispatchRepositoryMixin",
-    "FullPlanRepositoryMixin",
-    "FactoryPlanRepositoryMixin",
-    "StockFlowRepositoryMixin",
+    "AuditRepository",
+    "ChannelReportRepository",
+    "ChatRepository",
+    "ClientRepository",
+    "ClosureRepository",
+    "ConcurrencyRepository",
+    "DispatchRepository",
+    "FullPlanRepository",
+    "FactoryPlanRepository",
+    "OrderCoreRepository",
+    "StockFlowRepository",
     "OrderStore",
 ]

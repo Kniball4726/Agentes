@@ -79,7 +79,7 @@ def construir_manual_master(ruta_destino: Path) -> Path:
                 "datos_modificados": "Archivos `.zip`, reposición atómica de SQLite / `Productos.xlsx` o compactación histórica.",
                 "pasos_procedimiento": [
                     "En <b>'Copia de Seguridad'</b>, generar respaldo íntegro o configurar espejo de red.",
-                    "En <b>'Restaurar documentos'</b>, previsualizar el rollback autorizado y confirmar reposición.",
+                    "En <b>'Restaurar documentos'</b>, previsualizar el rollback autorizado y confirmar reposición (conexiones SQLite con `closing()` en `src/core/sqlite_utils.py`).",
                     "En <b>'Archivado Histórico'</b>, definir fecha de corte y ejecutar compactación.",
                 ],
                 "resultado_obtenido": "Continuidad operativa, recuperación ante errores críticos y base operativa ágil.",

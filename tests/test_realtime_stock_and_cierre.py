@@ -63,11 +63,18 @@ def test_descuento_real_time_y_restitucion_stock(tmp_path: Path):
     assert stock_mgr.catalogo["PROD-1"][2] == 45
     assert stock_mgr.catalogo["PROD-2"][2] == 17
 
-    # Verificar que Productos.xlsx tenga el stock descontado
+    # Verificar que SQLite tenga el stock descontado (arquitectura SQLite-first)
+    assert stock_mgr.catalogo["PROD-1"][2] == 45
+    assert stock_mgr.catalogo["PROD-2"][2] == 17
+    assert stock_mgr.product_store.get_product("PROD-1")["stock"] == 45
+    assert stock_mgr.product_store.get_product("PROD-2")["stock"] == 17
+
+    # Exportar explícitamente y verificar reflejo en Excel
+    stock_mgr.exportar_catalogo_a_excel(excel_path)
     wb_read = openpyxl.load_workbook(excel_path, data_only=True)
-    ws_read = wb_read.active
-    assert ws_read.cell(3, 3).value == 45
-    assert ws_read.cell(4, 3).value == 17
+    ws_read = wb_read[stock_mgr.nombre_hoja]
+    assert ws_read.cell(4, 5).value == 45
+    assert ws_read.cell(5, 5).value == 17
     wb_read.close()
 
     # 2. Registrar el pedido con items en OrderStore
@@ -104,10 +111,14 @@ def test_descuento_real_time_y_restitucion_stock(tmp_path: Path):
     assert stock_mgr_after.catalogo["PROD-1"][2] == 50
     assert stock_mgr_after.catalogo["PROD-2"][2] == 20
 
+    assert stock_mgr_after.product_store.get_product("PROD-1")["stock"] == 50
+    assert stock_mgr_after.product_store.get_product("PROD-2")["stock"] == 20
+
+    stock_mgr_after.exportar_catalogo_a_excel(excel_path)
     wb_after = openpyxl.load_workbook(excel_path, data_only=True)
-    ws_after = wb_after.active
-    assert ws_after.cell(3, 3).value == 50
-    assert ws_after.cell(4, 3).value == 20
+    ws_after = wb_after[stock_mgr_after.nombre_hoja]
+    assert ws_after.cell(4, 5).value == 50
+    assert ws_after.cell(5, 5).value == 20
     wb_after.close()
 
 

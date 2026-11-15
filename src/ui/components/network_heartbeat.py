@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import sqlite3
 import threading
 import time
@@ -129,7 +130,7 @@ def iniciar_heartbeat_red_daemon(interfaz: Any) -> None:
                 order_store = getattr(interfaz, "order_store", None)
                 if not order_store:
                     break
-                with sqlite3.connect(order_store.database_path, timeout=3) as conn:
+                with closing(sqlite3.connect(order_store.database_path, timeout=3)) as conn:
                     conn.execute("SELECT 1").fetchone()
                 lat_ms = (time.monotonic() - t0) * 1000.0
                 nuevo_estado = "online" if lat_ms < 900.0 else "degraded"

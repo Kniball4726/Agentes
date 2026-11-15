@@ -120,7 +120,7 @@ def agregar_poes_master(
         "R: Master | A: Gerencia TI",
         [
             "Regla de Respaldo 3-2-1 activa y Firewall configurado en perfil Privado (`configurar_firewall_red.bat`).",
-            "Documentación Swagger deshabilitada en red (`STOCKAGENT_ENABLE_API_DOCS=0`) y credenciales cifradas (`src/secretos.py`).",
+            "Conexiones SQLite encapsuladas con cierre determinístico `contextlib.closing()` (`src/core/sqlite_utils.py`), Swagger deshabilitado (`STOCKAGENT_ENABLE_API_DOCS=0`) y secretos cifrados (`src/secretos.py`).",
         ],
         [
             "En 'Copia de Seguridad', se acciona el respaldo manual o se valida la ejecución automática del cierre.",
@@ -188,7 +188,7 @@ def agregar_poes_consulta(
 def construir_manual_master(ruta_destino: Path) -> Path:
     """Compila el Manual del Rol Master bajo Normas ISO, BPMN y APA/UPEL."""
     doc, est, story = crear_documento_iso(ruta_destino)
-    codigo_doc = "SOP-STK-MAS-2026-v2.2"
+    codigo_doc = "SOP-STK-MAS-2026-v2.3"
     titulo_doc = "Manual Técnico, IAM y Auditoría Forense (Rol Master)"
 
     agregar_portada_iso_upel(
@@ -252,7 +252,7 @@ def construir_manual_master(ruta_destino: Path) -> Path:
 def construir_manual_consulta(ruta_destino: Path) -> Path:
     """Compila el Manual del Rol Consulta bajo Normas ISO, BPMN y APA/UPEL."""
     doc, est, story = crear_documento_iso(ruta_destino)
-    codigo_doc = "SOP-STK-CON-2026-v2.2"
+    codigo_doc = "SOP-STK-CON-2026-v2.3"
     titulo_doc = "Manual de Procedimientos de Consulta Externa (Rol Consulta)"
 
     agregar_portada_iso_upel(

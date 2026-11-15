@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -91,7 +92,7 @@ def inicializar_ambiente_qa(forzar_reinicio: bool = False) -> dict[str, Any]:
 
     # 2. Catálogo de Productos QA
     product_store = ProductStore(data_dir / "productos.sqlite3")
-    with sqlite3.connect(data_dir / "productos.sqlite3") as conn:
+    with closing(sqlite3.connect(data_dir / "productos.sqlite3")) as conn, conn:
         for idx, (cod, nom, stk, ean, ubic) in enumerate(PRODUCTOS_SEMILLA_QA, start=1):
             conn.execute(
                 """

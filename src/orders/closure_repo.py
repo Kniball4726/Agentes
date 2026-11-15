@@ -5,10 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from .models import CierreJornada, CierreMercado, Pedido
+from .protocols import AuditLogFn, MapPedidoFn, OrderConnectFn
 
 
-class ClosureRepositoryMixin:
-    """Mixin que gestiona los cierres diarios de jornada y las hojas de ruta de despacho."""
+class ClosureRepository:
+    """Repositorio que gestiona los cierres diarios de jornada y las hojas de ruta de despacho."""
+
+    def __init__(
+        self,
+        connect_fn: OrderConnectFn,
+        map_pedido_fn: MapPedidoFn,
+        audit_fn: AuditLogFn,
+    ) -> None:
+        self._connect = connect_fn
+        self._map_pedido = map_pedido_fn
+        self._audit = audit_fn
 
     def listar_pedidos_pendientes_cierre(self) -> list[Pedido]:
         """Devuelve todos los pedidos descontados que aún no fueron incluidos en un cierre."""
@@ -115,7 +126,7 @@ class ClosureRepositoryMixin:
                 f"UPDATE pedidos SET cierre_id = ? WHERE id IN ({placeholders})",
                 (cierre_id, *pedidos_ids),
             )
-        self.registrar_auditoria(
+        self._audit(
             usuario=usuario,
             accion="CIERRE_JORNADA",
             detalle=f"Cierre #{cierre_id} registrado con éxito ({resumen_pedidos})",
@@ -175,7 +186,7 @@ class ClosureRepositoryMixin:
                 "UPDATE cierres_jornada SET archivo_hoja_ruta = ? WHERE id = ?",
                 (archivo_hoja_ruta, cierre_id),
             )
-        self.registrar_auditoria(
+        self._audit(
             usuario="Sistema",
             accion="HOJA_RUTA_GENERADA",
             detalle=f"Hoja de ruta para cierre #{cierre_id}: {archivo_hoja_ruta}",
@@ -290,7 +301,7 @@ class ClosureRepositoryMixin:
                 f"UPDATE pedidos SET cierre_mercado_id = ? WHERE id IN ({placeholders})",
                 (cierre_m_id, *pedidos_ids),
             )
-        self.registrar_auditoria(
+        self._audit(
             usuario=usuario,
             accion="CIERRE_MERCADO",
             detalle=f"Cierre Mercado #{cierre_m_id} ({tipo_mercado}) registrado con éxito ({resumen_pedidos})",

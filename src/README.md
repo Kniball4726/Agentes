@@ -12,6 +12,7 @@ src/
 │   ├── __init__.py             # Exportaciones públicas de excepciones y entorno
 │   ├── exceptions.py           # Jerarquía unificada de errores tipados
 │   ├── environment.py          # Aislamiento de perfiles de ejecución (Producción vs QA Sandbox)
+│   ├── sqlite_utils.py         # Apertura configurada y cierre determinista (closing) de SQLite
 │   └── system_reset.py         # Restablecimiento controlado a estado virgen (Clean Slate)
 │
 ├── api/                        # API REST v1 desacoplada (FastAPI)
@@ -33,49 +34,61 @@ src/
 │   ├── schema.py               # Inicialización y migración de esquema SQLite (incluye rol picker)
 │   ├── validators.py           # Validadores de rol, nombre, correo y políticas de clave
 │   ├── events.py               # Emisión desacoplada de eventos y alertas de seguridad
-│   ├── lockout_repo.py         # Mixin de bloqueo por intentos fallidos (5 intentos / 15 min)
-│   ├── api_tokens_repo.py      # Mixin de api_sessions (SHA-256) y API Keys
-│   └── store.py                # Repositorio SQLite UserStore ensamblado con mixins
+│   ├── lockout_repo.py         # Repositorio de bloqueo por intentos fallidos (5 intentos / 15 min)
+│   ├── api_tokens_repo.py      # Repositorio de api_sessions (SHA-256) y API Keys
+│   └── store.py                # Repositorio SQLite UserStore por composición pura
 │
 ├── orders/                     # Dominio de pedidos, clientes y trazabilidad
 │   ├── models.py               # Modelos Pedido, Cliente, MensajeChat, LogAuditoria, CierreJornada
 │   ├── schema.py               # Creación de tablas e índices de pedidos.sqlite3
-│   ├── client_repo.py          # Mixin CRUD de clientes y autogeneración de códigos CLI-XXXXXX
-│   ├── chat_repo.py            # Mixin de canal colaborativo y menciones #PED-XXXX
-│   ├── concurrency_repo.py     # Mixin de soft-locking temporal (TTL) e idempotencia SHA-256
-│   ├── dispatch_repo.py        # Mixin de estados de despacho y hojas de ruta
-│   ├── audit_repo.py           # Mixin de bitácora transaccional y auditoría forense
-│   ├── closure_repo.py         # Mixin de cierres de jornada y consolidación documental
-│   ├── factory_plan_repo.py    # Mixin de planes y verificación de ingresos de fábrica
-│   ├── full_plan_repo.py       # Mixin de planes y picking guiado para Mercado Envíos Full
-│   ├── stock_flow_repo.py      # Mixin de analítica ejecutiva y agregaciones de stock en vivo
-│   └── store.py                # Repositorio SQLite OrderStore unificado
+│   ├── protocols.py            # Contratos Protocol y callbacks para composición de repositorios
+│   ├── order_core_repo.py      # Repositorio núcleo CRUD de pedidos, ítems y no coincidencias
+│   ├── client_repo.py          # Repositorio CRUD de clientes y códigos CLI-XXXXXX
+│   ├── chat_repo.py            # Repositorio de canal colaborativo y menciones #PED-XXXX
+│   ├── concurrency_repo.py     # Repositorio de soft-locking temporal (TTL) e idempotencia SHA-256
+│   ├── dispatch_repo.py        # Repositorio de estados de despacho y hojas de ruta
+│   ├── audit_repo.py           # Repositorio de bitácora transaccional y auditoría forense
+│   ├── closure_repo.py         # Repositorio de cierres de jornada y consolidación documental
+│   ├── channel_report_repo.py  # Repositorio de descuentos por canal y ventanas de cierre
+│   ├── factory_plan_closure.py # Helpers de recálculo, cierre parcial y cierre final de planes fábrica
+│   ├── factory_plan_repo.py    # Repositorio de planes y verificación de ingresos de fábrica
+│   ├── full_plan_repo.py       # Repositorio de planes y picking guiado para Mercado Envíos Full
+│   ├── stock_flow_repo.py      # Repositorio de analítica ejecutiva y balance de stock en vivo
+│   └── store.py                # Repositorio SQLite OrderStore unificado por composición (11 repos)
 │
 ├── products/                   # Dominio modular de productos, catálogo y despachos
 │   ├── barcode_utils.py        # Normalización EAN-13 / SKU y lectura Barcode Wedge
+│   ├── schema.py               # Creación e inicialización de esquema SQLite de productos
+│   ├── protocols.py            # Contratos Protocol para caché de catálogo y escrituras SQLite
 │   ├── catalog_read_repo.py    # Consultas optimizadas de catálogo, caché SKU y paginación
 │   ├── catalog_write_repo.py   # CRUD de catálogo, precios, umbrales y ubicaciones slotting
 │   ├── catalog_repo.py         # Fachada combinada de lectura/escritura del catálogo
 │   ├── movements_repo.py       # Historial de movimientos, despachos y enriquecimiento atómico
+│   ├── movements_report_repo.py # Consultas consolidadas para reportes de movimientos diarios
 │   ├── physical_repo.py        # Conteo físico de operarios y comparativas de discrepancia
 │   ├── notifications_repo.py   # Notificaciones administrativas y alertas v_analisis_reposicion
-│   └── store.py                # Repositorio SQLite ProductStore unificado
+│   └── store.py                # Repositorio SQLite ProductStore por composición
 │
 ├── inventory/                  # Dominio modular de inventario y sincronización Excel
-│   ├── manager.py              # StockManager central (adaptable a Producción y QA Sandbox)
-│   ├── catalog_loader.py       # Carga fast-path desde SQLite / importación inicial Productos.xlsx
-│   ├── discount_engine.py      # Motor transaccional de descuentos y cálculo de lotes
+│   ├── protocols.py            # Contratos Protocol para host de inventario e informes
+│   ├── manager.py              # StockManager central por composición de servicios
+│   ├── catalog_loader.py       # Servicio de carga fast-path desde SQLite / Productos.xlsx
+│   ├── discount_engine.py      # Servicio transaccional de descuentos y cálculo de lotes
 │   ├── excel_sync.py           # Exportación y refresco de filas en Excel
-│   └── template_sync.py        # Sincronización atómica preservando estilos de Productos.xlsx
+│   └── template_sync.py        # Servicio de sincronización atómica con Productos.xlsx
 │
 ├── qa/                         # Módulo de Aseguramiento de Calidad y Pruebas Aisladas
 │   ├── __init__.py             # Exportaciones del paquete QA
 │   └── seeder.py               # Sembrador de datos sintéticos realistas para testing seguro
 │
-├── stock/                      # Dominio de stock, reposición y reportes
+├── stock/                      # Dominio de stock, reposición, slotting y reportes
 │   ├── models.py               # Dataclasses RegistroDescuento y ReporteStock
+│   ├── slotting_models.py      # Constantes de racks, dataclasses y heurística de slotting
 │   ├── report_styles.py        # Paletas, tipografías y estilos ReportLab/XLS
 │   ├── reports_stock.py        # Renderizado de reportes de existencias y movimientos
+│   ├── reports_movements_common.py  # Helpers PDF/Excel compartidos para reportes de movimientos
+│   ├── reports_movements_canales.py # Reporte de cierre discriminado en 3 canales (Operador)
+│   ├── reports_movements.py    # Reporte consolidado de movimientos por producto (Admin)
 │   ├── reports_ops.py          # Reportes de operaciones, cierres y despachos
 │   ├── xls_exporter.py         # Exportador binario Excel (.xls)
 │   ├── pdf_exporter.py         # Exportador PDF vectorial (ReportLab)
@@ -100,7 +113,8 @@ src/
 │
 ├── integrations/               # Integraciones externas y canales de notificación
 │   ├── email_sender.py         # Envío SMTP con credenciales cifradas
-│   ├── mercado_libre_api.py    # Conector OAuth 2.0 y órdenes REST Mercado Libre
+│   ├── mercado_libre_auth.py   # Autenticación OAuth 2.0, cifrado de tokens y búsqueda REST ML
+│   ├── mercado_libre_api.py    # Conector de órdenes Mercado Libre, respaldo DOCX y descuento
 │   ├── sheets_manager.py       # Integración opcional con Google Sheets
 │   └── telegram_notifier.py    # Notificador asíncrono de alertas por Telegram Bot
 │
@@ -110,8 +124,10 @@ src/
 │   └── formatters.py           # Formateo de respuestas, pedidos y métricas en chat
 │
 ├── cli/                        # Operaciones CLI e interactive_flows desacoplados
-│   ├── archive_ops.py          # Procesamiento y archivado por consola
-│   └── interactive_flows.py    # Flujos interactivos de menú CLI
+│   ├── protocols.py            # Contratos Protocol para servicios de CLI
+│   ├── archive_ops.py          # Servicio de procesamiento y archivado por consola
+│   ├── admin_flows.py          # Flujos CLI administrativos (catálogo, fábrica, Full, físico)
+│   └── interactive_flows.py    # Servicio orquestador de menú interactivo CLI
 │
 ├── tray/                       # Icono en Bandeja del Sistema (System Tray de Windows)
 │   ├── net_and_images.py       # Obtención de IP LAN y badges de estado PIL
@@ -128,24 +144,31 @@ src/
 │   │                           # auth_controller, batch_controller, chat_controller,
 │   │                           # dialog_coordinator, document_viewer_service, file_transfer_service,
 │   │                           # responsive_controller, session_sync_service, theme_controller
-│   ├── components/             # admin_flow_analytics, admin_operations_bar, audio_manager,
-│   │                           # debounce, docking_manager, floating_chat, floating_chat_intents,
-│   │                           # header, mobile_nav, network_heartbeat, panels, print_labels,
-│   │                           # sidebar, sidebar_horizontal, sidebar_sections, window_manager
+│   ├── components/             # admin_flow_analytics, admin_flow_widgets, admin_operations_bar,
+│   │                           # audio_manager, debounce, docking_manager, floating_chat,
+│   │                           # floating_chat_intents, header, mobile_nav, network_heartbeat,
+│   │                           # panels, print_labels, sidebar, sidebar_horizontal,
+│   │                           # sidebar_quick_actions, sidebar_sections, window_manager
+│   ├── shell_builder.py        # Constructor de shell visual responsive y barra móvil
 │   └── dialogs/                # Módulos desacoplados por caso de uso:
-│                               # auth_* + dlg_auth, analytics_* + dlg_analytics, api_panel_tabs + dlg_api + dlg_api_keys,
-│                               # cierre/ + dlg_cierre, dlg_clientes, dlg_command_palette, dlg_email,
-│                               # dlg_escaner, dlg_anomalias, dlg_archivo_historico, dlg_backup,
-│                               # dlg_control_ingreso_fabrica, dlg_gestion_ambientes, dlg_picking_guiado_full,
-│                               # dlg_planificar_full, dlg_planificar_ingreso_fabrica,
-│                               # dlg_heatmap + heatmap_render, historial_* + dlg_historial_pedidos,
-│                               # dlg_informes, dlg_ingreso_fabrica + ingreso_fabrica_archivo,
+│                               # auth_* + dlg_auth, analytics_widgets + analytics_rotacion +
+│                               # analytics_metricas + dlg_analytics, api_panel_tabs + dlg_api + dlg_api_keys,
+│                               # cierre/ (incl. cierre_mercado_cards) + dlg_cierre, dlg_clientes,
+│                               # dlg_command_palette, dlg_email, dlg_escaner, dlg_anomalias,
+│                               # dlg_archivo_historico, dlg_backup, dlg_control_ingreso_fabrica,
+│                               # dlg_gestion_ambientes, dlg_picking_guiado_full, dlg_planificar_full,
+│                               # dlg_planificar_ingreso_fabrica, dlg_heatmap + heatmap_render,
+│                               # historial_cards + historial_* + dlg_historial_pedidos, dlg_informes,
+│                               # dlg_ingreso_fabrica + ingreso_fabrica_archivo,
 │                               # dlg_inventario_vivo + inventario_vivo_views, dlg_mercado_full,
-│                               # dlg_mercadolibre, dlg_mercadolibre_descuento + ml_*, dlg_movimientos_rapidos + *_ops,
-│                               # dlg_pedido_fabrica, pedidos_crear + pedidos_gestion + dlg_pedidos,
-│                               # dlg_preferencias, dlg_productos + productos_modales, dlg_quiebre,
-│                               # dlg_reportes, dlg_restaurar, dlg_smtp, dlg_stock_fisico + stock_fisico_views,
-│                               # dlg_stock_ops (fachada), dlg_telegram, dlg_usuarios, dlg_ver_stock
+│                               # dlg_mercadolibre + mercadolibre_api_cards,
+│                               # dlg_mercadolibre_descuento + ml_*, dlg_movimientos_rapidos + *_ops,
+│                               # dlg_pedido_fabrica, pedidos_crear + pedidos_crear_modales +
+│                               # pedidos_gestion + dlg_pedidos, dlg_preferencias,
+│                               # dlg_productos + productos_modales, dlg_quiebre + quiebre_banner,
+│                               # dlg_reportes, dlg_restaurar, dlg_smtp,
+│                               # dlg_stock_fisico + stock_fisico_views, dlg_stock_ops (fachada),
+│                               # dlg_telegram, dlg_usuarios, dlg_ver_stock
 │
 ├── secretos.py                 # Cifrado de secretos en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
 ├── ssl_manager.py              # Autogeneración de certificados X.509 SAN en data/certs/
@@ -216,30 +239,34 @@ Reemplaza el antiguo archivo monolítico `user_store.py` (anteriormente de más 
 
 ## 📦 3. Paquete de Pedidos, Auditoría y Concurrencia (`src/orders/`)
 
-Reemplaza el antiguo archivo monolítico `orders_store.py` (anteriormente de más de 1,690 líneas), organizando las operaciones en repositorios mixin especializados:
+Reemplaza el antiguo archivo monolítico `orders_store.py` (anteriormente de más de 1,690 líneas), organizando las operaciones mediante composición explícita e inyección de dependencias (`protocols.py`):
 
-* **`models.py`:** Define las entidades centrales: `Pedido`, `Cliente`, `MensajeChat`, `LogAuditoria`, `CierreJornada`.
-* **`client_repo.py` (`ClientRepositoryMixin`):** CRUD de clientes mayoristas y minoristas, gestión de teléfonos, direcciones y autogeneración de códigos únicos (`CLI-XXXXXX`).
-* **`chat_repo.py` (`ChatRepositoryMixin`):** Mensajería interna de equipo, conteo de mensajes no leídos por usuario y enriquecimiento automático de referencias a pedidos (`#PED-1234`).
-* **`concurrency_repo.py` (`ConcurrencyRepositoryMixin`):**
+* **`models.py` / `schema.py`:** Definen las entidades centrales (`Pedido`, `Cliente`, `MensajeChat`, `LogAuditoria`, `CierreJornada`) y la inicialización transaccional de tablas/índices SQLite.
+* **`protocols.py`:** Define contratos `Protocol` y callbacks tipados (`OrderConnectFn`, `MapPedidoFn`, `AuditLogFn`, `LookupOrderFn`, `OrderAuditableProtocol`).
+* **`order_core_repo.py` (`OrderCoreRepository`):** Operaciones CRUD núcleo de pedidos, búsqueda por hash SHA-256, registro de ítems no coincidentes y actualizaciones operativas.
+* **`client_repo.py` (`ClientRepository`):** CRUD de clientes mayoristas y minoristas, gestión de teléfonos, direcciones y autogeneración de códigos únicos (`CLI-XXXXXX`).
+* **`chat_repo.py` (`ChatRepository`):** Mensajería interna de equipo, conteo de mensajes no leídos por usuario y enriquecimiento automático de referencias a pedidos (`#PED-1234`).
+* **`concurrency_repo.py` (`ConcurrencyRepository`):**
   * Soft-locking temporal (Lease/TTL de 5 minutos) en edición de pedidos para evitar colisiones entre operarios.
   * Registro de idempotencia con tokens SHA-256 para prevenir procesamientos duplicados por microcortes de red.
-* **`audit_repo.py` (`AuditRepositoryMixin`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de usuario, rol, IP y detalles del cambio.
-* **`closure_repo.py` (`ClosureRepositoryMixin`):** Consolidación de cierres de turno, cálculo de métricas de bultos y archivo seguro de informes.
-* **`store.py` (`OrderStore`):** Repositorio central que compone los repositorios y garantiza la inicialización de esquemas y migraciones automáticas.
+* **`audit_repo.py` (`AuditRepository`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de usuario, rol, IP y detalles del cambio.
+* **`closure_repo.py` (`ClosureRepository`):** Consolidación de cierres de turno y Mercado Libre/Full, cálculo de métricas de bultos y archivo seguro de informes.
+* **`dispatch_repo.py`, `channel_report_repo.py`, `factory_plan_repo.py` (+ `factory_plan_closure.py`), `full_plan_repo.py` y `stock_flow_repo.py`:** Repositorios desacoplados para estados de despacho, consolidación en 3 canales (Mayoristas, Mercado Libre, Full), planes/cierres de fábrica, planes Full y flujo diario de stock.
+* **`store.py` (`OrderStore`):** Repositorio central que compone los **11 repositorios especializados** mediante delegación explícita y garantiza la inicialización de esquemas SQLite con cierre determinístico (`sqlite_connection`).
 * *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.orders`.)*
 
 ---
 
 ## 🏷️ 4. Paquete de Productos y Catálogo (`src/products/`)
 
-Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líneas), distribuyendo el modelo de datos y consultas en mixins orientados a subdominios:
+Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líneas), distribuyendo el modelo de datos y consultas en repositorios desacoplados por composición:
 
-* **`catalog_repo.py` (`CatalogRepositoryMixin`):** Carga rápida en una sola consulta (`load_catalog_fast`), búsqueda difusa por SKU o código de barras, paginación, inserción y reordenamiento topológico en catálogo.
-* **`movements_repo.py` (`MovementsRepositoryMixin`):** Historial paginado de movimientos de inventario (`stock_movements`), registro de despachos con trazabilidad a nivel de ítem (`despachos`, `despacho_detalles`) y cálculo de KPIs.
-* **`physical_repo.py` (`PhysicalRepositoryMixin`):** Registro de conteos físicos de operarios, cálculo de diferencias vs. stock digital y almacenamiento de comparativas históricas.
-* **`notifications_repo.py` (`NotificationsRepositoryMixin`):** Notificaciones operativas para administradores y consulta a la vista `v_analisis_reposicion` para alertas de quiebre o sobrestock.
-* **`store.py` (`ProductStore`):** Orquesta los repositorios de catálogo, el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
+* **`schema.py` y `protocols.py`:** Inicialización aislada de esquema e índices (`inicializar_esquema_productos`) y contratos estructurales `CatalogCacheHostProtocol` y `CatalogWriteHostProtocol`.
+* **`catalog_read_repo.py` / `catalog_write_repo.py` / `catalog_repo.py` (`CatalogRepository`):** Carga rápida en una sola consulta (`load_catalog_fast`), búsqueda difusa por SKU o código de barras, paginación, inserción y caché SKU.
+* **`movements_repo.py` / `movements_report_repo.py` (`MovementsRepository`, `MovementsReportRepository`):** Historial paginado de movimientos de inventario (`stock_movements`), registro de despachos con trazabilidad (`despachos`, `despacho_detalles`), reportes de jornada y KPIs.
+* **`physical_repo.py` (`PhysicalRepository`):** Registro de conteos físicos de operarios, cálculo de diferencias vs. stock digital y almacenamiento de comparativas históricas.
+* **`notifications_repo.py` (`NotificationsRepository`):** Notificaciones administrativas y consulta a la vista `v_analisis_reposicion` para alertas de quiebre o sobrestock.
+* **`store.py` (`ProductStore`):** Orquesta los repositorios compuestos, el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
 * *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.products`.)*
 
 ---
@@ -265,7 +292,10 @@ Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líne
 4. **`DialogCoordinator` (`dialog_coordinator.py`):** Despacho centralizado de diálogos modales e impresión de rótulos térmicos/A4.
 5. **Resto de controladores especializados:** `AuthController`, `BatchController`, `ChatController`, `FileTransferService` y `ThemeController`.
 
-### Componentes y Mejoras UX/UI:
+### Componentes, Modularidad UI y Reportes por Canal:
+* **`shell_builder.py`, `admin_flow_widgets.py` y `sidebar_quick_actions.py`:** Construyen la cáscara responsive, widgets de flujo administrativo y accesos rápidos de barra lateral sin recargar `flet_gui.py`.
+* **Diálogos Modulares sin Monolitos (`src/ui/dialogs/`):** Subcomponentes cohesivos como `analytics_widgets.py` / `analytics_rotacion.py` / `analytics_metricas.py`, `pedidos_crear_modales.py`, `historial_cards.py`, `quiebre_banner.py`, `mercadolibre_api_cards.py` y `cierre/cierre_mercado_cards.py`.
+* **Reportes SQLite-First y Cierre en 3 Canales (`src/stock/reports_movements_*.py`):** `reports_movements_common.py` comparte exportadores PDF/XLS, `reports_movements_canales.py` discrimina salidas del operario en Mayoristas / Mercado Libre / Full (+ Ingresos) solo para artículos con movimiento, y `reports_movements.py` emite el consolidado por producto para Administración.
 * **`Debouncer` (`src/ui/components/debounce.py`):** Temporizador reactivo para campos de búsqueda (ej. 200 ms en visor de stock e historial de pedidos), evitando re-renderizados innecesarios y garantizando fluidez a 60 FPS.
 * **Validación Inline (`error_text`):** Mensajes de error en tiempo real debajo de los campos de texto en `dlg_clientes.py` y `dlg_productos.py` (nombre, SKU, stock), sin necesidad de modales intrusivos.
 * **Acción Interactiva "Deshacer" en SnackBar:** Ventana de 6 segundos tras un ajuste de stock rápido en `dlg_movimientos_rapidos.py` para revertir la operación con un solo clic y registrar la reversión en la auditoría.
@@ -275,6 +305,7 @@ Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líne
 
 ## 🔒 7. Seguridad y Resiliencia
 
+* **Cierre Determinístico SQLite y Arquitectura Acíclica (`src/core/sqlite_utils.py`):** Todas las conexiones SQLite usan el gestor de contexto `sqlite_connection` (`contextlib.closing()` + WAL + `PRAGMA foreign_keys=ON`), verificado automáticamente por `tests/test_sqlite_closing.py`, eliminando fugas de descriptores y ciclos entre `src/core` y `src/products`.
 * **HTTPS por Defecto y Endurecimiento Perimetral (`src/server_app/`, `src/ssl_manager.py`):** Tráfico web cifrado mediante certificados X.509 autogenerados (`STOCKAGENT_HTTPS=1`), documentación OpenAPI/Swagger (`/docs`, `/redoc`, `/openapi.json`) deshabilitada por defecto (`STOCKAGENT_ENABLE_API_DOCS=0`) y cabeceras HTTP de seguridad (`X-Content-Type-Options`, `X-Frame-Options`).
 * **Rutas de Documentación e Informes Protegidas (`protected_docs_routes.py`, `src/api/deps.py`):** Los endpoints `/documentacion/`, `/informes/` y `/documentos/ver` exigen sesión activa, API Key o token HMAC temporal firmado (`?dt=`).
 * **Cifrado de Secretos en Disco (`src/secretos.py`):** Credenciales SMTP, tokens de Telegram y claves de Mercado Libre protegidas mediante Windows DPAPI (`enc:dpapi:`) o Fernet (`enc:fernet:`).
@@ -296,6 +327,6 @@ Ubicado en `.github/workflows/ci.yml`:
 ## 🧪 9. Verificación y Cobertura de Pruebas
 
 Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas (`.\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short`):
-* **Total de módulos de prueba:** 53 archivos en `tests/` (`331 pruebas` unitarias y de integración, más subtests).
-* **Tasa de éxito:** 100% pasando (`331 passed`).
+* **Total de módulos de prueba:** `67` archivos `tests/test_*.py` (`61` módulos ejecutados en sandbox con `359` pruebas y `7` subtests aprobados; `6` módulos ASGI `TestClient` ejecutables en host con sockets).
+* **Tasa de éxito:** 100% pasando sobre la batería verificada (`359 passed, 7 subtests passed`).
 * **Retrocompatibilidad:** Cero rupturas de contratos; todas las fachadas y objetivos de parches existentes quedan preservados.

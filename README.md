@@ -620,10 +620,11 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * **Modificación de Pedidos Preparados (Exclusivo Operador):** Capacidad exclusiva para editar directamente cliente, N° de pedido, cantidad de bultos, logística y fecha programada de entrega, tanto desde el panel de pedidos en vivo como desde el Historial. Esta exclusividad operativa previene colisiones y discrepancias con administradores o usuarios master.
   * **Desarmar Pedido y Regresión de Stock:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock físico en SQLite y `Productos.xlsx` al instante.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
-* **Cierre de Jornada Consolidado:**
-  * Agrupa y suma todos los pedidos y descuentos realizados durante el turno de trabajo.
-  * **Cálculo Exacto sin Doble Descuento:** Al consolidar los pedidos ya descontados en tiempo real, el motor calcula con precisión el stock original previo y el saldo real vigente en SQLite y `Productos.xlsx`.
-  * Genera el **Informe Oficial Consolidado de Cierre (PDF y Excel)** donde se suman todos los descuentos de la jornada (`Cierre_Descuento_*.pdf` y `Cierre_Descuento_*.xls`).
+* **Cierre de Jornada Discriminado por Canales y Consolidado Admin (SQLite-First):**
+  * Agrupa directamente desde SQLite (`cierres_jornada`, `pedidos` y `stock_movements`) todos los movimientos del turno sin requerir el archivo `Productos.xlsx`.
+  * **Cálculo Exacto sin Doble Descuento:** Al consolidar los pedidos ya descontados en tiempo real, el motor calcula con precisión el stock previo y el saldo vigente en SQLite.
+  * **Reporte del Operario en 3 Canales (`Cierre_Descuento_*.pdf` y `.xls`):** Muestra **únicamente los productos que tuvieron movimiento**, discriminados en 3 columnas de salida (**Mayoristas** [PDF + Canjes + Salidas Rápidas], **Mercado Libre** y **Full**) más **Ingresos**.
+  * **Consolidado Oficial Administrador (`Cierre_Admin_Consolidado_*.pdf` y `.xls`):** Totaliza la sumatoria consolidada por producto de todas las salidas del depósito para supervisión gerencial.
   * **Emisión Modular de Hojas de Ruta de Despacho (PDF):** Permite generar la **Hoja de Ruta General** (todos los pedidos de la jornada) o **Hojas de Ruta Individuales por Transporte / Chofer** (ej: solo *Expreso*, solo *Comisionista* o solo *Canje*), detallando cantidades de bultos y casillero de firma de conformidad para cada transportista.
   * Dispara la **Copia de Seguridad Automática** en `data/backups/`.
   * Detecta y alerta sobre productos en **quiebre ($\le 0$)** o **stock crítico ($1$ a $5$ un.)**.
@@ -817,9 +818,9 @@ Cuando finaliza el turno de despacho:
    * **Pendientes:** Muestra la lista de todos los pedidos acumulados en la jornada con el total de artículos y bultos pendientes de cierre.
    * **Historial de Cierres:** Permite consultar todos los cierres previos con su ID, cantidad de pedidos, fecha y responsable, incluyendo accesos directos para reimprimir el PDF de descuentos, abrir o regenerar la Hoja de Ruta de Despacho y reenviar los comprobantes por correo electrónico.
 3. Al presionar **"Cerrar Jornada e Imprimir"**:
-   * Se consolidan y suman **todos los descuentos de todos los pedidos de la jornada**.
-   * Se genera el **Informe Oficial Consolidado de Cierre (PDF y Excel)**: `Cierre_Descuento_*.pdf` y `Cierre_Descuento_*.xls` con la suma detallada de productos y remitos de origen.
-   * Se sincronizan de forma definitiva las existencias en el catálogo maestro `Productos.xlsx`.
+   * Se consolidan directamente desde SQLite todos los descuentos y movimientos del turno sin requerir `Productos.xlsx`.
+   * Se emite el **Reporte de Cierre del Operario por Canales (`Cierre_Descuento_*.pdf` y `.xls`)**, mostrando solo los productos movidos discriminados en **Mayoristas**, **Mercado Libre** y **Full** (más Ingresos), junto con el **Consolidado Oficial Administrador (`Cierre_Admin_Consolidado_*.pdf` y `.xls`)** con la sumatoria total por artículo.
+   * Si existe `Productos.xlsx`, se sincronizan de forma opcional las existencias exportadas.
    * Se asigna formalmente un número único de cierre (`cierre_id`) a todos los pedidos del turno en SQLite.
    * Se genera la **Hoja de Ruta de Despacho por Transporte (PDF)** con casilleros de firma para transportistas y se persiste su vinculación en el cierre.
    * Se dispara automáticamente una copia de seguridad en `data/backups/`.
@@ -925,26 +926,27 @@ StockAgent/
 │   ├── procedimientos/                # Fichas SOP modulares por rol (fichas, rol_*, runner)
 │   ├── generar_manual_pdf.py          # Fachada retrocompatible hacia Documentacion.pdf_engine
 │   └── manuales_procedimientos.py     # Fachada retrocompatible hacia Documentacion.procedimientos
-├── src/                               # Código fuente modular y desacoplado
-│   ├── core/                          # Núcleo de excepciones tipadas (exceptions.py)
+├── src/                               # Código fuente modular y desacoplado (sin archivos monolíticos)
+│   ├── core/                          # Núcleo de excepciones tipadas, entorno y SQLite (exceptions, environment, sqlite_utils con closing(), system_reset)
 │   ├── api/                           # API REST v1 (deps.py con HMAC ?dt=/Bearer/API Key, schemas.py, v1/*.py)
 │   ├── server_app/                    # Servidor web ASGI modular (__init__, flet_patch, middleware, network_utils, protected_docs_routes, static_routes)
 │   ├── auth/                          # Autenticación y usuarios (models, password [600k PBKDF2], schema, validators, events, lockout_repo, api_tokens_repo, store)
-│   ├── orders/                        # Pedidos, clientes, chat, concurrencia y auditoría (models, schema, *_repo, store)
-│   ├── products/                      # Catálogo, códigos de barra, movimientos y conteo físico (barcode_utils, catalog_read/write_repo, movements_repo, physical_repo, notifications_repo, store)
-│   ├── inventory/                     # Orquestación StockManager y sincronización Excel (manager, catalog_loader, discount_engine, excel_sync, template_sync)
-│   ├── stock/                         # Reportes, reposición y conciliación (models, report_styles, reports_stock, reports_ops, xls_exporter, pdf_exporter, manifest_pdf, replenishment, physical_inventory, reportes_service)
+│   ├── orders/                        # Pedidos, clientes, chat, concurrencia y auditoría (models, schema, protocols, 11 *_repo esp. order_core_repo y factory_plan_closure, store por composición)
+│   ├── products/                      # Catálogo, códigos de barra, movimientos y conteo físico (barcode_utils, schema, protocols, catalog_read/write/catalog_repo, movements_repo, movements_report_repo, physical_repo, notifications_repo, store)
+│   ├── inventory/                     # Orquestación StockManager y sincronización Excel (manager, catalog_loader, discount_engine, excel_exporter, excel_sync, template_sync)
+│   ├── stock/                         # Reportes SQLite-first, slotting, reposición y conciliación (models, slotting_models, report_styles, reports_stock, reports_movements_common/canales/reports_movements, reports_inventory, reports_kardex, reports_ops, xls_exporter, pdf_exporter, manifest_pdf, replenishment, physical_inventory, reportes_service)
 │   ├── labels/                        # Rótulos QR y códigos de barra (utils, thermal_labels 100x150 mm, a4_labels)
 │   ├── parsers/                       # Parsers de documentos (remito_parser, canjes_parser, mercado_libre_parser, mercado_full_parser, factory_parser, physical_stock_parser)
-│   ├── integrations/                  # Conectores externos (email_sender, mercado_libre_api, sheets_manager, telegram_notifier)
+│   ├── integrations/                  # Conectores externos (email_sender, mercado_libre_auth, mercado_libre_api, sheets_manager, telegram_notifier)
 │   ├── chat/                          # Asistente virtual e intenciones semánticas por rol (intent_parser, role_help, formatters)
-│   ├── cli/                           # Interfaz de consola y procesamiento por lotes (archive_ops, interactive_flows)
+│   ├── cli/                           # Interfaz de consola y procesamiento por lotes (protocols, archive_ops, admin_flows, interactive_flows)
 │   ├── tray/                          # Bandeja del sistema Windows pystray (net_and_images, service, tray_controller)
-│   ├── ui/                            # Capa de presentación gráfica Flet
-│   │   ├── theme.py / app_config.py / audio_feedback.py / protocols.py / user_preferences.py / dashboard_presenter.py
+│   ├── qa/                            # Generador de datos sintéticos para QA Sandbox (seeder.py)
+│   ├── ui/                            # Capa de presentación gráfica Flet por composición pura
+│   │   ├── theme.py / app_config.py / audio_feedback.py / protocols.py / user_preferences.py / dashboard_presenter.py / shell_builder.py
 │   │   ├── controllers/               # auth_controller, batch_controller, chat_controller, dialog_coordinator, document_viewer_service, file_transfer_service, responsive_controller, session_sync_service, theme_controller
-│   │   ├── components/                # audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_sections), window_manager
-│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados por caso de uso (auth_*, analytics_*, api_panel_tabs, cierre/, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, ml_*, movimientos_rapidos_ops, pedidos_*, productos_modales, stock_fisico_views)
+│   │   ├── components/                # admin_flow_analytics, admin_flow_widgets, admin_operations_bar, audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_quick_actions/_sections), window_manager
+│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados sin monolitos (auth_*, analytics_*, api_panel_tabs, cierre/ + cierre_mercado_cards, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, mercadolibre_api_cards, ml_*, movimientos_rapidos_ops, pedidos_crear + pedidos_crear_modales + pedidos_gestion, productos_modales, quiebre_banner, stock_fisico_views)
 │   ├── agent.py / menu.py             # Orquestadores CLI y de lotes
 │   ├── flet_gui.py                    # Orquestador GUI principal basado en composición pura e inyección de dependencias
 │   ├── secretos.py                    # Cifrado en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
@@ -1090,14 +1092,18 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
       - **`store.py`:** Repositorio transaccional `UserStore` en SQLite WAL, gestión de intentos fallidos, bloqueo preventivo y preferencias de interfaz.
 
 16. **Modularización Integral del Dominio de Pedidos y Auditoría (`src/orders/`):**
-    * Modularización del dominio de pedidos y auditoría en el paquete canónico `src/orders/` bajo el patrón Repository Mixin:
+    * Modularización del dominio de pedidos y auditoría en el paquete canónico `src/orders/` mediante composición explícita de repositorios e inyección de dependencias (`protocols.py`):
       - **`models.py`:** Modelos de datos `Pedido`, `Cliente`, `MensajeChat`, `LogAuditoria`, `CierreJornada`.
-      - **`client_repo.py` (`ClientRepositoryMixin`):** CRUD de clientes, gestión de domicilios/teléfonos y autogeneración de códigos únicos (`CLI-XXXXXX`).
-      - **`chat_repo.py` (`ChatRepositoryMixin`):** Canal de mensajería interna, contadores de no leídos por usuario y etiquetado dinámico de pedidos (`#PED-XXXX`).
-      - **`concurrency_repo.py` (`ConcurrencyRepositoryMixin`):** Concesiones temporales de edición (Lease/TTL de 5 min) e idempotencia criptográfica SHA-256 para evitar duplicación ante microcortes.
-      - **`audit_repo.py` (`AuditRepositoryMixin`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de IPs, sesiones y usuarios.
-      - **`closure_repo.py` (`ClosureRepositoryMixin`):** Consolidación de cierres de turno, cálculo de métricas de bultos y archivo seguro de informes.
-      - **`store.py` (`OrderStore`):** Repositorio central que compone los sub-repositorios, gestiona transacciones atómicas y migraciones del esquema SQLite.
+      - **`protocols.py`:** Contratos estructurales y callbacks tipados (`OrderConnectFn`, `MapPedidoFn`, `AuditLogFn`, `LookupOrderFn`, `OrderAuditableProtocol`) para desacoplar los sub-repositorios.
+      - **`client_repo.py` (`ClientRepository`):** CRUD de clientes, gestión de domicilios/teléfonos y autogeneración de códigos únicos (`CLI-XXXXXX`).
+      - **`chat_repo.py` (`ChatRepository`):** Canal de mensajería interna, contadores de no leídos por usuario y etiquetado dinámico de pedidos (`#PED-XXXX`).
+      - **`concurrency_repo.py` (`ConcurrencyRepository`):** Concesiones temporales de edición (Lease/TTL de 5 min) e idempotencia criptográfica SHA-256 para evitar duplicación ante microcortes.
+      - **`dispatch_repo.py` (`DispatchRepository`):** Máquina de estados de despacho (`armado` -> `despachado` -> `entregado`) y avance por escaneo/remito.
+      - **`audit_repo.py` (`AuditRepository`):** Bitácora transaccional inmutable (`pedidos_auditoria`) con trazabilidad completa de IPs, sesiones y usuarios.
+      - **`closure_repo.py` (`ClosureRepository`):** Consolidación de cierres de turno y Mercado Libre/Full, cálculo de métricas de bultos y archivo seguro de informes.
+      - **`order_core_repo.py` (`OrderCoreRepository`) y `factory_plan_closure.py`:** Encapsulan el CRUD núcleo de pedidos e ítems y las rutinas compartidas de recálculo y cierre parcial/final de planes de fábrica.
+      - **`channel_report_repo.py`, `factory_plan_repo.py`, `full_plan_repo.py` y `stock_flow_repo.py`:** Repositorios dedicados para reportes por canal, planes de fábrica, planes Full y balance diario de stock.
+      - **`store.py` (`OrderStore`):** Repositorio central que compone los **11 sub-repositorios** mediante delegación explícita 1 a 1, gestiona transacciones atómicas y migraciones del esquema SQLite.
 
 17. **Patrón de Composición Pura e Inyección de Dependencias en GUI (`src/ui/protocols.py` + `src/ui/controllers/`):**
     * Desacoplamiento completo de `InterfazFlet` (`src/flet_gui.py`) reemplazando la herencia de mixins por composición explícita y contratos `typing.Protocol` + `AppDependencies` (`src/ui/protocols.py`):
@@ -1111,8 +1117,14 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
     * **`src/server_app/`:** Divide el servidor web en parcheo Flet (`flet_patch.py`), CORS/cabeceras HTTP (`middleware.py`), resolución IP LAN/Tailscale (`network_utils.py`), rutas protegidas de documentación/informes con token `?dt=` (`protected_docs_routes.py`) y rutas estáticas PWA/OTA (`static_routes.py`).
     * **`src/labels/`, `src/parsers/`, `src/integrations/`, `src/chat/`, `src/cli/`, `src/tray/` (`service.py`, `tray_controller.py`, `net_and_images.py`):** Cada dominio opera en su paquete canónico con importaciones directas desde módulos, scripts y tests, habiéndose eliminado todas las fachadas puente redundantes de la raíz de `src/` y el antiguo directorio `src/ui/mixins/`.
     * **`src/inventory/` y `src/stock/`:** Incluyen `catalog_loader.py`, `discount_engine.py`, `excel_sync.py`, `template_sync.py`, `report_styles.py`, `reports_stock.py`, `reports_ops.py`, `xls_exporter.py`, `pdf_exporter.py`, `manifest_pdf.py` y `reportes_service.py`.
-    * **Descomposición de Diálogos Extensos (`src/ui/dialogs/`):** Todos los modales grandes fueron separados en vistas y ayudantes enfocados (`auth_*`, `analytics_*`, `api_panel_tabs`, `heatmap_render`, `historial_*`, `ingreso_fabrica_archivo`, `inventario_vivo_views`, `ml_scanner_component` + `ml_docx_component` + `ml_helpers`, `movimientos_rapidos_ops`, `pedidos_crear` + `pedidos_gestion`, `productos_modales`, `stock_fisico_views`) y `floating_chat_intents.py` en componentes.
-    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Estructuran de forma modular la generación de manuales PDF e instructivos de procedimientos.
+    * **`src/integrations/`, `src/cli/` y `src/warehouse_slotting.py`:** Se extrajeron `mercado_libre_auth.py` (OAuth 2.0, cifrado de tokens y búsqueda), `cli/admin_flows.py` (flujos administrativos CLI) y `stock/slotting_models.py` (constantes de racks, dataclasses y heurística).
+    * **Descomposición de Diálogos Extensos (`src/ui/` y `src/ui/dialogs/`):** `shell_builder.py` desacopla la cáscara UI de `flet_gui.py`; cada archivo extenso fue dividido en módulos cohesivos sin monolitos (`admin_flow_widgets`, `sidebar_quick_actions`, `pedidos_crear_modales`, `historial_cards`, `quiebre_banner`, `cierre/cierre_mercado_cards`, `analytics_widgets`, `analytics_rotacion`, `mercadolibre_api_cards`).
+    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Estructuran de forma modular la generación de manuales PDF e instructivos de procedimientos (`VERSION_SOP_ACTUAL = "v2.3.0"`, `VERSION_PROC_ACTUAL = "3.2.0"`).
+
+19. **SQLite-First, Cierre Determinístico y Reportes por Canal (`Mejoras 1–6`):**
+    * **Cierre Discriminado en 3 Canales y Consolidado Admin (`reports_movements_common.py`, `reports_movements_canales.py`, `reports_movements.py`):** Operario recibe únicamente productos movidos en 3 columnas (Mayoristas, Mercado Libre y Full + Ingresos); Administración recibe el consolidado sumado por producto.
+    * **Ciclo Determinístico SQLite (`src/core/sqlite_utils.py`):** Uso uniforme de `sqlite_connection` con `contextlib.closing()`, modo WAL y claves foráneas activas en toda apertura de SQLite en `src/` y `scripts/`, verificado mediante `tests/test_sqlite_closing.py`.
+    * **Arquitectura Acíclica (`src/core` ↔ `src/products` / `src/products/schema.py`):** Eliminación completa de dependencias circulares en arranque e importación diferida hacia dominio de productos e inventario, respaldada por `tests/test_sqlite_first_architecture.py`.
 
 ### Esquema de Bases de Datos SQLite
 
@@ -1452,10 +1464,12 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias y de integración automatizadas que validan la persistencia transaccional, el endurecimiento de seguridad, el control de concurrencia, los flujos logísticos y todas las fachadas modulares:
 
-* **Total de pruebas:** `331` pruebas automatizadas distribuidas en `53` módulos (`tests/test_*.py`), más subtests.
-* **Tasa de éxito:** 100% aprobadas (`331 passed`).
+* **Total de pruebas:** `67` módulos en `tests/test_*.py` (`61` módulos verificados directamente en entorno sandbox con `359` pruebas y `7` subtests aprobados, más `6` módulos ASGI `TestClient`: `test_api_v1.py`, `test_client_code_and_order_fields.py`, `test_documentos_visor.py`, `test_fase5_features.py`, `test_security_api_keys.py` y `test_security_hardening.py`).
+* **Tasa de éxito:** 100% aprobadas sobre la batería ejecutada (`359 passed, 7 subtests passed`).
 
 #### Suites Destacadas Recientes
+* `tests/test_reports_movements_architecture.py`, `tests/test_sqlite_closing.py`, `tests/test_sqlite_first_architecture.py`, `tests/test_ui_composition_pattern.py`: Reporte discriminado en 3 canales (Mayoristas, Mercado Libre, Full) para Operario, Consolidado Admin, cierre determinístico SQLite con `closing()` (`sqlite_utils.py`), ausencia de ciclos `core` ↔ `products`, arquitectura SQLite-first y composición pura sin mixins.
+* `tests/test_cierre_mercado_picker.py`, `tests/test_document_options_dialog.py`, `tests/test_sincronizar_excel_dialog.py`, `tests/test_adaptive_quiebre_panel.py`: Cierre Mercado/Picker, opciones documentales, sincronización Excel bajo SQLite-first y panel adaptativo de quiebres.
 * `tests/test_security_hardening.py`: Rechazo de tokens en query string (`401`), revocación instantánea al desactivar usuario o cambiar rol, protección `?dt=` en `/documentacion/` y `/informes/`, cifrado DPAPI/Fernet de secretos, validación anti-SSRF en webhooks y límites seguros en backups `.zip`.
 * `tests/test_picker_role.py`: Alcance estricto SoD del rol `picker` (solo Despacho ML/Full y Movimientos Rápidos/Fábrica; bloqueo en pedidos, métricas, usuarios y auditoría).
 * `tests/test_api_v1.py`, `tests/test_api_master_dialog.py`, `tests/test_api_keys_dialog.py`, `tests/test_security_api_keys.py`: Endpoints REST v1, consola Master de API, gestión de claves `X-API-Key`, rate limiting (`429`) y sesiones SQLite con `PRAGMA foreign_keys = ON`.

@@ -1,10 +1,12 @@
-"""Repositorio mixin de escritura, mutaciones y sincronización de plantilla del catálogo."""
+"""Repositorio desacoplado de escritura, mutaciones y sincronización de plantilla del catálogo."""
 
 from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
 from typing import Callable, Iterable
+
+from .protocols import CatalogWriteHostProtocol
 
 
 def _sincronizar_filas_plantilla(
@@ -47,11 +49,17 @@ def _revertir_plantilla(restore_template: Callable[[], None], accion: str) -> No
         ) from error
 
 
-class CatalogWriteMixin:
-    """Mixin de escrituras transaccionales en SQLite sincronizadas con la plantilla Excel."""
+class CatalogWriteRepository:
+    """Repositorio de escrituras transaccionales en SQLite sincronizadas con la plantilla Excel."""
 
-    _connect: Callable[[], sqlite3.Connection]
-    invalidar_cache: Callable[[], None]
+    def __init__(self, host: CatalogWriteHostProtocol) -> None:
+        self._host = host
+
+    def _connect(self) -> sqlite3.Connection:
+        return self._host._connect()
+
+    def invalidar_cache(self) -> None:
+        self._host.invalidar_cache()
 
     def set_metadata(self, key: str, value: str) -> None:
         """Almacena o actualiza una clave de metadatos del catálogo."""

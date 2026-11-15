@@ -1,4 +1,4 @@
-"""Repositorio mixin para el inventario físico y reconciliación de stock."""
+"""Repositorio desacoplado para el inventario físico y reconciliación de stock."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from contextlib import closing
 from typing import Callable
 
 
-class PhysicalRepositoryMixin:
-    """Mixin que encapsula el registro de conteos físicos, comparativas y discrepancias."""
+class PhysicalRepository:
+    """Encapsula el registro de conteos físicos, comparativas y discrepancias."""
 
-    _connect: Callable[[], sqlite3.Connection]
+    def __init__(self, connect_fn: Callable[[], sqlite3.Connection]) -> None:
+        self._connect = connect_fn
 
     def record_physical_inventory(
         self,

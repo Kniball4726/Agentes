@@ -1,4 +1,4 @@
-"""Repositorio mixin para notificaciones de administración y alertas de reposición."""
+"""Repositorio desacoplado para notificaciones de administración y alertas de reposición."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from contextlib import closing
 from typing import Callable
 
 
-class NotificationsRepositoryMixin:
-    """Mixin que encapsula el centro de notificaciones administrativas y análisis de reposición."""
+class NotificationsRepository:
+    """Encapsula el centro de notificaciones administrativas y análisis de reposición."""
 
-    _connect: Callable[[], sqlite3.Connection]
+    def __init__(self, connect_fn: Callable[[], sqlite3.Connection]) -> None:
+        self._connect = connect_fn
 
     def get_replenishment_analysis(
         self, only_critical: bool = True

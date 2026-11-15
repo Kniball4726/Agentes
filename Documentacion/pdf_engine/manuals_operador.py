@@ -146,16 +146,16 @@ def agregar_poes_operador(
     agregar_ficha_procedimiento_apa(
         story, est, tabla_inicio + 3,
         "POE-OPE-04", "Despacho en Lote, Notificación WhatsApp y Cierre de Jornada",
-        "Controlar la entrega formal al transportista y consolidar los movimientos del turno de trabajo.",
+        "Controlar la entrega formal al transportista y consolidar los movimientos del turno directamente desde SQLite.",
         "Tarimas de empaque listas", "Pedidos preparados pendientes de retiro",
-        "Informe Oficial de Cierre (PDF/Excel), Hojas de Ruta por transporte firmadas", "Gerencia / Administración",
+        "Cierre por Canales (Mayoristas / Mercado Libre / Full + Ingresos), Consolidado Admin (PDF/Excel) y Hojas de Ruta firmadas", "Gerencia / Administración",
         "R: Operario | A: Administrador | I: Chofer / Transportista",
         ["El turno operacional ha finalizado.", "La totalidad de pedidos preparados ha sido verificada en muelle."],
         [
             "En el Historial de Pedidos, se filtra la vista por 'Pendientes de Cierre'. Se marcan los pedidos entregados al chofer.",
             "Se pulsa el botón <b>'Despachar Seleccionados'</b> para transicionar los pedidos a estado DESPACHADO.",
             "Se ingresa el N° de guía del expreso y se pulsa el icono de WhatsApp para despachar el mensaje formal al cliente.",
-            "Se acciona el comando <b>'Cierre de Jornada'</b>. El sistema consolida los descuentos evitando duplicidades.",
+            "Se acciona el comando <b>'Cierre de Jornada'</b>. El motor lee SQLite (sin requerir `Productos.xlsx`), emite el reporte del operario discriminado en 3 canales (solo SKUs movidos) y el Consolidado Administrador sin doble descuento.",
             "Se imprimen las Hojas de Ruta individuales por transporte y se recaba la firma de conformidad del chofer.",
             "Se verifica que los contadores del panel principal retornen a cero para la recepción del siguiente turno.",
         ],
@@ -180,7 +180,7 @@ def agregar_poes_operador(
 def construir_manual_operador(ruta_destino: Path) -> Path:
     """Compila el Manual del Rol Operador bajo Normas ISO, BPMN y APA/UPEL."""
     doc, est, story = crear_documento_iso(ruta_destino)
-    codigo_doc = "SOP-STK-OPE-2026-v2.2"
+    codigo_doc = "SOP-STK-OPE-2026-v2.3"
     titulo_doc = "Manual de Procedimientos de Depósito (Rol Operador)"
 
     agregar_portada_iso_upel(

@@ -1,11 +1,12 @@
-"""Repositorio mixin de solo lectura y caché para el catálogo de productos y códigos de barras."""
+"""Repositorio desacoplado de solo lectura y caché para el catálogo de productos y códigos de barras."""
 
 from __future__ import annotations
 
 import sqlite3
 import time
 from contextlib import closing
-from typing import Any, Callable
+
+from .protocols import CatalogCacheHostProtocol
 
 _COLS_PRODUCT_SELECT = (
     "code, name, stock, active, stock_minimo, stock_maximo, "
@@ -13,16 +14,14 @@ _COLS_PRODUCT_SELECT = (
 )
 
 
-class CatalogReadMixin:
-    """Mixin de consultas rápidas, listados y búsqueda cacheada por SKU/código de barras."""
+class CatalogReadRepository:
+    """Consultas rápidas, listados y búsqueda cacheada por SKU/código de barras."""
 
-    _connect: Callable[[], sqlite3.Connection]
-    _es_cache_valido: Callable[[sqlite3.Connection | None], bool]
-    _cache_sku: dict[str, sqlite3.Row]
-    _cache_barcode: dict[str, sqlite3.Row]
-    _cache_lock: Any
-    _cache_data_version: int | None
-    _cache_ts: float
+    def __init__(self, host: CatalogCacheHostProtocol) -> None:
+        self._host = host
+
+    def _connect(self) -> sqlite3.Connection:
+        return self._host._connect()
 
     def load_catalog_fast(
         self,
@@ -246,9 +245,9 @@ class CatalogReadMixin:
         if not variantes:
             return None
 
-        cache_destino = self._cache_sku if columna == "code" else self._cache_barcode
-        with self._cache_lock:
-            if self._es_cache_valido():
+        cache_destino = self._host._cache_sku if columna == "code" else self._host._cache_barcode
+        with self._host._cache_lock:
+            if self._host._es_cache_valido():
                 for cand in variantes:
                     cached = cache_destino.get(cand)
                     if cached is not None:
@@ -263,20 +262,20 @@ class CatalogReadMixin:
                 solo_no_vacio=(columna == "cod_barras"),
             )
 
-            with self._cache_lock:
-                if not self._es_cache_valido(connection):
-                    self._cache_sku.clear()
-                    self._cache_barcode.clear()
+            with self._host._cache_lock:
+                if not self._host._es_cache_valido(connection):
+                    self._host._cache_sku.clear()
+                    self._host._cache_barcode.clear()
                 if row is not None:
                     code_canonical = normalizar_codigo_lector(row["code"]) or str(row["code"]).strip()
                     if code_canonical:
-                        self._cache_sku[code_canonical] = row
+                        self._host._cache_sku[code_canonical] = row
                     bar_canonical = normalizar_codigo_lector(row["cod_barras"]) if row["cod_barras"] else ""
                     if bar_canonical:
-                        self._cache_barcode[bar_canonical] = row
+                        self._host._cache_barcode[bar_canonical] = row
                     cache_destino[variantes[0]] = row
-                self._cache_data_version = dv
-                self._cache_ts = time.monotonic()
+                self._host._cache_data_version = dv
+                self._host._cache_ts = time.monotonic()
             return row
 
     def get_product(self, code: object) -> sqlite3.Row | None:

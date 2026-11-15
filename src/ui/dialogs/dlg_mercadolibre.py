@@ -1,6 +1,7 @@
 """Diálogo modal para Sincronización y Configuración de Mercado Libre API."""
 
 from datetime import datetime
+import threading
 from typing import Any
 import flet as ft
 
@@ -13,6 +14,10 @@ from ...integrations.mercado_libre_api import (
     verificar_credenciales_ml,
 )
 from ..theme import ROJO
+from .mercadolibre_api_cards import (
+    construir_contenido_dialogo_ml,
+    construir_tarjeta_orden_ml,
+)
 
 
 def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> None:
@@ -159,91 +164,15 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
 
             seleccionada = seleccionados.get(ref, not ya_procesado and ord_info["stock_suficiente"])
 
-            # Chips de estado
-            if ya_procesado:
-                chip_estado = ft.Container(
-                    content=ft.Text("YA DESCONTADO", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_300),
-                    bgcolor=ft.Colors.GREY_800,
-                    padding=ft.Padding(6, 2, 6, 2),
-                    border_radius=4,
-                )
-            elif not ord_info["stock_suficiente"]:
-                chip_estado = ft.Container(
-                    content=ft.Text("FALTA STOCK", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_100),
-                    bgcolor=ft.Colors.RED_900,
-                    padding=ft.Padding(6, 2, 6, 2),
-                    border_radius=4,
-                )
-            else:
-                chip_estado = ft.Container(
-                    content=ft.Text("LISTO P/ DESCUENTO", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_100),
-                    bgcolor=ft.Colors.GREEN_800,
-                    padding=ft.Padding(6, 2, 6, 2),
-                    border_radius=4,
-                )
-
             def on_check_change(e: ft.Event, r=ref):
                 seleccionados[r] = bool(e.control.value)
 
-            filas_items = []
-            for it in ord_info["items_coincidentes"]:
-                stk_post = it["stock_actual"] - it["cantidad"]
-                stk_color = ft.Colors.RED_400 if stk_post < 0 else interfaz.secundario
-                filas_items.append(
-                    ft.Row(
-                        [
-                            ft.Text(f"[{it['codigo']}]", weight=ft.FontWeight.BOLD, size=11, width=70),
-                            ft.Text(it["nombre"], size=11, expand=True, no_wrap=True),
-                            ft.Text(f"-{it['cantidad']} un.", color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD, size=11, width=60),
-                            ft.Text(f"Stock: {it['stock_actual']} -> {stk_post}", size=11, color=stk_color, width=130),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    )
-                )
-
-            for no_it in ord_info["items_no_coincidentes"]:
-                filas_items.append(
-                    ft.Row(
-                        [
-                            ft.Icon(ft.Icons.WARNING_AMBER, color=ft.Colors.AMBER_400, size=14),
-                            ft.Text(f"No reconocido: {no_it['titulo']} (Cant: {no_it['cantidad']})", size=11, color=ft.Colors.AMBER_400, expand=True),
-                        ],
-                    )
-                )
-
-            tarjeta = ft.Container(
-                bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
-                border=ft.Border.all(1, ft.Colors.WHITE_24 if interfaz.modo_oscuro else ft.Colors.GREY_300),
-                border_radius=8,
-                padding=10,
-                content=ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                ft.Checkbox(
-                                    value=seleccionada,
-                                    disabled=ya_procesado,
-                                    on_change=on_check_change,
-                                ),
-                                ft.Column(
-                                    [
-                                        ft.Text(f"{ref} · {ord_info['cliente']}", weight=ft.FontWeight.BOLD, size=12),
-                                        ft.Text(f"Fecha: {ord_info['fecha']} | {ord_info['total_unidades']} un. | Total: ${ord_info['total_importe']:,.2f}", size=11, color=interfaz.secundario),
-                                    ],
-                                    expand=True,
-                                    spacing=2,
-                                ),
-                                chip_estado,
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        ft.Container(
-                            padding=ft.Padding(left=28, top=4, right=4, bottom=4),
-                            content=ft.Column(filas_items, spacing=2),
-                        ),
-                    ],
-                    spacing=4,
-                ),
+            tarjeta = construir_tarjeta_orden_ml(
+                interfaz=interfaz,
+                ord_info=ord_info,
+                ya_procesado=ya_procesado,
+                seleccionada=seleccionada,
+                on_check_change=on_check_change,
             )
             lista_ordenes_view.controls.append(tarjeta)
 
@@ -333,87 +262,26 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         import threading
         threading.Thread(target=tarea_descuento_masivo, daemon=True).start()
 
-    # Contenedor de Pestañas
-    vista_ordenes = ft.Column(
-        [
-            ft.Row(
-                [
-                    ft.Button(
-                        "Sincronizar Ahora",
-                        icon=ft.Icons.SYNC,
-                        bgcolor=ROJO,
-                        color=ft.Colors.WHITE,
-                        on_click=ejecutar_sincronizacion_api,
-                    ),
-                    chk_solo_pendientes,
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-            texto_resumen_sincronizacion,
-            ft.Divider(height=10, color=interfaz.borde),
-            lista_ordenes_view,
-        ],
-        spacing=6,
-        expand=True,
-    )
-
-    vista_config = ft.Column(
-        [
-            ft.Text(
-                "Configuración de credenciales de la aplicación en Mercado Libre Developers:",
-                size=12,
-                color=interfaz.secundario,
-            ),
+    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
+    contenido_dialogo = construir_contenido_dialogo_ml(
+        interfaz=interfaz,
+        es_master=es_master,
+        on_sincronizar=ejecutar_sincronizacion_api,
+        chk_solo_pendientes=chk_solo_pendientes,
+        texto_resumen_sincronizacion=texto_resumen_sincronizacion,
+        lista_ordenes_view=lista_ordenes_view,
+        controles_config=[
             input_app_id,
             input_client_secret,
             input_seller_id,
             input_access_token,
             input_refresh_token,
             switch_activo,
-            texto_estado_config,
-            ft.Row(
-                [
-                    ft.OutlinedButton("Probar Conexión", icon=ft.Icons.CHECK_CIRCLE, on_click=probar_conexion_api),
-                    ft.Button("Guardar Configuración", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_config_api),
-                ],
-                alignment=ft.MainAxisAlignment.END,
-            ),
         ],
-        spacing=8,
-        scroll=ft.ScrollMode.AUTO,
-        expand=True,
+        texto_estado_config=texto_estado_config,
+        on_probar_conexion=probar_conexion_api,
+        on_guardar_config=guardar_config_api,
     )
-
-    es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
-
-    if es_master:
-        tabs = ft.Tabs(
-            length=2,
-            expand=True,
-            content=ft.Column(
-                expand=True,
-                controls=[
-                    ft.TabBar(
-                        tabs=[
-                            ft.Tab(label="Órdenes Sincronizadas", icon=ft.Icons.LIST_ALT),
-                            ft.Tab(label="Credenciales API (Master)", icon=ft.Icons.SETTINGS),
-                        ]
-                    ),
-                    ft.TabBarView(
-                        expand=True,
-                        controls=[vista_ordenes, vista_config],
-                    ),
-                ],
-            ),
-        )
-        contenido_dialogo = tabs
-    else:
-        # Administradores y Operadores solo operan sobre las órdenes sincronizadas (SoD)
-        contenido_dialogo = ft.Container(
-            content=vista_ordenes,
-            padding=ft.Padding.all(4),
-            expand=True,
-        )
 
     dialogo = ft.AlertDialog(
         modal=True,

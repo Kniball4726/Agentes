@@ -36,7 +36,7 @@ from .manuals_operador import agregar_poes_operador
 def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
     """Compila el Manual Maestro Integral Imprimible para entrega final al usuario o auditorías."""
     doc, est, story = crear_documento_iso(ruta_destino)
-    codigo_doc = "SOP-STK-MAE-2026-v2.2"
+    codigo_doc = "SOP-STK-MAE-2026-v2.3"
     titulo_doc = "Manual Maestro de Procedimientos del Sistema (Compendio Integral Imprimible)"
 
     agregar_portada_iso_upel(
@@ -78,10 +78,10 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
     # CAPÍTULO 1: MARCO ESTRATÉGICO Y ARQUITECTURA MODULAR
     agregar_titulo_capitulo(story, est, "1. Marco Estratégico, Arquitectura Modular y Alcance (ISO 9001 §4.3)", page_break=True)
     story.append(Paragraph(
-        "StockAgent constituye la plataforma logística troncal para control de inventario, despacho mayorista/e-commerce "
-        "y trazabilidad física. Su arquitectura modular organiza el código en paquetes especializados bajo `src/` (`server_app`, "
-        "`auth`, `orders`, `products`, `stock`, `inventory`, `labels`, `chat`, `cli`, `tray`, `integrations`, `parsers`, `api` y `ui`) "
-        "y los generadores documentales en `Documentacion/pdf_engine/` y `Documentacion/procedimientos/`.",
+        "StockAgent constituye la plataforma logística troncal para control de inventario SQLite-first, despacho mayorista/e-commerce "
+        "y trazabilidad física. Su arquitectura modular sin archivos monolíticos organiza el código por composición pura bajo `src/` "
+        "(`core` con cierre determinístico `closing()`, `server_app`, `auth`, `orders`, `products`, `stock`, `inventory`, `labels`, `chat`, "
+        "`cli`, `tray`, `integrations`, `parsers`, `api` y `ui`) y los generadores documentales en `Documentacion/pdf_engine/` y `Documentacion/procedimientos/`.",
         est["body_sangria"],
     ))
 
@@ -105,7 +105,7 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
         ("Descuento Mercado Full (Excel)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Procesamiento rápido hacia bodega Full."),
         ("Movimientos Rápidos (+ / − Stock)", "✅ Sí", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Trazabilidad obligatoria con motivo y auditoría."),
         ("Modificar / Desarmar Pedidos", "❌ No", "❌ Lectura", "✅ Exclusivo", "❌ No", "❌ No", "Evita colisión remota con mercadería empaquetada."),
-        ("Cierre de Jornada y Hojas de Ruta", "❌ No", "❌ Audita", "✅ Exclusivo", "❌ No", "❌ No", "Operador cierra turno; Admin audita en Cierres."),
+        ("Cierre de Jornada y Hojas de Ruta", "❌ No", "❌ Audita", "✅ Exclusivo", "❌ No", "❌ No", "Operador cierra en 3 canales; Admin audita Consolidado."),
         ("Ingreso de Fábrica (Escáner / Lote)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Sobrescribir stock reservado a Administrador."),
         ("Catálogo, Ped. Fábrica y Comparativa", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Administración maestra de SKUs y arqueos."),
         ("Analítica, Radar y Heatmap Slotting", "✅ Lectura", "✅ Sí", "❌ No", "❌ No", "❌ No", "Inteligencia operativa y ergonomía de depósito."),

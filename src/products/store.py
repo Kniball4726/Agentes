@@ -1,4 +1,4 @@
-"""Módulo principal que ensambla ProductStore componiendo los repositorios mixin."""
+"""Módulo principal que ensambla ProductStore mediante composición de repositorios."""
 
 from __future__ import annotations
 
@@ -7,21 +7,19 @@ import threading
 import time
 from contextlib import closing
 from pathlib import Path
+from typing import Any, Callable, Iterable
 
-from .catalog_repo import CatalogRepositoryMixin
-from .movements_repo import MovementsRepositoryMixin
-from .movements_report_repo import MovementsReportMixin
-from .notifications_repo import NotificationsRepositoryMixin
-from .physical_repo import PhysicalRepositoryMixin
+from ..core.sqlite_utils import open_sqlite_connection
+from .catalog_read_repo import CatalogReadRepository
+from .catalog_write_repo import CatalogWriteRepository
+from .movements_repo import MovementsRepository
+from .movements_report_repo import MovementsReportRepository
+from .notifications_repo import NotificationsRepository
+from .physical_repo import PhysicalRepository
+from .schema import inicializar_esquema_productos
 
 
-class ProductStore(
-    CatalogRepositoryMixin,
-    MovementsRepositoryMixin,
-    MovementsReportMixin,
-    PhysicalRepositoryMixin,
-    NotificationsRepositoryMixin,
-):
+class ProductStore:
     """Gestor unificado de base de datos SQLite para productos, catálogo, despachos e inventario."""
 
     _initialized_dbs: set[tuple[str, int, int]] = set()
@@ -35,6 +33,12 @@ class ProductStore(
         self._cache_ts: float = 0.0
         self._cache_ttl: float = 15.0
         self._cache_lock = threading.Lock()
+        self.catalog_read = CatalogReadRepository(self)
+        self.catalog_write = CatalogWriteRepository(self)
+        self.movements_repo = MovementsRepository(self._connect)
+        self.movements_report_repo = MovementsReportRepository(self._connect)
+        self.physical_repo = PhysicalRepository(self._connect)
+        self.notifications_repo = NotificationsRepository(self._connect)
         self._initialize()
 
     def invalidar_cache(self) -> None:
@@ -60,14 +64,11 @@ class ProductStore(
         return True
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = NORMAL")
-        connection.execute("PRAGMA temp_store = MEMORY")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return connection
+        return open_sqlite_connection(
+            self.database_path,
+            synchronous_normal=True,
+            temp_store_memory=True,
+        )
 
     def _db_signature(self) -> tuple[str, int, int] | None:
         try:
@@ -85,281 +86,270 @@ class ProductStore(
         if sig_before is not None and sig_before in self._initialized_dbs:
             return
         with closing(self._connect()) as connection, connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS products (
-                    code TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    stock INTEGER NOT NULL DEFAULT 0,
-                    stock_minimo INTEGER NOT NULL DEFAULT 5,
-                    stock_maximo INTEGER NOT NULL DEFAULT 100,
-                    active INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            columns = {
-                row["name"]
-                for row in connection.execute("PRAGMA table_info(products)")
-            }
-            if "active" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
-                )
-            if "stock_minimo" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN stock_minimo INTEGER NOT NULL DEFAULT 5"
-                )
-            if "stock_maximo" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN stock_maximo INTEGER NOT NULL DEFAULT 100"
-                )
-            if "stock_fisico" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN stock_fisico INTEGER DEFAULT NULL"
-                )
-            if "cod_barras" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN cod_barras TEXT DEFAULT ''"
-                )
-            if "ubicacion" not in columns:
-                connection.execute(
-                    "ALTER TABLE products ADD COLUMN ubicacion TEXT NOT NULL DEFAULT ''"
-                )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_products_cod_barras
-                ON products(cod_barras)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_products_ubicacion
-                ON products(ubicacion)
-                """
-            )
-
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS product_catalog_rows (
-                    id INTEGER PRIMARY KEY,
-                    product_code TEXT NOT NULL REFERENCES products(code),
-                    display_name TEXT NOT NULL,
-                    display_order INTEGER NOT NULL,
-                    template_row INTEGER
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_product_catalog_rows_order
-                ON product_catalog_rows(display_order)
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS product_catalog_metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS stock_movements (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_code TEXT NOT NULL,
-                    product_name TEXT NOT NULL DEFAULT '',
-                    quantity INTEGER NOT NULL,
-                    movement_type TEXT NOT NULL,
-                    usuario TEXT NOT NULL DEFAULT 'sistema',
-                    detalle TEXT NOT NULL DEFAULT '',
-                    registered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
-                )
-                """
-            )
-            cols_mov = {
-                row["name"]
-                for row in connection.execute("PRAGMA table_info(stock_movements)")
-            }
-            if "usuario" not in cols_mov:
-                connection.execute(
-                    "ALTER TABLE stock_movements ADD COLUMN usuario TEXT NOT NULL DEFAULT 'sistema'"
-                )
-            if "detalle" not in cols_mov:
-                connection.execute(
-                    "ALTER TABLE stock_movements ADD COLUMN detalle TEXT NOT NULL DEFAULT ''"
-                )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_stock_movements_code
-                ON stock_movements(product_code)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_stock_movements_date
-                ON stock_movements(registered_at)
-                """
-            )
-
-            # 1. Trigger para auditar todo cambio de stock automáticamente en SQLite
-            connection.execute(
-                """
-                CREATE TRIGGER IF NOT EXISTS trg_auditoria_stock
-                AFTER UPDATE OF stock ON products
-                WHEN NEW.stock != OLD.stock
-                BEGIN
-                    INSERT INTO stock_movements (
-                        product_code,
-                        product_name,
-                        quantity,
-                        movement_type,
-                        registered_at
-                    )
-                    VALUES (
-                        NEW.code,
-                        NEW.name,
-                        NEW.stock - OLD.stock,
-                        CASE 
-                            WHEN NEW.stock < OLD.stock THEN 'descuento'
-                            ELSE 'ingreso_fabrica'
-                        END,
-                        strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')
-                    );
-                END;
-                """
-            )
-
-            # 3. Vista de análisis de reposición y quiebre de stock
-            connection.execute(
-                """
-                CREATE VIEW IF NOT EXISTS v_analisis_reposicion AS
-                SELECT 
-                    p.code AS code,
-                    p.name AS name,
-                    p.stock AS stock,
-                    p.stock_minimo AS stock_minimo,
-                    p.stock_maximo AS stock_maximo,
-                    CASE 
-                        WHEN p.stock <= 0 THEN 'AGOTADO'
-                        WHEN p.stock <= p.stock_minimo THEN 'QUIEBRE_INMINENTE'
-                        WHEN p.stock > p.stock_maximo THEN 'SOBRESTOCK'
-                        ELSE 'OPTIMO'
-                    END AS estado_inventario,
-                    CASE 
-                        WHEN p.stock <= p.stock_minimo THEN MAX(0, p.stock_maximo - p.stock)
-                        ELSE 0
-                    END AS cantidad_sugerida_pedir
-                FROM products p
-                WHERE p.active = 1;
-                """
-            )
-
-            # 4. Tablas para trazabilidad de despachos y sus detalles
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS despachos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fecha TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
-                    tipo_origen TEXT NOT NULL,
-                    nombre_archivo TEXT NOT NULL,
-                    total_articulos INTEGER NOT NULL DEFAULT 0,
-                    reporte_archivo TEXT
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS despacho_detalles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    despacho_id INTEGER NOT NULL REFERENCES despachos(id) ON DELETE CASCADE,
-                    product_code TEXT NOT NULL REFERENCES products(code),
-                    cantidad_descontada INTEGER NOT NULL,
-                    stock_anterior INTEGER NOT NULL,
-                    stock_nuevo INTEGER NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_despacho_detalles_despacho
-                ON despacho_detalles(despacho_id)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_despacho_detalles_product
-                ON despacho_detalles(product_code)
-                """
-            )
-
-            # Columna de usuario para trazabilidad en despachos
-            columns_despachos = {
-                row["name"]
-                for row in connection.execute("PRAGMA table_info(despachos)")
-            }
-            if "usuario" not in columns_despachos:
-                connection.execute(
-                    "ALTER TABLE despachos ADD COLUMN usuario TEXT NOT NULL DEFAULT 'sistema'"
-                )
-
-            # Tabla de notificaciones para administradores
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS admin_notifications (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    operator_username TEXT NOT NULL,
-                    notification_type TEXT NOT NULL DEFAULT 'descuento',
-                    details TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
-                    is_read INTEGER NOT NULL DEFAULT 0
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_admin_notifications_read
-                ON admin_notifications(is_read)
-                """
-            )
-
-            # Tablas para relevamiento de inventario físico y su comparativa
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS inventario_fisico (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fecha TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
-                    usuario TEXT NOT NULL DEFAULT 'operador',
-                    nombre_archivo TEXT NOT NULL,
-                    reporte_unificado TEXT NOT NULL DEFAULT '',
-                    total_relevados INTEGER NOT NULL DEFAULT 0,
-                    total_diferencias INTEGER NOT NULL DEFAULT 0
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS inventario_fisico_detalles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    inventario_id INTEGER NOT NULL REFERENCES inventario_fisico(id) ON DELETE CASCADE,
-                    product_code TEXT NOT NULL,
-                    product_name TEXT NOT NULL DEFAULT '',
-                    stock_digital INTEGER NOT NULL,
-                    stock_fisico INTEGER NOT NULL,
-                    diferencia INTEGER NOT NULL,
-                    estado TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_inv_fisico_det_inv
-                ON inventario_fisico_detalles(inventario_id)
-                """
-            )
+            inicializar_esquema_productos(connection)
         sig_after = self._db_signature()
         if sig_after is not None:
             self._initialized_dbs.add(sig_after)
+
+    # Delegación explícita hacia repositorios compuestos
+
+    def load_catalog_fast(self) -> tuple[bool, dict[str, str], list[sqlite3.Row]]:
+        return self.catalog_read.load_catalog_fast()
+
+    def is_template_imported(self) -> bool:
+        return self.catalog_read.is_template_imported()
+
+    def get_all_metadata(self) -> dict[str, str]:
+        return self.catalog_read.get_all_metadata()
+
+    def get_metadata(self, key: str, default: str = "") -> str:
+        return self.catalog_read.get_metadata(key, default=default)
+
+    def list_catalog_rows(self, include_inactive: bool = False) -> list[sqlite3.Row]:
+        return self.catalog_read.list_catalog_rows(include_inactive=include_inactive)
+
+    def list_products(self, solo_activos: bool = False) -> list[sqlite3.Row]:
+        return self.catalog_read.list_products(solo_activos=solo_activos)
+
+    def buscar_productos(self, termino: str, limite: int = 50) -> list[sqlite3.Row]:
+        return self.catalog_read.buscar_productos(termino, limite=limite)
+
+    def get_product(self, code: object) -> sqlite3.Row | None:
+        return self.catalog_read.get_product(code)
+
+    def _query_producto_raw(self, code: str) -> sqlite3.Row | None:
+        return self.catalog_read._query_producto_raw(code)
+
+    def get_product_by_barcode(self, cod_barras: object) -> sqlite3.Row | None:
+        return self.catalog_read.get_product_by_barcode(cod_barras)
+
+    def _query_barcode_raw(self, cod_barras: str) -> sqlite3.Row | None:
+        return self.catalog_read._query_barcode_raw(cod_barras)
+
+    def find_product_by_code_or_barcode(self, query: object) -> sqlite3.Row | None:
+        return self.catalog_read.find_product_by_code_or_barcode(query)
+
+    def _find_product_raw(self, query: str) -> sqlite3.Row | None:
+        return self.catalog_read._find_product_raw(query)
+
+    def set_metadata(self, key: str, value: str) -> None:
+        self.catalog_write.set_metadata(key, value)
+
+    def import_template_once(
+        self,
+        products: Iterable[tuple[int, str, str, int]],
+        metadata: dict[str, str] | None = None,
+    ) -> None:
+        self.catalog_write.import_template_once(products, metadata=metadata)
+
+    def add_product_after(
+        self,
+        code: str,
+        name: str,
+        reference_code: str,
+        stock: int,
+        synchronize_template: Callable[[int], list[int]] | None = None,
+        restore_template: Callable[[], None] | None = None,
+        stock_minimo: int = 5,
+        stock_maximo: int = 100,
+        cod_barras: str = "",
+    ) -> tuple[int, str]:
+        return self.catalog_write.add_product_after(
+            code=code,
+            name=name,
+            reference_code=reference_code,
+            stock=stock,
+            synchronize_template=synchronize_template,
+            restore_template=restore_template,
+            stock_minimo=stock_minimo,
+            stock_maximo=stock_maximo,
+            cod_barras=cod_barras,
+        )
+
+    def update_product(self, *args, **kwargs):
+        return self.catalog_write.update_product(*args, **kwargs)
+
+    def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:
+        return self.catalog_write.actualizar_ubicacion(code, ubicacion)
+
+    def set_product_barcode(self, code: object, cod_barras: object) -> None:
+        self.catalog_write.set_product_barcode(code, cod_barras)
+
+    def set_product_active(self, code: str, active: bool) -> None:
+        self.catalog_write.set_product_active(code, active)
+
+    def sync_active_status_with_codes(self, active_codes: Iterable[str]) -> tuple[int, int]:
+        return self.catalog_write.sync_active_status_with_codes(active_codes)
+
+    def update_product_thresholds(
+        self, code: str, stock_minimo: int, stock_maximo: int
+    ) -> None:
+        self.catalog_write.update_product_thresholds(code, stock_minimo, stock_maximo)
+
+    def update_stocks(self, *args, **kwargs) -> int:
+        return self.catalog_write.update_stocks(*args, **kwargs)
+
+    def record_dispatch(
+        self,
+        tipo_origen: str,
+        nombre_archivo: str,
+        total_articulos: int,
+        detalles: list[tuple[str, int, int, int]],
+        reporte_archivo: str = "",
+        usuario: str = "sistema",
+    ) -> int:
+        return self.movements_repo.record_dispatch(
+            tipo_origen=tipo_origen,
+            nombre_archivo=nombre_archivo,
+            total_articulos=total_articulos,
+            detalles=detalles,
+            reporte_archivo=reporte_archivo,
+            usuario=usuario,
+        )
+
+    def register_movements(
+        self,
+        movements: list[tuple[str, str, int, str]],
+        usuario: str = "sistema",
+        detalle: str = "",
+    ) -> None:
+        self.movements_repo.register_movements(
+            movements, usuario=usuario, detalle=detalle
+        )
+
+    def enrich_latest_movements(
+        self,
+        product_codes: Iterable[str],
+        usuario: str = "sistema",
+        detalle: str = "",
+        movement_type: str | None = None,
+    ) -> None:
+        self.movements_repo.enrich_latest_movements(
+            product_codes, usuario=usuario, detalle=detalle, movement_type=movement_type
+        )
+
+    def list_recent_movements(
+        self,
+        product_code: str = "",
+        movement_type: str = "",
+        limit: int = 150,
+    ) -> list[sqlite3.Row]:
+        return self.movements_repo.list_recent_movements(
+            product_code=product_code, movement_type=movement_type, limit=limit
+        )
+
+    def query_movements(
+        self,
+        date_from: str,
+        date_to: str,
+        movement_type: str | None = None,
+        top_n: int | None = None,
+    ) -> list[sqlite3.Row]:
+        return self.movements_repo.query_movements(
+            date_from=date_from,
+            date_to=date_to,
+            movement_type=movement_type,
+            top_n=top_n,
+        )
+
+    def get_period_movements_summary(
+        self,
+        date_from: str,
+        date_to: str,
+        order_by: str = "catalog",
+        strict_after_from: bool = False,
+    ) -> dict[str, Any]:
+        return self.movements_report_repo.get_period_movements_summary(
+            date_from=date_from,
+            date_to=date_to,
+            order_by=order_by,
+            strict_after_from=strict_after_from,
+        )
+
+    def get_product_kardex(
+        self,
+        product_query: str,
+        date_from: str = "",
+        date_to: str = "",
+        limit: int = 300,
+    ) -> dict[str, Any]:
+        return self.movements_report_repo.get_product_kardex(
+            product_query=product_query,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+
+    def get_rotation_ranking(
+        self,
+        date_from: str,
+        date_to: str,
+        dias_periodo: int = 30,
+        top_n: int = 60,
+    ) -> list[dict[str, Any]]:
+        return self.movements_report_repo.get_rotation_ranking(
+            date_from=date_from,
+            date_to=date_to,
+            dias_periodo=dias_periodo,
+            top_n=top_n,
+        )
+
+    def record_physical_inventory(
+        self,
+        usuario: str,
+        nombre_archivo: str,
+        reporte_unificado: str,
+        detalles: list[tuple[str, str, int, int, int, str]],
+    ) -> int:
+        return self.physical_repo.record_physical_inventory(
+            usuario=usuario,
+            nombre_archivo=nombre_archivo,
+            reporte_unificado=reporte_unificado,
+            detalles=detalles,
+        )
+
+    def list_physical_inventories(self, limit: int = 20) -> list[sqlite3.Row]:
+        return self.physical_repo.list_physical_inventories(limit=limit)
+
+    def get_physical_inventory_details(self, inventario_id: int) -> list[sqlite3.Row]:
+        return self.physical_repo.get_physical_inventory_details(inventario_id)
+
+    def get_latest_physical_inventory(
+        self,
+    ) -> tuple[sqlite3.Row | None, list[sqlite3.Row]]:
+        return self.physical_repo.get_latest_physical_inventory()
+
+    def get_replenishment_analysis(self, only_critical: bool = True) -> list[sqlite3.Row]:
+        return self.notifications_repo.get_replenishment_analysis(only_critical=only_critical)
+
+    def create_admin_notification(
+        self,
+        title: str,
+        message: str,
+        operator_username: str,
+        notification_type: str = "descuento",
+        details: str = "",
+    ) -> int:
+        return self.notifications_repo.create_admin_notification(
+            title=title,
+            message=message,
+            operator_username=operator_username,
+            notification_type=notification_type,
+            details=details,
+        )
+
+    def list_admin_notifications(
+        self, unread_only: bool = False, limit: int = 50
+    ) -> list[sqlite3.Row]:
+        return self.notifications_repo.list_admin_notifications(
+            unread_only=unread_only, limit=limit
+        )
+
+    def get_unread_notifications_count(self) -> int:
+        return self.notifications_repo.get_unread_notifications_count()
+
+    def mark_notification_as_read(self, notification_id: int) -> None:
+        self.notifications_repo.mark_notification_as_read(notification_id)
+
+    def mark_all_notifications_as_read(self) -> int:
+        return self.notifications_repo.mark_all_notifications_as_read()

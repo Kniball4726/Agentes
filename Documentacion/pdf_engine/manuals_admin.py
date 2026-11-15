@@ -42,17 +42,17 @@ def agregar_poes_administrador(
     """Inserta los 4 Procedimientos de Supervisión Logística (POE-ADM-01..04) con sus diagramas BPMN."""
     agregar_ficha_procedimiento_apa(
         story, est, tabla_inicio,
-        "POE-ADM-01", "Gestión del Catálogo Maestro y Parámetros de Seguridad",
+        "POE-ADM-01", "Gestión del Catálogo Maestro SQLite-First y Parámetros de Seguridad",
         "Mantener actualizadas las fichas técnicas de productos, códigos de barra, precios y niveles de stock de seguridad.",
         "Compras / Proveedores", "Ficha técnica de producto, alta de nuevos códigos",
-        "Catálogo maestro actualizado en SQLite y respaldo en Productos.xlsx", "Depósito / Ventas",
+        "Catálogo maestro actualizado en SQLite y exportación opcional a Productos.xlsx", "Depósito / Ventas",
         "R: Administrador | A: Gerencia | I: Operarios",
-        ["Sesión de Administrador activa.", "Respaldo automático previo de Productos.xlsx en disco."],
+        ["Sesión de Administrador activa.", "Base SQLite operativa (sin bloqueo por Productos.xlsx)."],
         [
             "En la sección 'Gestionar productos', se procede a dar de alta artículos indicando SKU, descripción y barras.",
             "Se define el <b>Stock Mínimo</b> (disparador automático de alertas de compra) y el <b>Stock Máximo</b>.",
-            "Se asigna la ubicación física en estantería (Rack A-D, Módulo 1-4, Nivel 1-3) para optimizar el picking.",
-            "Se pulsa el botón <b>'Sincronizar con Excel'</b> para volcar todos los saldos atómicamente a Productos.xlsx.",
+            "Se asigna la ubicación física en estantería (Rack A-D, Módulo 1-4, Nivel 1-3) optimizada por rotación ABC.",
+            "Cuando se requiera planilla externa, se pulsa <b>'Sincronizar con Excel'</b> para exportar atómicamente los saldos hacia `Productos.xlsx`.",
         ],
         ["Artículos activos en SQLite y Excel.", "Trazabilidad de alta asentada en auditoría forense."],
         "Correspondencia unívoca entre SKU y descripción sin solapamiento de registros.",
@@ -175,21 +175,22 @@ def agregar_poes_administrador(
 def construir_manual_administrador(ruta_destino: Path) -> Path:
     """Compila el Manual del Rol Administrador bajo Normas ISO, BPMN y APA/UPEL."""
     doc, est, story = crear_documento_iso(ruta_destino)
-    codigo_doc = "SOP-STK-ADM-2026-v2.2"
+    codigo_doc = "SOP-STK-ADM-2026-v2.3"
     titulo_doc = "Manual de Supervisión y Logística (Rol Administrador)"
 
     agregar_portada_iso_upel(
         story, est, codigo_doc, titulo_doc,
         "Rol Administrador (Jefatura de Depósito, Compras y Supervisión)",
         "Procedimientos Operativos Estandarizados (POE / SOP) según Normas ISO 9001:2015, ISO/IEC/IEEE 26514:2022,<br/>"
-        "modelado BPMN 2.0 (Bizagi) y pautas UPEL para catálogo maestro, entradas de fábrica, analítica y gestión IAM",
+        "modelado BPMN 2.0 (Bizagi) y pautas UPEL para catálogo SQLite-first, consolidado de cierres, entradas de fábrica, analítica e IAM",
         version=VERSION_SOP_ACTUAL,
     )
 
     agregar_titulo_capitulo(story, est, "1. Marco Normativo, Alcance y Responsabilidades (ISO 9001 §4.3 & §5.3)")
     story.append(Paragraph(
         "El presente documento normaliza las atribuciones de supervisión analítica, administración del catálogo maestro "
-        "(`Productos.xlsx`), gestión de compras sugeridas, conciliación física y cuentas operativas.",
+        "SQLite-first (exportable a `Productos.xlsx`), auditoría descendente de Cierres de Operarios con Consolidado total por producto, "
+        "gestión de compras sugeridas, conciliación física y cuentas operativas.",
         est["body_sangria"],
     ))
     story.append(Spacer(1, 2))
@@ -208,6 +209,7 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
     filas_radm = [
         ("Planilla de Entrada de Fábrica", "Digital (.xlsx/.pdf)", "data/pedidos_archivos/", "5 Años", "Jefe de Depósito"),
         ("Planilla de Pedido a Fábrica", "Digital (.xlsx)", "Descuentos/", "3 Años", "Encargado de Compras"),
+        ("Consolidado Admin de Cierre", "PDF y XLS", "Descuentos/ y `cierres_jornada`", "5 Años", "Administrador"),
         ("Informe Comparativo Stock Físico", "PDF y XLS", "Descuentos/ y data/pedidos_archivos/", "5 Años", "Administrador"),
         ("Base de Datos Maestra de Productos", "SQLite (`productos.sqlite3`)", "data/productos.sqlite3", "Permanente", "Master / Admin"),
         ("Alertas de Demanda Anómala", "JSON (`admin_notifications`)", "data/pedidos.sqlite3", "1 Año", "Administrador"),

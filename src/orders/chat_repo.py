@@ -5,14 +5,23 @@ from __future__ import annotations
 from typing import Any
 
 from .models import MensajeChat
+from .protocols import LookupOrderFn, OrderConnectFn
 
 
-class ChatRepositoryMixin:
-    """Mixin que proporciona operaciones para el chat colaborativo en tiempo real."""
+class ChatRepository:
+    """Repositorio que proporciona operaciones para el chat colaborativo en tiempo real."""
+
+    def __init__(
+        self,
+        connect_fn: OrderConnectFn,
+        lookup_order_fn: LookupOrderFn,
+    ) -> None:
+        self._connect = connect_fn
+        self._lookup_order = lookup_order_fn
 
     def obtener_pedido_resumen_chat(self, nota_pedido: str) -> str:
         """Resumen de una línea de un pedido, para enlazarlo desde el chat de equipo."""
-        pedido = self.buscar_pedido_por_nota(nota_pedido)
+        pedido = self._lookup_order(nota_pedido)
         if pedido is None:
             return ""
         return (

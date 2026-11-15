@@ -1,18 +1,24 @@
-"""Mixin de persistencia para sesiones API (`api_sessions`) y claves API (`api_keys`)."""
+"""Repositorio desacoplado de persistencia para sesiones API (`api_sessions`) y claves API (`api_keys`)."""
 
 from __future__ import annotations
 
 import hashlib
 import secrets
+import sqlite3
 import time
+from contextlib import AbstractContextManager
 from datetime import datetime
+from typing import Callable
 
 from .events import notify_session_revocation
 from .validators import validar_rol
 
 
-class ApiTokensRepositoryMixin:
+class ApiTokensRepository:
     """Operaciones SQLite para sesiones de API REST y claves API B2B."""
+
+    def __init__(self, connect_fn: Callable[[], AbstractContextManager[sqlite3.Connection]]) -> None:
+        self._connect = connect_fn
 
     def create_api_session(
         self,

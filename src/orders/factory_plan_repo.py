@@ -9,8 +9,20 @@ from ..parsers.remito_parser import normalizar_codigo
 from ..products.barcode_utils import coincide_codigo_o_barras
 
 
-class FactoryPlanRepositoryMixin:
-    """Mixin que gestiona la creación, control guiado y seguimiento en tiempo real de ingresos de fábrica."""
+from .factory_plan_closure import (
+    PLAN_HEADER_COLUMNS,
+    ejecutar_cierre_final_fabrica,
+    ejecutar_cierre_parcial_fabrica,
+    recalcular_progreso_plan_fabrica,
+)
+from .protocols import OrderConnectFn
+
+
+class FactoryPlanRepository:
+    """Repositorio que gestiona la creación, control guiado y seguimiento en tiempo real de ingresos de fábrica."""
+
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def crear_plan_ingreso_fabrica(
         self,
@@ -59,46 +71,32 @@ class FactoryPlanRepositoryMixin:
         """Obtiene la cabecera de un plan de ingreso de fábrica por ID."""
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, nombre_remito, archivo_remito, creado_por, estado,
-                       articulos_esperados, articulos_controlados, articulos_ingresados, porcentaje,
-                       picker_asignado, created_at, updated_at
-                FROM planes_ingreso_fabrica
-                WHERE id = ?
-                """,
+                f"SELECT {PLAN_HEADER_COLUMNS} FROM planes_ingreso_fabrica WHERE id = ?",
                 (plan_id,),
             ).fetchone()
-        if not row:
-            return None
-        return dict(row)
+        return dict(row) if row else None
 
     def obtener_plan_activo_ingreso_fabrica(self) -> dict[str, Any] | None:
         """Obtiene el plan de ingreso de fábrica más reciente en proceso o pendiente."""
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT id, nombre_remito, archivo_remito, creado_por, estado,
-                       articulos_esperados, articulos_controlados, articulos_ingresados, porcentaje,
-                       picker_asignado, created_at, updated_at
+                f"""
+                SELECT {PLAN_HEADER_COLUMNS}
                 FROM planes_ingreso_fabrica
                 WHERE estado IN ('en_proceso', 'pendiente')
                 ORDER BY id DESC
                 LIMIT 1
                 """
             ).fetchone()
-        if not row:
-            return None
-        return dict(row)
+        return dict(row) if row else None
 
     def listar_planes_ingreso_fabrica(self, estado: str | None = None) -> list[dict[str, Any]]:
         """Lista planes de ingreso de fábrica ordenados por fecha descendente."""
         with self._connect() as connection:
             if estado:
                 rows = connection.execute(
-                    """
-                    SELECT id, nombre_remito, archivo_remito, creado_por, estado,
-                           articulos_esperados, articulos_controlados, articulos_ingresados, porcentaje,
-                           picker_asignado, created_at, updated_at
+                    f"""
+                    SELECT {PLAN_HEADER_COLUMNS}
                     FROM planes_ingreso_fabrica
                     WHERE estado = ?
                     ORDER BY id DESC
@@ -107,13 +105,7 @@ class FactoryPlanRepositoryMixin:
                 ).fetchall()
             else:
                 rows = connection.execute(
-                    """
-                    SELECT id, nombre_remito, archivo_remito, creado_por, estado,
-                           articulos_esperados, articulos_controlados, articulos_ingresados, porcentaje,
-                           picker_asignado, created_at, updated_at
-                    FROM planes_ingreso_fabrica
-                    ORDER BY id DESC
-                    """
+                    f"SELECT {PLAN_HEADER_COLUMNS} FROM planes_ingreso_fabrica ORDER BY id DESC"
                 ).fetchall()
         return [dict(r) for r in rows]
 
@@ -201,27 +193,12 @@ class FactoryPlanRepositoryMixin:
                 (nueva_cant, completado, item_id),
             )
 
-            total_controlados = connection.execute(
-                "SELECT SUM(cantidad_controlada) as total FROM plan_ingreso_fabrica_items WHERE plan_id = ?",
-                (plan_id,),
-            ).fetchone()["total"] or 0
-
-            art_esperados = int(plan_row["articulos_esperados"] or 0)
-            nuevo_porcentaje = round((total_controlados / art_esperados * 100.0), 1) if art_esperados > 0 else 100.0
-            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            picker_final = picker.strip() or plan_row["picker_asignado"] or "Picker"
-            connection.execute(
-                """
-                UPDATE planes_ingreso_fabrica
-                SET articulos_controlados = ?,
-                    porcentaje = ?,
-                    picker_asignado = ?,
-                    estado = 'en_proceso',
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (total_controlados, nuevo_porcentaje, picker_final, ahora, plan_id),
+            total_controlados, art_esperados, nuevo_porcentaje = recalcular_progreso_plan_fabrica(
+                connection=connection,
+                plan_id=plan_id,
+                art_esperados=int(plan_row["articulos_esperados"] or 0),
+                picker=picker.strip() or plan_row["picker_asignado"] or "Picker",
+                nuevo_estado="en_proceso",
             )
             connection.commit()
 
@@ -265,29 +242,10 @@ class FactoryPlanRepositoryMixin:
                 (cant_ajustada, completado, row["id"]),
             )
 
-            total_controlados = connection.execute(
-                "SELECT SUM(cantidad_controlada) as total FROM plan_ingreso_fabrica_items WHERE plan_id = ?",
-                (plan_id,),
-            ).fetchone()["total"] or 0
-
-            art_esperados = connection.execute(
-                "SELECT articulos_esperados FROM planes_ingreso_fabrica WHERE id = ?",
-                (plan_id,),
-            ).fetchone()["articulos_esperados"] or 0
-
-            porcentaje = round((total_controlados / art_esperados * 100.0), 1) if art_esperados > 0 else 100.0
-            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            connection.execute(
-                """
-                UPDATE planes_ingreso_fabrica
-                SET articulos_controlados = ?,
-                    porcentaje = ?,
-                    picker_asignado = COALESCE(NULLIF(?, ''), picker_asignado),
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (total_controlados, porcentaje, picker.strip(), ahora, plan_id),
+            total_controlados, art_esperados, porcentaje = recalcular_progreso_plan_fabrica(
+                connection=connection,
+                plan_id=plan_id,
+                picker=picker,
             )
             connection.commit()
 
@@ -314,100 +272,7 @@ class FactoryPlanRepositoryMixin:
         y devuelve el diccionario {codigo: cantidad_a_sumar} para acreditar al inventario.
         El plan se mantiene en estado 'en_proceso' para continuar los días siguientes.
         """
-        import json
-        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with self._connect() as connection:
-            plan_row = connection.execute(
-                """
-                SELECT id, nombre_remito, archivo_remito, articulos_esperados,
-                       articulos_controlados, articulos_ingresados, estado, picker_asignado
-                FROM planes_ingreso_fabrica
-                WHERE id = ?
-                """,
-                (plan_id,),
-            ).fetchone()
-            if not plan_row:
-                return {"exito": False, "motivo": "no_encontrado", "mensaje": f"Remito #{plan_id} no existe."}
-
-            if plan_row["estado"] in ("completado", "cancelado"):
-                return {"exito": False, "motivo": "plan_cerrado", "mensaje": f"El remito ya está en estado '{plan_row['estado']}'."}
-
-            items_rows = connection.execute(
-                """
-                SELECT id, codigo, descripcion, cantidad_esperada, cantidad_controlada, cantidad_ingresada
-                FROM plan_ingreso_fabrica_items
-                WHERE plan_id = ?
-                """,
-                (plan_id,),
-            ).fetchall()
-
-            items_a_ingresar: dict[str, int] = {}
-            for it in items_rows:
-                ctrl = int(it["cantidad_controlada"] or 0)
-                ingr = int(it["cantidad_ingresada"] or 0)
-                dif = ctrl - ingr
-                if dif > 0:
-                    items_a_ingresar[it["codigo"]] = dif
-                    connection.execute(
-                        "UPDATE plan_ingreso_fabrica_items SET cantidad_ingresada = ? WHERE id = ?",
-                        (ctrl, it["id"]),
-                    )
-
-            if not items_a_ingresar:
-                return {
-                    "exito": False,
-                    "motivo": "sin_pendientes",
-                    "mensaje": "No hay nuevas unidades verificadas pendientes de ingresar a stock.",
-                }
-
-            total_parcial = sum(items_a_ingresar.values())
-            nuevo_total_ingresados = int(plan_row["articulos_ingresados"] or 0) + total_parcial
-            picker_final = picker.strip() or plan_row["picker_asignado"] or "Picker"
-
-            connection.execute(
-                """
-                UPDATE planes_ingreso_fabrica
-                SET articulos_ingresados = ?,
-                    picker_asignado = ?,
-                    estado = 'en_proceso',
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (nuevo_total_ingresados, picker_final, ahora, plan_id),
-            )
-
-            connection.execute(
-                """
-                INSERT INTO cierres_parciales_fabrica (plan_id, tipo, picker, articulos_ingresados, detalle_items, created_at)
-                VALUES (?, 'parcial', ?, ?, ?, ?)
-                """,
-                (plan_id, picker_final, total_parcial, json.dumps(items_a_ingresar), ahora),
-            )
-
-            connection.execute(
-                """
-                INSERT INTO logs_auditoria (usuario, accion, detalle, created_at)
-                VALUES (?, 'CIERRE_PARCIAL_FABRICA', ?, ?)
-                """,
-                (
-                    picker_final,
-                    f"Cierre parcial remito #{plan_id}: +{total_parcial} un. ingresadas ({len(items_a_ingresar)} ítems). Total acumulado: {nuevo_total_ingresados} un.",
-                    ahora,
-                ),
-            )
-            connection.commit()
-
-        return {
-            "exito": True,
-            "plan_id": plan_id,
-            "nombre_remito": plan_row["nombre_remito"],
-            "items_a_ingresar": items_a_ingresar,
-            "items_controlados": items_a_ingresar,
-            "articulos_ingresados_parcial": total_parcial,
-            "articulos_ingresados_acumulado": nuevo_total_ingresados,
-            "articulos_controlados": plan_row["articulos_controlados"],
-            "articulos_esperados": plan_row["articulos_esperados"],
-        }
+        return ejecutar_cierre_parcial_fabrica(self._connect, plan_id=plan_id, picker=picker)
 
     def finalizar_plan_ingreso_fabrica(self, plan_id: int, picker: str = "") -> dict[str, Any]:
         """
@@ -415,97 +280,7 @@ class FactoryPlanRepositoryMixin:
         de los artículos controlados físicamente pendientes de acreditar en el inventario.
         Si se hicieron cierres parciales previos, solo acredita el remanente no ingresado.
         """
-        import json
-        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with self._connect() as connection:
-            plan_row = connection.execute(
-                """
-                SELECT id, nombre_remito, archivo_remito, articulos_esperados,
-                       articulos_controlados, articulos_ingresados, picker_asignado
-                FROM planes_ingreso_fabrica
-                WHERE id = ?
-                """,
-                (plan_id,),
-            ).fetchone()
-            if not plan_row:
-                return {"exito": False, "motivo": "no_encontrado"}
-
-            items_rows = connection.execute(
-                """
-                SELECT id, codigo, descripcion, cantidad_esperada, cantidad_controlada, cantidad_ingresada
-                FROM plan_ingreso_fabrica_items
-                WHERE plan_id = ?
-                """,
-                (plan_id,),
-            ).fetchall()
-
-            # Determinar unidades pendientes que no fueron ingresadas en cierres parciales
-            items_a_ingresar: dict[str, int] = {}
-            for it in items_rows:
-                ctrl = int(it["cantidad_controlada"] or 0)
-                ingr = int(it["cantidad_ingresada"] or 0)
-                dif = ctrl - ingr
-                if dif > 0:
-                    items_a_ingresar[it["codigo"]] = dif
-                connection.execute(
-                    "UPDATE plan_ingreso_fabrica_items SET cantidad_ingresada = ? WHERE id = ?",
-                    (ctrl, it["id"]),
-                )
-
-            total_final_a_ingresar = sum(items_a_ingresar.values())
-            nuevo_total_ingresados = int(plan_row["articulos_controlados"] or 0)
-            picker_final = picker.strip() or plan_row["picker_asignado"] or "Picker"
-
-            connection.execute(
-                """
-                UPDATE planes_ingreso_fabrica
-                SET estado = 'completado',
-                    articulos_ingresados = ?,
-                    picker_asignado = COALESCE(NULLIF(?, ''), picker_asignado),
-                    updated_at = ?
-                WHERE id = ? AND estado != 'cancelado'
-                """,
-                (nuevo_total_ingresados, picker_final, ahora, plan_id),
-            )
-
-            connection.execute(
-                """
-                INSERT INTO cierres_parciales_fabrica (plan_id, tipo, picker, articulos_ingresados, detalle_items, created_at)
-                VALUES (?, 'final', ?, ?, ?, ?)
-                """,
-                (plan_id, picker_final, total_final_a_ingresar, json.dumps(items_a_ingresar), ahora),
-            )
-
-            connection.execute(
-                """
-                INSERT INTO logs_auditoria (usuario, accion, detalle, created_at)
-                VALUES (?, 'CIERRE_FINAL_FABRICA', ?, ?)
-                """,
-                (
-                    picker_final,
-                    f"Cierre final remito #{plan_id}: +{total_final_a_ingresar} un. restantes ingresadas. Total verificado ingresado: {nuevo_total_ingresados} un.",
-                    ahora,
-                ),
-            )
-            connection.commit()
-
-        return {
-            "exito": True,
-            "plan_id": plan_id,
-            "nombre_remito": plan_row["nombre_remito"],
-            "archivo_remito": plan_row["archivo_remito"],
-            "items_controlados": items_a_ingresar,
-            "items_totales_controlados": {
-                r["codigo"]: int(r["cantidad_controlada"])
-                for r in items_rows
-                if int(r["cantidad_controlada"]) > 0
-            },
-            "articulos_controlados": plan_row["articulos_controlados"],
-            "articulos_esperados": plan_row["articulos_esperados"],
-            "articulos_ingresados_final": total_final_a_ingresar,
-            "articulos_ingresados_total": nuevo_total_ingresados,
-            "detalle_items": [dict(r) for r in items_rows],
-        }
+        return ejecutar_cierre_final_fabrica(self._connect, plan_id=plan_id, picker=picker)
 
     def listar_cierres_parciales_fabrica(self, plan_id: int) -> list[dict[str, Any]]:
         """Devuelve el historial de cierres (parciales y final) de un remito de fábrica."""

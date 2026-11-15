@@ -1,13 +1,14 @@
-"""Repositorio mixin para máquina de estados de despacho y seguimiento por código/remito."""
+"""Repositorio desacoplado para máquina de estados de despacho y seguimiento por código/remito."""
 
 from __future__ import annotations
 
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any
 
 from ..core.exceptions import OrderStoreError
 from .models import ESTADOS_DESPACHO, _COLUMNAS_DESPACHO, Pedido
+from .protocols import AuditLogFn, MapPedidoFn, OrderConnectFn
 
 _COLUMNAS_SELECT_PEDIDO = (
     "id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador, "
@@ -17,12 +18,18 @@ _COLUMNAS_SELECT_PEDIDO = (
 )
 
 
-class DispatchRepositoryMixin:
-    """Mixin que gestiona transiciones de estado de despacho (`armado` -> `despachado` -> `entregado`)."""
+class DispatchRepository:
+    """Repositorio que gestiona transiciones de estado de despacho (`armado` -> `despachado` -> `entregado`)."""
 
-    _connect: Callable[[], Any]
-    _map_pedido: Callable[[sqlite3.Row], Pedido]
-    registrar_auditoria: Callable[..., Any]
+    def __init__(
+        self,
+        connect_fn: OrderConnectFn,
+        map_pedido_fn: MapPedidoFn,
+        audit_fn: AuditLogFn,
+    ) -> None:
+        self._connect = connect_fn
+        self._map_pedido = map_pedido_fn
+        self._audit = audit_fn
 
     @staticmethod
     def extraer_remito_de_codigo(texto: str) -> str:
@@ -97,7 +104,7 @@ class DispatchRepositoryMixin:
                 )
             remito = row["nota_pedido"]
 
-        self.registrar_auditoria(
+        self._audit(
             usuario=usuario,
             accion="ESTADO_DESPACHO",
             detalle=f"Remito {remito}: {actual} → {nuevo_estado}",

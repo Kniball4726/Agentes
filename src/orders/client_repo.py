@@ -6,10 +6,15 @@ import sqlite3
 from typing import Any
 
 from .models import Cliente
+from .protocols import AuditLogFn, OrderConnectFn
 
 
-class ClientRepositoryMixin:
-    """Mixin que proporciona operaciones CRUD para la entidad Cliente."""
+class ClientRepository:
+    """Repositorio que proporciona operaciones CRUD para la entidad Cliente."""
+
+    def __init__(self, connect_fn: OrderConnectFn, audit_fn: AuditLogFn) -> None:
+        self._connect = connect_fn
+        self._audit = audit_fn
 
     def listar_clientes(self) -> list[Cliente]:
         """Retorna todos los clientes activos ordenados alfabéticamente."""
@@ -94,7 +99,7 @@ class ClientRepositoryMixin:
                     "UPDATE clientes SET activo = 1, nombre = ?, codigo = COALESCE(NULLIF(?, ''), codigo), direccion = COALESCE(NULLIF(?, ''), direccion) WHERE id = ?",
                     (nombre, codigo, direccion, existente["id"]),
                 )
-            self.registrar_auditoria(usuario, "REACTIVAR_CLIENTE", f"Reactivación de cliente '{nombre}'")
+            self._audit(usuario, "REACTIVAR_CLIENTE", f"Reactivación de cliente '{nombre}'")
             return Cliente(
                 id=existente["id"],
                 nombre=nombre,
@@ -124,7 +129,7 @@ class ClientRepositoryMixin:
             codigo=row["codigo"] or "",
             direccion=row["direccion"] or "",
         )
-        self.registrar_auditoria(usuario, "CREAR_CLIENTE", f"Alta de cliente '{nombre}' (código: '{codigo}')")
+        self._audit(usuario, "CREAR_CLIENTE", f"Alta de cliente '{nombre}' (código: '{codigo}')")
         return cliente_nuevo
 
     def registrar_cliente(
@@ -243,7 +248,7 @@ class ClientRepositoryMixin:
                         (nuevo_nombre, nombre_anterior),
                     )
 
-        self.registrar_auditoria(
+        self._audit(
             usuario,
             "ACTUALIZAR_CLIENTE",
             f"Cliente ID {cliente_id} actualizado ('{nombre_anterior}' -> '{nuevo_nombre}', cod: '{nuevo_codigo}')",
@@ -273,7 +278,7 @@ class ClientRepositoryMixin:
                     (cliente_id,),
                 )
 
-        self.registrar_auditoria(
+        self._audit(
             usuario,
             "ELIMINAR_CLIENTE",
             f"Cliente ID {cliente_id} ('{actual['nombre']}') desactivado",

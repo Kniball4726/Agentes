@@ -45,7 +45,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "icono_str": "[🏷️ Descontar ML]",
                 "modulo": "ACCESO RÁPIDO (CABECERA)",
                 "proposito_funcional": "Apertura prioritaria del módulo de escaneo en vivo por código de barras o procesamiento de órdenes DOCX de Mercado Libre.",
-                "datos_modificados": "Descuenta existencias en SQLite (`productos.sqlite3`) y `Productos.xlsx`; registra pedido y hash SHA-256.",
+                "datos_modificados": "Descuenta existencias SQLite-first en `productos.sqlite3` (exportable a `Productos.xlsx`); registra pedido y hash SHA-256.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Descontar Mercado Libre'</b> en primera posición de cabecera (o en menú DESPACHO).",
                     "Escanear etiquetas/EAN-13 con pistola (usar <b>'↩️ Deshacer Último'</b> ante error) o cargar archivo `.docx`.",
@@ -59,7 +59,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "icono_str": "[➕ Ingreso]",
                 "modulo": "ACCESO RÁPIDO Y MOVIMIENTOS",
                 "proposito_funcional": "Recepción express por devoluciones de clientes, traslados internos o ajustes positivos con motivo tipificado obligatorio.",
-                "datos_modificados": "Incrementa inventario en `productos.sqlite3` y `Productos.xlsx`; registra `stock_movements` (`ingreso_rapido`), auditoría y webhook.",
+                "datos_modificados": "Incrementa inventario SQLite-first en `productos.sqlite3` (sincronizable a `Productos.xlsx`); registra `stock_movements` (`ingreso_rapido`), auditoría y webhook.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Ingreso de Stock'</b> en cabecera (o 'Ingreso de Mercadería' en menú lateral).",
                     "Escanear código de barras o SKU, indicar cantidad y seleccionar motivo obligatorio.",
@@ -73,7 +73,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "icono_str": "[➖ Egreso]",
                 "modulo": "ACCESO RÁPIDO Y MOVIMIENTOS",
                 "proposito_funcional": "Baja inmediata por roturas, mermas de depósito, muestras comerciales o consumo interno con motivo obligatorio.",
-                "datos_modificados": "Descuenta existencias en SQLite y `Productos.xlsx`; registra `stock_movements` (`salida_rapida`), auditoría y webhook.",
+                "datos_modificados": "Descuenta existencias SQLite-first en `productos.sqlite3` (sincronizable a `Productos.xlsx`); registra `stock_movements` (`salida_rapida`), auditoría y webhook.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Egreso de Stock'</b> en cabecera (o 'Egreso de Mercadería' en menú lateral).",
                     "Escanear artículo, indicar cantidad, elegir motivo y pulsar <b>'Confirmar Salida'</b>.",
@@ -93,7 +93,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "icono_str": "[🚚]",
                 "modulo": "DESPACHO",
                 "proposito_funcional": "Procesa lotes de envío masivo hacia bodegas de Mercado Libre Full a partir de la planilla Excel oficial.",
-                "datos_modificados": "Descuento en bloque en SQLite y `Productos.xlsx` con registro de pedido Full.",
+                "datos_modificados": "Descuento en bloque SQLite-first en `productos.sqlite3` (exportable a `Productos.xlsx`) con registro de pedido Full.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Descontar Mercado Full'</b> en el menú lateral.",
                     "Adjuntar la planilla `.xlsx`, verificar unidades totales y confirmar envío.",
@@ -106,7 +106,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "icono_str": "[🏭]",
                 "modulo": "MOVIMIENTOS DE STOCK",
                 "proposito_funcional": "Recepción rápida desde planta productora mediante pistola de barras o SKU, con botones múltiplos de 12 y ajuste fino (+/-).",
-                "datos_modificados": "Suma unidades en `productos.sqlite3` y `Productos.xlsx`; registra `stock_movements` (`ingreso_fabrica`).",
+                "datos_modificados": "Suma unidades SQLite-first en `productos.sqlite3` (sincronizable a `Productos.xlsx`); registra `stock_movements` (`ingreso_fabrica`).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Ingreso de Fábrica'</b> en MOVIMIENTOS DE STOCK.",
                     "Seleccionar bulto estándar ([12], [24], [36]...) o unidades sueltas y escanear ítems.",

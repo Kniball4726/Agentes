@@ -31,7 +31,7 @@ COLOR_FONDO_TABLA = colors.HexColor("#F8FAFC")  # Fondo alterno sutil
 COLOR_BG_ALERT = colors.HexColor("#FEF2F2")     # Fondo advertencia / SoD
 COLOR_BG_NOTE = colors.HexColor("#F0F9FF")      # Fondo nota técnica
 
-VERSION_SOP_ACTUAL = "v2.2.0"
+VERSION_SOP_ACTUAL = "v2.3.0"
 
 
 def obtener_estilos_iso_upel() -> dict[str, ParagraphStyle]:

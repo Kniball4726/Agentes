@@ -32,7 +32,7 @@ def agregar_portada_iso_upel(
     titulo_doc: str,
     rol_destinatario: str,
     descripcion_alcance: str,
-    version: str = "2.2.0",
+    version: str = "2.3.0",
 ) -> None:
     """Genera la portada formal con control documental ISO 9001 e identificación APA/UPEL."""
     story.append(Spacer(1, 0.2 * cm))
@@ -102,7 +102,8 @@ def agregar_portada_iso_upel(
         ("v1.5.0", "10/05/2026", "Logística / TI", "Incorporación de Mercado Libre DOCX, Rótulos QR continuos y SQLite WAL.", "Operaciones"),
         ("v2.0.0", "18/08/2026", "Dev Team", "Servidor LAN HTTPS Multi-equipo, PWA offline-first y cliente móvil Flutter nativo.", "Dirección TI"),
         ("v2.1.0", "10/10/2026", "Gregory Rodriguez", "Manuales botón por botón, rol Picker, auditoría descendente de Cierres y hojas de ruta.", "Calidad QA"),
-        (f"v{version.lstrip('v')}", hoy, "Gregory Rodriguez", "Arquitectura modular en paquetes, HTTPS por defecto, Firewall Privado, tokens ?dt=, Swagger apagado y secretos cifrados DPAPI/Fernet.", ""),
+        ("v2.2.0", "01/11/2026", "Gregory Rodriguez", "Arquitectura modular en paquetes, HTTPS por defecto, Firewall Privado, tokens ?dt=, Swagger apagado y secretos cifrados DPAPI/Fernet.", "Calidad QA"),
+        (f"v{version.lstrip('v')}", hoy, "Gregory Rodriguez", "Cierre en 3 canales (Mayoristas, Mercado Libre, Full), Consolidado Admin, persistencia SQLite-first con closing(), composición pura en GUI/OrderStore y refactorización modular completa de src/.", ""),
     ]
     t_rev_data = crear_filas_tabla_apa(
         ["Versión", "Fecha", "Responsable", "Descripción Detallada del Cambio / Actualización", "Aprobador"],
@@ -286,14 +287,17 @@ def agregar_glosario_terminos_iso_upel(story: list, est: dict) -> None:
     story.append(Paragraph("Glosario de Términos Técnicos y Operativos (ISO 9000 & UPEL)", est["h2"]))
     terminos = [
         ("Algoritmo SHA-256", "Función criptográfica unidireccional de 64 caracteres que certifica la unicidad de cada comprobante y hashes de contraseñas/API Keys."),
+        ("Arquitectura SQLite-First y closing()", "Modelo donde SQLite (WAL + claves foráneas) actúa como fuente primaria sin exigir Excel abierto; toda conexión usa cierre determinístico via `sqlite_connection` (`contextlib.closing`)."),
         ("BPMN 2.0 (Business Process Model and Notation)", "Estándar internacional de diagramación de procesos mediante piscinas (pools) y carriles de responsabilidad (swimlanes)."),
         ("Bulto", "Unidad logística física acondicionada, paletizada y rotulada con código QR correlativo para transporte y entrega."),
         ("Cifrado DPAPI / Fernet (src/secretos.py)", "Mecanismo de resguardo de credenciales locales en Windows (CryptProtectData) o Unix (Fernet), identificado con prefijo `enc:`."),
+        ("Composición Pura (InterfazFlet / OrderStore)", "Patrón sin herencia de Mixins ni acoplamiento circular: cada orquestador delega en controladores o sub-repositorios con contratos `Protocol`."),
         ("Firewall Perfil Privado", "Regla de Windows Defender configurada por `configurar_firewall_red.bat` para habilitar el puerto 8550 solo en redes internas confiables."),
         ("Modo WAL (Write-Ahead Logging)", "Modo de concurrencia de SQLite que permite lecturas simultáneas y transacciones atómicas sin bloqueos."),
         ("No Conformidad", "Incumplimiento de un requisito operativo o discrepancia entre el recuento físico y el saldo digital."),
         ("POE / SOP", "Procedimiento Operativo Estandarizado que normaliza instrucciones paso a paso para ejecución uniforme."),
         ("RACI", "Matriz de responsabilidades: R (Responsable), A (Aprobador), C (Consultado), I (Informado)."),
+        ("Reporte de Cierre por Canales", "Informe de operario que lista únicamente SKUs con movimiento discriminados en Mayoristas, Mercado Libre y Full (+ Ingresos), complementado por el Consolidado Admin."),
         ("Segregación de Funciones (SoD)", "Principio de seguridad (ISO/IEC 27001 §5.3) que separa atribuciones entre Master, Administrador, Operador, Picker y Consulta."),
         ("TLS / HTTPS Autofirmado", "Cifrado en tránsito generado automáticamente en `data/certs/stockagent.crt` y `.key` para proteger tráfico LAN."),
         ("Token Documental HMAC (?dt=)", "Credencial efímera firmada utilizada para autenticar descargas de manuales `/documentacion/` e `/informes/` sin exponer archivos estáticos públicos."),
@@ -331,7 +335,7 @@ def agregar_procedimiento_gestion_cambio_sgc(story: list, est: dict, num_tabla: 
         [
             "<b>1. Solicitud Formal (RFC):</b> Se documenta la necesidad operativa, módulo afectado y alcance de roles.",
             "<b>2. Evaluación de Impacto y Seguridad SoD:</b> Se verifica cumplimiento de segregación (ISO 27001), cifrado DPAPI/TLS, Firewall Privado y tokens `?dt=`.",
-            "<b>3. Desarrollo Modular y Documentación Concurrente:</b> Todo cambio en paquetes de `src/` (`server_app`, `auth`, `orders`, `products`, `stock`, `inventory`, `labels`, `chat`, `cli`, `tray`, `ui`) se acompaña en el mismo sprint en `Documentacion/pdf_engine/`, `Documentacion/procedimientos/`, `README.md`, `src/README.md` y `stockagent_mobile/README_MOVIL.md`.",
+            "<b>3. Desarrollo Modular y Documentación Concurrente:</b> Todo cambio en paquetes desacoplados de `src/` (`core`, `server_app`, `auth`, `orders`, `products`, `stock`, `inventory`, `integrations`, `labels`, `chat`, `cli`, `tray`, `ui`) mediante composición pura (sin monolitos ni ciclos) se acompaña en el mismo sprint en `Documentacion/pdf_engine/`, `Documentacion/procedimientos/`, `README.md`, `src/README.md` y `stockagent_mobile/README_MOVIL.md`.",
             "<b>4. Auditoría QA y Regresión:</b> Se ejecuta `.\\.venv\\Scripts\\python.exe -m pytest tests/ -q` verificando 0 fallos, manteniendo `STOCKAGENT_ENABLE_API_DOCS=0` en producción.",
             "<b>5. Aprobación y Versionado Semántico:</b> Dirección valida el dictamen QA e incrementa la versión documental.",
             "<b>6. Compilación y Entrega Protegida HTTPS:</b> Se generan los 8 PDFs mediante `Documentacion/manuales_procedimientos.py`, servidos bajo `/documentacion/{archivo}?v={ts}&dt={token}` con cabeceras anti-caché.",

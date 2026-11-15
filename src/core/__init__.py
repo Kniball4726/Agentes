@@ -30,6 +30,7 @@ from .environment import (
     get_db_path,
 )
 from .system_reset import ejecutar_zapping_produccion
+from .sqlite_utils import open_sqlite_connection, sqlite_connection
 
 __all__ = [
     "StockAgentError",
@@ -58,4 +59,6 @@ __all__ = [
     "get_descuentos_dir",
     "get_db_path",
     "ejecutar_zapping_produccion",
+    "open_sqlite_connection",
+    "sqlite_connection",
 ]

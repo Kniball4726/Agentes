@@ -5,10 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from .models import ESTADOS_DESPACHO, RegistroAuditoria
+from .protocols import OrderConnectFn
 
 
-class AuditRepositoryMixin:
-    """Mixin para registro y consulta de eventos de auditoría y métricas de despacho."""
+class AuditRepository:
+    """Repositorio para registro y consulta de eventos de auditoría y métricas de despacho."""
+
+    def __init__(self, connect_fn: OrderConnectFn) -> None:
+        self._connect = connect_fn
 
     def registrar_auditoria(self, usuario: str, accion: str, detalle: str) -> None:
         """Registra una acción de auditoría forense."""

@@ -59,10 +59,15 @@ class FactoryIngestionTests(unittest.TestCase):
             self.assertEqual(manager.catalogo["101"][2], 25)
             self.assertEqual(manager.catalogo["102"][2], 10)
 
-            # Verificar persistencia en Excel
+            # Verificar persistencia en SQLite-First y exportación bajo demanda a Excel
+            self.assertEqual(manager.product_store.get_product("101")["stock"], 25)
+            self.assertEqual(manager.product_store.get_product("102")["stock"], 10)
+            manager.exportar_catalogo_a_excel(ruta)
             wb_verif = openpyxl.load_workbook(ruta, data_only=True)
-            self.assertEqual(wb_verif.active["C4"].value, 25)
-            self.assertEqual(wb_verif.active["C5"].value, 10)
+            ws_verif = wb_verif[manager.nombre_hoja]
+            self.assertEqual(ws_verif["C4"].value, 25)
+            self.assertEqual(ws_verif["C5"].value, 10)
+            wb_verif.close()
 
             # 2. Sobrescribir
             resumen_sobr = manager.registrar_ingreso_fabrica(
@@ -70,8 +75,11 @@ class FactoryIngestionTests(unittest.TestCase):
             )
             self.assertEqual(resumen_sobr["101"], (25, 50))
             self.assertEqual(manager.catalogo["101"][2], 50)
+            self.assertEqual(manager.product_store.get_product("101")["stock"], 50)
+            manager.exportar_catalogo_a_excel(ruta)
             wb_verif2 = openpyxl.load_workbook(ruta, data_only=True)
-            self.assertEqual(wb_verif2.active["C4"].value, 50)
+            self.assertEqual(wb_verif2[manager.nombre_hoja]["C4"].value, 50)
+            wb_verif2.close()
 
     def test_registrar_ingreso_producto_inexistente_falla(self):
         with tempfile.TemporaryDirectory() as directorio:
