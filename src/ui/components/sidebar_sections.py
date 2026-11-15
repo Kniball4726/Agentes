@@ -88,6 +88,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="DESPACHO",
                 icono=ft.Icons.LOCAL_SHIPPING,
                 items=[
+                    ("Preparar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_picking_guiado_full),
                     ("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                     ("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
                     ("Cerrar Mercado", ft.Icons.FACT_CHECK, interfaz.mostrar_cierre_mercado),
@@ -97,6 +98,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="MOVIMIENTOS DE STOCK",
                 icono=ft.Icons.SWAP_VERT,
                 items=[
+                    ("Control de Ingreso (Fábrica)", ft.Icons.FACT_CHECK, interfaz.mostrar_control_ingreso_fabrica),
                     ("Ingreso de Mercadería", ft.Icons.INPUT, interfaz.mostrar_dialogo_ingreso_rapido),
                     ("Ingreso de Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
                     ("Egreso de Mercadería", ft.Icons.OUTPUT, interfaz.mostrar_dialogo_salida_rapida),
@@ -148,7 +150,6 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
-                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                     ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
@@ -165,40 +166,6 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
 
     if rol == "administrador":
         return [
-            SeccionMenu(
-                titulo="CATÁLOGO",
-                icono=ft.Icons.CATEGORY,
-                items=[
-                    ("Ver Stock", ft.Icons.VISIBILITY, interfaz.mostrar_ver_stock),
-                    ("Gestionar productos", ft.Icons.ADD_BOX, interfaz.mostrar_gestion_productos),
-                    ("Sincronizar con Excel", ft.Icons.SYNC, interfaz.sincronizar_catalogo_excel),
-                ],
-            ),
-            SeccionMenu(
-                titulo="CLIENTES",
-                icono=ft.Icons.PEOPLE_ALT,
-                items=[
-                    ("Gestión de Clientes", ft.Icons.PEOPLE_ALT, interfaz.mostrar_gestion_clientes),
-                ],
-            ),
-            SeccionMenu(
-                titulo="INVENTARIO Y REPOSICIÓN",
-                icono=ft.Icons.INVENTORY_2,
-                items=[
-                    ("Ajustar stock / Fábrica", ft.Icons.INVENTORY_2, interfaz.mostrar_ingreso_fabrica),
-                    ("Comparativa stock físico", ft.Icons.COMPARE_ARROWS, interfaz.mostrar_comparativa_stock_fisico_admin),
-                    ("Generar pedido fábrica (Excel)", ft.Icons.FACT_CHECK, interfaz.generar_pedido_fabrica),
-                ],
-            ),
-            SeccionMenu(
-                titulo="CANALES DE VENTA",
-                icono=ft.Icons.STOREFRONT,
-                items=[
-                    ("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
-                    ("Sincronizar Mercado Libre (API)", ft.Icons.CLOUD_SYNC, interfaz.mostrar_sincronizacion_mercadolibre),
-                    ("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
-                ],
-            ),
             SeccionMenu(
                 titulo="SUPERVISIÓN",
                 icono=ft.Icons.FACT_CHECK,
@@ -221,7 +188,6 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="INFORMES",
                 icono=ft.Icons.ASSESSMENT,
                 items=[
-                    ("Imprimir Descuento", ft.Icons.PRINT, interfaz.mostrar_imprimir_descuentos),
                     ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Abrir informe", ft.Icons.OPEN_IN_NEW, interfaz.abrir_informe),
@@ -270,6 +236,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="DATOS Y RESGUARDO",
                 icono=ft.Icons.BACKUP,
                 items=[
+                    ("Ambientes (Prod / QA)", ft.Icons.TUNE, interfaz.mostrar_gestion_ambientes),
                     ("Centro de Reportes", ft.Icons.ASSESSMENT, interfaz.mostrar_centro_reportes),
                     ("Copia de Seguridad", ft.Icons.BACKUP, interfaz.mostrar_dialogo_backup),
                     ("Restaurar documentos", ft.Icons.RESTORE, interfaz.confirmar_restaurar),
@@ -317,7 +284,7 @@ def _obtener_seccion_predeterminada(rol: str) -> str:
     """Devuelve la sección que debe abrirse por defecto según el rol del usuario."""
     mapa = {
         "operador": "PREPARACIÓN Y DESPACHO",
-        "administrador": "CATÁLOGO",
+        "administrador": "SUPERVISIÓN",
         "master": "SEGURIDAD Y ACCESOS",
         "consulta": "INFORMES",
     }

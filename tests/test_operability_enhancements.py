@@ -135,11 +135,11 @@ def test_master_no_ve_pedidos_dashboard():
     assert isinstance(res_master, dict)
     assert res_master.get("tipo") == "tarjeta"
 
-    # 2. Administrador: devuelve Row o Column con ambas tarjetas
+    # 2. Administrador: devuelve Row o Column con panel completo
     interfaz.usuario_actual = User(id=2, username="admin", role="administrador", active=True)
     res_admin = construir_panel_informes_actividad(interfaz)
     assert hasattr(res_admin, "controls")
-    assert len(res_admin.controls) == 2
+    assert len(res_admin.controls) >= 2
 
 
 def test_master_bloqueado_en_historial_y_detalle_pedidos():

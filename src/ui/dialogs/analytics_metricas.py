@@ -340,16 +340,56 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
             tipo = None
 
         try:
-            sm = _resolver_stock_manager()(interfaz.menu.ruta_excel_base)
+            sm_cls = _resolver_stock_manager()
+            try:
+                if hasattr(interfaz, "product_store") and hasattr(interfaz.product_store, "database_path"):
+                    sm = sm_cls(interfaz.menu.ruta_excel_base, ruta_base_datos=interfaz.product_store.database_path)
+                else:
+                    sm = sm_cls(interfaz.menu.ruta_excel_base)
+            except TypeError:
+                sm = sm_cls(interfaz.menu.ruta_excel_base)
             resultados = sm.consultar_movimientos(fecha_desde=desde_iso, fecha_hasta=hasta_iso, tipo=tipo, top_n=top_n)
         except Exception as err:
             contenedor_grafico.controls.append(ft.Text(f"Error: {err}", color=ft.Colors.RED_400, size=13))
             interfaz.page.update()
             return
 
+        if not resultados and (tipo in ("descuento", None)):
+            try:
+                if hasattr(interfaz, "order_store") and interfaz.order_store:
+                    m = interfaz.order_store.obtener_metricas_dashboard(fecha_desde=desde_iso, fecha_hasta=hasta_iso)
+                    top_articulos = m.get("top_articulos", [])
+                    if top_articulos:
+                        resultados = [
+                            {"product_code": cod, "product_name": desc, "total_quantity": cant}
+                            for cod, desc, cant in top_articulos[:top_n]
+                        ]
+            except Exception:
+                pass
+
         if not resultados:
-            contenedor_grafico.controls.append(ft.Text("No se encontraron movimientos en el rango seleccionado.", color=interfaz.secundario, size=13))
-            texto_resumen.value = ""
+            contenedor_grafico.controls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.BAR_CHART_OUTLINED, size=44, color=ft.Colors.GREY_400),
+                            ft.Text("Sin movimientos en el período", size=13, weight=ft.FontWeight.W_500, color=interfaz.texto),
+                            ft.Text(
+                                "No se detectaron movimientos registrados en las fechas seleccionadas.\n"
+                                "Pruebe ampliando el rango o cambiando el tipo de movimiento.",
+                                size=11,
+                                color=interfaz.secundario,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=6,
+                    ),
+                    padding=25,
+                    alignment=ft.Alignment(0, 0),
+                )
+            )
+            texto_resumen.value = "ℹ️ Sin registros en el rango seleccionado."
             interfaz.page.update()
             return
 
@@ -359,35 +399,35 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
 
         for i, row in enumerate(resultados):
             cod = str(row["product_code"])
-            nombre = str(row["product_name"])
+            nombre = str(row["product_name"] or cod)
             cant = int(row["total_quantity"])
             proporcion = cant / max_cant if max_cant > 0 else 0
-            ancho_barra = max(8, int(proporcion * 300))
+            ancho_barra = max(38, int(proporcion * 340))
             color_idx = min(i, len(_COLORES_BARRA_ROTACION) - 1)
-            etiqueta = f"{nombre[:25]}" if len(nombre) > 25 else nombre
+            etiqueta = f"{nombre[:30]}..." if len(nombre) > 30 else nombre
             contenedor_grafico.controls.append(
                 ft.Row(
                     [
-                        ft.Text(cod, width=60, size=11, weight=ft.FontWeight.BOLD),
+                        ft.Text(cod, width=65, size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                         ft.Container(
                             width=ancho_barra,
-                            height=20,
+                            height=22,
                             bgcolor=_COLORES_BARRA_ROTACION[color_idx],
-                            border_radius=ft.BorderRadius(3, 3, 3, 3),
+                            border_radius=ft.BorderRadius(4, 4, 4, 4),
                             alignment=ft.Alignment(-1, 0),
-                            padding=ft.Padding(4, 0, 4, 0),
-                            content=ft.Text(str(cant), size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
+                            padding=ft.Padding(8, 0, 8, 0),
+                            content=ft.Text(f"{cant} u.", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
                         ),
                         ft.Text(etiqueta, size=11, color=interfaz.secundario, expand=True),
                     ],
-                    spacing=6,
+                    spacing=8,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 )
             )
 
-        tipo_texto = {"descuento": "descontadas", "ingreso_fabrica": "ingresadas (fábrica)"}.get(tipo or "", "movidas")
+        tipo_texto = {"descuento": "descontadas (salidas)", "ingreso_fabrica": "ingresadas (fábrica)"}.get(tipo or "", "movidas")
         texto_resumen.value = (
-            f"📊 {total_productos} productos — {total_unidades} unidades {tipo_texto} "
+            f"📊 {total_productos} producto(s) — {total_unidades} unidades {tipo_texto} "
             f"entre {campo_desde.value} y {campo_hasta.value}"
         )
         interfaz.page.update()

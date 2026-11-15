@@ -280,11 +280,11 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
                 )
                 botones_h.append(btn_meli_h)
             elif rol == "administrador":
-                btn_prod_h = ft.Container(
+                btn_gestionar_inv_h = ft.Container(
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.BLUE_500),
-                            ft.Text("Productos", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                            ft.Icon(ft.Icons.INVENTORY, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Gestionar inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                         ],
                         spacing=4,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -292,13 +292,124 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
                     height=30,
                     padding=ft.Padding.symmetric(horizontal=8),
                     border_radius=6,
-                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.BLUE_500),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500)),
-                    tooltip="⚡ Gestionar Productos",
-                    on_click=lambda _: interfaz.mostrar_gestion_productos(),
+                    bgcolor=ROJO,
+                    tooltip="⚡ Consulta de existencias e inventario en tiempo real",
+                    on_click=lambda _: interfaz.mostrar_ver_stock() if hasattr(interfaz, "mostrar_ver_stock") else None,
                     ink=True,
                 )
-                botones_h.append(btn_prod_h)
+                btn_plan_fab_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.ADD_TASK, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Planificar ingreso de fábrica", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Planificar ingreso de fábrica",
+                    on_click=lambda _: interfaz.mostrar_planificar_ingreso_fabrica() if hasattr(interfaz, "mostrar_planificar_ingreso_fabrica") else None,
+                    ink=True,
+                )
+                btn_plan_full_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.LOCAL_SHIPPING, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Planificar mercado full", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Planificar mercado full",
+                    on_click=lambda _: interfaz.mostrar_planificar_full() if hasattr(interfaz, "mostrar_planificar_full") else None,
+                    ink=True,
+                )
+                btn_prod_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Gestionar productos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Gestionar Productos",
+                    on_click=lambda _: interfaz.mostrar_gestion_productos() if hasattr(interfaz, "mostrar_gestion_productos") else None,
+                    ink=True,
+                )
+                btn_ajuste_inv_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.TUNE, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Ajuste de inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Escanear mercadería o registrar ajuste de stock",
+                    on_click=lambda _: interfaz.mostrar_ingreso_fabrica() if hasattr(interfaz, "mostrar_ingreso_fabrica") else None,
+                    ink=True,
+                )
+                btn_generar_pedido_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.FACT_CHECK, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Generar Pedido", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Calcular y generar planilla de pedido a fábrica",
+                    on_click=lambda _: interfaz.generar_pedido_fabrica() if hasattr(interfaz, "generar_pedido_fabrica") else None,
+                    ink=True,
+                )
+                btn_sincronizar_h = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.SYNC, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Sincronizar", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    height=30,
+                    padding=ft.Padding.symmetric(horizontal=8),
+                    border_radius=6,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Sincronizar catálogo SQLite con Productos.xlsx",
+                    on_click=lambda _: interfaz.sincronizar_catalogo_excel() if hasattr(interfaz, "sincronizar_catalogo_excel") else None,
+                    ink=True,
+                )
+                botones_h = [
+                    btn_gestionar_inv_h,
+                    btn_plan_fab_h,
+                    btn_plan_full_h,
+                    btn_prod_h,
+                    btn_ajuste_inv_h,
+                    btn_generar_pedido_h,
+                    btn_sincronizar_h,
+                    btn_ent_h,
+                    btn_sal_h,
+                ]
 
             botones_h.append(ft.VerticalDivider(width=8, color=interfaz.borde))
             controls.extend(botones_h)

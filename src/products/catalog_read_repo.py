@@ -103,11 +103,12 @@ class CatalogReadMixin:
                 """
             ).fetchall()
 
-    def list_products(self) -> list[sqlite3.Row]:
+    def list_products(self, solo_activos: bool = False) -> list[sqlite3.Row]:
         """Lista todos los productos del catálogo junto con sus métricas de stock."""
+        where_clause = "WHERE product.active = 1" if solo_activos else ""
         with closing(self._connect()) as connection:
             return connection.execute(
-                """
+                f"""
                 SELECT
                     product.code AS code,
                     product.name AS name,
@@ -120,8 +121,9 @@ class CatalogReadMixin:
                     product.ubicacion AS ubicacion,
                     MIN(catalog_row.display_order) AS display_order
                 FROM products AS product
-                JOIN product_catalog_rows AS catalog_row
+                LEFT JOIN product_catalog_rows AS catalog_row
                     ON catalog_row.product_code = product.code
+                {where_clause}
                 GROUP BY product.code, product.name, product.stock, product.active, product.stock_minimo, product.stock_maximo, product.stock_fisico, product.cod_barras, product.ubicacion
                 ORDER BY display_order, product.code
                 """

@@ -4,6 +4,8 @@ from .sidebar import construir_sidebar_controls, construir_sidebar_horizontal_co
 from .sidebar_sections import SeccionMenu, obtener_secciones_rol
 from .floating_chat import crear_ventana_chat_flotante, procesar_mensaje_chat_agente
 from .header import construir_encabezado
+from .admin_operations_bar import construir_panel_seguimiento_admin, actualizar_seguimiento_operativo_admin
+from .admin_flow_analytics import construir_panel_analitica_flujo_admin, actualizar_panel_analitica_flujo_admin
 from .panels import (
     construir_panel_metricas,
     construir_panel_informes_actividad,
@@ -58,4 +60,8 @@ __all__ = [
     "mostrar_menu_movil_fallback",
     "configurar_ventana_principal",
     "Debouncer",
+    "construir_panel_seguimiento_admin",
+    "actualizar_seguimiento_operativo_admin",
+    "construir_panel_analitica_flujo_admin",
+    "actualizar_panel_analitica_flujo_admin",
 ]

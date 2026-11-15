@@ -15,6 +15,9 @@ from .client_repo import ClientRepositoryMixin
 from .closure_repo import ClosureRepositoryMixin
 from .concurrency_repo import ConcurrencyRepositoryMixin
 from .dispatch_repo import DispatchRepositoryMixin, _COLUMNAS_SELECT_PEDIDO
+from .factory_plan_repo import FactoryPlanRepositoryMixin
+from .full_plan_repo import FullPlanRepositoryMixin
+from .stock_flow_repo import StockFlowRepositoryMixin
 from .models import LOGISTICA_OPCIONES, Pedido
 from .schema import inicializar_esquema_pedidos
 
@@ -26,6 +29,9 @@ class OrderStore(
     ConcurrencyRepositoryMixin,
     AuditRepositoryMixin,
     ClosureRepositoryMixin,
+    FullPlanRepositoryMixin,
+    FactoryPlanRepositoryMixin,
+    StockFlowRepositoryMixin,
 ):
     """Gestor unificado de almacenamiento y operaciones de pedidos, clientes y despachos."""
 

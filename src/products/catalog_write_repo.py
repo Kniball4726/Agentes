@@ -18,14 +18,12 @@ def _sincronizar_filas_plantilla(
         ORDER BY display_order, id
         """
     ).fetchall()
-    if len(filas_plantilla) != len(filas_catalogo):
-        raise RuntimeError(
-            "La cantidad de filas de la plantilla no coincide con el catálogo SQLite."
-        )
+    if not filas_catalogo or not filas_plantilla:
+        return
     cambios_fila = [
-        (fila_plantilla, fila_catalogo["id"])
-        for fila_catalogo, fila_plantilla in zip(filas_catalogo, filas_plantilla)
-        if fila_catalogo["template_row"] != fila_plantilla
+        (fila_p, fila_c["id"])
+        for fila_c, fila_p in zip(filas_catalogo, filas_plantilla)
+        if fila_c["template_row"] != fila_p
     ]
     if cambios_fila:
         connection.executemany(
@@ -88,10 +86,13 @@ class CatalogWriteMixin:
                 "SELECT COUNT(*) FROM products"
             ).fetchone()[0]
             if existing:
-                raise RuntimeError(
-                    "La base de productos contiene datos pero no tiene "
-                    "registrada la importación inicial de la plantilla."
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO product_catalog_metadata (key, value)
+                    VALUES ('template_imported', '1')
+                    """
                 )
+                return
 
             first_product_codes: set[str] = set()
             for orden, (fila, codigo, nombre, stock) in enumerate(products):
@@ -301,6 +302,58 @@ class CatalogWriteMixin:
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"No se encontró el producto '{code}'.")
+
+    def sync_active_status_with_codes(
+        self, active_codes: Iterable[str]
+    ) -> tuple[int, int]:
+        """Marca active=1 a los productos en active_codes y active=0 a los productos ausentes en SQLite.
+
+        Retorna una tupla (activados, desactivados) con el conteo de registros modificados.
+        """
+        self.invalidar_cache()
+        codigos_norm = {
+            str(c).strip()[:-2] if str(c).strip().endswith(".0") else str(c).strip()
+            for c in active_codes
+            if str(c).strip()
+        }
+        if not codigos_norm:
+            return 0, 0
+
+        with closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "CREATE TEMP TABLE IF NOT EXISTS temp_active_codes (code TEXT PRIMARY KEY COLLATE NOCASE)"
+            )
+            connection.execute("DELETE FROM temp_active_codes")
+            connection.executemany(
+                "INSERT OR IGNORE INTO temp_active_codes (code) VALUES (?)",
+                [(c,) for c in codigos_norm],
+            )
+
+            # Desactivar los que no están en active_codes
+            cursor_desactivados = connection.execute(
+                """
+                UPDATE products
+                SET active = 0
+                WHERE active = 1
+                  AND TRIM(CAST(code AS TEXT)) NOT IN (SELECT code FROM temp_active_codes)
+                """
+            )
+            desactivados = cursor_desactivados.rowcount
+
+            # Reactivar los que sí están en active_codes pero estaban inactivos
+            cursor_activados = connection.execute(
+                """
+                UPDATE products
+                SET active = 1
+                WHERE active = 0
+                  AND TRIM(CAST(code AS TEXT)) IN (SELECT code FROM temp_active_codes)
+                """
+            )
+            activados = cursor_activados.rowcount
+
+            connection.execute("DROP TABLE IF EXISTS temp_active_codes")
+            return activados, desactivados
 
     def update_product_thresholds(
         self, code: str, stock_minimo: int, stock_maximo: int

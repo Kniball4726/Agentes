@@ -66,6 +66,23 @@ def main():
 
     logger = configurar_logging()
 
+    es_qa = "--qa" in sys.argv or _obtener_parametro("--env", "").lower() == "qa"
+    if es_qa:
+        from src.core.environment import set_environment
+        from src.qa.seeder import inicializar_ambiente_qa
+
+        set_environment("qa")
+        reiniciar_qa = "--reset-qa" in sys.argv or "--reseed" in sys.argv
+        info_qa = inicializar_ambiente_qa(forzar_reinicio=reiniciar_qa)
+        logger.info("Ambiente QA activado: %s", info_qa)
+        print("\n=======================================================")
+        print(" [AMBIENTE QA ACTIVADO] - Base de Datos de Pruebas")
+        print(f" Datos aislados en: {info_qa['data_dir']}")
+        print(f" Planillas en:     {info_qa['descuentos_dir']}")
+        print(f" Usuarios:         {', '.join(info_qa['usuarios'])}")
+        print(f" Contraseña:       {info_qa['clave_default']}")
+        print("=======================================================\n")
+
     if "--auto" in sys.argv or "--all" in sys.argv:
         from src.menu import MenuAgente
 

@@ -345,6 +345,8 @@ def actualizar_estado_dashboard(interfaz: Any, _evento: ft.Event | None = None) 
             )
         interfaz.actualizar_alerta_quiebre(criticos)
         interfaz._actualizar_icono_notificaciones()
+        from .components.admin_operations_bar import actualizar_seguimiento_operativo_admin
+        actualizar_seguimiento_operativo_admin(interfaz)
     else:
         interfaz.banner_alerta_quiebre.visible = False
 
@@ -412,6 +414,14 @@ def actualizar_estado_dashboard(interfaz: Any, _evento: ft.Event | None = None) 
             f"Módulo de Picking y Despacho · Informes: {len(informes)}"
         )
         renderizar_informes_generados(interfaz, informes, mtimes_informes)
+    elif rol == "administrador":
+        total_descontados = conteo_jornada.get("total", 0)
+        total_archivados = sum(map(len, archivados))
+        interfaz.pendientes_texto.value = (
+            f"Panel de Control y Analítica · Pedidos descontados: {total_descontados} · Informes: {len(informes)}"
+        )
+        from .components.admin_flow_analytics import actualizar_panel_analitica_flujo_admin
+        actualizar_panel_analitica_flujo_admin(interfaz)
     else:
         total_descontados = conteo_jornada.get("total", 0)
         total_archivados = sum(map(len, archivados))

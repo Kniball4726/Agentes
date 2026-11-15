@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import closing
 import os
 import shutil
 import tempfile
@@ -12,6 +14,27 @@ from typing import Callable, Dict, Optional, Tuple
 import openpyxl
 
 from ..remito_parser import normalizar_codigo
+
+logger = logging.getLogger(__name__)
+
+
+class ResultadoSincronizacionExcel(dict):
+    """Contenedor de resultados de sincronización con Productos.xlsx compatible con int."""
+
+    def __init__(self, importados: int = 0, desactivados: int = 0, reactivados: int = 0):
+        super().__init__(importados=importados, desactivados=desactivados, reactivados=reactivados)
+        self.importados = importados
+        self.desactivados = desactivados
+        self.reactivados = reactivados
+
+    def __int__(self) -> int:
+        return self.importados
+
+    def __index__(self) -> int:
+        return self.importados
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self.importados, format_spec)
 
 
 def _reemplazar_atomicamente(ruta_destino: Path, guardar_en: Callable[[Path], None]) -> None:
@@ -269,6 +292,7 @@ class TemplateSyncMixin:
             f"{self.ruta_excel_base.stem}_backup{self.ruta_excel_base.suffix}"
         )
         plantilla_actualizada = False
+        codigos_detectados: set[str] = set()
 
         def sincronizar_plantilla() -> list[int]:
             nonlocal plantilla_actualizada
@@ -284,6 +308,7 @@ class TemplateSyncMixin:
                     if str(val_nom or "").strip():
                         filas_validas.append(fila)
                     cod = normalizar_codigo(str(val_cod))
+                    codigos_detectados.add(cod)
                     if cod in stocks_normalizados:
                         self._escribir_stock_en_celdas(hoja, fila, stocks_normalizados[cod])
 
@@ -302,15 +327,98 @@ class TemplateSyncMixin:
             synchronize_template=sincronizar_plantilla,
             restore_template=restaurar_plantilla,
         )
+
+        # Sincronizar estado de productos: los productos ausentes en Productos.xlsx
+        # se marcan automáticamente como inactivos (active = 0) en SQLite.
+        if hasattr(self, "product_store") and self.product_store and codigos_detectados:
+            try:
+                _, desact = self.product_store.sync_active_status_with_codes(codigos_detectados)
+                self._ultimos_desactivados = desact
+            except Exception as err:
+                logger.warning("No se pudo sincronizar estado activo con Excel: %s", err)
+
         self._actualizar_stocks_en_memoria(stocks_normalizados)
+        if hasattr(self, "_cargar_catalogo"):
+            self._cargar_catalogo(forzar_excel=False)
         return filas_actualizadas
 
     def sincronizar_catalogo_completo_excel(self) -> int:
         """Vuelca todo el stock y productos consolidados desde SQLite hacia Productos.xlsx."""
         if not hasattr(self, "product_store") or not self.product_store:
             return 0
-        rows = self.product_store.list_products()
+        rows = self.product_store.list_products(solo_activos=True)
         if not rows:
             return 0
         stocks = {str(r["code"]).strip(): int(r["stock"]) for r in rows}
         return self.sincronizar_stocks(stocks)
+
+    def importar_catalogo_desde_excel(self) -> ResultadoSincronizacionExcel:
+        """Lee Productos.xlsx e importa o actualiza los productos y stocks en SQLite.
+
+        Aquellos productos en la base de datos que ya no figuren en la planilla
+        se marcan automáticamente como inactivos (active = 0).
+        """
+        if not self.ruta_excel_base.exists():
+            raise FileNotFoundError(f"No se encontró el archivo: {self.ruta_excel_base}")
+        wb = openpyxl.load_workbook(str(self.ruta_excel_base), data_only=True)
+        try:
+            sheet = wb[self.nombre_hoja] if self.nombre_hoja in wb.sheetnames else wb.active
+            if sheet is None:
+                raise ValueError("No se encontró una hoja activa en la planilla de stock.")
+            self._detectar_esquema(sheet)
+            productos: list[tuple[int, str, str, int]] = []
+            codigos_en_excel: set[str] = set()
+            for fila in range(self._fila_inicio_datos, sheet.max_row + 1):
+                val_cod = sheet.cell(row=fila, column=self._col_codigo).value
+                if val_cod is not None and str(val_cod).strip():
+                    cod = normalizar_codigo(str(val_cod))
+                    nombre = str(sheet.cell(row=fila, column=self._col_nombre).value or "").strip()
+                    if not nombre:
+                        continue
+                    stock_num = self._leer_stock(sheet, fila)
+                    productos.append((fila, cod, nombre, stock_num))
+                    codigos_en_excel.add(cod)
+        finally:
+            wb.close()
+
+        if not productos:
+            return ResultadoSincronizacionExcel(importados=0, desactivados=0, reactivados=0)
+
+        with closing(self.product_store._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            for fila, cod, nom, stk in productos:
+                conn.execute(
+                    """
+                    INSERT INTO products (code, name, stock, active)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(code) DO UPDATE SET
+                        name = excluded.name,
+                        stock = excluded.stock,
+                        active = 1
+                    """,
+                    (cod, nom, stk),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO product_catalog_rows (product_code, display_name, display_order, template_row)
+                    SELECT ?, ?, (SELECT COALESCE(MAX(display_order), 0) + 1 FROM product_catalog_rows), ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM product_catalog_rows WHERE product_code = ?
+                    )
+                    """,
+                    (cod, nom, fila, cod),
+                )
+            conn.commit()
+
+        # Desactivar en SQLite los productos ausentes en Productos.xlsx y activar presentes
+        activados, desactivados = self.product_store.sync_active_status_with_codes(codigos_en_excel)
+        self._ultimos_desactivados = desactivados
+
+        self.product_store.invalidar_cache()
+        if hasattr(self, "_cargar_catalogo"):
+            self._cargar_catalogo(forzar_excel=False)
+        return ResultadoSincronizacionExcel(
+            importados=len(productos),
+            desactivados=desactivados,
+            reactivados=activados,
+        )

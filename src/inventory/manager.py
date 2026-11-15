@@ -75,16 +75,21 @@ class StockManager(
     ):
         self.ruta_excel_base = Path(ruta_excel_base)
         self.nombre_hoja = nombre_hoja
-        carpeta_base_datos = (
-            self.ruta_excel_base.parent.parent
-            if self.ruta_excel_base.parent.name.casefold() == "descuentos"
-            else self.ruta_excel_base.parent
-        )
-        self.ruta_base_datos = (
-            Path(ruta_base_datos)
-            if ruta_base_datos is not None
-            else carpeta_base_datos / "data" / "productos.sqlite3"
-        )
+        if ruta_base_datos is not None:
+            self.ruta_base_datos = Path(ruta_base_datos)
+        else:
+            parent_name = self.ruta_excel_base.parent.name.casefold()
+            carpeta_base_datos = (
+                self.ruta_excel_base.parent.parent
+                if parent_name in ("descuentos", "descuentos_qa")
+                else self.ruta_excel_base.parent
+            )
+            from ..core.environment import is_qa_environment
+            dir_data = "data_qa" if is_qa_environment() or parent_name == "descuentos_qa" else "data"
+            candidato_db = carpeta_base_datos / dir_data / "productos.sqlite3"
+            if not candidato_db.exists() and (carpeta_base_datos / "data" / "productos.sqlite3").exists():
+                candidato_db = carpeta_base_datos / "data" / "productos.sqlite3"
+            self.ruta_base_datos = candidato_db
         self.product_store = ProductStore(self.ruta_base_datos)
         self.productos_base: List[Tuple[int, str, str, int]] = []
         self.filas_catalogo: List[Tuple[int, str, str, int]] = []

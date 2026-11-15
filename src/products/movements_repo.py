@@ -179,10 +179,19 @@ class MovementsRepositoryMixin:
         movement_type: filtrar por tipo ('descuento', 'ingreso_fabrica', 'ajuste_manual').
         Si None, incluye todos.
         """
-        tipo_filtro = "AND movement_type = ?" if movement_type else ""
         params: list = [date_from, date_to]
         if movement_type:
-            params.append(movement_type)
+            m_clean = str(movement_type).strip().lower()
+            if m_clean in ("descuento", "salida", "salidas"):
+                tipo_filtro = "AND (m.movement_type IN ('descuento', 'salida_rapida') OR m.quantity < 0)"
+            elif m_clean in ("ingreso_fabrica", "ingreso", "ingresos"):
+                tipo_filtro = "AND (m.movement_type IN ('ingreso_fabrica', 'ingreso_rapido') OR m.quantity > 0)"
+            else:
+                tipo_filtro = "AND m.movement_type = ?"
+                params.append(movement_type)
+        else:
+            tipo_filtro = ""
+
         if top_n:
             limit = f"LIMIT {int(top_n)}"
         else:
@@ -191,14 +200,15 @@ class MovementsRepositoryMixin:
             return connection.execute(
                 f"""
                 SELECT
-                    product_code,
-                    product_name,
-                    SUM(ABS(quantity)) AS total_quantity
-                FROM stock_movements
-                WHERE registered_at >= ?
-                  AND registered_at <= ?
+                    m.product_code AS product_code,
+                    COALESCE(NULLIF(m.product_name, ''), p.name, m.product_code) AS product_name,
+                    SUM(ABS(m.quantity)) AS total_quantity
+                FROM stock_movements m
+                LEFT JOIN products p ON p.code = m.product_code
+                WHERE m.registered_at >= ?
+                  AND m.registered_at <= ?
                   {tipo_filtro}
-                GROUP BY product_code, product_name
+                GROUP BY m.product_code
                 ORDER BY total_quantity DESC
                 {limit}
                 """,

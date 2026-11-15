@@ -160,13 +160,13 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "validaciones_advertencias": "Verifica suficiencia previa de existencias antes de confirmar la transferencia.",
             },
             {
-                "nombre_boton": "Imprimir Descuento / Historial de Pedidos",
+                "nombre_boton": "Historial de Pedidos y Reimpresión",
                 "icono_str": "[🧾]",
                 "modulo": "PREPARACIÓN E INFORMES",
                 "proposito_funcional": "Reimpresión de comprobantes, rótulos QR (A4 o térmico 80 mm), edición de bultos/transporte y anulación/desarme de pedidos.",
                 "datos_modificados": "Tabla `pedidos` (actualiza bultos, chofer, fecha, estado DESPACHADO o restituye stock al desarmar).",
                 "pasos_procedimiento": [
-                    "Abrir <b>'Historial de Pedidos'</b> o <b>'Imprimir Descuento'</b>.",
+                    "Abrir <b>'Historial de Pedidos'</b> desde el menú lateral o la paleta F2.",
                     "Filtrar por cliente, remito o estado; usar acciones Ver Detalle, Rótulos QR, Editar o Anular/Desarmar.",
                 ],
                 "resultado_obtenido": "Reimpresión directa y trazabilidad completa de pedidos del turno.",

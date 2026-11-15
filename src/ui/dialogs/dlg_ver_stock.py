@@ -119,14 +119,20 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
             if estado == "normal" and stock <= stock_min:
                 continue
 
-            # Filtro por término
+            # Filtro por término (búsqueda multicriterio con tolerancia de ceros a la izquierda)
             if termino:
                 codigo = str(p.get("code") or "").lower()
                 nombre = str(p.get("name") or "").lower()
                 barras = str(p.get("cod_barras") or "").lower()
                 ubicacion = str(p.get("ubicacion") or "").lower()
+                termino_sin_ceros = termino.lstrip("0")
+                codigo_sin_ceros = codigo.lstrip("0")
+                coincide_codigo = (
+                    termino in codigo
+                    or (termino_sin_ceros != "" and termino_sin_ceros == codigo_sin_ceros)
+                )
                 if (
-                    termino not in codigo
+                    not coincide_codigo
                     and termino not in nombre
                     and termino not in barras
                     and termino not in ubicacion
@@ -288,13 +294,29 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
         limite[0] += 60
         actualizar_lista()
 
-    debouncer = Debouncer(0.2)
+    debouncer = Debouncer(0.15)
 
     def al_escribir_busqueda(_e: Any) -> None:
         limite[0] = 60
+        # Si el usuario busca un término específico y tenía un filtro de estado activo,
+        # restablecemos a 'todos' para que encuentre el producto sin importar su stock
+        val = (filtro_texto.value or "").strip()
+        if val and filtro_estado[0] != "todos":
+            filtro_estado[0] = "todos"
+            renderizar_kpis()
         debouncer.debounce(actualizar_lista)
 
+    def al_enviar_busqueda(_e: Any) -> None:
+        debouncer.cancel()
+        limite[0] = 60
+        val = (filtro_texto.value or "").strip()
+        if val and filtro_estado[0] != "todos":
+            filtro_estado[0] = "todos"
+            renderizar_kpis()
+        actualizar_lista()
+
     filtro_texto.on_change = al_escribir_busqueda
+    filtro_texto.on_submit = al_enviar_busqueda
 
     btn_recargar = ft.IconButton(
         icon=ft.Icons.REFRESH,
@@ -302,10 +324,16 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
         on_click=lambda _e: (cargar_datos(), renderizar_kpis(), actualizar_lista()),
     )
 
+    def limpiar_busqueda(_e: Any) -> None:
+        debouncer.cancel()
+        filtro_texto.value = ""
+        limite[0] = 60
+        actualizar_lista()
+
     btn_limpiar = ft.IconButton(
         icon=ft.Icons.CLEAR,
         tooltip="Limpiar búsqueda",
-        on_click=lambda _e: setattr(filtro_texto, "value", "") or actualizar_lista(),
+        on_click=limpiar_busqueda,
     )
 
     # Cargar datos iniciales

@@ -8,7 +8,7 @@ import sys
 from dotenv import load_dotenv
 
 from .cli import ArchiveOpsMixin, InteractiveFlowsMixin
-from .paths import application_root
+from .paths import application_root, get_descuentos_dir
 from .remito_parser import normalizar_codigo
 
 __all__ = ["MenuAgente", "normalizar_codigo"]
@@ -30,15 +30,16 @@ class MenuAgente(ArchiveOpsMixin, InteractiveFlowsMixin):
 
     def __init__(self) -> None:
         self.base_dir = application_root()
-        self.ruta_excel_base = self.base_dir / "Descuentos" / "Productos.xlsx"
-        self.carpeta_mayoristas = self.base_dir / "Descuentos" / "Mayoristas"
-        self.carpeta_canjes = self.base_dir / "Descuentos" / "Canjes"
-        self.carpeta_mercado_libre = self.base_dir / "Descuentos" / "MercadoLibre"
-        self.carpeta_fabrica = self.base_dir / "Descuentos" / "Fabrica"
-        self.carpeta_mercado_full = self.base_dir / "Descuentos" / "MercadoFull"
-        self.carpeta_stock_fisico = self.base_dir / "Descuentos" / "StockFisico"
-        self.carpeta_descuentos = self.base_dir / "Descuentos" / "descuentos"
-        self.carpeta_descontados = self.base_dir / "Descuentos" / "descontados"
+        dir_descuentos = get_descuentos_dir()
+        self.ruta_excel_base = dir_descuentos / "Productos.xlsx"
+        self.carpeta_mayoristas = dir_descuentos / "Mayoristas"
+        self.carpeta_canjes = dir_descuentos / "Canjes"
+        self.carpeta_mercado_libre = dir_descuentos / "MercadoLibre"
+        self.carpeta_fabrica = dir_descuentos / "Fabrica"
+        self.carpeta_mercado_full = dir_descuentos / "MercadoFull"
+        self.carpeta_stock_fisico = dir_descuentos / "StockFisico"
+        self.carpeta_descuentos = dir_descuentos / "descuentos"
+        self.carpeta_descontados = dir_descuentos / "descontados"
 
         for carpeta in (
             self.carpeta_mayoristas,

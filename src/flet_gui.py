@@ -11,7 +11,7 @@ from .internal_chat import obtener_mensaje_bienvenida
 from .logger_config import configurar_logging
 from .menu import MenuAgente
 from .orders_store import OrderStore
-from .paths import application_root
+from .paths import application_root, get_data_dir
 from .product_store import ProductStore
 from .server import (
     _RegistroConexionesMiddleware,
@@ -82,10 +82,11 @@ class InterfazFlet(
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         SESIONES_ACTIVAS.add(self)
-        self.user_store = UserStore(application_root() / "data" / "usuarios.sqlite3")
-        self.order_store = OrderStore(application_root() / "data" / "pedidos.sqlite3")
-        self.product_store = ProductStore(application_root() / "data" / "productos.sqlite3")
-        (application_root() / "data" / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
+        data_dir = get_data_dir()
+        self.user_store = UserStore(data_dir / "usuarios.sqlite3")
+        self.order_store = OrderStore(data_dir / "pedidos.sqlite3")
+        self.product_store = ProductStore(data_dir / "productos.sqlite3")
+        (data_dir / "pedidos_archivos").mkdir(parents=True, exist_ok=True)
         self.usuario_actual: User | None = None
         self.modo_oscuro = True
         self.fondo = ft.Colors.BLACK
@@ -105,8 +106,13 @@ class InterfazFlet(
         self.mayoristas = ft.Checkbox(label="Mayoristas · PDF", value=True)
         self.canjes = ft.Checkbox(label="Canjes · Excel", value=True)
         self.mercado_libre = ft.Checkbox(label="Mercado Libre · DOCX", value=True)
-        self.estado_tarea = ft.Text("Listo", color=self.secundario, size=12)
-        self.progreso_barra = ft.ProgressBar(width=200, value=None, color=ROJO, visible=False)
+        self.icono_estado_tarea = ft.Icon(
+            ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED,
+            size=14,
+            color=ft.Colors.GREEN_400,
+        )
+        self.estado_tarea = ft.Text("Sistema listo", color=self.secundario, size=11, weight=ft.FontWeight.W_500)
+        self.progreso_barra = ft.ProgressBar(width=160, value=None, color=ROJO, visible=False)
         self.lista_informes = ft.ListView(expand=True, spacing=4)
         self.actividad = ft.ListView(expand=True, spacing=6, auto_scroll=True)
         self.header_pedidos_fecha = ft.Text("Fecha de hoy", size=13, weight=ft.FontWeight.BOLD, color=self.texto)
@@ -334,11 +340,7 @@ class InterfazFlet(
                 self.panel_metricas(),
                 self.panel_acceso_rapido(),
                 self.panel_informes_actividad(),
-                ft.Row(
-                    [self.estado_tarea, self.progreso_barra],
-                    spacing=12,
-                    alignment=ft.MainAxisAlignment.START,
-                ),
+                self.barra_estado(),
             ],
             expand=True,
             spacing=16,
@@ -479,6 +481,57 @@ class InterfazFlet(
     def panel_informes_actividad(self) -> ft.Control:
         return construir_panel_informes_actividad(self)
 
+    def barra_estado(self) -> ft.Control:
+        """Barra de estado inferior con diseño sutil e indicador de actividad del sistema."""
+        return ft.Container(
+            content=ft.Row(
+                [
+                    ft.Row(
+                        [
+                            self.icono_estado_tarea,
+                            self.estado_tarea,
+                        ],
+                        spacing=7,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    self.progreso_barra,
+                ],
+                spacing=12,
+                alignment=ft.MainAxisAlignment.START,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.Padding(left=12, right=14, top=6, bottom=6),
+            border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.04, self.texto),
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.08, self.texto)),
+        )
+
+    def fijar_estado_tarea(self, texto: str, estado: str = "listo") -> None:
+        """Actualiza el texto y el ícono de la barra de estado inferior."""
+        self.estado_tarea.value = texto
+        if hasattr(self, "icono_estado_tarea") and self.icono_estado_tarea:
+            texto_lower = (texto or "").lower()
+            if estado == "listo" or "listo" in texto_lower or "finalizad" in texto_lower:
+                self.icono_estado_tarea.name = ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED
+                self.icono_estado_tarea.color = ft.Colors.GREEN_400
+            elif estado == "error" or "error" in texto_lower or "fall" in texto_lower:
+                self.icono_estado_tarea.name = ft.Icons.ERROR_OUTLINE_ROUNDED
+                self.icono_estado_tarea.color = ft.Colors.RED_400
+            elif estado == "en_curso" or "curso" in texto_lower or "progreso" in texto_lower:
+                self.icono_estado_tarea.name = ft.Icons.SYNC_ROUNDED
+                self.icono_estado_tarea.color = ft.Colors.AMBER_400
+            elif estado == "archivo":
+                self.icono_estado_tarea.name = ft.Icons.DESCRIPTION_OUTLINED
+                self.icono_estado_tarea.color = ft.Colors.LIGHT_BLUE_400
+            else:
+                self.icono_estado_tarea.name = ft.Icons.INFO_OUTLINE_ROUNDED
+                self.icono_estado_tarea.color = self.secundario
+        if hasattr(self, "page") and self.page:
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
     def tarjeta(self, contenido: ft.Control, expand: bool = False) -> ft.Container:
         return ft.Container(
             expand=expand,
@@ -497,6 +550,19 @@ class InterfazFlet(
         """Actualiza y sincroniza en tiempo real todos los indicadores y listas del Dashboard."""
         actualizar_estado_dashboard(self, _evento)
 
+    def recargar_ambiente(self) -> None:
+        """Recarga los almacenes de datos y el menú según el ambiente activo (Producción o QA)."""
+        data_dir = get_data_dir()
+        self.user_store = UserStore(data_dir / "usuarios.sqlite3")
+        self.order_store = OrderStore(data_dir / "pedidos.sqlite3")
+        self.product_store = ProductStore(data_dir / "productos.sqlite3")
+        self.menu = MenuAgente()
+        self.actualizar_estado()
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
     def actualizar_alerta_quiebre(self, criticos: list | None = None) -> None:
         actualizar_alerta_quiebre(self, criticos)
 
@@ -506,8 +572,7 @@ class InterfazFlet(
     def seleccionar_informe(self, ruta: Path) -> None:
         self.informe_seleccionado = ruta
         tipo = "Pedido a fábrica" if ruta.name.startswith("Pedido_Fabrica") else "Informe"
-        self.estado_tarea.value = f"{tipo} seleccionado: {ruta.name}"
-        self.page.update()
+        self.fijar_estado_tarea(f"{tipo} seleccionado: {ruta.name}", estado="archivo")
 
     def notificar(self, mensaje: str) -> None:
         dialogo = ft.AlertDialog(

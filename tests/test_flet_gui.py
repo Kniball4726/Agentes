@@ -145,12 +145,12 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        # Comandos para administrador (incluye Centro de Reportes y Ver Stock)
-        self.assertEqual(len(interfaz.controles_tarea), 29)
+        # Comandos para administrador (incluye Centro de Reportes y Ver Stock, sin Imprimir Descuento)
+        self.assertEqual(len(interfaz.controles_tarea), 18)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
-        self.assertEqual(interfaz.estado_tarea.value, "Listo")
+        self.assertEqual(interfaz.estado_tarea.value, "Sistema listo")
 
     def test_sidebar_displays_the_selected_logo(self):
         interfaz, _, _ = self.crear_interfaz()
@@ -472,7 +472,7 @@ class FletGuiTests(unittest.TestCase):
         self.assertIn("Sugerencia de Pedido a Fábrica", cast(ft.Text, dialogo.title.controls[1]).value)
 
     def test_reports_list_displays_newest_first(self):
-        interfaz, menu, _ = self.crear_interfaz()
+        interfaz, menu, _ = self.crear_interfaz(role="operador")
         with tempfile.TemporaryDirectory() as temp_dir:
             file_old = Path(temp_dir) / "Descuento_Viejo.xlsx"
             file_new = Path(temp_dir) / "Descuento_Nuevo.xlsx"
@@ -567,7 +567,7 @@ class FletGuiTests(unittest.TestCase):
     def test_actualizar_estado_refleja_pedidos_descontados_de_la_jornada(self):
         from src.orders_store import OrderStore
 
-        interfaz, _, _ = self.crear_interfaz()
+        interfaz, _, _ = self.crear_interfaz(role="operador")
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "test_pedidos.sqlite3"
             store = OrderStore(db_path)
@@ -734,7 +734,7 @@ class FletGuiTests(unittest.TestCase):
         self.assertNotIn("Gestión de Clientes", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
 
         self.assertIn("Historial de Pedidos", botones_por_seccion["INFORMES"])
-        self.assertIn("Imprimir Descuento", botones_por_seccion["INFORMES"])
+        self.assertNotIn("Imprimir Descuento", botones_por_seccion["INFORMES"])
         self.assertNotIn("Historial de Pedidos", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
         self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
         self.assertNotIn("Imprimir Descuento", botones_por_seccion.get("CLIENTES", []))

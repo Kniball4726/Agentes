@@ -47,7 +47,11 @@ class SessionSyncMixin:
             if sesion is self or getattr(sesion, "usuario_actual", None) is None:
                 continue
             try:
-                sesion.actualizar_estado()
+                if aviso_colaborativo and any(w in aviso_colaborativo.lower() for w in ("entorno", "ambiente", "qa", "producción")):
+                    if hasattr(sesion, "recargar_ambiente"):
+                        sesion.recargar_ambiente()
+                else:
+                    sesion.actualizar_estado()
                 sesion.actualizar_badge_chat()
                 if getattr(sesion, "modo_chat_activo", "") == "equipo":
                     sesion.cargar_mensajes_equipo()

@@ -36,7 +36,7 @@ class TestAdminVerStockEInformes(unittest.TestCase):
         self.mock_interfaz.alto_adaptable = lambda h: h
 
     def test_panel_acceso_rapido_administrador_contiene_gestionar_productos(self):
-        """Verifica que el panel de accesos rápidos de Administrador incluya Gestionar Productos, Ingreso y Egreso."""
+        """Verifica que el panel de Administrador no tenga accesos rápidos táctiles y muestre el seguimiento operativo."""
         panel = construir_panel_acceso_rapido(self.mock_interfaz)
         self.assertTrue(panel.visible is not False)
         # Buscar títulos en el árbol de controles
@@ -50,18 +50,25 @@ class TestAdminVerStockEInformes(unittest.TestCase):
                 _buscar_textos(ctrl.content)
 
         _buscar_textos(panel)
-        self.assertIn("Gestionar Productos", titulos_encontrados)
-        self.assertIn("Ingreso de Stock", titulos_encontrados)
-        self.assertIn("Egreso de Stock", titulos_encontrados)
+        self.assertNotIn("Gestionar Productos", titulos_encontrados)
+        self.assertNotIn("Ingreso de Stock", titulos_encontrados)
+        self.assertNotIn("Egreso de Stock", titulos_encontrados)
+        self.assertIn("Seguimiento Operativo en Vivo", titulos_encontrados)
 
-    def test_sidebar_administrador_contiene_ver_stock_en_catalogo(self):
-        """Verifica que en el menú de navegación de Administrador exista 'Ver Stock' dentro de CATÁLOGO."""
+    def test_sidebar_administrador_secciones_limpias_sin_secciones_redundantes(self):
+        """Verifica que para Administrador se hayan eliminado las secciones redundantes (CATÁLOGO, CLIENTES, INVENTARIO Y REPOSICIÓN, CANALES DE VENTA)."""
         secciones = obtener_secciones_rol(self.mock_interfaz)
-        sec_catalogo = next((s for s in secciones if s.titulo == "CATÁLOGO"), None)
-        self.assertIsNotNone(sec_catalogo, "La sección CATÁLOGO debe existir para administrador")
-        items_catalogo = [nombre for nombre, _, _ in sec_catalogo.items]
-        self.assertIn("Ver Stock", items_catalogo)
-        self.assertIn("Gestionar productos", items_catalogo)
+        titulos_secciones = [s.titulo for s in secciones]
+        self.assertNotIn("CATÁLOGO", titulos_secciones)
+        self.assertNotIn("CLIENTES", titulos_secciones)
+        self.assertNotIn("INVENTARIO Y REPOSICIÓN", titulos_secciones)
+        self.assertNotIn("CANALES DE VENTA", titulos_secciones)
+        self.assertIn("SUPERVISIÓN", titulos_secciones)
+        self.assertIn("INFORMES", titulos_secciones)
+        sec_informes = next((s for s in secciones if s.titulo == "INFORMES"), None)
+        self.assertIsNotNone(sec_informes)
+        items_informes = [item[0] for item in sec_informes.items]
+        self.assertNotIn("Imprimir Descuento", items_informes)
 
     def test_modulo_ver_stock_renderiza_y_filtra(self):
         """Verifica que mostrar_dialogo_ver_stock abra el diálogo con los productos de ProductStore."""

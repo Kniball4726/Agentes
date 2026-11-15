@@ -1,4 +1,4 @@
-"""Diálogo interactivo para el Cierre de Mercado (Mercado Libre y Mercado Full) para el rol Picker."""
+"""Diálogo interactivo para el Cierre de Mercado con pestañas dedicadas para Mercado Libre y Mercado Full."""
 
 from __future__ import annotations
 
@@ -14,51 +14,61 @@ from .cierre_mercado_exec import ejecutar_tarea_cierre_mercado
 logger = logging.getLogger("stockagent.ui.cierre_mercado")
 
 
-def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
-    """Abre el panel para cerrar la tanda de Mercado Libre o Mercado Full del picker."""
+def mostrar_dialogo_cierre_mercado(interfaz: Any, tab_inicial: int = 0) -> None:
+    """Abre el panel con pestañas 100% aisladas para cerrar Mercado Libre (diario) o Mercado Full (multidía)."""
     if not interfaz.exigir_roles("picker", "operador", "administrador", "master"):
         return
 
     es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    armador_filtro = (
+        interfaz.usuario_actual.username
+        if getattr(interfaz, "usuario_actual", None) and interfaz.usuario_actual.role == "picker"
+        else None
+    )
 
-    filtro_tipo = ["TODOS"]
-    pedidos_pendientes: list[Any] = []
-    seleccionados: dict[int, bool] = {}
+    tab_activa = [tab_inicial]
 
-    lista_pedidos = ft.ListView(expand=True, spacing=6)
+    # Estado de Mercado Libre
+    pedidos_ml: list[Any] = []
+    seleccionados_ml: dict[int, bool] = {}
+    lista_ml = ft.ListView(expand=True, spacing=6)
+    resumen_ml = ft.Text("", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto)
+
+    # Estado de Mercado Full
+    pedidos_full: list[Any] = []
+    seleccionados_full: dict[int, bool] = {}
+    lista_full = ft.ListView(expand=True, spacing=6)
+    resumen_full = ft.Text("", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto)
+
+    # Estado de Historial
     lista_historial = ft.ListView(expand=True, spacing=6)
-    resumen_texto = ft.Text("", size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto)
 
+    # Botón principal contextual
     btn_confirmar = ft.Button(
-        "Confirmar Cierre y Emitir Documento",
-        icon=ft.Icons.FACT_CHECK,
+        "Cerrar Colecta Mercado Libre",
+        icon=ft.Icons.STOREFRONT,
         bgcolor=ROJO,
         color=ft.Colors.WHITE,
         disabled=True,
     )
 
-    def _recargar_pedidos() -> None:
-        nonlocal pedidos_pendientes
-        armador_filtro = (
-            interfaz.usuario_actual.username
-            if getattr(interfaz, "usuario_actual", None) and interfaz.usuario_actual.role == "picker"
-            else None
-        )
+    def _recargar_ml() -> None:
+        nonlocal pedidos_ml
         try:
-            pedidos_pendientes = interfaz.order_store.listar_pedidos_mercado_pendientes_cierre(
-                tipo=filtro_tipo[0],
+            pedidos_ml = interfaz.order_store.listar_pedidos_mercado_pendientes_cierre(
+                tipo="MERCADO_LIBRE",
                 armador=armador_filtro,
             )
         except Exception as exc:
-            logger.warning("Error al listar pedidos de mercado pendientes: %s", exc)
-            pedidos_pendientes = []
+            logger.warning("Error al listar pedidos ML pendientes: %s", exc)
+            pedidos_ml = []
 
-        lista_pedidos.controls.clear()
-        seleccionados.clear()
+        lista_ml.controls.clear()
+        seleccionados_ml.clear()
 
-        if not pedidos_pendientes:
-            lista_pedidos.controls.append(
+        if not pedidos_ml:
+            lista_ml.controls.append(
                 ft.Container(
                     padding=16,
                     border_radius=8,
@@ -67,7 +77,7 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
                         [
                             ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400, size=24),
                             ft.Text(
-                                "No hay paquetes de Mercado Libre o Full pendientes de cierre en esta tanda.",
+                                "No hay paquetes de Mercado Libre pendientes de colecta en esta tanda.",
                                 size=12,
                                 color=interfaz.texto,
                                 expand=True,
@@ -77,102 +87,209 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
                     ),
                 )
             )
-            resumen_texto.value = "Sin despachos pendientes para cerrar."
-            btn_confirmar.disabled = True
-            interfaz.page.update()
-            return
+            resumen_ml.value = "Sin despachos pendientes de Mercado Libre."
+        else:
+            for p in pedidos_ml:
+                seleccionados_ml[p.id] = True
 
-        for p in pedidos_pendientes:
-            seleccionados[p.id] = True
+                def _on_check_ml(e: ft.Event, pid=p.id) -> None:
+                    seleccionados_ml[pid] = bool(e.control.value)
+                    _sync_estado_boton()
 
-            def _on_check(e: ft.Event, pid=p.id) -> None:
-                seleccionados[pid] = bool(e.control.value)
-                _actualizar_resumen()
+                lista_ml.controls.append(
+                    ft.Container(
+                        bgcolor=interfaz.fondo_acento if es_oscuro else ft.Colors.GREY_50,
+                        border=ft.Border.all(1, interfaz.borde),
+                        border_radius=8,
+                        padding=8,
+                        content=ft.Row(
+                            [
+                                ft.Checkbox(value=True, on_change=_on_check_ml),
+                                ft.Column(
+                                    [
+                                        ft.Row(
+                                            [
+                                                ft.Container(
+                                                    content=ft.Row(
+                                                        [
+                                                            ft.Icon(ft.Icons.STOREFRONT, size=12, color=ft.Colors.WHITE),
+                                                            ft.Text("Mercado Libre", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
+                                                        ],
+                                                        spacing=4,
+                                                    ),
+                                                    bgcolor=ft.Colors.BLUE_500,
+                                                    border_radius=4,
+                                                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                                ),
+                                                ft.Text(f"#{p.nota_pedido}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
+                                                ft.Text(f"· {p.cliente}", size=11, color=interfaz.secundario, expand=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                            ],
+                                            spacing=6,
+                                        ),
+                                        ft.Row(
+                                            [
+                                                ft.Text(f"Bultos: {p.bultos}", size=11, color=interfaz.secundario),
+                                                ft.Text(f"Descuento: {p.resumen_items}", size=11, color=ft.Colors.GREEN_400, weight=ft.FontWeight.W_500),
+                                                ft.Text(f"Armador: {p.armador}", size=11, color=interfaz.secundario),
+                                            ],
+                                            spacing=10,
+                                        ),
+                                    ],
+                                    spacing=3,
+                                    expand=True,
+                                ),
+                                ft.Text(p.created_at[11:16] if len(p.created_at) >= 16 else "", size=11, color=interfaz.secundario),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    )
+                )
 
-            es_full = "FULL" in p.cliente.upper() or "FULL" in p.nombre_archivo.upper() or "FULL" in p.nota_pedido.upper()
-            icono_tipo = ft.Icons.LOCAL_SHIPPING if es_full else ft.Icons.STOREFRONT
-            color_badge = ft.Colors.AMBER_600 if es_full else ft.Colors.BLUE_400
-            etiqueta_badge = "Mercado Full" if es_full else "Mercado Libre"
+    def _recargar_full() -> None:
+        nonlocal pedidos_full
+        try:
+            pedidos_full = interfaz.order_store.listar_pedidos_mercado_pendientes_cierre(
+                tipo="MERCADO_FULL",
+                armador=armador_filtro,
+            )
+        except Exception as exc:
+            logger.warning("Error al listar pedidos Full pendientes: %s", exc)
+            pedidos_full = []
 
-            lista_pedidos.controls.append(
+        lista_full.controls.clear()
+        seleccionados_full.clear()
+
+        if not pedidos_full:
+            lista_full.controls.append(
                 ft.Container(
-                    bgcolor=interfaz.fondo_acento if es_oscuro else ft.Colors.GREY_50,
-                    border=ft.Border.all(1, interfaz.borde),
+                    padding=16,
                     border_radius=8,
-                    padding=8,
+                    bgcolor=interfaz.fondo_acento if es_oscuro else ft.Colors.GREY_100,
                     content=ft.Row(
                         [
-                            ft.Checkbox(
-                                value=True,
-                                on_change=_on_check,
-                            ),
-                            ft.Column(
-                                [
-                                    ft.Row(
-                                        [
-                                            ft.Container(
-                                                content=ft.Row(
-                                                    [
-                                                        ft.Icon(icono_tipo, size=12, color=ft.Colors.WHITE),
-                                                        ft.Text(etiqueta_badge, size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
-                                                    ],
-                                                    spacing=4,
-                                                ),
-                                                bgcolor=color_badge,
-                                                border_radius=4,
-                                                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                                            ),
-                                            ft.Text(f"#{p.nota_pedido}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                            ft.Text(f"· {p.cliente}", size=11, color=interfaz.secundario, expand=True, overflow=ft.TextOverflow.ELLIPSIS),
-                                        ],
-                                        spacing=6,
-                                    ),
-                                    ft.Row(
-                                        [
-                                            ft.Text(f"Bultos: {p.bultos}", size=11, color=interfaz.secundario),
-                                            ft.Text(f"Descuento: {p.resumen_items}", size=11, color=ft.Colors.GREEN_400, weight=ft.FontWeight.W_500),
-                                            ft.Text(f"Armador: {p.armador}", size=11, color=interfaz.secundario),
-                                        ],
-                                        spacing=10,
-                                    ),
-                                ],
-                                spacing=3,
+                            ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400, size=24),
+                            ft.Text(
+                                "No hay lotes de Mercado Envíos Full pendientes de cerrar para el pallet.",
+                                size=12,
+                                color=interfaz.texto,
                                 expand=True,
                             ),
-                            ft.Text(p.created_at[11:16] if len(p.created_at) >= 16 else "", size=11, color=interfaz.secundario),
                         ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=10,
                     ),
                 )
             )
-
-        _actualizar_resumen()
-
-    def _actualizar_resumen() -> None:
-        peds_activos = [p for p in pedidos_pendientes if seleccionados.get(p.id, False)]
-        total_peds = len(peds_activos)
-        total_units = sum(p.articulos_descontados for p in peds_activos)
-        if total_peds == 0:
-            resumen_texto.value = "⚠️ Debes seleccionar al menos un pedido para cerrar la tanda."
-            resumen_texto.color = ft.Colors.AMBER_400
-            btn_confirmar.disabled = True
+            resumen_full.value = "Sin lotes pendientes de Mercado Envíos Full."
         else:
-            resumen_texto.value = f"📦 {total_peds} pedidos seleccionados ({total_units} unidades en el comprobante)"
-            resumen_texto.color = interfaz.texto
-            btn_confirmar.disabled = False
+            for p in pedidos_full:
+                seleccionados_full[p.id] = True
+
+                def _on_check_full(e: ft.Event, pid=p.id) -> None:
+                    seleccionados_full[pid] = bool(e.control.value)
+                    _sync_estado_boton()
+
+                lista_full.controls.append(
+                    ft.Container(
+                        bgcolor=interfaz.fondo_acento if es_oscuro else ft.Colors.GREY_50,
+                        border=ft.Border.all(1, interfaz.borde),
+                        border_radius=8,
+                        padding=8,
+                        content=ft.Row(
+                            [
+                                ft.Checkbox(value=True, on_change=_on_check_full),
+                                ft.Column(
+                                    [
+                                        ft.Row(
+                                            [
+                                                ft.Container(
+                                                    content=ft.Row(
+                                                        [
+                                                            ft.Icon(ft.Icons.LOCAL_SHIPPING, size=12, color=ft.Colors.WHITE),
+                                                            ft.Text("Mercado Full", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
+                                                        ],
+                                                        spacing=4,
+                                                    ),
+                                                    bgcolor=ft.Colors.AMBER_700,
+                                                    border_radius=4,
+                                                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                                ),
+                                                ft.Text(f"#{p.nota_pedido}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
+                                                ft.Text(f"· Archivo: {p.nombre_archivo}", size=11, color=interfaz.secundario, expand=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                            ],
+                                            spacing=6,
+                                        ),
+                                        ft.Row(
+                                            [
+                                                ft.Text(f"Fecha carga: {p.created_at[:16]}", size=11, color=interfaz.secundario),
+                                                ft.Text(f"Descuento: {p.resumen_items}", size=11, color=ft.Colors.GREEN_400, weight=ft.FontWeight.W_500),
+                                                ft.Text(f"Armador: {p.armador}", size=11, color=interfaz.secundario),
+                                            ],
+                                            spacing=10,
+                                        ),
+                                    ],
+                                    spacing=3,
+                                    expand=True,
+                                ),
+                                ft.Text(p.created_at[5:10], size=11, color=interfaz.secundario),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    )
+                )
+
+    def _sync_estado_boton() -> None:
+        idx = tab_activa[0]
+        if idx == 0:
+            # Mercado Libre
+            activos = [p for p in pedidos_ml if seleccionados_ml.get(p.id, False)]
+            total_u = sum(p.articulos_descontados for p in activos)
+            btn_confirmar.visible = True
+            btn_confirmar.text = "Cerrar Colecta Mercado Libre"
+            btn_confirmar.icon = ft.Icons.STOREFRONT
+            btn_confirmar.bgcolor = ROJO
+            if not activos:
+                resumen_ml.value = "⚠️ Selecciona al menos un paquete de Mercado Libre para cerrar colecta."
+                resumen_ml.color = ft.Colors.AMBER_400
+                btn_confirmar.disabled = True
+            else:
+                resumen_ml.value = f"📦 {len(activos)} paquetes de ML seleccionados ({total_u} unidades a certificar)"
+                resumen_ml.color = interfaz.texto
+                btn_confirmar.disabled = False
+        elif idx == 1:
+            # Mercado Full
+            activos = [p for p in pedidos_full if seleccionados_full.get(p.id, False)]
+            total_u = sum(p.articulos_descontados for p in activos)
+            btn_confirmar.visible = True
+            btn_confirmar.text = "Cerrar Envío Mercado Full (Pallet)"
+            btn_confirmar.icon = ft.Icons.LOCAL_SHIPPING
+            btn_confirmar.bgcolor = ft.Colors.AMBER_800
+            if not activos:
+                resumen_full.value = "⚠️ Selecciona al menos un lote de Full para cerrar el envío."
+                resumen_full.color = ft.Colors.AMBER_400
+                btn_confirmar.disabled = True
+            else:
+                resumen_full.value = f"🚚 {len(activos)} tandas de Full seleccionadas ({total_u} unidades en el pallet)"
+                resumen_full.color = interfaz.texto
+                btn_confirmar.disabled = False
+        else:
+            # Historial
+            btn_confirmar.visible = False
+            btn_confirmar.disabled = True
+
         interfaz.page.update()
 
     def _recargar_historial() -> None:
         lista_historial.controls.clear()
         try:
-            cierres = interfaz.order_store.listar_cierres_mercado(limit=25)
+            cierres = interfaz.order_store.listar_cierres_mercado(limit=30)
         except Exception:
             cierres = []
 
         if not cierres:
             lista_historial.controls.append(
-                ft.Text("Aún no se han registrado cierres de tanda de Mercado.", size=12, color=interfaz.secundario)
+                ft.Text("Aún no se han registrado cierres de Mercado.", size=12, color=interfaz.secundario)
             )
             return
 
@@ -181,6 +298,10 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
         for c in cierres:
             pdf_path = carpeta_desc / c.archivo_pdf if c.archivo_pdf else None
             existe_pdf = pdf_path is not None and pdf_path.exists()
+            es_full = "FULL" in c.tipo_mercado.upper()
+            icono_c = ft.Icons.LOCAL_SHIPPING if es_full else ft.Icons.STOREFRONT
+            badge_color = ft.Colors.AMBER_700 if es_full else ft.Colors.BLUE_500
+            tipo_label = "MERCADO FULL" if es_full else "MERCADO LIBRE"
 
             btn_opciones = ft.IconButton(
                 icon=ft.Icons.PRINT,
@@ -201,14 +322,25 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
                                 [
                                     ft.Row(
                                         [
-                                            ft.Text(f"Cierre Mercado #{c.id}", weight=ft.FontWeight.BOLD, size=13, color=interfaz.texto),
-                                            ft.Text(f"[{c.tipo_mercado}]", size=11, color=ROJO, weight=ft.FontWeight.BOLD),
-                                            ft.Text(f"{c.cantidad_pedidos} pedidos ({c.articulos_totales} un.)", size=11, color=ft.Colors.GREEN_400),
+                                            ft.Container(
+                                                content=ft.Row(
+                                                    [
+                                                        ft.Icon(icono_c, size=11, color=ft.Colors.WHITE),
+                                                        ft.Text(tipo_label, size=9, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
+                                                    ],
+                                                    spacing=3,
+                                                ),
+                                                bgcolor=badge_color,
+                                                border_radius=4,
+                                                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                            ),
+                                            ft.Text(f"Cierre #{c.id}", weight=ft.FontWeight.BOLD, size=13, color=interfaz.texto),
+                                            ft.Text(f"{c.cantidad_pedidos} despachos ({c.articulos_totales} un.)", size=11, color=ft.Colors.GREEN_400),
                                         ],
                                         spacing=8,
                                     ),
                                     ft.Text(
-                                        f"Picker: {c.usuario} · Fecha: {c.created_at[:16]} · Archivo: {c.archivo_pdf or 'N/A'}",
+                                        f"Responsable: {c.usuario} · Fecha: {c.created_at[:16]} · Archivo: {c.archivo_pdf or 'N/A'}",
                                         size=10,
                                         color=interfaz.secundario,
                                     ),
@@ -225,9 +357,18 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
             )
 
     async def on_confirmar_cierre(_e: ft.Event) -> None:
-        peds_a_cerrar = [p for p in pedidos_pendientes if seleccionados.get(p.id, False)]
+        idx = tab_activa[0]
+        if idx == 0:
+            tipo_m = "MERCADO_LIBRE"
+            peds_a_cerrar = [p for p in pedidos_ml if seleccionados_ml.get(p.id, False)]
+        elif idx == 1:
+            tipo_m = "MERCADO_FULL"
+            peds_a_cerrar = [p for p in pedidos_full if seleccionados_full.get(p.id, False)]
+        else:
+            return
+
         if not peds_a_cerrar:
-            interfaz.notificar("No hay pedidos seleccionados para cerrar.")
+            interfaz.notificar("No hay pedidos seleccionados en este canal.")
             return
 
         btn_confirmar.disabled = True
@@ -239,11 +380,12 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
             res = ejecutar_tarea_cierre_mercado(
                 interfaz=interfaz,
                 pedidos_seleccionados=peds_a_cerrar,
-                tipo_mercado=filtro_tipo[0],
+                tipo_mercado=tipo_m,
             )
             res_cierre.update(res)
 
-        exito = await interfaz.ejecutar_tarea("Cierre de Mercado", tarea)
+        nombre_tarea = "Cierre Colecta Mercado Libre" if idx == 0 else "Cierre Envío Mercado Full"
+        exito = await interfaz.ejecutar_tarea(nombre_tarea, tarea)
         if not exito:
             return
 
@@ -255,56 +397,60 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
         cid = res_cierre.get("cierre_id", 0)
         tot = res_cierre.get("total_articulos", 0)
 
-        interfaz.notificar(f"✅ Cierre de Mercado #{cid} generado exitosamente ({tot} unidades).")
+        interfaz.notificar(f"✅ {nombre_tarea} #{cid} generado exitosamente ({tot} unidades).")
 
-        # Abre inmediatamente el diálogo de opciones de Windows para Imprimir o Descargar
+        # Abre modal con opciones de impresión en Windows / descarga
         if pdf_path and pdf_path.exists():
             interfaz.mostrar_opciones_documento(pdf_path)
 
     btn_confirmar.on_click = on_confirmar_cierre
 
-    selector_filtro = ft.Dropdown(
-        label="Filtrar por Canal de Mercado",
-        value="TODOS",
-        dense=True,
-        options=[
-            ft.DropdownOption(key="TODOS", text="Todos los canales (Mercado Libre + Full)"),
-            ft.DropdownOption(key="MERCADO_LIBRE", text="Mercado Libre (Pistoleo y Docx)"),
-            ft.DropdownOption(key="MERCADO_FULL", text="Mercado Envíos Full (Excel)"),
-        ],
-    )
-    selector_filtro.on_change = lambda e: (filtro_tipo.__setitem__(0, e.control.value), _recargar_pedidos())
-
-    vista_pendientes = ft.Column(
+    vista_ml = ft.Column(
         [
-            ft.Row([selector_filtro], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Divider(height=6, color=ft.Colors.TRANSPARENT),
             ft.Text(
-                "Selecciona los paquetes pickeados que deseas consolidar en este comprobante de descuento:",
-                size=11,
-                color=interfaz.secundario,
+                "📦 Paquetes de Mercado Libre pistoleados o cargados hoy (Colecta Diaria):",
+                size=12,
+                weight=ft.FontWeight.W_500,
+                color=interfaz.texto,
             ),
             ft.Container(
-                content=lista_pedidos,
+                content=lista_ml,
                 height=260 if not es_movil else 200,
                 border=ft.Border.all(1, interfaz.borde),
                 border_radius=8,
                 padding=6,
             ),
-            ft.Container(
-                content=resumen_texto,
-                padding=ft.Padding.symmetric(vertical=4),
+            ft.Container(content=resumen_ml, padding=ft.Padding.symmetric(vertical=4)),
+        ],
+        spacing=6,
+    )
+
+    vista_full = ft.Column(
+        [
+            ft.Text(
+                "🚚 Tandas y planillas de Mercado Envíos Full acumuladas (Pallet Multidía):",
+                size=12,
+                weight=ft.FontWeight.W_500,
+                color=interfaz.texto,
             ),
+            ft.Container(
+                content=lista_full,
+                height=260 if not es_movil else 200,
+                border=ft.Border.all(1, interfaz.borde),
+                border_radius=8,
+                padding=6,
+            ),
+            ft.Container(content=resumen_full, padding=ft.Padding.symmetric(vertical=4)),
         ],
         spacing=6,
     )
 
     vista_historial = ft.Column(
         [
-            ft.Text("Historial de tandas y cierres de Mercado generados:", size=11, color=interfaz.secundario),
+            ft.Text("Historial de comprobantes de cierre emitidos (ML y Full):", size=11, color=interfaz.secundario),
             ft.Container(
                 content=lista_historial,
-                height=300 if not es_movil else 220,
+                height=280 if not es_movil else 220,
                 border=ft.Border.all(1, interfaz.borde),
                 border_radius=8,
                 padding=6,
@@ -313,34 +459,46 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
         spacing=6,
     )
 
+    def on_tab_change(e: ft.Event) -> None:
+        idx = 0
+        try:
+            idx = int(e.control.selected_index if hasattr(e.control, "selected_index") else getattr(e, "data", 0) or 0)
+        except Exception:
+            idx = 0
+        tab_activa[0] = idx
+        _sync_estado_boton()
+
     tabs = ft.Tabs(
-        length=2,
+        length=3,
         expand=True,
+        selected_index=tab_inicial,
         content=ft.Column(
             expand=True,
             controls=[
                 ft.TabBar(
                     tabs=[
-                        ft.Tab(label="Cierre de Tanda", icon=ft.Icons.FACT_CHECK),
+                        ft.Tab(label="Mercado Libre (Diario)", icon=ft.Icons.STOREFRONT),
+                        ft.Tab(label="Mercado Full (Multidía)", icon=ft.Icons.LOCAL_SHIPPING),
                         ft.Tab(label="Historial de Cierres", icon=ft.Icons.HISTORY),
                     ]
                 ),
-                ft.TabBarView(expand=True, controls=[vista_pendientes, vista_historial]),
+                ft.TabBarView(expand=True, controls=[vista_ml, vista_full, vista_historial]),
             ],
         ),
     )
+    tabs.on_change = on_tab_change
 
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
-                ft.Icon(ft.Icons.STOREFRONT, color=ROJO, size=24),
+                ft.Icon(ft.Icons.FACT_CHECK, color=ROJO, size=24),
                 ft.Text("Cierre de Mercado · Descuento Individual", size=16, weight=ft.FontWeight.BOLD),
             ],
             spacing=8,
         ),
         content=ft.Container(
-            width=620 if not es_movil else 340,
+            width=650 if not es_movil else 340,
             content=tabs,
         ),
         actions=[
@@ -349,6 +507,8 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any) -> None:
         ],
     )
 
-    _recargar_pedidos()
+    _recargar_ml()
+    _recargar_full()
     _recargar_historial()
+    _sync_estado_boton()
     interfaz.page.show_dialog(dialogo)

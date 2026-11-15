@@ -16,9 +16,12 @@ from ..dialogs import (
     mostrar_dialogo_configuracion_smtp,
     mostrar_dashboard_metricas,
     mostrar_descuento_mercado_full,
+    mostrar_planificar_full,
+    mostrar_picking_guiado_full,
     mostrar_descuento_mercado_libre,
     mostrar_dialogo_api_keys,
     mostrar_dialogo_api_master,
+    mostrar_gestion_ambientes,
     mostrar_dialogo_backup,
     mostrar_dialogo_cierre_jornada,
     mostrar_dialogo_cierre_mercado,
@@ -45,6 +48,8 @@ from ..dialogs import (
     mostrar_historial_pedidos,
     mostrar_imprimir_descuentos,
     mostrar_ingreso_fabrica,
+    mostrar_planificar_ingreso_fabrica,
+    mostrar_control_ingreso_fabrica,
     mostrar_notificaciones_admin,
     mostrar_registro_auditoria,
     mostrar_sesiones_api,
@@ -231,16 +236,14 @@ class DialogDispatcherMixin:
         mostrar_dialogo_heatmap(self, _e)
 
     def sincronizar_catalogo_excel(self, _e: ft.Event | None = None) -> None:
-        """Vuelca de forma atómica y completa el catálogo SQLite hacia Productos.xlsx."""
-        if not self.exigir_roles("administrador", "master"):
-            return
-        try:
-            from ...stock_manager import StockManager
-            sm = StockManager(self.menu.ruta_excel_base)
-            total = sm.sincronizar_catalogo_completo_excel()
-            self.notificar(f"✅ Se sincronizaron {total} productos en 'Productos.xlsx' con éxito.")
-        except Exception as exc:
-            self.notificar(f"❌ Error al sincronizar con Excel: {exc}")
+        """Abre la consola modal para la sincronización con Productos.xlsx."""
+        from ..dialogs.dlg_sincronizar_excel import mostrar_dialogo_sincronizar_excel
+        mostrar_dialogo_sincronizar_excel(self)
+
+    def mostrar_detalle_quiebre(self, criticos: list | None = None) -> None:
+        """Abre el diálogo modal adaptativo de detalle de productos en quiebre."""
+        from ..dialogs.dlg_quiebre import mostrar_detalle_quiebre
+        mostrar_detalle_quiebre(self, criticos)
 
     def mostrar_dashboard_metricas(self, _e: ft.Event | None = None) -> None:
         mostrar_dashboard_metricas(self, _e)
@@ -259,10 +262,28 @@ class DialogDispatcherMixin:
         self._asegurar_file_picker()
         mostrar_ingreso_fabrica(self, _evento)
 
+    def mostrar_planificar_ingreso_fabrica(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
+        mostrar_planificar_ingreso_fabrica(self, _evento)
+
+    def mostrar_control_ingreso_fabrica(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_control_ingreso_fabrica(self, _evento)
+
     def mostrar_descuento_mercado_full(self, _evento: ft.Event | None = None) -> None:
         self.cerrar_drawer_si_movil()
         self._asegurar_file_picker()
         mostrar_descuento_mercado_full(self, _evento)
+
+    def mostrar_planificar_full(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        self._asegurar_file_picker()
+        mostrar_planificar_full(self, _evento)
+
+    def mostrar_picking_guiado_full(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_picking_guiado_full(self, _evento)
 
     def mostrar_descuento_mercado_libre(self, _evento: ft.Event | None = None) -> None:
         self.cerrar_drawer_si_movil()
@@ -290,3 +311,7 @@ class DialogDispatcherMixin:
 
     def mostrar_dialogo_inventario_vivo(self, _evento: ft.Event | None = None) -> None:
         mostrar_dialogo_inventario_vivo(self, _evento)
+
+    def mostrar_gestion_ambientes(self, _evento: ft.Event | None = None) -> None:
+        self.cerrar_drawer_si_movil()
+        mostrar_gestion_ambientes(self, _evento)

@@ -73,7 +73,13 @@ from .dlg_movimientos_rapidos import (
     MotivoIngresoRapido,
     MotivoSalidaRapida,
 )
+from .dlg_planificar_full import mostrar_planificar_full
+from .dlg_picking_guiado_full import mostrar_picking_guiado_full
+from .dlg_planificar_ingreso_fabrica import mostrar_planificar_ingreso_fabrica
+from .dlg_control_ingreso_fabrica import mostrar_control_ingreso_fabrica
+from .dlg_gestion_ambientes import mostrar_gestion_ambientes
 from .dlg_reportes import mostrar_centro_reportes
+from .dlg_sincronizar_excel import mostrar_dialogo_sincronizar_excel
 
 from .dlg_api import (
     mostrar_dialogo_api_master,
@@ -101,9 +107,10 @@ __all__ = [
     "mostrar_dialogo_gestion_clientes",
     "mostrar_dialogo_gestion_usuarios",
     "mostrar_dialogo_api_keys",
-    # Config & Backup & Restauración
+    # Config & Backup & Restauración & Ambientes
     "mostrar_dialogo_configuracion_smtp",
     "mostrar_dialogo_backup",
+    "mostrar_gestion_ambientes",
     "confirmar_restaurar",
     # Catálogo & Productos & Ver Stock
     "mostrar_dialogo_gestion_productos",
@@ -142,7 +149,11 @@ __all__ = [
     # Operaciones de Stock & Fábrica
     "generar_pedido_fabrica",
     "mostrar_ingreso_fabrica",
+    "mostrar_planificar_ingreso_fabrica",
+    "mostrar_control_ingreso_fabrica",
     "mostrar_descuento_mercado_full",
+    "mostrar_planificar_full",
+    "mostrar_picking_guiado_full",
     "mostrar_descuento_mercado_libre",
     "MercadoLibreScannerComponent",
     "MercadoLibreDocxComponent",
@@ -152,6 +163,7 @@ __all__ = [
     "mostrar_command_palette",
     "mostrar_dialogo_ingreso_rapido",
     "mostrar_dialogo_salida_rapida",
+    "mostrar_dialogo_sincronizar_excel",
     "MotivoIngresoRapido",
     "MotivoSalidaRapida",
 ]

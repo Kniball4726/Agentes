@@ -9,8 +9,10 @@ Este directorio contiene el código fuente principal de **StockAgent**, estructu
 ```text
 src/
 ├── core/                       # Núcleo de excepciones y contratos de dominio
-│   ├── __init__.py             # Exportaciones públicas de excepciones
-│   └── exceptions.py           # Jerarquía unificada de errores tipados
+│   ├── __init__.py             # Exportaciones públicas de excepciones y entorno
+│   ├── exceptions.py           # Jerarquía unificada de errores tipados
+│   ├── environment.py          # Aislamiento de perfiles de ejecución (Producción vs QA Sandbox)
+│   └── system_reset.py         # Restablecimiento controlado a estado virgen (Clean Slate)
 │
 ├── api/                        # API REST v1 desacoplada (FastAPI)
 │   ├── deps.py                 # Autenticación Bearer/API Key, sesiones SQLite y tokens ?dt=
@@ -44,6 +46,9 @@ src/
 │   ├── dispatch_repo.py        # Mixin de estados de despacho y hojas de ruta
 │   ├── audit_repo.py           # Mixin de bitácora transaccional y auditoría forense
 │   ├── closure_repo.py         # Mixin de cierres de jornada y consolidación documental
+│   ├── factory_plan_repo.py    # Mixin de planes y verificación de ingresos de fábrica
+│   ├── full_plan_repo.py       # Mixin de planes y picking guiado para Mercado Envíos Full
+│   ├── stock_flow_repo.py      # Mixin de analítica ejecutiva y agregaciones de stock en vivo
 │   └── store.py                # Repositorio SQLite OrderStore unificado
 │
 ├── products/                   # Dominio modular de productos, catálogo y despachos
@@ -57,11 +62,15 @@ src/
 │   └── store.py                # Repositorio SQLite ProductStore unificado
 │
 ├── inventory/                  # Dominio modular de inventario y sincronización Excel
-│   ├── manager.py              # StockManager central
+│   ├── manager.py              # StockManager central (adaptable a Producción y QA Sandbox)
 │   ├── catalog_loader.py       # Carga fast-path desde SQLite / importación inicial Productos.xlsx
 │   ├── discount_engine.py      # Motor transaccional de descuentos y cálculo de lotes
 │   ├── excel_sync.py           # Exportación y refresco de filas en Excel
 │   └── template_sync.py        # Sincronización atómica preservando estilos de Productos.xlsx
+│
+├── qa/                         # Módulo de Aseguramiento de Calidad y Pruebas Aisladas
+│   ├── __init__.py             # Exportaciones del paquete QA
+│   └── seeder.py               # Sembrador de datos sintéticos realistas para testing seguro
 │
 ├── stock/                      # Dominio de stock, reposición y reportes
 │   ├── models.py               # Dataclasses RegistroDescuento y ReporteStock
@@ -115,14 +124,16 @@ src/
 │   ├── dashboard_presenter.py  # Presentador desacoplado del Dashboard reactivo
 │   ├── mixins/                 # auth_session, batch_processor, chat_panel, dialog_dispatcher,
 │   │                           # document_viewer, file_transfer, responsive, session_sync
-│   ├── components/             # audio_manager, debounce, docking_manager, floating_chat,
-│   │                           # floating_chat_intents, header, mobile_nav, network_heartbeat,
-│   │                           # panels, print_labels, sidebar, sidebar_horizontal,
-│   │                           # sidebar_sections, window_manager
+│   ├── components/             # admin_flow_analytics, admin_operations_bar, audio_manager,
+│   │                           # debounce, docking_manager, floating_chat, floating_chat_intents,
+│   │                           # header, mobile_nav, network_heartbeat, panels, print_labels,
+│   │                           # sidebar, sidebar_horizontal, sidebar_sections, window_manager
 │   └── dialogs/                # Módulos desacoplados por caso de uso:
 │                               # auth_* + dlg_auth, analytics_* + dlg_analytics, api_panel_tabs + dlg_api + dlg_api_keys,
 │                               # cierre/ + dlg_cierre, dlg_clientes, dlg_command_palette, dlg_email,
 │                               # dlg_escaner, dlg_anomalias, dlg_archivo_historico, dlg_backup,
+│                               # dlg_control_ingreso_fabrica, dlg_gestion_ambientes, dlg_picking_guiado_full,
+│                               # dlg_planificar_full, dlg_planificar_ingreso_fabrica,
 │                               # dlg_heatmap + heatmap_render, historial_* + dlg_historial_pedidos,
 │                               # dlg_informes, dlg_ingreso_fabrica + ingreso_fabrica_archivo,
 │                               # dlg_inventario_vivo + inventario_vivo_views, dlg_mercado_full,
@@ -238,6 +249,7 @@ Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líne
 Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líneas):
 
 * **`excel_sync.py`:** Aísla la manipulación de bajo nivel con `openpyxl`: detección de esquemas dinámicos, normalización de encabezados, copiado exacto de estilos visuales y construcción de informes idénticos a la plantilla de producción.
+* **`template_sync.py`:** Sincronización transaccional bidireccional (`SQLite ➔ Excel` y `Excel ➔ SQLite`). Incluye la regla de integridad de catálogo: los productos ausentes en `Productos.xlsx` quedan automáticamente inactivos (`active = 0`) en SQLite, y los productos presentes se reactivan.
 * **`manager.py` (`StockManager`):** Orquestación del catálogo, sincronización atómica con debounce entre SQLite y `Productos.xlsx`, aplicación de remitos mayoristas, canjes y despachos de Mercado Envíos Full.
 * **`src/stock_manager.py` (Fachada):** Re-exporta `StockManager`, `RegistroDescuento`, `ReporteStock` y utilidades para compatibilidad absoluta.
 

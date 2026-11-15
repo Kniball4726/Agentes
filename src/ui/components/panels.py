@@ -5,6 +5,7 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
+from .admin_operations_bar import construir_panel_seguimiento_admin
 
 
 def construir_panel_metricas(interfaz: Any) -> ft.Control:
@@ -18,8 +19,14 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
             ("Espacio en Disco", "telemetria_disco", ft.Icons.STORAGE),
             ("Salud Servidor", "telemetria_salud", ft.Icons.HEALTH_AND_SAFETY),
         ]
-    elif interfaz.usuario_actual and interfaz.usuario_actual.role == "picker":
-        return ft.Container(visible=False)
+    elif interfaz.usuario_actual and interfaz.usuario_actual.role in ("picker", "administrador"):
+        # Administrador y Picker no muestran esta hilera superior de tarjetas clásicas de métricas
+        # ("PDF de la jornada", "Canjes", etc.) para maximizar el espacio vertical
+        # del seguimiento operativo y el panel de analítica ejecutiva 360°.
+        if hasattr(interfaz, "contadores") and isinstance(interfaz.contadores, dict):
+            for clave in ("pdf", "canjes", "ml", "total", "informes", "quiebres"):
+                interfaz.contadores[clave] = ft.Text("0", visible=False)
+        return ft.Container(visible=False, height=0)
     else:
         metricas = [
             ("PDF de la jornada", "pdf", ft.Icons.DESCRIPTION),
@@ -28,8 +35,6 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
             ("Total Jornada", "total", ft.Icons.RECEIPT_LONG),
             ("Informes", "informes", ft.Icons.INSERT_CHART),
         ]
-        if interfaz.usuario_actual and interfaz.usuario_actual.role == "administrador":
-            metricas.append(("Quiebres de stock", "quiebres", ft.Icons.WARNING_AMBER))
 
     tarjetas = []
     for titulo, clave, icono in metricas:
@@ -95,24 +100,6 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
 
     # Panel LADO DERECHO: Informes generados
     acciones_derecha: list[ft.Control] = [ft.Icon(icono_derecha, color=ROJO, size=18)]
-    if not es_master:
-        btn_imprimir = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.PRINT, size=13, color=ft.Colors.WHITE),
-                    ft.Text("Imprimir Descuento", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                ],
-                spacing=4,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            bgcolor=ROJO,
-            border_radius=6,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            tooltip="Consultar y reimprimir comprobantes de descuento",
-            on_click=lambda _: interfaz.mostrar_imprimir_descuentos(),
-            ink=True,
-        )
-        acciones_derecha.insert(0, btn_imprimir)
 
     contenido_derecha = ft.Column(
         [
@@ -176,6 +163,14 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
 
     tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=not es_movil)
 
+    # El Administrador dispone del panel ejecutivo de estadísticas y flujo de stock en tiempo real
+    es_admin = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "administrador")
+    if es_admin:
+        from .admin_flow_analytics import construir_panel_analitica_flujo_admin
+        panel_flujo = construir_panel_analitica_flujo_admin(interfaz)
+        if panel_flujo:
+            return panel_flujo
+
     # El usuario Master no gestiona ni visualiza pedidos operativos (Segregación SoD)
     # El rol Picker se dedica exclusivamente al picking/despacho y no debe ver pedidos armados
     if es_master or es_picker:
@@ -205,9 +200,9 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
 
 def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
     """Genera el panel de accesos rápidos táctiles según el rol del usuario:
-    - Master: Oculto / Eliminado.
+    - Master: Accesos rápidos de seguridad.
     - Picker: Ingreso, Egreso y Descontar Mercado Libre.
-    - Administrador: Solo Ingreso y Egreso.
+    - Administrador: Sin accesos rápidos táctiles (solo seguimiento operativo en vivo).
     - Operador: Cargar Pedido, Descontar ML, Ingreso y Egreso.
     - Consulta / Otros: Oculto.
     """
@@ -217,6 +212,55 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
 
     es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+
+    # El Administrador no tiene tarjetas de accesos rápidos; en su lugar muestra el seguimiento operativo en vivo
+    if rol == "administrador":
+        panel_seg = construir_panel_seguimiento_admin(interfaz, es_movil=es_movil)
+        if panel_seg:
+            return ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Row(
+                            [
+                                ft.Icon(ft.Icons.TIMELAPSE, size=16, color=ROJO),
+                                ft.Text(
+                                    "Seguimiento Operativo en Vivo",
+                                    size=13,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=interfaz.texto,
+                                ),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        panel_seg,
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+                if not es_movil
+                else ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Icon(ft.Icons.TIMELAPSE, size=16, color=ROJO),
+                                ft.Text(
+                                    "Seguimiento Operativo en Vivo",
+                                    size=13,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=interfaz.texto,
+                                ),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        panel_seg,
+                    ],
+                    spacing=6,
+                ),
+                padding=ft.Padding.only(bottom=4),
+            )
+        return ft.Container(height=0, visible=False)
 
     items_config = []
     if rol == "master":
@@ -244,30 +288,6 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
                 ft.Icons.STOREFRONT,
                 ft.Colors.AMBER_600,
                 interfaz.mostrar_descuento_mercado_libre,
-            ),
-            (
-                "Ingreso de Stock",
-                "Entrada rápida / Fábrica",
-                ft.Icons.INPUT,
-                ft.Colors.GREEN_700,
-                interfaz.mostrar_dialogo_ingreso_rapido,
-            ),
-            (
-                "Egreso de Stock",
-                "Salida rápida de mercadería",
-                ft.Icons.OUTPUT,
-                ft.Colors.DEEP_ORANGE_600,
-                interfaz.mostrar_dialogo_salida_rapida,
-            ),
-        ]
-    elif rol == "administrador":
-        items_config = [
-            (
-                "Gestionar Productos",
-                "Catálogo maestro y existencias",
-                ft.Icons.INVENTORY_2,
-                ft.Colors.BLUE_600,
-                interfaz.mostrar_gestion_productos,
             ),
             (
                 "Ingreso de Stock",
@@ -371,16 +391,18 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
     titulo_rapido = "Accesos Rápidos de Seguridad y Control" if rol == "master" else "Accesos Rápidos de Operación"
     icono_rapido = ft.Icons.SECURITY if rol == "master" else ft.Icons.FLASH_ON
 
+    cabecera = ft.Row(
+        [
+            ft.Icon(icono_rapido, size=16, color=ROJO),
+            ft.Text(titulo_rapido, size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+        ],
+        spacing=6,
+    )
+
     return ft.Container(
         content=ft.Column(
             [
-                ft.Row(
-                    [
-                        ft.Icon(icono_rapido, size=16, color=ROJO),
-                        ft.Text(titulo_rapido, size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ],
-                    spacing=6,
-                ),
+                cabecera,
                 contenedor_tarjetas,
             ],
             spacing=8,

@@ -100,7 +100,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
 
     # Botonera de Acceso Rápido en menú lateral:
     # - Master: Usuarios y Auditoría
-    # - Picker: Entrada, Salida y Descontar Mercado Libre
+    # - Picker: Entrada, Salida, Descontar ML, Full e Ingreso de Fábrica (Rojo Institucional)
     # - Administrador: Entrada, Salida y Gestionar Productos
     # - Operador: Hero Button 'Cargar Pedido', [Entrada, Salida] y Mercado Libre
     if rol in ("operador", "administrador", "picker", "master"):
@@ -141,9 +141,30 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 on_click=lambda _: interfaz.mostrar_registro_auditoria(),
                 ink=True,
             )
+            btn_env = ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Icon(ft.Icons.TUNE, size=14, color=ft.Colors.AMBER_400),
+                        ft.Text("Ambientes", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=4,
+                ),
+                expand=True,
+                height=32,
+                border_radius=7,
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_400),
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_400)),
+                tooltip="⚡ Cambiar entre Producción y QA / Pruebas",
+                on_click=lambda _: interfaz.mostrar_gestion_ambientes(),
+                ink=True,
+            )
             controls.append(
                 ft.Column(
-                    [ft.Row([btn_usr, btn_aud], spacing=6)],
+                    [
+                        ft.Row([btn_usr, btn_aud], spacing=6),
+                        ft.Row([btn_env]),
+                    ],
                     spacing=6,
                     tight=True,
                 )
@@ -240,8 +261,8 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 btn_meli = ft.Container(
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
-                            ft.Text("Descontar ML", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                            ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Descontar ML", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                         spacing=4,
@@ -249,22 +270,16 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                     expand=True,
                     height=32,
                     border_radius=7,
-                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
+                    bgcolor=ROJO,
                     tooltip="⚡ Descontar y escanear etiquetas de Mercado Libre",
                     on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
                     ink=True,
                 )
-                filas_botones = [
-                    ft.Row([btn_entrada, btn_salida], spacing=6),
-                    ft.Row([btn_meli], spacing=6),
-                ]
-            elif rol == "administrador":
-                btn_prod = ft.Container(
+                btn_full = ft.Container(
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.BLUE_500),
-                            ft.Text("Productos", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                            ft.Icon(ft.Icons.LOCAL_SHIPPING, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Full", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                         spacing=4,
@@ -272,15 +287,163 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                     expand=True,
                     height=32,
                     border_radius=7,
-                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.BLUE_500),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500)),
-                    tooltip="⚡ Gestión del catálogo maestro de productos",
-                    on_click=lambda _: interfaz.mostrar_gestion_productos(),
+                    bgcolor=ROJO,
+                    tooltip="⚡ Preparación guiada de Mercado Envíos Full (escaneo y validación en tiempo real)",
+                    on_click=lambda _: interfaz.mostrar_picking_guiado_full(),
+                    ink=True,
+                )
+                btn_fabrica = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Ingreso de Fábrica", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Control de recepción de fábrica por escaneo (validación en tiempo real)",
+                    on_click=lambda _: interfaz.mostrar_control_ingreso_fabrica(),
                     ink=True,
                 )
                 filas_botones = [
+                    ft.Row([btn_meli]),
+                    ft.Row([btn_full]),
+                    ft.Row([btn_fabrica]),
                     ft.Row([btn_entrada, btn_salida], spacing=6),
-                    ft.Row([btn_prod], spacing=6),
+                ]
+            elif rol == "administrador":
+                btn_gestionar_inv = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INVENTORY, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Gestionar inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Consulta interactiva de existencias y niveles de stock en tiempo real",
+                    on_click=lambda _: interfaz.mostrar_ver_stock() if hasattr(interfaz, "mostrar_ver_stock") else None,
+                    ink=True,
+                )
+                btn_plan_fabrica = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.ADD_TASK, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Planificar ingreso de fábrica", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Planificar y monitorear ingreso de remitos de fábrica",
+                    on_click=lambda _: interfaz.mostrar_planificar_ingreso_fabrica() if hasattr(interfaz, "mostrar_planificar_ingreso_fabrica") else None,
+                    ink=True,
+                )
+                btn_plan_full = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.LOCAL_SHIPPING, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Planificar mercado full", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Planificar y monitorear envíos a Mercado Envíos Full",
+                    on_click=lambda _: interfaz.mostrar_planificar_full() if hasattr(interfaz, "mostrar_planificar_full") else None,
+                    ink=True,
+                )
+                btn_productos = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Gestionar productos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Gestión del catálogo maestro de productos",
+                    on_click=lambda _: interfaz.mostrar_gestion_productos() if hasattr(interfaz, "mostrar_gestion_productos") else None,
+                    ink=True,
+                )
+                btn_ajuste_inv = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.TUNE, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Ajuste de inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Escanear mercadería o registrar ajuste de stock",
+                    on_click=lambda _: interfaz.mostrar_ingreso_fabrica() if hasattr(interfaz, "mostrar_ingreso_fabrica") else None,
+                    ink=True,
+                )
+                btn_generar_pedido = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.FACT_CHECK, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Generar Pedido", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Calcular sugerido y generar planilla Excel de reposición a fábrica",
+                    on_click=lambda _: interfaz.generar_pedido_fabrica() if hasattr(interfaz, "generar_pedido_fabrica") else None,
+                    ink=True,
+                )
+                btn_sincronizar = ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.SYNC, size=14, color=ft.Colors.WHITE),
+                            ft.Text("Sincronizar", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                    expand=True,
+                    height=32,
+                    border_radius=7,
+                    bgcolor=ROJO,
+                    tooltip="⚡ Sincronizar catálogo SQLite con Productos.xlsx",
+                    on_click=lambda _: interfaz.sincronizar_catalogo_excel() if hasattr(interfaz, "sincronizar_catalogo_excel") else None,
+                    ink=True,
+                )
+                filas_botones = [
+                    ft.Row([btn_gestionar_inv]),
+                    ft.Row([btn_plan_fabrica]),
+                    ft.Row([btn_plan_full]),
+                    ft.Row([btn_productos]),
+                    ft.Row([btn_ajuste_inv]),
+                    ft.Row([btn_generar_pedido]),
+                    ft.Row([btn_sincronizar]),
+                    ft.Row([btn_entrada, btn_salida], spacing=6),
                 ]
             else:
                 filas_botones = [

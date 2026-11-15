@@ -101,6 +101,81 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS planes_mercado_full (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre_envio TEXT NOT NULL,
+            archivo_excel TEXT NOT NULL,
+            creado_por TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en_proceso', 'completado', 'cancelado')),
+            articulos_totales INTEGER NOT NULL DEFAULT 0,
+            articulos_pickeados INTEGER NOT NULL DEFAULT 0,
+            porcentaje REAL NOT NULL DEFAULT 0.0,
+            picker_asignado TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_mercado_full_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL REFERENCES planes_mercado_full(id) ON DELETE CASCADE,
+            codigo TEXT NOT NULL,
+            descripcion TEXT NOT NULL DEFAULT '',
+            cantidad_solicitada INTEGER NOT NULL,
+            cantidad_pickeada INTEGER NOT NULL DEFAULT 0,
+            completado INTEGER NOT NULL DEFAULT 0 CHECK (completado IN (0, 1))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS planes_ingreso_fabrica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre_remito TEXT NOT NULL,
+            archivo_remito TEXT NOT NULL,
+            creado_por TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en_proceso', 'completado', 'cancelado')),
+            articulos_esperados INTEGER NOT NULL DEFAULT 0,
+            articulos_controlados INTEGER NOT NULL DEFAULT 0,
+            articulos_ingresados INTEGER NOT NULL DEFAULT 0,
+            porcentaje REAL NOT NULL DEFAULT 0.0,
+            picker_asignado TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_ingreso_fabrica_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL REFERENCES planes_ingreso_fabrica(id) ON DELETE CASCADE,
+            codigo TEXT NOT NULL,
+            descripcion TEXT NOT NULL DEFAULT '',
+            cantidad_esperada INTEGER NOT NULL,
+            cantidad_controlada INTEGER NOT NULL DEFAULT 0,
+            cantidad_ingresada INTEGER NOT NULL DEFAULT 0,
+            completado INTEGER NOT NULL DEFAULT 0 CHECK (completado IN (0, 1))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cierres_parciales_fabrica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL REFERENCES planes_ingreso_fabrica(id) ON DELETE CASCADE,
+            tipo TEXT NOT NULL DEFAULT 'parcial',
+            picker TEXT NOT NULL,
+            articulos_ingresados INTEGER NOT NULL DEFAULT 0,
+            detalle_items TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS pedido_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
@@ -153,6 +228,14 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     if "archivo_hoja_ruta" not in cols_cierres:
         connection.execute("ALTER TABLE cierres_jornada ADD COLUMN archivo_hoja_ruta TEXT NOT NULL DEFAULT ''")
 
+    cols_plan_fabrica = {r["name"] for r in connection.execute("PRAGMA table_info(plan_ingreso_fabrica_items)").fetchall()}
+    if "cantidad_ingresada" not in cols_plan_fabrica:
+        connection.execute("ALTER TABLE plan_ingreso_fabrica_items ADD COLUMN cantidad_ingresada INTEGER NOT NULL DEFAULT 0")
+
+    cols_planes_fabrica = {r["name"] for r in connection.execute("PRAGMA table_info(planes_ingreso_fabrica)").fetchall()}
+    if "articulos_ingresados" not in cols_planes_fabrica:
+        connection.execute("ALTER TABLE planes_ingreso_fabrica ADD COLUMN articulos_ingresados INTEGER NOT NULL DEFAULT 0")
+
     _migrar_constraint_docx(connection)
     _migrar_columnas_pedidos(connection)
 
@@ -162,6 +245,13 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre_mercado ON pedidos(cierre_mercado_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_id ON pedido_items(pedido_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_archivo_hash ON pedidos(archivo_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_planes_full_estado ON planes_mercado_full(estado)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_items_plan_id ON plan_mercado_full_items(plan_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_items_codigo ON plan_mercado_full_items(plan_id, codigo)",
+        "CREATE INDEX IF NOT EXISTS idx_planes_fabrica_estado ON planes_ingreso_fabrica(estado)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_plan_id ON plan_ingreso_fabrica_items(plan_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_codigo ON plan_ingreso_fabrica_items(plan_id, codigo)",
+        "CREATE INDEX IF NOT EXISTS idx_cierres_fabrica_plan ON cierres_parciales_fabrica(plan_id)",
     ):
         connection.execute(ddl)
 

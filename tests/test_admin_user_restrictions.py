@@ -107,7 +107,7 @@ class TestAdminUserRestrictions(unittest.TestCase):
                             textos_visibles.append(t.value)
 
         texto_unido = " ".join(textos_visibles)
-        self.assertNotIn("@Desarrollo", texto_unido)
+        self.assertNotIn(f"@{self.master_user.username}", texto_unido)
         self.assertNotIn("@supervisor2", texto_unido)  # El otro administrador no es visible
         self.assertIn("@supervisor1", texto_unido)     # Su propio usuario sí
         self.assertIn("@operario1", texto_unido)       # El operador subordinado sí
@@ -136,7 +136,7 @@ class TestAdminUserRestrictions(unittest.TestCase):
                             textos_visibles.append(t.value)
 
         texto_unido = " ".join(textos_visibles)
-        self.assertIn("@Desarrollo", texto_unido)
+        self.assertIn(f"@{self.master_user.username}", texto_unido)
         self.assertIn("@supervisor1", texto_unido)
         self.assertIn("@supervisor2", texto_unido)
         self.assertIn("@operario1", texto_unido)

@@ -313,18 +313,42 @@ Diseñado específicamente para el personal de preparación y movimiento físico
 
 ### Rol Administrador
 
-Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito, complementado por la **nueva Botonera de Acceso Rápido cuádruple** en la cabecera:
-* `[➕ Entrada]`: Entrada Rápida de mercadería con escáner y motivo.
-* `[➖ Salida]`: Salida Rápida de mercadería con justificación tipificada.
-* `[📦 Gestionar Productos]`: Acceso directo con 1 clic al catálogo maestro de artículos.
-* `[📊 Ver Stock]`: Nuevo visor en tiempo real de inventario consolidado con semáforo de existencias y búsqueda instantánea. Posee control total sobre la operación del depósito, estructurado en la barra lateral mediante bloques funcionales ordenados:
+Pensado para jefes de depósito, encargados de logística y gerencia. Posee control total sobre la operación del depósito y supervisión estratégica en tiempo real, complementado por su **Botonera Operativa Optimizada** y el nuevo **Centro de Control Ejecutivo y Analítica 360°**:
 
-* **📦 Stock y Catálogo:** Gestión de catálogo maestro, ajustes de stock físico / ingresos de fábrica, comparativa de discrepancias, sincronización atómica con `Productos.xlsx` y generación automática de pedidos a fábrica.
-* **🚚 Ventas y Despachos:** Historial interactivo de pedidos (reimpresión, modificación y desarmado con devolución de stock), auditoría histórica de Cierres de Operarios (en orden cronológico descendente con desglose modal de pedidos, regeneración de hojas de ruta de transporte y exportaciones a PDF/Excel/Email), directorio de clientes con alta automática, descuentos de Mercado Libre (vía comprobante y vía API oficial REST) y Mercado Full (con restauración documental delegada con exclusividad al rol Master por normativa SoD).
-* **📊 Analítica y Picking:** Dashboard ejecutivo de métricas de rendimiento, estadísticas de salida, radar predictivo de anomalías de demanda y mapa de calor de depósito con matriz de rotación ABC (Slotting).
-* **📄 Informes:** Apertura y descarga de reportes, envío directo por correo electrónico y comunicación por WhatsApp Web.
-* **🛡️ Sistema y Resguardo:** Copias de seguridad automáticas `.zip`, archivado histórico cronológico y alertas proactivas por Bot de Telegram.
-* **👥 Administración de Usuarios (Sección Final):** Gestión de identidades y accesos (IAM) para roles Operador y Consulta (creación, edición, reseteo de claves y desbloqueos).
+#### 1. Botonera Operativa Principal del Administrador (Orden Oficial de Comandos)
+* `[📊 Gestionar inventario]`: Visor consolidado de existencias en tiempo real con semáforo de disponibilidad (Normal/Bajo/Crítico), filtros rápidos por SKU/descripción y reorden.
+* `[📥 Planificar ingreso de fábrica]`: Carga y estructuración de remitos provenientes de planta industrial, asignación de tandas y control de cantidades esperadas.
+* `[🚚 Planificar mercado full]`: Armado y estructuración de tandas de preparación y despacho masivo hacia bodegas de Mercado Envíos Full.
+* `[📦 Gestionar productos]`: Administración maestra del catálogo (altas, modificaciones, códigos EAN-13, umbrales y ubicación en racks/slotting).
+* `[🔧 Ajuste de inventario]`: Regularización y arqueos de stock con escáner óptico (ajustes positivos/negativos tipificados).
+* `[📝 Generar Pedido]`: Asistente de cálculo de reposición inteligente para productos bajo stock de seguridad con exportación de orden a proveedores.
+* `[🔁 Sincronizar]`: Sincronización atómica bidireccional entre la base SQLite y la planilla maestra `Productos.xlsx` con copia de respaldo automática.
+* `[➕ Entrada / ➖ Salida]`: Botonera dúo express ubicada inmediatamente debajo de Sincronizar para movimientos rápidos de mercadería con justificación tipificada obligatoria.
+
+#### 2. Centro de Control Ejecutivo y Analítica 360° en Tiempo Real
+El panel principal del Administrador prescinde de las tarjetas estáticas tradicionales para maximizar el espacio vertical disponible, desplegando un centro de mando en vivo con actualización reactiva ante cada despacho:
+* **Fila Superior de KPIs en Vivo:**
+  * **Entradas Hoy:** Total de unidades ingresadas por fábrica o ajustes positivos.
+  * **Salidas Hoy:** Total de unidades descontadas por ventas y despachos.
+  * **Balance Neto:** Diferencia de flujo en tiempo real (destacado en verde para superávit o rojo ante sobre-demanda).
+  * **Bultos Totales:** Volumen total de cajas movilizadas en la jornada.
+  * **Salud de Stock (Semáforo de Catálogo):** SKUs clasificados en Óptimos (`🟢`), Alerta (`🟡`) y Quiebres (`🔴`) con acceso directo en 1 clic a *Ver Stock*.
+* **Tarjeta Izquierda — Distribución y Evolución Temporal:**
+  * **Mix de Salidas por Canal:** Proporción de demanda por Mercado Libre, Mercado Full, Mayoristas y Canjes con barras de progreso y porcentajes relativos.
+  * **Evolución de Pedidos (Últimos 7 Días):** Gráfica de barras de pedidos y volumen de bultos día por día.
+  * **Distribución de Entradas por Origen:** Balance entre remitos de fábrica y ajustes manuales.
+* **Tarjeta Derecha — Operaciones y Radar Crítico en Vivo:**
+  * **Top 5 Productos con Mayor Rotación:** Ranking de artículos más demandados en la jornada con códigos y cantidades.
+  * **Productividad de Armadores en Vivo:** Seguimiento en tiempo real de cada operario (pedidos preparados y bultos despachados con barra relativa de rendimiento).
+  * **Radar de Reposición (Stock Crítico):** Monitor prioritario de productos en `AGOTADO` o `QUIEBRE`, indicando stock actual y cantidad sugerida a comprar (`Pedir: +X`).
+
+#### 3. Aislamiento de Ambientes (Producción vs QA Sandbox)
+* **Qué hace:** Permite alternar de forma segura entre el ambiente productivo real y un entorno de pruebas aislado (QA Sandbox).
+* **Cómo opera:**
+  * En modo QA, el sistema conmuta automáticamente hacia `data_qa/` y `Descuentos_QA/`, utilizando bases de datos independientes con datos sintéticos sembrados.
+  * Muestra un badge visual distintivo `[BUG] AMBIENTE QA` en la barra superior.
+  * Permite entrenar operarios o probar nuevas configuraciones con riesgo cero de alteración de inventario productivo.
+  * Controlable desde el botón **'Ambientes'** en la barra superior o mediante el script `iniciar_qa.bat`.
 
 #### 1. Gestión de Usuarios Operativos
 * **Qué hace:** Permite crear, modificar datos de perfil (nombre y email), restablecer contraseñas, desbloquear cuentas y activar o desactivar accesos para roles `Operador` y `Consulta`. Protege la jerarquía del sistema ocultando la cuenta `Master`.
@@ -489,11 +513,15 @@ Pensado para jefes de depósito, encargados de logística y gerencia. Posee cont
   3. Presionar **"Probar Envío"** para verificar la comunicación en vivo.
   4. Activar o desactivar individualmente los tipos de alerta deseados mediante los interruptores dedicados y presionar **"Guardar Configuración"**.
 
-#### 17. Sincronización Total con Excel (Flush & Decoupling)
-* **Qué hace:** Vuelca todos los productos y existencias consolidadas en SQLite directamente hacia la planilla maestra `Productos.xlsx`. Esta herramienta permite operar a ultra-alta velocidad durante el día desacoplando las lecturas directas del archivo Excel, y consolidar o sincronizar manualmente o de forma automática al registrar el Cierre de Jornada.
+#### 17. Sincronización Total con Excel (Consola Bidireccional e Integridad de Catálogo)
+* **Qué hace:** Proporciona una consola modal interactiva (`⚡ Sincronizar`) para la sincronización atómica bidireccional entre la base de datos SQLite y la planilla maestra `Productos.xlsx`. Permite volcar existencias hacia Excel o importar modificaciones directas de la planilla hacia la base de datos.
+  * **Regla de Integridad de Catálogo (Desactivación Automática):** Aquellos productos registrados en la base de datos que ya no figuren en `Productos.xlsx` se marcan automáticamente como **Inactivos** (`active = 0`). De este modo, la planilla Excel define con total autoridad el catálogo operativo vigente, sin eliminar registros para no romper el histórico ni la trazabilidad de auditoría. Si un producto inactivo vuelve a figurar en `Productos.xlsx`, el sistema lo reactiva (`active = 1`) automáticamente.
 * **Cómo se hace:**
-  1. En el menú lateral, presionar **"Sincronizar con Excel"**.
-  2. El sistema leerá todos los saldos vigentes en la base de datos `productos.sqlite3` y actualizará fila por fila la planilla `Productos.xlsx`, informando en pantalla la cantidad de artículos sincronizados.
+  1. En el menú lateral o superior, presionar el botón **"Sincronizar"**.
+  2. Verificar que `Productos.xlsx` esté cerrado en Microsoft Excel para evitar bloqueos del sistema operativo.
+  3. Elegir la operación deseada:
+     * **`📤 Volcar Catálogo a Excel`:** Vuelca atómicamente el catálogo y stocks de SQLite a `Productos.xlsx` y desactiva en SQLite los productos ausentes en la planilla.
+     * **`📥 Importar Cambios de Excel a Sistema`:** Lee la planilla `Productos.xlsx`, incorpora/actualiza productos en SQLite y desactiva automáticamente los productos que no figuren en el archivo.
 
 #### 18. Conector Oficial Mercado Libre API (Sincronización Desatendida)
 * **Qué hace:** Permite consultar y sincronizar en tiempo real las órdenes de compra pagadas desde la API REST oficial de Mercado Libre (`/orders/search`), eliminando la necesidad de descargar archivos Word (.docx) o planillas manualmente.

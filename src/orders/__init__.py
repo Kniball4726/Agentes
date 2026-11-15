@@ -25,6 +25,9 @@ from .concurrency_repo import ConcurrencyRepositoryMixin
 from .audit_repo import AuditRepositoryMixin
 from .closure_repo import ClosureRepositoryMixin
 from .dispatch_repo import DispatchRepositoryMixin
+from .factory_plan_repo import FactoryPlanRepositoryMixin
+from .full_plan_repo import FullPlanRepositoryMixin
+from .stock_flow_repo import StockFlowRepositoryMixin
 from .store import OrderStore
 
 __all__ = [
@@ -49,5 +52,8 @@ __all__ = [
     "AuditRepositoryMixin",
     "ClosureRepositoryMixin",
     "DispatchRepositoryMixin",
+    "FullPlanRepositoryMixin",
+    "FactoryPlanRepositoryMixin",
+    "StockFlowRepositoryMixin",
     "OrderStore",
 ]

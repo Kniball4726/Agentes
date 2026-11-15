@@ -6,6 +6,27 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
+from ...paths import is_qa_environment
+
+
+def _crear_badge_qa(tamano: str = "desktop") -> ft.Control | None:
+    if not is_qa_environment():
+        return None
+    es_movil = tamano == "movil"
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.BUG_REPORT, size=12 if es_movil else 14, color=ft.Colors.BLACK),
+                ft.Text("AMBIENTE QA", size=9 if es_movil else 11, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
+            ],
+            spacing=4,
+            tight=True,
+        ),
+        bgcolor=ft.Colors.AMBER_400,
+        border_radius=6,
+        padding=ft.Padding.symmetric(horizontal=6 if es_movil else 8, vertical=2 if es_movil else 3),
+        tooltip="Modo Pruebas QA: Base de datos aislada (data_qa), no afecta datos reales.",
+    )
 
 
 def construir_encabezado(interfaz: Any) -> ft.Control:
@@ -126,15 +147,23 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
         )
         interfaz.controles_tarea.append(boton_actualizar_movil)
 
+        badge_qa_movil = _crear_badge_qa("movil")
         controles_titulo_movil: list[ft.Control] = [
             btn_menu,
             ft.Column(
                 [
-                    ft.Text(
-                        "Panel de control",
-                        size=20,
-                        weight=ft.FontWeight.BOLD,
-                        color=interfaz.texto,
+                    ft.Row(
+                        [
+                            ft.Text(
+                                "Panel de control",
+                                size=20,
+                                weight=ft.FontWeight.BOLD,
+                                color=interfaz.texto,
+                            ),
+                            *([badge_qa_movil] if badge_qa_movil else []),
+                        ],
+                        spacing=6,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     interfaz.pendientes_texto,
                 ],
@@ -275,15 +304,23 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
     puerto_red = os.environ.get("STOCKAGENT_PORT", str(PUERTO_WEB_DEFAULT))
     esquema_red = os.environ.get("STOCKAGENT_SCHEME", "http")
 
+    badge_qa_desk = _crear_badge_qa("desktop")
     return ft.Row(
         [
             ft.Column(
                 [
-                    ft.Text(
-                        "Panel de control",
-                        size=28,
-                        weight=ft.FontWeight.BOLD,
-                        color=interfaz.texto,
+                    ft.Row(
+                        [
+                            ft.Text(
+                                "Panel de control",
+                                size=28,
+                                weight=ft.FontWeight.BOLD,
+                                color=interfaz.texto,
+                            ),
+                            *([badge_qa_desk] if badge_qa_desk else []),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Text(
                         (f"Consola de Seguridad, IAM y Auditoría · Red local: {esquema_red}://{ip_red}:{puerto_red}"

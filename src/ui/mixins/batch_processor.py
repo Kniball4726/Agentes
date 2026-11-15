@@ -144,7 +144,10 @@ class BatchProcessingMixin:
         _set_procesamiento_global_activo(True)
         self.progreso_barra.visible = True
         self.progreso_barra.value = None
-        self.estado_tarea.value = f"En curso: {nombre}"
+        if hasattr(self, "fijar_estado_tarea"):
+            self.fijar_estado_tarea(f"En curso: {nombre}", estado="en_curso")
+        else:
+            self.estado_tarea.value = f"En curso: {nombre}"
         self.actualizar_estado_botones()
         self.sincronizar_sesiones()
         self.page.update()
@@ -168,7 +171,10 @@ class BatchProcessingMixin:
                     size=14,
                 )
             )
-            self.estado_tarea.value = f"{nombre} terminó con un error."
+            if hasattr(self, "fijar_estado_tarea"):
+                self.fijar_estado_tarea(f"{nombre} terminó con un error.", estado="error")
+            else:
+                self.estado_tarea.value = f"{nombre} terminó con un error."
             self.notificar("La operación falló. Revisa el panel Actividad.")
         else:
             texto = salida.getvalue().strip()
@@ -176,7 +182,10 @@ class BatchProcessingMixin:
                 self.actividad.controls.append(
                     ft.Text(texto, color=self.texto, size=14)
                 )
-            self.estado_tarea.value = f"{nombre} finalizada."
+            if hasattr(self, "fijar_estado_tarea"):
+                self.fijar_estado_tarea(f"{nombre} finalizada.", estado="listo")
+            else:
+                self.estado_tarea.value = f"{nombre} finalizada."
             exito = True
         finally:
             self.ocupado = False
@@ -194,11 +203,18 @@ class BatchProcessingMixin:
             val = min(1.0, max(0.0, float(actual) / float(total)))
             self.progreso_barra.value = val
             pct = int(val * 100)
-            self.estado_tarea.value = f"{mensaje} ({pct}%)" if mensaje else f"Progreso: {pct}%"
+            msg = f"{mensaje} ({pct}%)" if mensaje else f"Progreso: {pct}%"
+            if hasattr(self, "fijar_estado_tarea"):
+                self.fijar_estado_tarea(msg, estado="en_curso")
+            else:
+                self.estado_tarea.value = msg
         else:
             self.progreso_barra.value = None
             if mensaje:
-                self.estado_tarea.value = mensaje
+                if hasattr(self, "fijar_estado_tarea"):
+                    self.fijar_estado_tarea(mensaje, estado="en_curso")
+                else:
+                    self.estado_tarea.value = mensaje
         self.progreso_barra.visible = True
         if hasattr(self.page, "update"):
             try:
