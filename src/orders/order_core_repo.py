@@ -207,6 +207,34 @@ class OrderCoreRepository:
             ).fetchall()
         return [self.map_pedido(r) for r in rows]
 
+    def obtener_resumen_pedidos_por_fecha(self, limit: int = 30) -> list[dict[str, int | str]]:
+        """Agrupa los pedidos armados (no anulados) por fecha en orden descendente."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT SUBSTR(created_at, 1, 10) AS fecha,
+                       COUNT(*) AS cantidad_pedidos,
+                       COALESCE(SUM(bultos), 0) AS total_bultos,
+                       COALESCE(SUM(articulos_descontados), 0) AS total_articulos
+                FROM pedidos
+                WHERE estado != 'anulado'
+                GROUP BY SUBSTR(created_at, 1, 10)
+                ORDER BY fecha DESC, cantidad_pedidos DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "fecha": str(r["fecha"] or ""),
+                "cantidad_pedidos": int(r["cantidad_pedidos"] or 0),
+                "total_bultos": int(r["total_bultos"] or 0),
+                "total_articulos": int(r["total_articulos"] or 0),
+            }
+            for r in rows
+            if r["fecha"]
+        ]
+
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
         """Marca un pedido como anulado y registra el motivo en auditoría."""
         with self._connect() as connection, connection:

@@ -82,13 +82,21 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
 def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     """Genera el panel principal: 
     - Lado izquierdo: Pedidos preparados en vivo del turno con contador de bultos acumulados y fecha.
-    - Lado derecho: Informes generados (o eventos de auditoría para Master).
+    - Lado derecho: Pedidos armados por fecha (para Operador), eventos de auditoría (para Master) o Informes generados.
     """
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
     es_picker = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "picker")
+    es_operador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "operador")
     es_movil = bool(interfaz.es_pantalla_movil)
-    titulo_derecha = "Eventos de auditoría recientes" if es_master else "Informes generados"
-    icono_derecha = ft.Icons.SECURITY if es_master else ft.Icons.DESCRIPTION
+    if es_master:
+        titulo_derecha = "Eventos de auditoría recientes"
+        icono_derecha = ft.Icons.SECURITY
+    elif es_operador:
+        titulo_derecha = "Pedidos armados por fecha"
+        icono_derecha = ft.Icons.CALENDAR_MONTH
+    else:
+        titulo_derecha = "Informes generados"
+        icono_derecha = ft.Icons.DESCRIPTION
 
     # En pantallas móviles el dashboard padre usa scroll=AUTO (altura vertical no acotada).
     # Por ello en móvil desactivamos expand=True vertical y asignamos alturas acotadas

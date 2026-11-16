@@ -15,8 +15,8 @@ from reportlab.platypus import PageBreak, SimpleDocTemplate, Table, TableStyle
 if TYPE_CHECKING:
     from ..orders import Pedido
 
-ETIQUETAS_POR_HOJA = 10
-FILAS_POR_HOJA = 5
+ETIQUETAS_POR_HOJA = 4
+FILAS_POR_HOJA = 2
 COLUMNAS_POR_HOJA = 2
 
 
@@ -64,7 +64,7 @@ def _formatear_cliente_etiqueta(pedido: Any) -> str:
 
 
 def compilar_grilla_a4_pdf(tarjetas: list[Table], ruta_pdf: Path) -> Path:
-    """Maqueta una lista de tarjetas en páginas A4 en grilla 2x5 (10 rótulos por hoja)."""
+    """Maqueta una lista de tarjetas en páginas A4 en grilla 2x2 (4 rótulos grandes por hoja)."""
     story: list = []
     for i in range(0, len(tarjetas), ETIQUETAS_POR_HOJA):
         chunk = tarjetas[i : i + ETIQUETAS_POR_HOJA]
@@ -74,14 +74,11 @@ def compilar_grilla_a4_pdf(tarjetas: list[Table], ruta_pdf: Path) -> Path:
         grid_data = [
             [chunk[0], chunk[1]],
             [chunk[2], chunk[3]],
-            [chunk[4], chunk[5]],
-            [chunk[6], chunk[7]],
-            [chunk[8], chunk[9]],
         ]
         grid_table = Table(
             grid_data,
             colWidths=[9.8 * cm, 9.8 * cm],
-            rowHeights=[5.55 * cm] * 5,
+            rowHeights=[13.9 * cm, 13.9 * cm],
         )
         grid_table.setStyle(
             TableStyle(

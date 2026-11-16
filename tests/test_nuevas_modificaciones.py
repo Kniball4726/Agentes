@@ -71,12 +71,13 @@ def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
     destino.mkdir()
 
     # Pedido con 10 bultos -> exactamente 1 página A4
-    p10 = Pedido(
+    # Pedido con 4 bultos -> 1 página A4 (4 etiquetas por página, grilla 2x2)
+    p4 = Pedido(
         id=1,
         nota_pedido="REM-001",
         numero_pedido="PED-01",
         cliente="Comercial ABC",
-        bultos=10,
+        bultos=4,
         logistica="Canje",
         armador="Juan",
         tipo_archivo="pdf",
@@ -87,20 +88,20 @@ def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
-    pdf10 = generar_etiquetas_bultos_pdf(p10, destino)
-    reader10 = pypdf.PdfReader(str(pdf10))
-    assert len(reader10.pages) == 1
+    pdf4 = generar_etiquetas_bultos_pdf(p4, destino)
+    reader4 = pypdf.PdfReader(str(pdf4))
+    assert len(reader4.pages) == 1
     # Dimensiones A4 (595.27 x 841.89)
-    assert abs(float(reader10.pages[0].mediabox.width) - A4[0]) < 1.0
-    assert abs(float(reader10.pages[0].mediabox.height) - A4[1]) < 1.0
+    assert abs(float(reader4.pages[0].mediabox.width) - A4[0]) < 1.0
+    assert abs(float(reader4.pages[0].mediabox.height) - A4[1]) < 1.0
 
-    # Pedido con 11 bultos -> 2 páginas A4 (10 en la primera, 1 + relleno en la segunda)
-    p11 = Pedido(
+    # Pedido con 5 bultos -> 2 páginas A4 (4 en la primera, 1 en la segunda)
+    p5 = Pedido(
         id=2,
         nota_pedido="REM-002",
         numero_pedido="PED-02",
         cliente="Comercial ABC",
-        bultos=11,
+        bultos=5,
         logistica="Canje",
         armador="Juan",
         tipo_archivo="pdf",
@@ -111,9 +112,9 @@ def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
-    pdf11 = generar_etiquetas_bultos_pdf(p11, destino)
-    reader11 = pypdf.PdfReader(str(pdf11))
-    assert len(reader11.pages) == 2
+    pdf5 = generar_etiquetas_bultos_pdf(p5, destino)
+    reader5 = pypdf.PdfReader(str(pdf5))
+    assert len(reader5.pages) == 2
 
 
 def test_cliente_auto_creacion(tmp_path: Path):

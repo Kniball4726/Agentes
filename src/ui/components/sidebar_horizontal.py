@@ -138,7 +138,7 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
     # - Master: Usuarios y Auditoría
     # - Picker: Entrada, Salida y Mercado Libre
     # - Administrador: Solo Entrada y Salida (Ingreso y Egreso)
-    # - Operador: Entrada, Salida, Cargar Pedido y Mercado Libre
+    # - Operador: Cargar Pedido, Entrada y Salida
     if rol in ("operador", "administrador", "picker", "master"):
         if rol == "master":
             btn_usr_h = ft.Container(
@@ -240,25 +240,7 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
                     on_click=lambda _: interfaz.mostrar_crear_pedido(),
                     ink=True,
                 )
-                btn_meli_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
-                            ft.Text("Mercado Libre", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
-                    tooltip="⚡ Descontar Mercado Libre",
-                    on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
-                    ink=True,
-                )
-                botones_h = [btn_ped_h, btn_ent_h, btn_sal_h, btn_meli_h]
+                botones_h = [btn_ped_h, btn_ent_h, btn_sal_h]
             elif rol == "picker":
                 btn_meli_h = ft.Container(
                     content=ft.Row(

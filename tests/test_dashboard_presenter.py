@@ -8,6 +8,7 @@ import flet as ft
 from src.ui.dashboard_presenter import (
     actualizar_estado_dashboard,
     renderizar_auditoria_master,
+    renderizar_pedidos_armados_por_fecha,
     renderizar_pedidos_preparados_turno,
     renderizar_informes_generados,
 )
@@ -147,6 +148,95 @@ class TestDashboardPresenter(unittest.TestCase):
         botones = [c for c in col_der.controls if isinstance(c, ft.IconButton)]
         self.assertEqual(len(botones), 1)
         self.assertEqual(botones[0].icon, ft.Icons.EDIT_OUTLINED)
+
+    def test_renderizar_pedidos_armados_por_fecha_descendente(self):
+        """Verifica que la tarjeta derecha del operador muestre el resumen de pedidos por fecha y cantidad descendente."""
+        resumen = [
+            {"fecha": "2026-11-14", "cantidad_pedidos": 10, "total_bultos": 22, "total_articulos": 45},
+            {"fecha": "2026-11-16", "cantidad_pedidos": 24, "total_bultos": 58, "total_articulos": 110},
+            {"fecha": "2026-11-15", "cantidad_pedidos": 15, "total_bultos": 30, "total_articulos": 60},
+        ]
+        renderizar_pedidos_armados_por_fecha(self.interfaz, resumen)
+        self.assertEqual(len(self.interfaz.lista_informes.controls), 3)
+
+        def extraer_textos(ctrl):
+            txts = []
+            if isinstance(ctrl, ft.Text) and ctrl.value:
+                txts.append(str(ctrl.value))
+            if getattr(ctrl, "content", None) is not None:
+                txts.extend(extraer_textos(ctrl.content))
+            for ch in getattr(ctrl, "controls", []) or []:
+                txts.extend(extraer_textos(ch))
+            return txts
+
+        txt_0 = " ".join(extraer_textos(self.interfaz.lista_informes.controls[0]))
+        txt_1 = " ".join(extraer_textos(self.interfaz.lista_informes.controls[1]))
+        txt_2 = " ".join(extraer_textos(self.interfaz.lista_informes.controls[2]))
+
+        self.assertIn("16/11/2026", txt_0)
+        self.assertIn("24 pedidos", txt_0)
+        self.assertIn("58 bulto(s)", txt_0)
+
+        self.assertIn("15/11/2026", txt_1)
+        self.assertIn("15 pedidos", txt_1)
+
+        self.assertIn("14/11/2026", txt_2)
+        self.assertIn("10 pedidos", txt_2)
+
+    def test_order_store_obtener_resumen_pedidos_por_fecha_sqlite(self):
+        """Verifica que OrderStore agrupe los pedidos armados (no anulados) por fecha descendente."""
+        import tempfile
+        from src.orders import OrderStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = OrderStore(Path(tmpdir) / "pedidos.sqlite3")
+            p1 = store.registrar_pedido(
+                nota_pedido="R-001",
+                numero_pedido="1",
+                cliente="Cliente A",
+                bultos=3,
+                logistica="Transporte",
+                armador="operador1",
+                tipo_archivo="pdf",
+                nombre_archivo="r1.pdf",
+                articulos_descontados=10,
+            )
+            p2 = store.registrar_pedido(
+                nota_pedido="R-002",
+                numero_pedido="2",
+                cliente="Cliente B",
+                bultos=2,
+                logistica="Domicilio",
+                armador="operador1",
+                tipo_archivo="pdf",
+                nombre_archivo="r2.pdf",
+                articulos_descontados=5,
+            )
+            p3 = store.registrar_pedido(
+                nota_pedido="R-003",
+                numero_pedido="3",
+                cliente="Cliente C",
+                bultos=4,
+                logistica="Transporte",
+                armador="operador1",
+                tipo_archivo="pdf",
+                nombre_archivo="r3.pdf",
+                articulos_descontados=8,
+            )
+            with store._connect() as conn, conn:
+                conn.execute("UPDATE pedidos SET created_at = '2026-11-15 10:00:00' WHERE id = ?", (p1.id,))
+                conn.execute("UPDATE pedidos SET created_at = '2026-11-16 09:00:00' WHERE id IN (?, ?)", (p2.id, p3.id))
+
+            resumen = store.obtener_resumen_pedidos_por_fecha()
+            self.assertEqual(len(resumen), 2)
+            self.assertEqual(resumen[0]["fecha"], "2026-11-16")
+            self.assertEqual(resumen[0]["cantidad_pedidos"], 2)
+            self.assertEqual(resumen[0]["total_bultos"], 6)
+            self.assertEqual(resumen[0]["total_articulos"], 13)
+
+            self.assertEqual(resumen[1]["fecha"], "2026-11-15")
+            self.assertEqual(resumen[1]["cantidad_pedidos"], 1)
+            self.assertEqual(resumen[1]["total_bultos"], 3)
 
 
 if __name__ == "__main__":

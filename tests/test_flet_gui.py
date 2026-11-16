@@ -472,7 +472,7 @@ class FletGuiTests(unittest.TestCase):
         self.assertIn("Sugerencia de Pedido a Fábrica", cast(ft.Text, dialogo.title.controls[1]).value)
 
     def test_reports_list_displays_newest_first(self):
-        interfaz, menu, _ = self.crear_interfaz(role="operador")
+        interfaz, menu, _ = self.crear_interfaz(role="consulta")
         with tempfile.TemporaryDirectory() as temp_dir:
             file_old = Path(temp_dir) / "Descuento_Viejo.xlsx"
             file_new = Path(temp_dir) / "Descuento_Nuevo.xlsx"
@@ -732,6 +732,7 @@ class FletGuiTests(unittest.TestCase):
 
         self.assertIn("Gestión de Clientes", botones_por_seccion["CLIENTES"])
         self.assertNotIn("Gestión de Clientes", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
+        self.assertNotIn("Descontar Mercado Full", botones_por_seccion.get("PREPARACIÓN Y DESPACHO", []))
 
         self.assertIn("Historial de Pedidos", botones_por_seccion["INFORMES"])
         self.assertNotIn("Imprimir Descuento", botones_por_seccion["INFORMES"])

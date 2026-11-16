@@ -110,7 +110,7 @@ class TestMovimientosRapidos(unittest.TestCase):
         self.assertTrue(any("Salida Rápida" in getattr(c, "value", "") for c in titulo_row.controls if isinstance(c, ft.Text)))
 
     def test_botonera_cuarteto_accesos_rapidos_sidebar(self):
-        """Verifica que el menú lateral contenga los 4 accesos directos rápidos para el operador."""
+        """Verifica que el menú lateral contenga solo Cargar Pedido, Entrada y Salida en los accesos directos rápidos del operador."""
         from src.ui.components.sidebar import construir_sidebar_controls
         controles = construir_sidebar_controls(self.interfaz)
         textos = []
@@ -127,7 +127,7 @@ class TestMovimientosRapidos(unittest.TestCase):
         self.assertIn("Entrada", textos)
         self.assertIn("Salida", textos)
         self.assertIn("Cargar Pedido", textos)
-        self.assertIn("Mercado Libre", textos)
+        self.assertNotIn("Mercado Libre", textos)
 
     def test_boton_cargar_pedido_hero_operador(self):
         """Verifica que el botón de Cargar Pedido sea el primer acceso rápido destacado con estilo Hero y fondo ROJO."""
@@ -136,7 +136,7 @@ class TestMovimientosRapidos(unittest.TestCase):
         controles = construir_sidebar_controls(self.interfaz)
         columna_rapida = None
         for c in controles:
-            if isinstance(c, ft.Column) and len(c.controls) == 3:
+            if isinstance(c, ft.Column) and len(c.controls) == 2 and all(isinstance(x, ft.Row) for x in c.controls):
                 columna_rapida = c
                 break
         self.assertIsNotNone(columna_rapida)

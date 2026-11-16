@@ -645,6 +645,10 @@ class OrderStore:
         """Lista los pedidos más recientes en orden descendente por ID."""
         return self.order_core_repo.listar_pedidos(limit=limit)
 
+    def obtener_resumen_pedidos_por_fecha(self, limit: int = 30) -> list[dict[str, int | str]]:
+        """Agrupa los pedidos armados (no anulados) por fecha en orden descendente."""
+        return self.order_core_repo.obtener_resumen_pedidos_por_fecha(limit=limit)
+
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
         """Marca un pedido como anulado y registra el motivo en auditoría."""
         self.order_core_repo.anular_pedido(pedido_id, motivo=motivo, usuario=usuario)

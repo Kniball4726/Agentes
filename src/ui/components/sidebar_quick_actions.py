@@ -108,21 +108,9 @@ def _construir_accesos_operador(
             offset=ft.Offset(0, 2),
         ),
     )
-    btn_meli = _crear_boton_rapido_sidebar(
-        texto="Mercado Libre",
-        icono=ft.Icons.STOREFRONT,
-        color_icono=ft.Colors.AMBER_500,
-        color_texto=interfaz.texto,
-        bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-        border_color=ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500),
-        height=30,
-        tooltip="⚡ Descontar y escanear etiquetas de Mercado Libre",
-        on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
-    )
     return [
         ft.Row([btn_pedido]),
         ft.Row([btn_entrada, btn_salida], spacing=6),
-        ft.Row([btn_meli], spacing=6),
     ]
 
 
