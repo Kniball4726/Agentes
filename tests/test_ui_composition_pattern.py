@@ -14,6 +14,12 @@ from unittest.mock import MagicMock, patch
 import flet as ft
 
 from src.flet_gui import InterfazFlet
+from src.ui.components import procesar_mensaje_chat_agente
+from src.ui.components.audio_manager import (
+    TONOS_FRECUENCIAS,
+    _sintetizar_wav_tono,
+    reproducir_sonido_web,
+)
 from src.ui.controllers import (
     AuthSessionController,
     BatchTaskController,
@@ -307,6 +313,174 @@ class TestUICompositionPattern(unittest.TestCase):
             coord_ok.mostrar_crear_pedido()
         mock_dlg.assert_called_once_with(host)
         self.assertEqual(llamadas, ["drawer", "picker"])
+
+    def test_campana_audio_manager_wave_y_web_shared_prefs(self):
+        self.assertIn("campana", TONOS_FRECUENCIAS)
+        wav = _sintetizar_wav_tono("campana")
+        self.assertTrue(wav.startswith(b"RIFF"))
+        self.assertEqual(wav[8:12], b"WAVE")
+
+        run_js_mock = MagicMock()
+        host_js = SimpleNamespace(page=SimpleNamespace(run_js=run_js_mock))
+        reproducir_sonido_web(host_js, "campana")
+        run_js_mock.assert_called_once()
+        self.assertIn("playTone(", run_js_mock.call_args[0][0])
+
+        sp_fake = MagicMock()
+        async def _fake_set(key, val):
+            return True
+        sp_fake.set = MagicMock(side_effect=_fake_set)
+        dispatched = []
+
+        def _fake_run_task(coro_fn):
+            coro = coro_fn()
+            try:
+                coro.send(None)
+            except StopIteration:
+                pass
+            dispatched.append(True)
+
+        host_web = SimpleNamespace(
+            shared_prefs=sp_fake,
+            page=SimpleNamespace(web=True, services=[sp_fake], run_task=_fake_run_task, update=lambda: None),
+        )
+        reproducir_sonido_web(host_web, "campana")
+        self.assertTrue(dispatched)
+        sp_fake.set.assert_called_once()
+        self.assertEqual(sp_fake.set.call_args[0][0], "__sa_audio_event")
+        self.assertTrue(sp_fake.set.call_args[0][1].startswith("campana:"))
+
+    def test_sync_service_toca_campana_si_habilitada_y_respeta_silencio(self):
+        s_sonido = MagicMock(
+            usuario_actual=User(1, "ana", "operador", True),
+            modo_chat_activo="equipo",
+            modo_oscuro=True,
+            sonido_chat_activo=True,
+        )
+        s_muda = MagicMock(
+            usuario_actual=User(2, "carlos", "operador", True),
+            modo_chat_activo="equipo",
+            modo_oscuro=True,
+            sonido_chat_activo=False,
+        )
+        host = SimpleNamespace(usuario_actual=User(3, "luis", "operador", True))
+        svc = SessionSyncService(host, sessions_provider=lambda: [host, s_sonido, s_muda])
+        svc.sincronizar_sesiones(notificar_chat=("luis", "Todos", "Nuevo pedido listo"))
+
+        s_sonido.reproducir_sonido.assert_called_once_with("campana")
+        s_muda.reproducir_sonido.assert_not_called()
+
+    def test_badge_puntos_y_titulo_se_actualizan_y_limpian_por_tab(self):
+        counts = {"equipo": 2}
+        order_store = MagicMock()
+        order_store.contar_mensajes_no_leidos.side_effect = lambda _u: counts["equipo"]
+        order_store.marcar_mensajes_leidos.side_effect = lambda _u: counts.__setitem__("equipo", 0)
+
+        page_mock = MagicMock()
+        page_mock.title = "StockAgent · Sistema Integral de Depósito"
+
+        host = SimpleNamespace(
+            usuario_actual=User(1, "ana", "operador", True),
+            order_store=order_store,
+            page=page_mock,
+            sonido_chat_activo=True,
+            modo_chat_activo="bot",
+            _mensajes_bot_no_leidos=1,
+            _ultimo_no_leidos_chat=1,
+            badge_chat_container=SimpleNamespace(visible=False),
+            texto_badge_chat=SimpleNamespace(value=""),
+            texto_badge_tab=SimpleNamespace(value=""),
+            punto_nuevo_chat=SimpleNamespace(visible=False),
+            punto_nuevo_chat_movil=SimpleNamespace(visible=False),
+            punto_nuevo_chat_movil_sel=SimpleNamespace(visible=False),
+            punto_tab_equipo=SimpleNamespace(visible=False),
+            punto_tab_bot=SimpleNamespace(visible=False),
+            reproducir_sonido=MagicMock(),
+            cargar_mensajes_equipo=MagicMock(),
+            conversacion_equipo=SimpleNamespace(controls=[]),
+            user_store=MagicMock(),
+            selector_destinatario_equipo=SimpleNamespace(options=[], value="Todos"),
+            entrada_chat_equipo=SimpleNamespace(value=""),
+            texto=ft.Colors.WHITE,
+            secundario=ft.Colors.GREY,
+            borde=ft.Colors.GREY,
+            modo_oscuro=True,
+        )
+        svc = SessionSyncService(host)
+        svc.actualizar_badge_chat(sonar_si_aumenta=True)
+
+        self.assertTrue(host.badge_chat_container.visible)
+        self.assertEqual(host.texto_badge_chat.value, "3")
+        self.assertEqual(host.texto_badge_tab.value, " (2)")
+        self.assertTrue(host.punto_nuevo_chat.visible)
+        self.assertTrue(host.punto_nuevo_chat_movil.visible)
+        self.assertTrue(host.punto_nuevo_chat_movil_sel.visible)
+        self.assertTrue(host.punto_tab_equipo.visible)
+        self.assertTrue(host.punto_tab_bot.visible)
+        self.assertTrue(page_mock.title.startswith("(3) "))
+        host.reproducir_sonido.assert_called_once_with("campana")
+
+        svc.marcar_mensajes_chat_leidos(solo_tab="equipo")
+        self.assertEqual(host.texto_badge_chat.value, "1")
+        self.assertFalse(host.punto_tab_equipo.visible)
+        self.assertTrue(host.punto_tab_bot.visible)
+
+        svc.marcar_mensajes_chat_leidos(solo_tab="bot")
+        self.assertFalse(host.badge_chat_container.visible)
+        self.assertFalse(host.punto_nuevo_chat.visible)
+        self.assertFalse(host.punto_tab_bot.visible)
+        self.assertFalse(page_mock.title.startswith("("))
+
+    def test_chatbot_toca_campana_y_marca_punto_si_cerrado_o_en_otro_tab(self):
+        def _drive_sync(coro):
+            try:
+                while True:
+                    coro.send(None)
+            except StopIteration as exc:
+                return exc.value
+
+        badges: list[int] = []
+        host = SimpleNamespace(
+            usuario_actual=User(1, "ana", "operador", True),
+            chat_visible=False,
+            modo_chat_activo="bot",
+            sonido_chat_activo=True,
+            _mensajes_bot_no_leidos=0,
+            escribir_chat=MagicMock(),
+            reproducir_sonido=MagicMock(),
+            actualizar_badge_chat=lambda: badges.append(host._mensajes_bot_no_leidos),
+            page=MagicMock(),
+        )
+
+        _drive_sync(procesar_mensaje_chat_agente(host, "Hola"))
+        host.reproducir_sonido.assert_called_once_with("campana")
+        self.assertEqual(host._mensajes_bot_no_leidos, 1)
+        self.assertEqual(badges, [1])
+
+        host.chat_visible = True
+        host.reproducir_sonido.reset_mock()
+        host._mensajes_bot_no_leidos = 0
+        badges.clear()
+        _drive_sync(procesar_mensaje_chat_agente(host, "Hola"))
+        host.reproducir_sonido.assert_called_once_with("campana")
+        self.assertEqual(host._mensajes_bot_no_leidos, 0)
+        self.assertEqual(badges, [])
+
+    def test_chat_controller_al_abrir_marca_leidos(self):
+        host = SimpleNamespace(
+            chat_visible=False,
+            modo_chat_activo="equipo",
+            ventana_chat_flotante=SimpleNamespace(visible=False),
+            refrescar_usuarios_chat_equipo=MagicMock(),
+            cargar_mensajes_equipo=MagicMock(),
+            marcar_mensajes_chat_leidos=MagicMock(),
+            page=MagicMock(),
+        )
+        ctrl = ChatAssistantController(host)
+        ctrl.alternar_chat_flotante()
+        self.assertTrue(host.chat_visible)
+        self.assertTrue(host.ventana_chat_flotante.visible)
+        host.marcar_mensajes_chat_leidos.assert_called_once_with(solo_tab="equipo")
 
 
 if __name__ == "__main__":

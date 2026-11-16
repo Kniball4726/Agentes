@@ -42,6 +42,9 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
 
     impresora_actual = str(prefs.get("impresora_termica", "") or "")
     impresion_directa_actual = bool(prefs.get("impresion_directa", False))
+    sonido_chat_actual = bool(
+        prefs.get("sonido_chat_activo", getattr(interfaz, "sonido_chat_activo", True))
+    )
 
     titulo_texto = ft.Text(
         "Preferencias de Interfaz",
@@ -58,6 +61,12 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
     lbl_tema = ft.Text("TEMA VISUAL", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
     lbl_navegacion = ft.Text("DISPOSICIÓN DE NAVEGACIÓN", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
     lbl_impresion = ft.Text("IMPRESIÓN Y DISPOSITIVOS", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
+    lbl_notificaciones = ft.Text(
+        "CHATBOT Y NOTIFICACIONES",
+        size=11,
+        weight=ft.FontWeight.BOLD,
+        color=interfaz.secundario,
+    )
     nota_pie = ft.Text(
         "Tus elecciones se guardan automáticamente para tus próximas sesiones.",
         size=11,
@@ -72,6 +81,7 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
         lbl_tema.color = interfaz.secundario
         lbl_navegacion.color = interfaz.secundario
         lbl_impresion.color = interfaz.secundario
+        lbl_notificaciones.color = interfaz.secundario
         nota_pie.color = interfaz.secundario
 
     def al_cambiar_tema(e: Any) -> None:
@@ -98,6 +108,11 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
     def al_cambiar_modo_impresion(e: Any) -> None:
         modo = bool(e.control.value)
         guardar_preferencia_usuario(username, "impresion_directa", modo)
+
+    def al_cambiar_sonido_chat(e: Any) -> None:
+        activo = bool(e.control.value)
+        interfaz.sonido_chat_activo = activo
+        guardar_preferencia_usuario(username, "sonido_chat_activo", activo)
 
     def al_cerrar(_e: Any) -> None:
         if interfaz.page and hasattr(interfaz.page, "pop_dialog"):
@@ -147,6 +162,14 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
         tooltip="Envía los rótulos a la impresora térmica sin abrir ventana previa",
     )
 
+    switch_sonido_chat = ft.Switch(
+        label="Sonido de campana breve en mensajes del chatbot",
+        value=sonido_chat_actual,
+        active_color=ROJO,
+        on_change=al_cambiar_sonido_chat,
+        tooltip="Reproduce una notificación campana breve al recibir respuestas o mensajes de equipo",
+    )
+
     contenido = ft.Column(
         [
             subtitulo_texto,
@@ -160,6 +183,9 @@ def mostrar_dialogo_preferencias(interfaz: Any, _evento: ft.Event | None = None)
             lbl_impresion,
             dropdown_impresora,
             switch_impresion_directa,
+            ft.Container(height=4),
+            lbl_notificaciones,
+            switch_sonido_chat,
             ft.Container(height=4),
             nota_pie,
         ],

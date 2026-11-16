@@ -35,6 +35,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
     analisis_actual: List[ProductoRotacion] = []
     mapa_calor_actual: List[HeatmapSlot] = []
     sugerencias_actuales: List[SlottingSuggestion] = []
+    p_store_activo: Any = getattr(interfaz, "product_store", None)
 
     kpi_eficiencia = ft.Text("0%", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
     kpi_picks = ft.Text("0", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.CYAN_400)
@@ -96,17 +97,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         if hasattr(interfaz, "page") and interfaz.page:
             interfaz.page.update()
 
-    def reubicar_item(sug: SlottingSuggestion) -> None:
-        if aplicar_reubicacion_slotting(interfaz.product_store, sug.sku, sug.ubicacion_sugerida):
-            interfaz.notificar(f"✅ Producto [{sug.sku}] reubicado con éxito a {sug.ubicacion_sugerida}", color=ft.Colors.GREEN_600)
-            cargar_datos()
-        else:
-            interfaz.notificar(f"Error al reubicar producto [{sug.sku}]", color=ft.Colors.RED_600)
-
-    def cargar_datos() -> None:
-        nonlocal analisis_actual, mapa_calor_actual, sugerencias_actuales
-
-        order_store = getattr(interfaz, "order_store", None)
+    def _resolver_product_store() -> Any:
         p_store = getattr(interfaz, "product_store", None)
         if p_store is None:
             try:
@@ -116,6 +107,24 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
                 from ...paths import application_root
                 from ...products import ProductStore
                 p_store = ProductStore(application_root() / "data" / "productos.sqlite3")
+        return p_store
+
+    def reubicar_item(sug: SlottingSuggestion) -> None:
+        nonlocal p_store_activo
+        if p_store_activo is None:
+            p_store_activo = _resolver_product_store()
+        if p_store_activo is not None and aplicar_reubicacion_slotting(p_store_activo, sug.sku, sug.ubicacion_sugerida):
+            interfaz.notificar(f"✅ Producto [{sug.sku}] reubicado con éxito a {sug.ubicacion_sugerida}", color=ft.Colors.GREEN_600)
+            cargar_datos()
+        else:
+            interfaz.notificar(f"Error al reubicar producto [{sug.sku}]", color=ft.Colors.RED_600)
+
+    def cargar_datos() -> None:
+        nonlocal analisis_actual, mapa_calor_actual, sugerencias_actuales, p_store_activo
+
+        order_store = getattr(interfaz, "order_store", None)
+        p_store = _resolver_product_store()
+        p_store_activo = p_store
 
         analisis_actual = analizar_rotacion_abc(p_store, order_store=order_store, dias=30)
         mapa_calor_actual = generar_mapa_calor(analisis_actual)

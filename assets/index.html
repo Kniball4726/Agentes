@@ -45,6 +45,95 @@
       }).catch(() => {});
     }
 
+    // Puente Web Audio API para notificaciones sonoras (campana breve, alertas y escáner)
+    (function setupStockAgentAudioBridge() {
+      const TONOS = {
+        exito: [[880.0, 0.0, 0.14, 0.12, 'sine']],
+        notificacion: [[587.33, 0.0, 0.10, 0.08, 'sine'], [880.0, 0.08, 0.15, 0.09, 'sine']],
+        colaborativo: [[587.33, 0.0, 0.10, 0.08, 'sine'], [880.0, 0.08, 0.15, 0.09, 'sine']],
+        cierre: [[523.25, 0.0, 0.12, 0.10, 'triangle'], [659.25, 0.09, 0.12, 0.10, 'triangle'], [783.99, 0.18, 0.22, 0.11, 'triangle']],
+        campana: [[783.99, 0.0, 0.09, 0.14, 'triangle'], [1046.50, 0.08, 0.20, 0.15, 'sine']],
+        quiebre: [[440.0, 0.0, 0.15, 0.12, 'sawtooth'], [330.0, 0.14, 0.20, 0.12, 'sawtooth']],
+        error: [[280.0, 0.0, 0.15, 0.18, 'triangle'], [200.0, 0.17, 0.18, 0.18, 'triangle']],
+      };
+
+      const ensureCtx = () => {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return null;
+        if (!window.__saAudioCtx) {
+          window.__saAudioCtx = new AudioCtx();
+        }
+        return window.__saAudioCtx;
+      };
+
+      const unlockAudio = () => {
+        try {
+          const ctx = ensureCtx();
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+        } catch (_e) {}
+      };
+
+      ['pointerdown', 'keydown', 'touchstart', 'click'].forEach((evt) => {
+        window.addEventListener(evt, unlockAudio, { passive: true });
+      });
+
+      window.__saPlayTone = (tipo) => {
+        try {
+          const ctx = ensureCtx();
+          if (!ctx) return;
+          const secuencia = TONOS[tipo] || TONOS.campana;
+          const ejecutar = () => {
+            const ahora = ctx.currentTime;
+            secuencia.forEach(([freq, delay, dur, vol, wave]) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.type = wave || 'sine';
+              osc.frequency.setValueAtTime(freq, ahora + delay);
+              gain.gain.setValueAtTime(vol || 0.12, ahora + delay);
+              gain.gain.exponentialRampToValueAtTime(0.0001, ahora + delay + dur);
+              osc.start(ahora + delay);
+              osc.stop(ahora + delay + dur);
+            });
+          };
+          if (ctx.state === 'suspended') {
+            ctx.resume().then(ejecutar).catch(() => {});
+          } else {
+            ejecutar();
+          }
+        } catch (_e) {}
+      };
+
+      const handleStoredEvent = (rawVal) => {
+        try {
+          let texto = String(rawVal ?? '');
+          if (texto.startsWith('"') && texto.endsWith('"')) {
+            texto = JSON.parse(texto);
+          }
+          const tipo = String(texto).split(':')[0].trim() || 'campana';
+          window.__saPlayTone(tipo);
+        } catch (_e) {
+          window.__saPlayTone('campana');
+        }
+      };
+
+      if (typeof Storage !== 'undefined' && Storage.prototype && Storage.prototype.setItem) {
+        const origSetItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          const res = origSetItem.apply(this, arguments);
+          try {
+            if (this === window.localStorage && typeof k === 'string' && k.includes('__sa_audio_event')) {
+              handleStoredEvent(v);
+            }
+          } catch (_e) {}
+          return res;
+        };
+      }
+    })();
+
     // Banner indicador de microcortes de red en depósito
     window.addEventListener('offline', () => {
       let banner = document.getElementById('offline-banner');

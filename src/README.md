@@ -327,6 +327,6 @@ Ubicado en `.github/workflows/ci.yml`:
 ## 🧪 9. Verificación y Cobertura de Pruebas
 
 Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas (`.\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short`):
-* **Total de módulos de prueba:** `67` archivos `tests/test_*.py` (`61` módulos ejecutados en sandbox con `359` pruebas y `7` subtests aprobados; `6` módulos ASGI `TestClient` ejecutables en host con sockets).
-* **Tasa de éxito:** 100% pasando sobre la batería verificada (`359 passed, 7 subtests passed`).
+* **Total de módulos de prueba:** `67` archivos `tests/test_*.py` (`61` módulos ejecutados en sandbox con `360` pruebas y `7` subtests aprobados; `6` módulos ASGI `TestClient` ejecutables en host con sockets).
+* **Tasa de éxito:** 100% pasando sobre la batería verificada (`360 passed, 7 subtests passed`).
 * **Retrocompatibilidad:** Cero rupturas de contratos; todas las fachadas y objetivos de parches existentes quedan preservados.

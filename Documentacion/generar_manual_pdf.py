@@ -53,6 +53,7 @@ try:
         construir_manual_master,
         construir_manual_operador,
         construir_pdf,
+        construir_presentacion_ejecutiva,
         crear_caja_alerta_iso,
         crear_canvas_iso_upel,
         crear_dibujo_bpmn_swimlanes,
@@ -95,6 +96,7 @@ except ImportError:
         construir_manual_master,
         construir_manual_operador,
         construir_pdf,
+        construir_presentacion_ejecutiva,
         crear_caja_alerta_iso,
         crear_canvas_iso_upel,
         crear_dibujo_bpmn_swimlanes,
@@ -151,6 +153,7 @@ __all__ = [
     "construir_manual_maestro_imprimible",
     "construir_manual_general",
     "construir_pdf",
+    "construir_presentacion_ejecutiva",
     "generar_todos_los_manuales",
 ]
 

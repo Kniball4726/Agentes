@@ -11,6 +11,19 @@ import flet as ft
 from ..theme import ROJO
 
 logger = logging.getLogger(__name__)
+_TITULO_VENTANA_BASE = "Control de Inventario Depósito Pasteur"
+
+
+def _tocar_campana_chat(sesion: Any) -> None:
+    """Emite una notificación campana breve si el usuario tiene sonidos de chat activos."""
+    try:
+        if not bool(getattr(sesion, "sonido_chat_activo", True)):
+            return
+        fn = getattr(sesion, "reproducir_sonido", None)
+        if callable(fn):
+            fn("campana")
+    except Exception:
+        pass
 
 
 def _sesiones_activas_por_defecto() -> Iterable[Any]:
@@ -102,25 +115,79 @@ class SessionSyncService:
                             duration=4000,
                         )
                         sesion.page.show_dialog(snack)
+                        _tocar_campana_chat(sesion)
                         sesion.page.update()
             except Exception:
                 pass
 
-    def actualizar_badge_chat(self) -> None:
+    def marcar_mensajes_chat_leidos(self, solo_tab: str | None = None) -> None:
+        """Limpia el indicador de mensajes nuevos para el usuario actual al leer la pestaña."""
+        if solo_tab in (None, "bot"):
+            self._host._mensajes_bot_no_leidos = 0
+        usuario = getattr(self._host, "usuario_actual", None)
+        if solo_tab in (None, "equipo") and usuario is not None:
+            try:
+                self._host.order_store.marcar_mensajes_leidos(usuario.username)
+            except Exception:
+                pass
+        self.actualizar_badge_chat()
+
+    def actualizar_badge_chat(self, sonar_si_aumenta: bool = False) -> None:
         usuario = getattr(self._host, "usuario_actual", None)
         if not usuario:
             return
         try:
-            no_leidos = self._host.order_store.contar_mensajes_no_leidos(usuario.username)
+            raw_equipo = self._host.order_store.contar_mensajes_no_leidos(usuario.username)
+            no_leidos_equipo = raw_equipo if isinstance(raw_equipo, int) else 0
+            raw_bot = getattr(self._host, "_mensajes_bot_no_leidos", 0)
+            no_leidos_bot = raw_bot if isinstance(raw_bot, int) else 0
+            total_no_leidos = no_leidos_equipo + no_leidos_bot
+
+            previo = getattr(self._host, "_ultimo_no_leidos_chat", None)
+            self._host._ultimo_no_leidos_chat = total_no_leidos
+
             if hasattr(self._host, "badge_chat_container") and hasattr(self._host, "texto_badge_chat"):
-                if no_leidos > 0:
-                    self._host.texto_badge_chat.value = str(no_leidos)
+                if total_no_leidos > 0:
+                    self._host.texto_badge_chat.value = str(total_no_leidos)
                     self._host.badge_chat_container.visible = True
                 else:
                     self._host.badge_chat_container.visible = False
+
+            for attr_punto in (
+                "punto_nuevo_chat",
+                "punto_nuevo_chat_movil",
+                "punto_nuevo_chat_movil_sel",
+            ):
+                ctrl_punto = getattr(self._host, attr_punto, None)
+                if ctrl_punto is not None and hasattr(ctrl_punto, "visible"):
+                    ctrl_punto.visible = total_no_leidos > 0
+
+            punto_tab_equipo = getattr(self._host, "punto_tab_equipo", None)
+            if punto_tab_equipo is not None and hasattr(punto_tab_equipo, "visible"):
+                punto_tab_equipo.visible = no_leidos_equipo > 0
+
+            punto_tab_bot = getattr(self._host, "punto_tab_bot", None)
+            if punto_tab_bot is not None and hasattr(punto_tab_bot, "visible"):
+                punto_tab_bot.visible = no_leidos_bot > 0
+
             if hasattr(self._host, "texto_badge_tab"):
-                self._host.texto_badge_tab.value = f" ({no_leidos})" if no_leidos > 0 else ""
-            self._host.page.update()
+                self._host.texto_badge_tab.value = f" ({no_leidos_equipo})" if no_leidos_equipo > 0 else ""
+
+            page = getattr(self._host, "page", None)
+            if page is not None and isinstance(getattr(page, "title", None), str):
+                page.title = (
+                    f"({total_no_leidos}) {_TITULO_VENTANA_BASE}"
+                    if total_no_leidos > 0
+                    else _TITULO_VENTANA_BASE
+                )
+
+            if sonar_si_aumenta and isinstance(previo, int) and total_no_leidos > previo:
+                if getattr(self._host, "modo_chat_activo", "") == "equipo" and no_leidos_equipo > 0:
+                    self.cargar_mensajes_equipo()
+                _tocar_campana_chat(self._host)
+
+            if page is not None:
+                page.update()
         except Exception:
             pass
 
@@ -247,5 +314,10 @@ class SessionSyncService:
             mensaje=texto_enriquecido,
             destinatario=destinatario,
         )
+        try:
+            self._host.order_store.marcar_mensajes_leidos(emisor)
+        except Exception:
+            pass
         self.cargar_mensajes_equipo()
+        self.actualizar_badge_chat()
         self.sincronizar_sesiones(notificar_chat=(emisor, destinatario, texto))

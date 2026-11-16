@@ -12,8 +12,27 @@ from .components import (
     aplicar_posicion_sidebar_ui,
     construir_navigation_bar_movil,
     construir_sidebar_controls,
+    registrar_servicio_audio_web,
 )
 from .theme import ROJO
+
+
+def _crear_punto_notificacion(
+    size: int = 10,
+    right: int | None = None,
+    top: int | None = None,
+) -> ft.Container:
+    """Crea un punto indicador visual de nuevo mensaje en el chatbot."""
+    return ft.Container(
+        width=size,
+        height=size,
+        border_radius=size / 2,
+        bgcolor=ft.Colors.RED_500,
+        border=ft.Border.all(1.5, ft.Colors.WHITE),
+        right=right,
+        top=top,
+        visible=False,
+    )
 
 
 def inicializar_controles_shell(interfaz: Any) -> None:
@@ -49,6 +68,7 @@ def inicializar_controles_shell(interfaz: Any) -> None:
         min_lines=1,
         max_lines=3,
         on_submit=interfaz.enviar_chat,
+        on_focus=lambda _e: interfaz.marcar_mensajes_chat_leidos(solo_tab="bot"),
     )
     interfaz.conversacion_equipo = ft.ListView(expand=True, spacing=8, auto_scroll=True)
     interfaz.entrada_chat_equipo = ft.TextField(
@@ -56,6 +76,7 @@ def inicializar_controles_shell(interfaz: Any) -> None:
         expand=True,
         dense=True,
         on_submit=interfaz.enviar_mensaje_equipo,
+        on_focus=lambda _e: interfaz.marcar_mensajes_chat_leidos(solo_tab="equipo"),
     )
     interfaz.selector_destinatario_equipo = ft.Dropdown(
         label="Destinatario",
@@ -64,14 +85,20 @@ def inicializar_controles_shell(interfaz: Any) -> None:
         dense=True,
         expand=True,
     )
-    interfaz.texto_badge_chat = ft.Text("", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD)
+    interfaz.texto_badge_chat = ft.Text("", size=10, color=ROJO, weight=ft.FontWeight.BOLD)
     interfaz.badge_chat_container = ft.Container(
         content=interfaz.texto_badge_chat,
-        bgcolor=ft.Colors.RED_600,
+        bgcolor=ft.Colors.WHITE,
+        border=ft.Border.all(1, ROJO),
         border_radius=10,
         padding=ft.Padding.symmetric(horizontal=5, vertical=1),
         visible=False,
     )
+    interfaz.punto_nuevo_chat = _crear_punto_notificacion(size=10, right=-3, top=-3)
+    interfaz.punto_nuevo_chat_movil = _crear_punto_notificacion(size=9, right=-3, top=-3)
+    interfaz.punto_nuevo_chat_movil_sel = _crear_punto_notificacion(size=9, right=-3, top=-3)
+    interfaz.punto_tab_bot = _crear_punto_notificacion(size=8)
+    interfaz.punto_tab_equipo = _crear_punto_notificacion(size=8)
     interfaz.texto_badge_tab = ft.Text("", size=10, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD)
     interfaz.pendientes_texto = ft.Text("", color=interfaz.secundario, size=12)
 
@@ -115,6 +142,7 @@ def configurar_ventana_shell(interfaz: Any, icon_path: Path) -> None:
     if hasattr(page, "on_resize"):
         page.on_resize = interfaz._al_redimensionar
     page.on_keyboard_event = interfaz._manejar_teclas_globales
+    registrar_servicio_audio_web(interfaz)
     configurar_dialogos_adaptables_shell(interfaz)
 
 
@@ -243,10 +271,20 @@ def construir_dashboard_shell(interfaz: Any) -> None:
     interfaz._asegurar_file_picker(forzar_recrear=True)
     page.overlay.append(ventana_chat)
 
+    interfaz.punto_nuevo_chat = _crear_punto_notificacion(size=10, right=-3, top=-3)
+    icono_chat_fab = ft.Stack(
+        [
+            ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=18 if es_movil else 20),
+            interfaz.punto_nuevo_chat,
+        ],
+        width=22 if es_movil else 24,
+        height=22 if es_movil else 24,
+        clip_behavior=ft.ClipBehavior.NONE,
+    )
     interfaz.boton_chat_flotante = ft.FloatingActionButton(
         content=ft.Row(
             [
-                ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.WHITE, size=18 if es_movil else 20),
+                icono_chat_fab,
                 ft.Text(
                     "Chat" if es_movil else "Asistente",
                     color=ft.Colors.WHITE,

@@ -183,6 +183,31 @@ def _responder_chat_equipo(interfaz: Any, mensaje: str) -> str:
     )
 
 
+def _notificar_respuesta_chatbot(interfaz: Any, marcar_no_leido: bool = True) -> None:
+    """Emite campana breve al responder el chatbot y activa el punto si no está visible."""
+    try:
+        if bool(getattr(interfaz, "sonido_chat_activo", True)):
+            sonido_fn = getattr(interfaz, "reproducir_sonido", None)
+            if callable(sonido_fn):
+                sonido_fn("campana")
+    except Exception:
+        pass
+
+    if not marcar_no_leido:
+        return
+
+    chat_abierto_en_bot = (
+        bool(getattr(interfaz, "chat_visible", False))
+        and getattr(interfaz, "modo_chat_activo", "bot") == "bot"
+    )
+    if not chat_abierto_en_bot:
+        actual = getattr(interfaz, "_mensajes_bot_no_leidos", 0)
+        interfaz._mensajes_bot_no_leidos = (actual if isinstance(actual, int) else 0) + 1
+        badge_fn = getattr(interfaz, "actualizar_badge_chat", None)
+        if callable(badge_fn):
+            badge_fn()
+
+
 async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
     """Procesa una consulta del usuario dirigida al asistente bot y redacta la respuesta contextual."""
     intencion = detectar_intencion(mensaje)
@@ -192,6 +217,7 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
     aviso_permiso = _validar_permiso_intencion(rol, intencion)
     if aviso_permiso:
         interfaz.escribir_chat("Agente", aviso_permiso)
+        _notificar_respuesta_chatbot(interfaz, marcar_no_leido=True)
         interfaz.page.update()
         return
 
@@ -284,4 +310,8 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
         respuesta = f"No reconocí la consulta.\n{obtener_pie_ayuda(rol)}"
 
     interfaz.escribir_chat("Agente", respuesta)
+    solo_cambio_a_equipo = (
+        intencion == "chat_equipo" and getattr(interfaz, "modo_chat_activo", "bot") == "equipo"
+    )
+    _notificar_respuesta_chatbot(interfaz, marcar_no_leido=not solo_cambio_a_equipo)
     interfaz.page.update()

@@ -113,6 +113,7 @@ def ejecutar_zapping_produccion(
                 "planes_mercado_full",
                 "plan_mercado_full_items",
                 "logs_auditoria",
+                "mensajes_chat_leidos",
                 "mensajes_chat",
                 "pedidos_bloqueos",
                 "transacciones_procesadas",

@@ -196,6 +196,9 @@ class InterfazFlet:
     )
     cargar_mensajes_equipo = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
     enviar_mensaje_equipo = _Delegado("session_sync_svc", lambda h: h._crear_session_sync_svc())
+    marcar_mensajes_chat_leidos = _Delegado(
+        "session_sync_svc", lambda h: h._crear_session_sync_svc()
+    )
 
     # --- Fachada delegada a DialogCoordinator ---
     mostrar_dialogo_compartir_cierre = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
@@ -297,6 +300,10 @@ class InterfazFlet:
         self._heartbeat_iniciado: bool = False
         self.chat_visible = False
         self.modo_chat_activo: str = "bot"
+        self.sonido_chat_activo: bool = True
+        self._mensajes_bot_no_leidos: int = 0
+        self._ultimo_no_leidos_chat: int | None = None
+        self.shared_prefs: ft.SharedPreferences | None = None
         self.ventana_chat_flotante: ft.Container | None = None
         self.boton_chat_flotante: ft.FloatingActionButton | None = None
         self.ultima_actividad: datetime = datetime.now()
@@ -538,7 +545,19 @@ class InterfazFlet:
         tipo = "Pedido a fábrica" if ruta.name.startswith("Pedido_Fabrica") else "Informe"
         self.fijar_estado_tarea(f"{tipo} seleccionado: {ruta.name}", estado="archivo")
 
-    def notificar(self, mensaje: str) -> None:
+    def notificar(self, mensaje: str, color: Any | None = None) -> None:
+        if color is not None:
+            try:
+                snack = ft.SnackBar(
+                    content=ft.Text(mensaje, color=ft.Colors.WHITE, size=13),
+                    bgcolor=color,
+                    duration=4000,
+                )
+                self.page.show_dialog(snack)
+                self.page.update()
+                return
+            except Exception:
+                pass
         dialogo = ft.AlertDialog(
             title=ft.Text("Aviso"),
             content=ft.Text(mensaje),

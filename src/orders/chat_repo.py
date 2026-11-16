@@ -68,7 +68,9 @@ class ChatRepository:
                 """
                 SELECT id, emisor, destinatario, mensaje, leido, created_at
                 FROM mensajes_chat
-                WHERE destinatario = 'Todos' OR destinatario = ? OR emisor = ?
+                WHERE destinatario = 'Todos'
+                   OR LOWER(destinatario) = LOWER(?)
+                   OR LOWER(emisor) = LOWER(?)
                 ORDER BY id DESC
                 LIMIT ?
                 """,
@@ -79,32 +81,50 @@ class ChatRepository:
             return mensajes
 
     def contar_mensajes_no_leidos(self, usuario: str) -> int:
-        """Cuenta la cantidad de mensajes no leídos para un usuario."""
+        """Cuenta los mensajes no leídos por el usuario (sin afectar lectura de otros terminales)."""
         usr_limpio = usuario.strip()
         with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT COUNT(*) as total
-                FROM mensajes_chat
-                WHERE (destinatario = 'Todos' OR destinatario = ?)
-                  AND leido = 0
-                  AND emisor != ?
+                FROM mensajes_chat m
+                WHERE (m.destinatario = 'Todos' OR LOWER(m.destinatario) = LOWER(?))
+                  AND LOWER(m.emisor) != LOWER(?)
+                  AND m.leido = 0
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM mensajes_chat_leidos l
+                      WHERE l.mensaje_id = m.id
+                        AND LOWER(l.usuario) = LOWER(?)
+                  )
                 """,
-                (usr_limpio, usr_limpio),
+                (usr_limpio, usr_limpio, usr_limpio),
             ).fetchone()
             return int(row["total"]) if row else 0
 
     def marcar_mensajes_leidos(self, usuario: str) -> None:
-        """Marca como leídos todos los mensajes dirigidos a un usuario o a Todos."""
+        """Registra como leídos por el usuario los mensajes recibidos sin borrar avisos de terceros."""
         usr_limpio = usuario.strip()
         with self._connect() as connection, connection:
             connection.execute(
                 """
+                INSERT OR IGNORE INTO mensajes_chat_leidos (mensaje_id, usuario)
+                SELECT id, ?
+                FROM mensajes_chat
+                WHERE (destinatario = 'Todos' OR LOWER(destinatario) = LOWER(?))
+                  AND LOWER(emisor) != LOWER(?)
+                  AND leido = 0
+                """,
+                (usr_limpio, usr_limpio, usr_limpio),
+            )
+            connection.execute(
+                """
                 UPDATE mensajes_chat
                 SET leido = 1
-                WHERE (destinatario = 'Todos' OR destinatario = ?)
+                WHERE LOWER(destinatario) = LOWER(?)
+                  AND LOWER(destinatario) != 'todos'
                   AND leido = 0
-                  AND emisor != ?
+                  AND LOWER(emisor) != LOWER(?)
                 """,
                 (usr_limpio, usr_limpio),
             )

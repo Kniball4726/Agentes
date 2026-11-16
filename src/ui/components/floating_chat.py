@@ -141,7 +141,13 @@ def crear_ventana_chat_flotante(interfaz: Any) -> ft.Container:
                         icon=ft.Icons.REFRESH,
                         icon_size=18,
                         tooltip="Actualizar mensajes",
-                        on_click=lambda _e: (interfaz.refrescar_usuarios_chat_equipo(), interfaz.cargar_mensajes_equipo()),
+                        on_click=lambda _e: (
+                            interfaz.refrescar_usuarios_chat_equipo(),
+                            interfaz.cargar_mensajes_equipo(),
+                            interfaz.marcar_mensajes_chat_leidos(solo_tab="equipo")
+                            if hasattr(interfaz, "marcar_mensajes_chat_leidos")
+                            else None,
+                        ),
                     ),
                 ],
                 spacing=6,
@@ -178,20 +184,34 @@ def crear_ventana_chat_flotante(interfaz: Any) -> ft.Container:
         ico_tab_equipo.color = ft.Colors.WHITE if not es_bot_nuevo else interfaz.texto
         ico_encabezado.icon = ft.Icons.SMART_TOY if es_bot_nuevo else ft.Icons.FORUM
 
-        if modo == "equipo":
+        if modo == "bot":
+            if hasattr(interfaz, "marcar_mensajes_chat_leidos"):
+                interfaz.marcar_mensajes_chat_leidos(solo_tab="bot")
+        elif modo == "equipo":
             interfaz.refrescar_usuarios_chat_equipo()
             interfaz.cargar_mensajes_equipo()
-            if interfaz.usuario_actual:
+            if hasattr(interfaz, "marcar_mensajes_chat_leidos"):
+                interfaz.marcar_mensajes_chat_leidos(solo_tab="equipo")
+            elif interfaz.usuario_actual:
                 interfaz.order_store.marcar_mensajes_leidos(interfaz.usuario_actual.username)
                 interfaz.actualizar_badge_chat()
         interfaz.page.update()
 
     interfaz._cambiar_tab_fn = cambiar_tab
 
+    punto_tab_bot = ft.Container(
+        width=8,
+        height=8,
+        border_radius=4,
+        bgcolor=ft.Colors.RED_500,
+        border=ft.Border.all(1, ft.Colors.WHITE),
+        visible=bool(getattr(interfaz, "_mensajes_bot_no_leidos", 0) > 0),
+    )
+    interfaz.punto_tab_bot = punto_tab_bot
     ico_tab_bot = ft.Icon(ft.Icons.SMART_TOY_OUTLINED, size=15, color=ft.Colors.WHITE if es_bot else interfaz.texto)
     txt_tab_bot = ft.Text("Asistente Bot", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE if es_bot else interfaz.texto)
     btn_tab_bot = ft.Container(
-        content=ft.Row([ico_tab_bot, txt_tab_bot], spacing=5, tight=True),
+        content=ft.Row([ico_tab_bot, txt_tab_bot, punto_tab_bot], spacing=5, tight=True),
         bgcolor=ROJO if es_bot else (ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.GREY_200),
         padding=ft.Padding.symmetric(horizontal=12, vertical=6),
         border_radius=12,
@@ -199,10 +219,19 @@ def crear_ventana_chat_flotante(interfaz: Any) -> ft.Container:
         on_click=lambda _e: cambiar_tab("bot"),
     )
 
+    punto_tab_equipo = ft.Container(
+        width=8,
+        height=8,
+        border_radius=4,
+        bgcolor=ft.Colors.RED_500,
+        border=ft.Border.all(1, ft.Colors.WHITE),
+        visible=False,
+    )
+    interfaz.punto_tab_equipo = punto_tab_equipo
     ico_tab_equipo = ft.Icon(ft.Icons.FORUM_OUTLINED, size=15, color=interfaz.texto if es_bot else ft.Colors.WHITE)
     txt_tab_equipo = ft.Text("Chat Equipo", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto if es_bot else ft.Colors.WHITE)
     btn_tab_equipo = ft.Container(
-        content=ft.Row([ico_tab_equipo, txt_tab_equipo, interfaz.texto_badge_tab], spacing=5, tight=True),
+        content=ft.Row([ico_tab_equipo, txt_tab_equipo, interfaz.texto_badge_tab, punto_tab_equipo], spacing=5, tight=True),
         bgcolor=(ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.GREY_200) if es_bot else ROJO,
         padding=ft.Padding.symmetric(horizontal=12, vertical=6),
         border_radius=12,

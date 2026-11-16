@@ -5,11 +5,16 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import flet as ft
 
+from src.auth import User
+from src.flet_gui import InterfazFlet
 from src.products import ProductStore
+from src.ui.dialogs.dlg_heatmap import mostrar_dialogo_heatmap
+from src.ui.protocols import AppDependencies
 from src.warehouse_slotting import (
     DEFAULT_RACKS,
     SlotInfo,
@@ -150,6 +155,69 @@ class TestFase6WarehouseSlotting(unittest.TestCase):
         self.assertGreaterEqual(metricas.eficiencia_slotting_pct, 0.0)
         self.assertLessEqual(metricas.eficiencia_slotting_pct, 100.0)
         self.assertIn("D-04-3", metricas.zona_mas_caliente)
+
+    def test_notificar_con_color_y_boton_reubicar_heatmap(self):
+        """Verifica que el botón Reubicar del Heatmap e InterfazFlet.notificar(color=...) funcionen sin TypeError."""
+        dialogos = []
+        controls = []
+        fake_page = SimpleNamespace(
+            width=1280,
+            height=800,
+            controls=controls,
+            overlay=[],
+            services=[],
+            window=SimpleNamespace(),
+            add=lambda *c: controls.extend(c),
+            show_dialog=dialogos.append,
+            pop_dialog=lambda: dialogos.pop() if dialogos else None,
+            update=lambda: None,
+        )
+        fake_user_store = MagicMock()
+        fake_user_store.has_users = True
+        fake_order_store = MagicMock()
+        fake_order_store.obtener_metricas_dashboard.return_value = {
+            "total_pedidos": 0,
+            "total_bultos": 0,
+            "pedidos_cerrados": 0,
+            "pedidos_pendientes": 0,
+            "total_cierres": 0,
+        }
+        deps = AppDependencies(
+            user_store=fake_user_store,
+            order_store=fake_order_store,
+            product_store=self.store,
+            menu=MagicMock(ruta_excel_base="Productos.xlsx"),
+        )
+        interfaz = InterfazFlet(fake_page, deps=deps)
+        interfaz.usuario_actual = User(1, "admin", "administrador", True)
+
+        dialogos.clear()
+        interfaz.notificar("Sin color")
+        self.assertIsInstance(dialogos[-1], ft.AlertDialog)
+
+        interfaz.notificar("Posicional rojo", ft.Colors.RED_700)
+        self.assertIsInstance(dialogos[-1], ft.SnackBar)
+        self.assertEqual(dialogos[-1].bgcolor, ft.Colors.RED_700)
+
+        dialogos.clear()
+        mostrar_dialogo_heatmap(interfaz)
+        dlg_heatmap = dialogos[0]
+        self.assertIsInstance(dlg_heatmap, ft.AlertDialog)
+
+        tabs = dlg_heatmap.content.content.controls[2]
+        lista_sugerencias = tabs.content.controls[1].controls[2].controls[1]
+        primer_card = lista_sugerencias.controls[0]
+        btn_reubicar = primer_card.content.controls[2]
+        self.assertEqual(btn_reubicar.content, "Reubicar")
+
+        btn_reubicar.on_click(None)
+
+        self.assertIsInstance(dialogos[-1], ft.SnackBar)
+        self.assertEqual(dialogos[-1].bgcolor, ft.Colors.GREEN_600)
+        self.assertIn("reubicado con éxito", dialogos[-1].content.value)
+        row_a1 = self.store.get_product("SKU-A1")
+        self.assertIsNotNone(row_a1)
+        self.assertTrue(row_a1["ubicacion"].endswith("-2"))
 
 
 if __name__ == "__main__":

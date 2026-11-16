@@ -122,6 +122,31 @@ class TestFase5Features(unittest.TestCase):
         for ruta in ("/manifest.json", "/offline.html", "/scanner.html"):
             self.assertEqual(client.get(ruta).status_code, 200)
 
+    def test_configuracion_checkjs_typescript_sin_build(self):
+        """Verifica la configuración TypeScript checkJs sin compilación sobre assets JS."""
+        import json
+
+        root = self.assets_dir.parent
+        tsconfig_dom = root / "tsconfig.json"
+        tsconfig_sw = root / "tsconfig.sw.json"
+        dts_path = self.assets_dir / "types" / "scanner.d.ts"
+
+        self.assertTrue(tsconfig_dom.exists(), "Falta tsconfig.json en raíz")
+        self.assertTrue(tsconfig_sw.exists(), "Falta tsconfig.sw.json en raíz")
+        self.assertTrue(dts_path.exists(), "Falta assets/types/scanner.d.ts")
+
+        cfg_dom = json.loads(tsconfig_dom.read_text(encoding="utf-8"))
+        cfg_sw = json.loads(tsconfig_sw.read_text(encoding="utf-8"))
+        for cfg in (cfg_dom, cfg_sw):
+            opts = cfg.get("compilerOptions", {})
+            self.assertTrue(opts.get("allowJs"))
+            self.assertTrue(opts.get("checkJs"))
+            self.assertTrue(opts.get("noEmit"))
+            self.assertTrue(opts.get("strict"))
+
+        self.assertIn("// @ts-check", (self.assets_dir / "js" / "scanner.js").read_text(encoding="utf-8"))
+        self.assertIn("// @ts-check", (self.assets_dir / "sw.js").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

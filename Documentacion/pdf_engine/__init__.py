@@ -63,6 +63,7 @@ from .manuals_operador import (
     agregar_poes_operador,
     construir_manual_operador,
 )
+from .presentacion_ejecutiva import construir_presentacion_ejecutiva
 
 __all__ = [
     "ANCHO_PAGINA",
@@ -113,4 +114,5 @@ __all__ = [
     "construir_manual_maestro_imprimible",
     "construir_manual_general",
     "construir_pdf",
+    "construir_presentacion_ejecutiva",
 ]

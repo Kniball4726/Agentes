@@ -1,7 +1,13 @@
+// @ts-check
+/// <reference no-default-lib="true" />
+/// <reference lib="es2022" />
+/// <reference lib="webworker" />
 /**
  * Service Worker Oficial de StockAgent PWA
  * Soporte Offline-First y Resiliencia ante Microcortes de Red WiFi en Depósito.
  */
+
+const sw = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 
 const CACHE_NAME = 'stockagent-pwa-v3';
 
@@ -20,19 +26,19 @@ const STATIC_ASSETS = [
 ];
 
 // 1. Instalación y Precaching de la Shell de la Aplicación
-self.addEventListener('install', (event) => {
+sw.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Pre-cacheados recursos estáticos de StockAgent');
       return cache.addAll(STATIC_ASSETS).catch((err) => {
         console.warn('[SW] Aviso durante precache:', err);
       });
-    }).then(() => self.skipWaiting())
+    }).then(() => sw.skipWaiting())
   );
 });
 
 // 2. Activación y Limpieza de Cachés Previos
-self.addEventListener('activate', (event) => {
+sw.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -42,26 +48,26 @@ self.addEventListener('activate', (event) => {
             return caches.delete(name);
           }
           // Limpiar index.html y FontManifest antiguos si quedaron guardados en v1
-          return caches.open(name).then((c) => {
-            c.delete('/');
-            c.delete('/index.html');
-            c.delete('/assets/FontManifest.json');
-          });
+          return caches.open(name).then((c) => Promise.all([
+            c.delete('/'),
+            c.delete('/index.html'),
+            c.delete('/assets/FontManifest.json'),
+          ]));
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => sw.clients.claim())
   );
 });
 
 // 3. Estrategia de Enrutamiento y Fetch Resiliente
-self.addEventListener('fetch', (event) => {
+sw.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
   // Ignorar peticiones no GET, orígenes externos y tráfico WebSocket/motor de Flet (/ws, .wasm, canvaskit)
   if (
     req.method !== 'GET' ||
-    url.origin !== self.location.origin ||
+    url.origin !== sw.location.origin ||
     url.protocol.startsWith('ws') ||
     url.pathname.startsWith('/ws') ||
     url.pathname.endsWith('.wasm') ||
@@ -116,7 +122,10 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       }).catch(async () => {
         if (req.headers.get('accept')?.includes('text/html')) {
-          return caches.match('/offline.html');
+          const offlinePage = await caches.match('/offline.html');
+          if (offlinePage) {
+            return offlinePage;
+          }
         }
         return new Response('', { status: 408, statusText: 'Offline' });
       });

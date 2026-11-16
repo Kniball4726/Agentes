@@ -53,7 +53,20 @@ class ChatAssistantController:
         ventana = getattr(self._host, "ventana_chat_flotante", None)
         if ventana is not None:
             ventana.visible = self._host.chat_visible
-            self._host.page.update()
+        if self._host.chat_visible:
+            modo = getattr(self._host, "modo_chat_activo", "bot")
+            if modo == "equipo":
+                refrescar = getattr(self._host, "refrescar_usuarios_chat_equipo", None)
+                cargar = getattr(self._host, "cargar_mensajes_equipo", None)
+                if callable(refrescar):
+                    refrescar()
+                if callable(cargar):
+                    cargar()
+            marcar = getattr(self._host, "marcar_mensajes_chat_leidos", None)
+            if callable(marcar):
+                marcar(solo_tab=modo)
+                return
+        self._host.page.update()
 
     def cerrar_chat_flotante(self, _evento: ft.Event | None = None) -> None:
         self._host.chat_visible = False
@@ -64,6 +77,7 @@ class ChatAssistantController:
 
     def limpiar_chat(self, _evento: ft.Event | None = None) -> None:
         self._host.conversacion.controls.clear()
+        self._host._mensajes_bot_no_leidos = 0
         usuario = getattr(self._host, "usuario_actual", None)
         rol_actual = usuario.role if usuario else "operador"
         nom_actual = usuario.username if usuario else ""
@@ -71,7 +85,11 @@ class ChatAssistantController:
             "Agente",
             f"Conversación reiniciada.\n\n{obtener_mensaje_bienvenida(rol_actual, nom_actual)}",
         )
-        self._host.page.update()
+        actualizar_badge = getattr(self._host, "actualizar_badge_chat", None)
+        if callable(actualizar_badge):
+            actualizar_badge()
+        else:
+            self._host.page.update()
 
     def ejecutar_comando_rapido(self, comando: str) -> None:
         if comando == "/stock":

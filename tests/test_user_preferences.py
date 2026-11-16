@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from src.ui.controllers.theme_controller import ThemeController
 from src.ui.dialogs.dlg_preferencias import (
     _construir_opciones_impresoras,
     mostrar_dialogo_preferencias,
@@ -121,6 +122,41 @@ class TestUserPreferences(unittest.TestCase):
             self.assertEqual(prefs.get("posicion_sidebar"), "arriba")
             self.assertEqual(prefs.get("impresora_termica"), "Zebra ZD220")
             self.assertTrue(prefs.get("impresion_directa"))
+
+    def test_sonido_chat_preferencia_y_switch(self):
+        """Verifica el interruptor de campana del chatbot y su restauración por ThemeController."""
+        interfaz = MagicMock()
+        interfaz.usuario_actual = MagicMock(username="operador1")
+        interfaz.modo_oscuro = True
+        interfaz.posicion_sidebar = "izquierda"
+        interfaz.sonido_chat_activo = True
+        interfaz._prefs_cargadas_usuario = False
+        interfaz.texto = "#FFFFFF"
+        interfaz.secundario = "#AAAAAA"
+        interfaz.borde = "#333333"
+        interfaz.page = MagicMock()
+
+        with patch("src.ui.user_preferences._ruta_preferencias", return_value=self.temp_path), \
+             patch(
+                 "src.ui.dialogs.dlg_preferencias.listar_impresoras_sistema",
+                 return_value=[],
+             ):
+            mostrar_dialogo_preferencias(interfaz)
+            dialogo = interfaz.page.show_dialog.call_args[0][0]
+            switch_sonido = dialogo.content.controls[13]
+            self.assertTrue(switch_sonido.value)
+
+            ev_mute = MagicMock()
+            ev_mute.control.value = False
+            switch_sonido.on_change(ev_mute)
+
+            self.assertFalse(interfaz.sonido_chat_activo)
+            prefs = obtener_preferencias_usuario("operador1")
+            self.assertFalse(prefs.get("sonido_chat_activo"))
+
+            interfaz.sonido_chat_activo = True
+            ThemeController(interfaz).aplicar_preferencias_usuario(interfaz.usuario_actual)
+            self.assertFalse(interfaz.sonido_chat_activo)
 
 
 if __name__ == "__main__":

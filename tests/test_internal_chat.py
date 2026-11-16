@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from src.chat import (
     formatear_respuesta_stock,
     formatear_ultimo_informe,
 )
+from src.orders import OrderStore
 
 
 class InternalChatTests(unittest.TestCase):
@@ -93,6 +95,37 @@ class InternalChatTests(unittest.TestCase):
     def test_returns_unknown_for_unsupported_messages(self):
         self.assertEqual(detectar_intencion("¿Qué tiempo hace mañana?"), "desconocido")
         self.assertEqual(detectar_intencion("   "), "desconocido")
+
+
+class InternalChatPerUserReadTests(unittest.TestCase):
+    def test_broadcast_unread_is_tracked_per_user(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = OrderStore(Path(tmp) / "chat_test.db")
+            store.enviar_mensaje_chat(emisor="ana", mensaje="Hola equipo", destinatario="Todos")
+
+            self.assertEqual(store.contar_mensajes_no_leidos("ana"), 0)
+            self.assertEqual(store.contar_mensajes_no_leidos("luis"), 1)
+            self.assertEqual(store.contar_mensajes_no_leidos("carlos"), 1)
+
+            store.marcar_mensajes_leidos("luis")
+            self.assertEqual(store.contar_mensajes_no_leidos("luis"), 0)
+            self.assertEqual(store.contar_mensajes_no_leidos("carlos"), 1)
+
+            store.marcar_mensajes_leidos("carlos")
+            self.assertEqual(store.contar_mensajes_no_leidos("carlos"), 0)
+
+    def test_private_messages_are_scoped_and_case_insensitive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = OrderStore(Path(tmp) / "chat_priv.db")
+            store.enviar_mensaje_chat(emisor="ana", mensaje="Revisar caja 2", destinatario="luis")
+
+            self.assertEqual(store.contar_mensajes_no_leidos("LUIS"), 1)
+            self.assertEqual(store.contar_mensajes_no_leidos("carlos"), 0)
+            self.assertEqual(len(store.listar_mensajes_chat("LUIS")), 1)
+            self.assertEqual(len(store.listar_mensajes_chat("carlos")), 0)
+
+            store.marcar_mensajes_leidos("Luis")
+            self.assertEqual(store.contar_mensajes_no_leidos("luis"), 0)
 
 
 if __name__ == "__main__":

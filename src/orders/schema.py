@@ -209,8 +209,19 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mensajes_chat_leidos (
+            mensaje_id INTEGER NOT NULL REFERENCES mensajes_chat(id) ON DELETE CASCADE,
+            usuario TEXT NOT NULL COLLATE NOCASE,
+            leido_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (mensaje_id, usuario)
+        )
+        """
+    )
     for ddl in (
         "CREATE INDEX IF NOT EXISTS idx_mensajes_destinatario ON mensajes_chat(destinatario, leido)",
+        "CREATE INDEX IF NOT EXISTS idx_mensajes_chat_leidos_usuario ON mensajes_chat_leidos(usuario)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos(estado)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre ON pedidos(cierre_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_cliente ON pedidos(cliente)",

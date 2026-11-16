@@ -136,6 +136,14 @@ def iniciar_heartbeat_red_daemon(interfaz: Any) -> None:
                 nuevo_estado = "online" if lat_ms < 900.0 else "degraded"
                 actualizar_estado_conexion_ui(interfaz, nuevo_estado, latencia_ms=lat_ms)
 
+                if getattr(interfaz, "usuario_actual", None) is not None and hasattr(
+                    interfaz, "actualizar_badge_chat"
+                ):
+                    try:
+                        interfaz.actualizar_badge_chat(sonar_si_aumenta=True)
+                    except Exception:
+                        pass
+
                 # Limpieza periódica de sesiones API expiradas cada ~5 minutos (25 iteraciones)
                 if _iter_count % 25 == 0:
                     user_store = getattr(interfaz, "user_store", None)

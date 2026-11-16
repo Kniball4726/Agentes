@@ -1,13 +1,18 @@
+// @ts-check
 /**
  * Controlador de escaneo de códigos de barra para cámara web y móvil.
  * Utiliza WebRTC (getUserMedia), la BarcodeDetector API nativa
  * e incorpora cola resiliente Offline-First ante microcortes de red.
  */
 
+/** @type {MediaStream | null} */
 let currentStream = null;
+/** @type {"environment" | "user"} */
 let currentFacingMode = "environment";
 let torchActive = false;
+/** @type {MediaStreamTrack | null} */
 let track = null;
+/** @type {BarcodeDetector | null} */
 let barcodeDetector = null;
 let scanning = true;
 let lastScannedText = "";
@@ -15,8 +20,14 @@ let lastScanTime = 0;
 
 // Sintetizador de audio para confirmación de escaneo
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+/** @type {AudioContext | null} */
 const audioCtx = AudioContextClass ? new AudioContextClass() : null;
 
+/**
+ * Emite un pitido corto como confirmación audible de lectura.
+ * @param {number} [frequency]
+ * @param {number} [duration]
+ */
 function playBeep(frequency = 1200, duration = 0.12) {
   if (!audioCtx) return;
   try {
@@ -39,16 +50,32 @@ function playBeep(frequency = 1200, duration = 0.12) {
 
 /**
  * Gestión de la Cola Resiliente Local (Offline Scan Queue)
+ * @returns {OfflineScanItem[]}
  */
 function obtenerColaOffline() {
   try {
     const q = localStorage.getItem("stockagent_offline_scan_queue");
-    return q ? JSON.parse(q) : [];
+    if (!q) return [];
+    /** @type {unknown} */
+    const parsed = JSON.parse(q);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      /** @returns {item is OfflineScanItem} */
+      (item) =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof /** @type {{ code?: unknown }} */ (item).code === "string" &&
+        typeof /** @type {{ timestamp?: unknown }} */ (item).timestamp === "number"
+    );
   } catch (e) {
     return [];
   }
 }
 
+/**
+ * Agrega un código escaneado sin conexión a la cola local.
+ * @param {string} code
+ */
 function guardarEnColaOffline(code) {
   const q = obtenerColaOffline();
   q.push({ code: code, timestamp: Date.now() });
@@ -64,12 +91,16 @@ function sincronizarColaOffline() {
   console.log(`[PWA] Sincronizando ${q.length} escaneos acumulados en offline...`);
 
   for (const item of q) {
+    /** @type {ScannedBarcodePayload} */
+    const payload = { code: item.code, timestamp: item.timestamp, offline: true };
     localStorage.setItem(
       "stockagent_scanned_barcode",
-      JSON.stringify({ code: item.code, timestamp: item.timestamp, offline: true })
+      JSON.stringify(payload)
     );
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: "BARCODE_SCANNED", code: item.code, offline: true }, "*");
+      /** @type {BarcodeScannedMessage} */
+      const msg = { type: "BARCODE_SCANNED", code: item.code, offline: true };
+      window.opener.postMessage(msg, "*");
     }
   }
 
@@ -130,14 +161,18 @@ async function initCamera() {
     };
     currentStream = await navigator.mediaDevices.getUserMedia(constraints);
     const video = document.getElementById("video");
+    if (!(video instanceof HTMLVideoElement)) {
+      throw new Error("Elemento de video no encontrado.");
+    }
     video.srcObject = currentStream;
-    track = currentStream.getVideoTracks()[0];
+    track = currentStream.getVideoTracks()[0] ?? null;
     await video.play();
     startDetection();
     actualizarIndicadorRed();
   } catch (err) {
     if (detectionInfo) {
-      detectionInfo.textContent = "Permiso de cámara denegado o no disponible: " + err.message;
+      const msg = err instanceof Error ? err.message : String(err);
+      detectionInfo.textContent = "Permiso de cámara denegado o no disponible: " + msg;
       detectionInfo.style.color = "#ef4444";
     }
   }
@@ -147,7 +182,7 @@ async function initCamera() {
  * Inicia el bucle de detección de códigos de barra.
  */
 async function startDetection() {
-  if ("BarcodeDetector" in window) {
+  if ("BarcodeDetector" in window && window.BarcodeDetector) {
     try {
       barcodeDetector = new window.BarcodeDetector({
         formats: ["code_128", "code_39", "ean_13", "ean_8", "qr_code", "upc_a", "upc_e"],
@@ -158,13 +193,14 @@ async function startDetection() {
   }
 
   const video = document.getElementById("video");
+  if (!(video instanceof HTMLVideoElement)) return;
   const detectLoop = async () => {
     if (!scanning) return;
     if (barcodeDetector && video.readyState === video.HAVE_ENOUGH_DATA) {
       try {
         const barcodes = await barcodeDetector.detect(video);
         if (barcodes.length > 0) {
-          const code = barcodes[0].rawValue.trim();
+          const code = (barcodes[0].rawValue ?? "").trim();
           const now = Date.now();
           if (code && (code !== lastScannedText || now - lastScanTime > 1800)) {
             onCodeDetected(code);
@@ -184,6 +220,7 @@ async function startDetection() {
 /**
  * Procesa un código detectado emitiendo feedback y transmitiéndolo a la sesión.
  * Si no hay red, lo resguarda en la cola offline local.
+ * @param {string} code
  */
 function onCodeDetected(code) {
   playBeep();
@@ -212,17 +249,21 @@ function onCodeDetected(code) {
   }
 
   // 1. Notificar a través de LocalStorage para sincronizar con la ventana de StockAgent
+  /** @type {ScannedBarcodePayload} */
+  const scannedPayload = {
+    code: code,
+    timestamp: Date.now(),
+  };
   localStorage.setItem(
     "stockagent_scanned_barcode",
-    JSON.stringify({
-      code: code,
-      timestamp: Date.now(),
-    })
+    JSON.stringify(scannedPayload)
   );
 
   // 2. Si se abrió como ventana secundaria / popup, emitir postMessage directo
   if (window.opener && !window.opener.closed) {
-    window.opener.postMessage({ type: "BARCODE_SCANNED", code: code }, "*");
+    /** @type {BarcodeScannedMessage} */
+    const postMsg = { type: "BARCODE_SCANNED", code: code };
+    window.opener.postMessage(postMsg, "*");
   }
 
   actualizarIndicadorRed();
@@ -233,7 +274,7 @@ function onCodeDetected(code) {
  */
 function enviarManual() {
   const inp = document.getElementById("inputManual");
-  if (!inp) return;
+  if (!(inp instanceof HTMLInputElement)) return;
   const val = inp.value.trim();
   if (val) {
     onCodeDetected(val);

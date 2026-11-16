@@ -110,6 +110,8 @@ class ThemeController:
                 deseado_oscuro = bool(prefs["modo_oscuro"])
                 if deseado_oscuro != bool(getattr(self._host, "modo_oscuro", True)):
                     self.aplicar_paleta(deseado_oscuro, usar_paleta_preferencia=True)
+            if "sonido_chat_activo" in prefs:
+                self._host.sonido_chat_activo = bool(prefs["sonido_chat_activo"])
             self._host._prefs_cargadas_usuario = True
         except Exception:
             pass

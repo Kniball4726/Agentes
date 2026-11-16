@@ -1,6 +1,9 @@
 import unittest
 from pathlib import Path
 import tempfile
+from Documentacion.generar_presentacion_tren_ejecutivo import (
+    generar_presentacion_tren_ejecutivo,
+)
 from Documentacion.manuales_procedimientos import generar_todos_los_manuales
 
 
@@ -44,6 +47,42 @@ class TestManualesProcedimientos(unittest.TestCase):
             texto = "".join(p.extract_text() for p in reader.pages)
             self.assertIn("Cierre de Jornada", texto)
             self.assertIn("Cargar / Armar Pedido", texto)
+
+    def test_presentacion_ejecutiva_actualizada(self):
+        """Verifica que la presentación ejecutiva compile con datos de la arquitectura vigente."""
+        import pypdf
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            rutas = generar_todos_los_manuales(tmp_path)
+            self.assertIn("presentacion", rutas)
+            pres_pdf = rutas["presentacion"]
+            self.assertTrue(pres_pdf.exists())
+            self.assertGreater(pres_pdf.stat().st_size, 15000)
+
+            reader = pypdf.PdfReader(str(pres_pdf))
+            self.assertEqual(len(reader.pages), 7)
+            texto = "".join(p.extract_text() for p in reader.pages)
+            self.assertIn("SQLite-First", texto)
+            self.assertIn("Mayoristas", texto)
+            self.assertIn("Mercado Libre", texto)
+            self.assertIn("360", texto)
+
+    def test_presentacion_tren_ejecutivo_12_diapositivas(self):
+        """Verifica la presentación panorámica 16:9 de 12 diapositivas para el Tren Ejecutivo."""
+        import pypdf
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pdf_out = Path(tmp_dir) / "Presentacion_Tren_Ejecutivo_StockAgent.pdf"
+            ruta = generar_presentacion_tren_ejecutivo(pdf_out)
+            self.assertTrue(ruta.exists())
+            self.assertGreater(ruta.stat().st_size, 20000)
+
+            reader = pypdf.PdfReader(str(ruta))
+            self.assertEqual(len(reader.pages), 12)
+            texto = "".join(p.extract_text() for p in reader.pages)
+            self.assertIn("Tren Ejecutivo", texto)
+            self.assertIn("Heatmap", texto)
+            self.assertIn("API REST v1", texto)
 
 
 if __name__ == "__main__":

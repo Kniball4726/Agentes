@@ -922,9 +922,11 @@ StockAgent/
 │   ├── Manual_General.pdf             # Compendio maestro institucional ISO/UPEL (12 capítulos)
 │   ├── Manual_Maestro_Imprimible.pdf  # Versión maestro imprimible con tablas de firmas/copias
 │   ├── Manual_de_Uso_StockAgent.pdf   # Manual general clásico compilado por generar_manual_pdf.py
-│   ├── pdf_engine/                    # Motor modular ReportLab/ISO/BPMN (constants, canvas_iso, components_apa, forms_sgc, manuals_*)
+│   ├── Presentacion_Ejecutiva_StockAgent.pdf # Presentación ejecutiva gerencial (7 págs., v2.3)
+│   ├── pdf_engine/                    # Motor modular ReportLab/ISO/BPMN (constants, canvas_iso, components_apa, forms_sgc, manuals_*, presentacion_*)
 │   ├── procedimientos/                # Fichas SOP modulares por rol (fichas, rol_*, runner)
 │   ├── generar_manual_pdf.py          # Fachada retrocompatible hacia Documentacion.pdf_engine
+│   ├── generar_presentacion_ejecutiva.py # Generador CLI de la Presentación Ejecutiva PDF
 │   └── manuales_procedimientos.py     # Fachada retrocompatible hacia Documentacion.procedimientos
 ├── src/                               # Código fuente modular y desacoplado (sin archivos monolíticos)
 │   ├── core/                          # Núcleo de excepciones tipadas, entorno y SQLite (exceptions, environment, sqlite_utils con closing(), system_reset)
@@ -1464,8 +1466,8 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias y de integración automatizadas que validan la persistencia transaccional, el endurecimiento de seguridad, el control de concurrencia, los flujos logísticos y todas las fachadas modulares:
 
-* **Total de pruebas:** `67` módulos en `tests/test_*.py` (`61` módulos verificados directamente en entorno sandbox con `359` pruebas y `7` subtests aprobados, más `6` módulos ASGI `TestClient`: `test_api_v1.py`, `test_client_code_and_order_fields.py`, `test_documentos_visor.py`, `test_fase5_features.py`, `test_security_api_keys.py` y `test_security_hardening.py`).
-* **Tasa de éxito:** 100% aprobadas sobre la batería ejecutada (`359 passed, 7 subtests passed`).
+* **Total de pruebas:** `67` módulos en `tests/test_*.py` (`61` módulos verificados directamente en entorno sandbox con `360` pruebas y `7` subtests aprobados, más `6` módulos ASGI `TestClient`: `test_api_v1.py`, `test_client_code_and_order_fields.py`, `test_documentos_visor.py`, `test_fase5_features.py`, `test_security_api_keys.py` y `test_security_hardening.py`).
+* **Tasa de éxito:** 100% aprobadas sobre la batería ejecutada (`360 passed, 7 subtests passed`).
 
 #### Suites Destacadas Recientes
 * `tests/test_reports_movements_architecture.py`, `tests/test_sqlite_closing.py`, `tests/test_sqlite_first_architecture.py`, `tests/test_ui_composition_pattern.py`: Reporte discriminado en 3 canales (Mayoristas, Mercado Libre, Full) para Operario, Consolidado Admin, cierre determinístico SQLite con `closing()` (`sqlite_utils.py`), ausencia de ciclos `core` ↔ `products`, arquitectura SQLite-first y composición pura sin mixins.

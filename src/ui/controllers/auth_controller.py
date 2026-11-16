@@ -85,6 +85,13 @@ class AuthSessionController:
             logger.info("Sesión cerrada manualmente por %s", usuario.username)
         self._host.usuario_actual = None
         self._host._prefs_cargadas_usuario = False
+        self._host.sonido_chat_activo = True
+        self._host._mensajes_bot_no_leidos = 0
+        self._host._ultimo_no_leidos_chat = None
+        if getattr(self._host, "page", None) is not None and isinstance(
+            getattr(self._host.page, "title", None), str
+        ):
+            self._host.page.title = "Control de Inventario Depósito Pasteur"
         self._host.controles_tarea.clear()
         botones_cierre = getattr(self._host, "botones_cierre_jornada", None)
         if botones_cierre is not None:

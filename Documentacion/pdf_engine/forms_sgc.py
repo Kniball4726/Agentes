@@ -338,7 +338,7 @@ def agregar_procedimiento_gestion_cambio_sgc(story: list, est: dict, num_tabla: 
             "<b>3. Desarrollo Modular y Documentación Concurrente:</b> Todo cambio en paquetes desacoplados de `src/` (`core`, `server_app`, `auth`, `orders`, `products`, `stock`, `inventory`, `integrations`, `labels`, `chat`, `cli`, `tray`, `ui`) mediante composición pura (sin monolitos ni ciclos) se acompaña en el mismo sprint en `Documentacion/pdf_engine/`, `Documentacion/procedimientos/`, `README.md`, `src/README.md` y `stockagent_mobile/README_MOVIL.md`.",
             "<b>4. Auditoría QA y Regresión:</b> Se ejecuta `.\\.venv\\Scripts\\python.exe -m pytest tests/ -q` verificando 0 fallos, manteniendo `STOCKAGENT_ENABLE_API_DOCS=0` en producción.",
             "<b>5. Aprobación y Versionado Semántico:</b> Dirección valida el dictamen QA e incrementa la versión documental.",
-            "<b>6. Compilación y Entrega Protegida HTTPS:</b> Se generan los 8 PDFs mediante `Documentacion/manuales_procedimientos.py`, servidos bajo `/documentacion/{archivo}?v={ts}&dt={token}` con cabeceras anti-caché.",
+            "<b>6. Compilación y Entrega Protegida HTTPS:</b> Se generan los manuales PDF y la Presentación Ejecutiva mediante `Documentacion/manuales_procedimientos.py` y `generar_presentacion_ejecutiva.py`, servidos bajo `/documentacion/{archivo}?v={ts}&dt={token}` con cabeceras anti-caché.",
             "<b>7. Retiro de Copias Obsoletas:</b> Se sustituyen ejemplares anteriores conforme a ISO 9001 §7.5.3.",
             "<b>8. Inducción y Acta:</b> Se capacita al personal (incluido perfil Picker) y se suscribe el Acta Oficial.",
         ],

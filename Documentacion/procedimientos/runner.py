@@ -8,6 +8,7 @@ from pathlib import Path
 from Documentacion.pdf_engine.manuals_master import (
     construir_manual_maestro_imprimible as _construir_compendio_maestro,
 )
+from Documentacion.pdf_engine.presentacion_ejecutiva import construir_presentacion_ejecutiva
 
 from .rol_administrador import construir_manual_administrador
 from .rol_consulta import construir_manual_consulta
@@ -39,6 +40,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
         "consulta": base_dir / "Manual_Consulta.pdf",
         "general": base_dir / "Manual_General.pdf",
         "maestro": base_dir / "Manual_Maestro_Imprimible.pdf",
+        "presentacion": base_dir / "Presentacion_Ejecutiva_StockAgent.pdf",
     }
 
     construir_manual_operador(rutas["operador"])
@@ -48,6 +50,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
     construir_manual_consulta(rutas["consulta"])
     construir_manual_general(rutas["general"])
     construir_manual_maestro_imprimible(rutas["maestro"])
+    construir_presentacion_ejecutiva(rutas["presentacion"])
 
     ruta_legacy = base_dir / "Manual_de_Uso_StockAgent.pdf"
     construir_manual_general(ruta_legacy)
