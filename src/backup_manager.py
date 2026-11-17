@@ -297,3 +297,56 @@ def restaurar_backup_sistema(
         f"Backup '{ruta_zip.name}' verificado (PRAGMA integrity_check = OK) y restaurado ({len(restaurados)} archivos).",
         restaurados,
     )
+
+
+def ejecutar_diagnostico_salud_sistema() -> dict[str, Any]:
+    """Ejecuta un diagnóstico completo de salud para el rol Master: bases de datos, espacio en disco y respaldos."""
+    raiz = application_root()
+    data_dir = raiz / "data"
+
+    dbs = {
+        "usuarios": data_dir / "usuarios.sqlite3",
+        "pedidos": data_dir / "pedidos.sqlite3",
+        "productos": data_dir / "productos.sqlite3",
+    }
+    estado_dbs: dict[str, str] = {}
+    todas_dbs_ok = True
+    for nombre_db, ruta_db in dbs.items():
+        if ruta_db.exists():
+            ok, msg = verificar_integridad_sqlite(ruta_db)
+            estado_dbs[nombre_db] = "OK" if ok else msg
+            if not ok:
+                todas_dbs_ok = False
+        else:
+            estado_dbs[nombre_db] = "No inicializada"
+
+    try:
+        _, _, free_b = shutil.disk_usage(raiz)
+        free_gb = round(free_b / (1024 ** 3), 1)
+        disco_ok = free_gb >= 2.0
+    except Exception:
+        free_gb = 0.0
+        disco_ok = True
+
+    backups_dir = data_dir / "backups"
+    zips = list(backups_dir.glob("*.zip")) if backups_dir.exists() else []
+    ultimo_backup = max(zips, key=lambda z: z.stat().st_mtime) if zips else None
+    ultimo_backup_str = (
+        datetime.fromtimestamp(ultimo_backup.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+        if ultimo_backup
+        else "Sin respaldos"
+    )
+
+    cfg = obtener_config_backup()
+    espejo_configurado = bool(cfg.get("carpeta_externa"))
+
+    return {
+        "sqlite_ok": todas_dbs_ok,
+        "dbs": estado_dbs,
+        "disco_libre_gb": free_gb,
+        "disco_ok": disco_ok,
+        "total_backups": len(zips),
+        "ultimo_backup": ultimo_backup_str,
+        "espejo_red": espejo_configurado,
+        "sistema_saludable": todas_dbs_ok and disco_ok,
+    }

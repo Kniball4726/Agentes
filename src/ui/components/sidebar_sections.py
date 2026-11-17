@@ -88,6 +88,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="DESPACHO",
                 icono=ft.Icons.LOCAL_SHIPPING,
                 items=[
+                    ("Ola de Picking", ft.Icons.WAVES, lambda _: interfaz.mostrar_dialogo_ola_picking()),
                     ("Preparar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_picking_guiado_full),
                     ("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                     ("Descontar Mercado Full", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_descuento_mercado_full),
@@ -125,6 +126,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 icono=ft.Icons.LOCAL_SHIPPING,
                 items=[
                     ("Cargar / Armar Pedido", ft.Icons.POST_ADD, interfaz.mostrar_crear_pedido),
+                    ("Ola de Picking", ft.Icons.WAVES, lambda _: interfaz.mostrar_dialogo_ola_picking()),
                     ("Descontar Mercado Libre", ft.Icons.STOREFRONT, interfaz.mostrar_descuento_mercado_libre),
                     ("Cerrar Mercado", ft.Icons.FACT_CHECK, interfaz.mostrar_cierre_mercado),
                 ],

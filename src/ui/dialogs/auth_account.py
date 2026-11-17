@@ -279,6 +279,7 @@ def mostrar_configuracion_inicial(interfaz: Any, error: str = "") -> None:
     mensaje = ft.Text(error, color=ft.Colors.RED_400, size=12, visible=bool(error))
 
     def crear_administrador(_evento: ft.Event) -> None:
+        usuario.error_text = None
         if clave.value != confirmar.value:
             mensaje.value = "Las contraseñas no coinciden."
             mensaje.visible = True
@@ -292,7 +293,10 @@ def mostrar_configuracion_inicial(interfaz: Any, error: str = "") -> None:
                 email=email_input.value or "",
             )
         except (ValueError, UserStoreError) as err:
-            mensaje.value = str(err)
+            err_msg = str(err)
+            if "ya existe" in err_msg.lower():
+                usuario.error_text = "El usuario ya existe en el sistema"
+            mensaje.value = err_msg
             mensaje.visible = True
             interfaz.page.update()
             return

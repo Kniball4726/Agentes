@@ -36,6 +36,41 @@ def compartir_whatsapp(interfaz: Any, _evento: ft.Event | None = None, ruta_espe
         interfaz.notificar(f"No se pudo abrir WhatsApp o el archivo:\n{error}")
 
 
+def compartir_whatsapp_pedido(interfaz: Any, pedido: Any, telefono: str = "") -> None:
+    """Abre WhatsApp Web con un mensaje preformateado con el estado del remito y bultos."""
+    if not interfaz.exigir_roles(*USER_ROLES):
+        return
+    import urllib.parse
+    cliente = getattr(pedido, "cliente", "Cliente") or "Cliente"
+    remito = getattr(pedido, "nota_pedido", "") or ""
+    bultos = getattr(pedido, "bultos", 1) or 1
+    logistica = getattr(pedido, "logistica", "") or "A convenir"
+    guia = getattr(pedido, "numero_guia", "") or ""
+
+    lineas = [
+        f"Hola *{cliente}*, te informamos el estado de tu pedido:",
+        f"📋 *Remito:* {remito}",
+        f"📦 *Bultos preparados:* {bultos}",
+        f"🚚 *Logística / Transporte:* {logistica}",
+    ]
+    if guia:
+        lineas.append(f"🔖 *N° de Guía:* {guia}")
+    lineas.append("\n_StockAgent - Control de Inventario y Despachos_")
+
+    texto_encoded = urllib.parse.quote("\n".join(lineas))
+    tel_clean = "".join(c for c in str(telefono) if c.isdigit())
+    if tel_clean:
+        url = f"https://web.whatsapp.com/send?phone={tel_clean}&text={texto_encoded}"
+    else:
+        url = f"https://web.whatsapp.com/send?text={texto_encoded}"
+
+    try:
+        if not webbrowser.open(url):
+            raise RuntimeError("No se pudo abrir el navegador para WhatsApp Web.")
+    except Exception as error:
+        interfaz.notificar(f"No se pudo abrir WhatsApp:\n{error}")
+
+
 def enviar_correo_cierre(
     interfaz: Any,
     destinatarios: str,

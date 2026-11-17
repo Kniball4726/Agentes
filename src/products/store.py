@@ -294,6 +294,10 @@ class ProductStore:
             top_n=top_n,
         )
 
+    def obtener_mapa_runway_inventario(self, dias_ventana: int = 14) -> dict[str, float]:
+        """Retorna {codigo_producto: dias_runway} según el ritmo de salidas recientes."""
+        return self.movements_report_repo.obtener_mapa_runway_inventario(dias_ventana=dias_ventana)
+
     def record_physical_inventory(
         self,
         usuario: str,

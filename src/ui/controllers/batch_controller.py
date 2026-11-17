@@ -195,15 +195,26 @@ class BatchTaskController:
         except Exception as exc:
             detalle = traceback.format_exc()
             logger.error("Error ejecutando tarea '%s': %s\n%s", nombre, exc, detalle)
-            self._host.actividad.controls.append(
-                ft.Text(
-                    f"[ERROR]\n{detalle}",
-                    color=ft.Colors.RED_400 if self._host.modo_oscuro else ft.Colors.RED_700,
-                    size=14,
+            if isinstance(exc, ValueError):
+                self._host.actividad.controls.append(
+                    ft.Text(
+                        f"[AVISO] {exc}",
+                        color=ft.Colors.AMBER_400 if self._host.modo_oscuro else ft.Colors.AMBER_800,
+                        size=14,
+                    )
                 )
-            )
-            self._set_status_text(f"{nombre} terminó con un error.", estado="error")
-            self._notificar("La operación falló. Revisa el panel Actividad.")
+                self._set_status_text(f"{nombre}: {exc}", estado="alerta")
+                self._notificar(str(exc))
+            else:
+                self._host.actividad.controls.append(
+                    ft.Text(
+                        f"[ERROR]\n{detalle}",
+                        color=ft.Colors.RED_400 if self._host.modo_oscuro else ft.Colors.RED_700,
+                        size=14,
+                    )
+                )
+                self._set_status_text(f"{nombre} terminó con un error.", estado="error")
+                self._notificar("La operación falló. Revisa el panel Actividad.")
         else:
             texto = salida.getvalue().strip()
             if texto:

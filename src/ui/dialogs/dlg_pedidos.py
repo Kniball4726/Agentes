@@ -11,6 +11,7 @@ from .pedidos_gestion import (
     mostrar_dialogo_confirmar_anulacion_pedido,
     mostrar_dialogo_confirmar_desarmar_pedido,
     mostrar_dialogo_editar_pedido,
+    mostrar_dialogo_ajuste_bultos_express,
 )
 
 
@@ -27,5 +28,6 @@ __all__ = [
     "mostrar_dialogo_crear_pedido",
     "mostrar_dialogo_confirmar_anulacion_pedido",
     "mostrar_dialogo_editar_pedido",
+    "mostrar_dialogo_ajuste_bultos_express",
     "mostrar_dialogo_confirmar_desarmar_pedido",
 ]

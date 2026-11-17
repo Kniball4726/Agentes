@@ -60,23 +60,82 @@ def mostrar_dialogo_editar_producto(
         codigo = (campo_codigo.value or "").strip()
         nombre = (campo_nombre.value or "").strip()
         stock_texto = (campo_stock.value or "").strip()
+        campo_codigo.error_text = None
+        campo_nombre.error_text = None
+        campo_stock.error_text = None
+        campo_min.error_text = None
+        campo_max.error_text = None
+        campo_barras.error_text = None
+
         if not codigo or not nombre or not stock_texto:
+            if not codigo:
+                campo_codigo.error_text = "El código es obligatorio."
+            if not nombre:
+                campo_nombre.error_text = "El nombre es obligatorio."
+            if not stock_texto:
+                campo_stock.error_text = "El stock es obligatorio."
             interfaz.notificar("Completa el código, el nombre y el stock.")
+            interfaz.page.update()
             return
         try:
             stock = int(stock_texto)
         except ValueError:
+            campo_stock.error_text = "El stock debe ser un número entero."
             interfaz.notificar("El stock debe ser un número entero.")
+            interfaz.page.update()
             return
         try:
             s_min = int((campo_min.value or "5").strip())
             s_max = int((campo_max.value or "100").strip())
             if s_min < 0 or s_max < s_min:
+                campo_min.error_text = "El mínimo debe ser >= 0 y el máximo >= mínimo."
                 interfaz.notificar("El mínimo debe ser >= 0 y el máximo >= mínimo.")
+                interfaz.page.update()
                 return
         except ValueError:
+            campo_min.error_text = "Los stocks mínimo y máximo deben ser números enteros."
             interfaz.notificar("Los stocks mínimo y máximo deben ser números enteros.")
+            interfaz.page.update()
             return
+
+        if codigo.lower() != codigo_original.lower():
+            prod_otro = None
+            if hasattr(stock_manager, "product_store") and stock_manager.product_store:
+                try:
+                    prod_otro = stock_manager.product_store.get_product(codigo)
+                except Exception:
+                    pass
+            if prod_otro is None and hasattr(stock_manager, "catalogo") and stock_manager.catalogo:
+                cod_norm = codigo.lower()
+                for k, v in stock_manager.catalogo.items():
+                    if str(k).strip().lower() == cod_norm:
+                        prod_otro = {"name": v[1]}
+                        break
+            if prod_otro:
+                nom_otro = ""
+                if isinstance(prod_otro, dict) or hasattr(prod_otro, "__getitem__"):
+                    try:
+                        nom_otro = str(prod_otro["name"])
+                    except Exception:
+                        pass
+                detalle = f" ('{nom_otro}')" if nom_otro else ""
+                campo_codigo.error_text = f"El producto ya existe{detalle}"
+                interfaz.notificar(f"El código '{codigo}' ya está asignado a otro producto.")
+                interfaz.page.update()
+                return
+
+        barras_val = (campo_barras.value or "").strip()
+        if barras_val and hasattr(stock_manager, "product_store") and stock_manager.product_store:
+            try:
+                prod_b = stock_manager.product_store.get_product_by_barcode(barras_val)
+                if prod_b and str(prod_b["code"]).strip().lower() != codigo_original.lower():
+                    nom_b = prod_b["name"]
+                    campo_barras.error_text = f"Código de barras ya asignado a '{nom_b}'"
+                    interfaz.notificar(f"El código de barras ya pertenece a '{nom_b}'.")
+                    interfaz.page.update()
+                    return
+            except Exception:
+                pass
 
         interfaz.page.pop_dialog()
         actualizado = await interfaz.ejecutar_tarea(
@@ -88,7 +147,7 @@ def mostrar_dialogo_editar_producto(
                 stock,
                 s_min,
                 s_max,
-                cod_barras=(campo_barras.value or "").strip(),
+                cod_barras=barras_val,
             ),
         )
         if actualizado:
@@ -261,6 +320,7 @@ def mostrar_dialogo_formulario_producto(
         campos["codigo"].error_text = "El código es obligatorio" if not codigo else None
         campos["nombre"].error_text = "El nombre es obligatorio" if not nombre else None
         campos["referencia"].error_text = "Selecciona el producto de referencia" if not referencia else None
+        campos["cod_barras"].error_text = None
         if not codigo or not nombre or not referencia:
             interfaz.page.update()
             return
@@ -273,16 +333,79 @@ def mostrar_dialogo_formulario_producto(
             interfaz.page.update()
             return
 
+        stock_manager = _resolver_stock_manager_cls()(interfaz.menu.ruta_excel_base)
+
+        # 1. Validar si el código ya existe
+        prod_existente = None
+        if hasattr(stock_manager, "product_store") and stock_manager.product_store:
+            try:
+                prod_existente = stock_manager.product_store.get_product(codigo)
+            except Exception:
+                pass
+        if prod_existente is None and hasattr(stock_manager, "catalogo") and stock_manager.catalogo:
+            cod_norm = codigo.lower()
+            for k, v in stock_manager.catalogo.items():
+                if str(k).strip().lower() == cod_norm:
+                    prod_existente = {"name": v[1]}
+                    break
+
+        if prod_existente:
+            nom_exist = ""
+            if isinstance(prod_existente, dict) or hasattr(prod_existente, "__getitem__"):
+                try:
+                    nom_exist = str(prod_existente["name"])
+                except Exception:
+                    pass
+            detalle_nom = f" ('{nom_exist}')" if nom_exist else ""
+            campos["codigo"].error_text = f"El producto ya existe{detalle_nom}"
+            interfaz.notificar(f"El producto con código '{codigo}' ya existe.")
+            interfaz.page.update()
+            return
+
+        # 2. Validar si el producto de referencia existe
+        ref_existe = False
+        if hasattr(stock_manager, "product_store") and stock_manager.product_store:
+            try:
+                if stock_manager.product_store.get_product(referencia):
+                    ref_existe = True
+            except Exception:
+                pass
+        if not ref_existe and hasattr(stock_manager, "catalogo") and stock_manager.catalogo:
+            ref_norm = referencia.lower()
+            for k in stock_manager.catalogo.keys():
+                if str(k).strip().lower() == ref_norm:
+                    ref_existe = True
+                    break
+
+        if not ref_existe:
+            campos["referencia"].error_text = f"No existe el producto de referencia '{referencia}'"
+            interfaz.notificar(f"No se encontró el producto de referencia '{referencia}'.")
+            interfaz.page.update()
+            return
+
+        # 3. Validar si el código de barras ya pertenece a otro producto
+        barras = (campos["cod_barras"].value or "").strip()
+        if barras and hasattr(stock_manager, "product_store") and stock_manager.product_store:
+            try:
+                prod_barras = stock_manager.product_store.get_product_by_barcode(barras)
+                if prod_barras and str(prod_barras["code"]).strip().lower() != codigo.lower():
+                    nom_b = prod_barras["name"]
+                    campos["cod_barras"].error_text = f"Código de barras ya asignado a '{nom_b}'"
+                    interfaz.notificar(f"El código de barras ya pertenece a '{nom_b}'.")
+                    interfaz.page.update()
+                    return
+            except Exception:
+                pass
+
         interfaz.page.pop_dialog()
 
         def insertar() -> None:
-            stock_manager = _resolver_stock_manager_cls()(interfaz.menu.ruta_excel_base)
             exito, mensaje, _ = stock_manager.agregar_producto_en_posicion(
                 codigo_nuevo=codigo,
                 nombre_nuevo=nombre,
                 codigo_arriba=referencia,
                 stock_inicial=stock,
-                cod_barras=(campos["cod_barras"].value or "").strip(),
+                cod_barras=barras,
             )
             if not exito:
                 raise ValueError(mensaje)

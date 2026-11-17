@@ -66,6 +66,18 @@ class InternalChatTests(unittest.TestCase):
         res_no_existe = formatear_respuesta_stock("9999", productos)
         self.assertIn("No encontré ningún producto", res_no_existe)
 
+    def test_formats_stock_response_suggests_substitutes_when_out_of_stock(self):
+        productos = [
+            {"code": "FIL-101", "name": "Filtro de Aceite Modelo A", "stock": 0, "active": 1},
+            {"code": "FIL-102", "name": "Filtro de Aceite Modelo B", "stock": 15, "active": 1},
+            {"code": "BUJ-200", "name": "Bujía Platino", "stock": 8, "active": 1},
+        ]
+        res = formatear_respuesta_stock("FIL-101", productos)
+        self.assertIn("SIN STOCK", res)
+        self.assertIn("Alternativas sugeridas con stock:", res)
+        self.assertIn("FIL-102", res)
+        self.assertNotIn("BUJ-200", res)
+
     def test_formats_critical_products_response(self):
         productos = [
             {"code": "1001", "name": "Filtro de Aceite", "stock": 10, "active": 1},

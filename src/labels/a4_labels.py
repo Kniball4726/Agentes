@@ -1,4 +1,4 @@
-"""Generación de rótulos A4 en grilla 2x5 (10 etiquetas por página) con QR vectorizado."""
+"""Generación de rótulos A4 en grilla 2x3 (6 etiquetas por página) con QR vectorizado."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _construir_tarjeta_etiqueta(
     fecha_retiro: str,
     ancho_card: float = 9.6 * cm,
 ) -> Table:
-    """Construye el componente visual autocontenido de una etiqueta individual (4 por hoja A4, 2x2)."""
+    """Construye el componente visual autocontenido de una etiqueta individual (6 por hoja A4, 2x3)."""
     ancho_inner = ancho_card - (0.6 * cm)
     styles = getSampleStyleSheet()
     uid = f"{bulto_idx}_{id(pedido)}"
@@ -134,12 +134,12 @@ def _construir_tarjeta_etiqueta(
     ]))
     items_label.append(t_inferior)
 
-    tarjeta_exterior = Table([[items_label]], colWidths=[ancho_card], rowHeights=[13.5 * cm])
+    tarjeta_exterior = Table([[items_label]], colWidths=[ancho_card], rowHeights=[9.2 * cm])
     tarjeta_exterior.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#94a3b8")),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -152,7 +152,7 @@ def generar_etiquetas_bultos_pdf(
     carpeta_destino: Path,
     llenar_hoja: bool = False,
 ) -> Path:
-    """Genera el PDF con las etiquetas A4 (2x2) de todos los bultos de un pedido."""
+    """Genera el PDF con las etiquetas A4 (2x3) de todos los bultos de un pedido."""
     carpeta_destino.mkdir(parents=True, exist_ok=True)
     remito_limpio = "".join(c if c.isalnum() or c in "-_" else "_" for c in pedido.nota_pedido)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -183,7 +183,7 @@ def generar_etiquetas_lote_pedidos_pdf(
     carpeta_destino: Path,
     llenar_hoja: bool = False,
 ) -> Path:
-    """Genera un PDF combinando rótulos de múltiples pedidos en hojas A4 (2x2)."""
+    """Genera un PDF combinando rótulos de múltiples pedidos en hojas A4 (2x3)."""
     carpeta_destino.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     ruta_pdf = carpeta_destino / f"Rotulos_Lote_{timestamp}.pdf"

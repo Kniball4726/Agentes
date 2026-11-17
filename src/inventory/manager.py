@@ -125,6 +125,12 @@ class StockManager:
         """Consulta la vista de la base de datos `v_analisis_reposicion`."""
         return self.product_store.get_replenishment_analysis(only_critical=solo_criticos)
 
+    def obtener_mapa_runway_inventario(self, dias_ventana: int = 14) -> dict[str, float]:
+        """Obtiene mapa {codigo: dias_runway} de cobertura estimada de inventario."""
+        if hasattr(self, "product_store") and self.product_store:
+            return self.product_store.obtener_mapa_runway_inventario(dias_ventana=dias_ventana)
+        return {}
+
     def generar_pedido_sugerido_fabrica(
         self,
         ruta_salida: Path | str | None = None,

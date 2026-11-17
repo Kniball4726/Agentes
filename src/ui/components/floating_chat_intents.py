@@ -35,6 +35,17 @@ _INTENCIONES_BLOQUEADAS_MASTER = frozenset({
 })
 _INTENCIONES_BLOQUEADAS_OPERADOR = frozenset({"simular", "reposicion", "diagnostico"})
 _INTENCIONES_BLOQUEADAS_CONSULTA = frozenset({"simular", "cierre", "mercadolibre", "pedidos"})
+_INTENCIONES_BLOQUEADAS_PICKER = frozenset({
+    "simular",
+    "reposicion",
+    "diagnostico",
+    "cierre",
+    "auditoria",
+    "informes",
+    "ultimo_informe",
+    "backup",
+    "metricas",
+})
 
 
 def _resolver_stock_manager():
@@ -76,6 +87,11 @@ def _validar_permiso_intencion(rol: str, intencion: str) -> str | None:
         )
     if rol == "consulta" and intencion in _INTENCIONES_BLOQUEADAS_CONSULTA:
         return "⚠️ El rol Consulta es de solo lectura. Puedes consultar /stock, /criticos o /informes."
+    if rol == "picker" and intencion in _INTENCIONES_BLOQUEADAS_PICKER:
+        return (
+            "⚠️ Esta función no está disponible para el perfil Picker.\n"
+            "Como Picker puedes consultar /stock, /mercadolibre, /pedidos o comunicarte por /equipo."
+        )
     return None
 
 
@@ -226,7 +242,26 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
         return
 
     if intencion == "estado":
-        respuesta = interfaz.resumen_estado()
+        if rol == "master":
+            try:
+                from ...backup_manager import ejecutar_diagnostico_salud_sistema
+                diag = ejecutar_diagnostico_salud_sistema()
+                sql_status = "🟢 Íntegras (PRAGMA OK)" if diag["sqlite_ok"] else "🔴 Advertencia en BD"
+                disco_txt = f"{diag['disco_libre_gb']} GB disponibles"
+                espejo_txt = "Configurado" if diag["espejo_red"] else "Solo local"
+                resumen_base = interfaz.resumen_estado()
+                respuesta = (
+                    f"🛡️ **Telemetría & Salud del Sistema (Master):**\n"
+                    f"• Bases SQLite: {sql_status}\n"
+                    f"• Espacio en disco: {disco_txt}\n"
+                    f"• Copias de seguridad: {diag['total_backups']} respaldos (Último: {diag['ultimo_backup']})\n"
+                    f"• Resguardo espejo/red: {espejo_txt}\n\n"
+                    f"{resumen_base}"
+                )
+            except Exception:
+                respuesta = interfaz.resumen_estado()
+        else:
+            respuesta = interfaz.resumen_estado()
     elif intencion == "informes":
         respuesta = interfaz.resumen_informes()
     elif intencion == "saludo":

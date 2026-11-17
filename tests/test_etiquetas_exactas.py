@@ -81,8 +81,9 @@ def test_etiquetas_agregado_concatena_nombre_cliente(tmp_path: Path):
     )
     pdf_a4_agregado = generar_etiquetas_bultos_pdf(p_agregado, tmp_path)
     texto_a4_agr = pypdf.PdfReader(str(pdf_a4_agregado)).pages[0].extract_text()
-    assert "Ferretería San Martín Agregado" in texto_a4_agr
-    assert "Nro 88" in texto_a4_agr
+    texto_a4_agr_unido = " ".join(texto_a4_agr.split())
+    assert "Ferretería San Martín Agregado" in texto_a4_agr_unido
+    assert "Nro 88" in texto_a4_agr_unido
 
     # 3. Rótulo térmico también debe concatenar 'Agregado'
     pdf_term_agregado = generar_etiquetas_termicas_pdf(p_agregado, tmp_path)
@@ -108,5 +109,6 @@ def test_etiquetas_agregado_concatena_nombre_cliente(tmp_path: Path):
     )
     pdf_ya_agr = generar_etiquetas_bultos_pdf(p_ya_agregado, tmp_path)
     texto_ya_agr = pypdf.PdfReader(str(pdf_ya_agr)).pages[0].extract_text()
-    assert "Ferretería San Martín Agregado" in texto_ya_agr
-    assert "Agregado Agregado" not in texto_ya_agr
+    texto_ya_agr_unido = " ".join(texto_ya_agr.split())
+    assert "Ferretería San Martín Agregado" in texto_ya_agr_unido
+    assert "Agregado Agregado" not in texto_ya_agr_unido

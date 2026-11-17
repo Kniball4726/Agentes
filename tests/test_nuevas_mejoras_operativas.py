@@ -181,3 +181,68 @@ def test_espejo_backup_en_red(tmp_path: Path):
 
     # Limpiar config
     guardar_config_backup("")
+
+
+def test_mostrar_dialogo_ajuste_bultos_express():
+    """Verifica la apertura del modal exprés de ajuste de bultos para operador."""
+    from src.ui.dialogs import mostrar_dialogo_ajuste_bultos_express
+    interfaz = MagicMock()
+    interfaz.usuario_actual = User(id=1, username="operador1", role="operador", active=True)
+    interfaz.texto = "#ffffff"
+    interfaz.secundario = "#888888"
+    ped = Pedido(
+        id=99,
+        nota_pedido="REM-99",
+        numero_pedido="1",
+        cliente="Cliente Bulto",
+        bultos=2,
+        logistica="Expreso",
+        armador="Lucas",
+        tipo_archivo="pdf",
+        nombre_archivo="rem.pdf",
+        agregado=False,
+        articulos_descontados=1,
+        resumen_items="1 un.",
+        created_at="2026-10-30",
+        estado="descontado",
+    )
+    mostrar_dialogo_ajuste_bultos_express(interfaz, ped)
+    assert interfaz.page.show_dialog.called
+    dlg = interfaz.page.show_dialog.call_args[0][0]
+    assert "Ajuste Rápido de Bultos" in dlg.title.controls[1].value
+
+
+def test_diagnostico_salud_sistema_master():
+    """Verifica que el diagnóstico del rol Master compruebe integridad SQLite, espacio y backups."""
+    from src.backup_manager import ejecutar_diagnostico_salud_sistema
+
+    diag = ejecutar_diagnostico_salud_sistema()
+    assert isinstance(diag, dict)
+    assert "sqlite_ok" in diag
+    assert "disco_libre_gb" in diag
+    assert "total_backups" in diag
+    assert "sistema_saludable" in diag
+    assert isinstance(diag["dbs"], dict)
+
+
+def test_obtener_mapa_runway_inventario(tmp_path: Path):
+    """Verifica el cálculo de días de inventario restante (runway) para alertas de quiebre."""
+    from src.products.store import ProductStore
+
+    db_path = tmp_path / "test_products.sqlite3"
+    store = ProductStore(db_path)
+
+    # Importar producto con stock inicial 28
+    store.import_template_once([(4, "PROD-RUNWAY", "Producto Runway", 28)])
+
+    # Registrar salida de stock (14 unidades en 14 días = 1 un/día -> runway = 28 / 1 = 28 días)
+    store.register_movements(
+        [("PROD-RUNWAY", "Producto Runway", -14, "despacho")],
+        usuario="test_user",
+        detalle="Salidas de prueba",
+    )
+
+    runway_map = store.obtener_mapa_runway_inventario(dias_ventana=14)
+    assert "PROD-RUNWAY" in runway_map
+    assert runway_map["PROD-RUNWAY"] == 28.0
+

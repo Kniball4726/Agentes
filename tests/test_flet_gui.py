@@ -745,6 +745,7 @@ class FletGuiTests(unittest.TestCase):
 
 
 
+
     def test_asegurar_file_picker_overlay_y_parent(self):
         """Verifica que _asegurar_file_picker mantenga el file_picker fuera de overlay (evita 'Unknown control: FilePicker') y con parent valido."""
         interfaz, _, page = self.crear_interfaz()

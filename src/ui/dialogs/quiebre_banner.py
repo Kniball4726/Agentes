@@ -217,6 +217,13 @@ def actualizar_alerta_quiebre(
         criticos,
         key=lambda x: int(x.get("stock", 0) if isinstance(x, dict) else x["stock"]),
     )
+    mapa_runway: dict[str, float] = {}
+    if hasattr(interfaz, "stock_manager") and hasattr(interfaz.stock_manager, "obtener_mapa_runway_inventario"):
+        try:
+            mapa_runway = interfaz.stock_manager.obtener_mapa_runway_inventario(dias_ventana=14)
+        except Exception:
+            mapa_runway = {}
+
     for p in criticos_ordenados[:5]:
         c_cod = str(p.get("code", "") if isinstance(p, dict) else p["code"])
         c_nom = str(p.get("name", "") if isinstance(p, dict) else p["name"])
@@ -224,6 +231,8 @@ def actualizar_alerta_quiebre(
         c_min = int(p.get("stock_minimo", 0) if isinstance(p, dict) else p["stock_minimo"])
         c_pedir = int(p.get("cantidad_sugerida_pedir", 0) if isinstance(p, dict) else p["cantidad_sugerida_pedir"])
         es_ag = c_stk <= 0
+        runway_val = mapa_runway.get(c_cod)
+        txt_runway = f"⏳ {runway_val}d" if runway_val is not None else ""
 
         badge_inline = ft.Container(
             content=ft.Text("AGOTADO" if es_ag else f"QUIEBRE (Mín {c_min})", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
@@ -231,19 +240,25 @@ def actualizar_alerta_quiebre(
             border_radius=4,
             padding=ft.Padding(5, 2, 5, 2),
         )
+        controles_fila = [
+            ft.Text(c_cod, weight=ft.FontWeight.BOLD, size=11, width=70),
+            ft.Text(c_nom, size=11, expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+            badge_inline,
+            ft.Text(f"Stock: {c_stk}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400 if es_ag else ft.Colors.AMBER_400),
+            ft.Text(f"Pedir: +{c_pedir}", size=11, color=ft.Colors.BLUE_400),
+        ]
+        if txt_runway:
+            controles_fila.append(
+                ft.Text(txt_runway, size=10, weight=ft.FontWeight.W_500, color=ft.Colors.PURPLE_300 if interfaz.modo_oscuro else ft.Colors.PURPLE_700, tooltip="Días estimados de inventario restante según consumo reciente")
+            )
+
         items_vista_rapida.append(
             ft.Container(
                 bgcolor=ft.Colors.BLACK_12 if interfaz.modo_oscuro else ft.Colors.WHITE,
                 border_radius=6,
                 padding=6,
                 content=ft.Row(
-                    [
-                        ft.Text(c_cod, weight=ft.FontWeight.BOLD, size=11, width=70),
-                        ft.Text(c_nom, size=11, expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                        badge_inline,
-                        ft.Text(f"Stock: {c_stk}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400 if es_ag else ft.Colors.AMBER_400),
-                        ft.Text(f"Pedir: +{c_pedir}", size=11, color=ft.Colors.BLUE_400),
-                    ],
+                    controles_fila,
                     spacing=8,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),

@@ -30,6 +30,7 @@ from .factory_plan_repo import FactoryPlanRepository
 from .full_plan_repo import FullPlanRepository
 from .order_core_repo import OrderCoreRepository
 from .stock_flow_repo import StockFlowRepository
+from .picking_wave import consolidar_ola_picking
 from .store import OrderStore
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "_COLUMNAS_DESPACHO",
     "calcular_hash_archivo",
     "inicializar_esquema_pedidos",
+    "consolidar_ola_picking",
     "OrderStoreError",
     "OrderNotFoundError",
     "OrderValidationError",

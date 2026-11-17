@@ -31,6 +31,7 @@ from .dlg_pedidos import (
     mostrar_dialogo_crear_pedido,
     mostrar_dialogo_confirmar_anulacion_pedido,
     mostrar_dialogo_editar_pedido,
+    mostrar_dialogo_ajuste_bultos_express,
     mostrar_dialogo_confirmar_desarmar_pedido,
 )
 from .dlg_historial_pedidos import (
@@ -40,6 +41,7 @@ from .dlg_historial_pedidos import (
 from .dlg_email import (
     compartir_correo,
     compartir_whatsapp,
+    compartir_whatsapp_pedido,
     enviar_correo_cierre,
     mostrar_dialogo_compartir_cierre,
     mostrar_dialogo_enviar_correo,
@@ -75,6 +77,7 @@ from .dlg_movimientos_rapidos import (
 )
 from .dlg_planificar_full import mostrar_planificar_full
 from .dlg_picking_guiado_full import mostrar_picking_guiado_full
+from .dlg_ola_picking import mostrar_dialogo_ola_picking
 from .dlg_planificar_ingreso_fabrica import mostrar_planificar_ingreso_fabrica
 from .dlg_control_ingreso_fabrica import mostrar_control_ingreso_fabrica
 from .dlg_gestion_ambientes import mostrar_gestion_ambientes
@@ -130,12 +133,14 @@ __all__ = [
     "mostrar_dialogo_crear_pedido",
     "mostrar_dialogo_confirmar_anulacion_pedido",
     "mostrar_dialogo_editar_pedido",
+    "mostrar_dialogo_ajuste_bultos_express",
     "mostrar_dialogo_confirmar_desarmar_pedido",
     "mostrar_historial_pedidos",
     "mostrar_imprimir_descuentos",
     # Correo & Compartir
     "compartir_correo",
     "compartir_whatsapp",
+    "compartir_whatsapp_pedido",
     "enviar_correo_cierre",
     "mostrar_dialogo_compartir_cierre",
     "mostrar_dialogo_enviar_correo",
@@ -154,6 +159,7 @@ __all__ = [
     "mostrar_descuento_mercado_full",
     "mostrar_planificar_full",
     "mostrar_picking_guiado_full",
+    "mostrar_dialogo_ola_picking",
     "mostrar_descuento_mercado_libre",
     "MercadoLibreScannerComponent",
     "MercadoLibreDocxComponent",

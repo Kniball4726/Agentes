@@ -389,6 +389,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             mensaje.value = "Solo el usuario master puede crear administradores."
             interfaz.page.update()
             return
+        nuevo_usuario.error_text = None
         try:
             interfaz.user_store.create_user(
                 nuevo_usuario.value or "",
@@ -399,7 +400,10 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
                 email=nuevo_email.value or "",
             )
         except (ValueError, UserStoreError) as error:
-            mensaje.value = str(error)
+            err_msg = str(error)
+            if "ya existe" in err_msg.lower():
+                nuevo_usuario.error_text = "El usuario ya existe en el sistema"
+            mensaje.value = err_msg
         else:
             nuevo_usuario.value = ""
             nuevo_nombre.value = ""

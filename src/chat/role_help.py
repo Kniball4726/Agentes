@@ -51,6 +51,17 @@ _COMANDOS_POR_ROL: dict[str, str] = {
         "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
         "• /limpiar: Limpia la pantalla del chat."
     ),
+    "picker": (
+        "📋 Comandos disponibles para Picker (Preparación & Movimientos):\n"
+        "• /stock <código o nombre>: Consulta existencias y ubicación de estantería.\n"
+        "• /mercadolibre: Guía rápida para escaneo y órdenes de Mercado Libre.\n"
+        "• /full: Procedimiento de preparación y despacho masivo a Mercado Full.\n"
+        "• /fabrica: Control de tandas y remitos de ingreso de planta.\n"
+        "• /pedidos: Consulta los pedidos del turno activo.\n"
+        "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un compañero o al equipo.\n"
+        "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
+        "• /limpiar: Limpia la pantalla del chat."
+    ),
 }
 
 _CHIPS_POR_ROL: dict[str, list[tuple[str, str, str]]] = {
@@ -89,6 +100,15 @@ _CHIPS_POR_ROL: dict[str, list[tuple[str, str, str]]] = {
         ("Último Informe", "/ultimo", "DESCRIPTION"),
         ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
     ],
+    "picker": [
+        ("Chat Equipo", "/equipo", "CHAT"),
+        ("Consultar Stock", "/stock", "SEARCH"),
+        ("Mercado Libre", "/mercadolibre", "STOREFRONT"),
+        ("Mercado Full", "/full", "LOCAL_SHIPPING"),
+        ("Ingreso Fábrica", "/fabrica", "INVENTORY_2"),
+        ("Ver Pedidos", "/pedidos", "RECEIPT_LONG"),
+        ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
+    ],
 }
 
 _PIES_POR_ROL: dict[str, str] = {
@@ -96,6 +116,7 @@ _PIES_POR_ROL: dict[str, str] = {
     "master": "Usa /auditoria, /backup, /estado, /equipo o /ayuda",
     "administrador": "Usa /stock <cód>, /criticos, /reposicion, /diagnostico, /estado o /ayuda",
     "consulta": "Usa /stock <cód>, /criticos, /informes o /ayuda",
+    "picker": "Usa /stock <cód>, /mercadolibre, /full, /fabrica, /pedidos o /ayuda",
 }
 
 
@@ -108,6 +129,13 @@ def obtener_mensaje_bienvenida(rol: str, nombre_usuario: str = "") -> str:
             "Puedo ayudarte a consultar stock y existencias en tiempo real (/stock <código>), "
             "ver el estado de pedidos del día (/pedidos), guiarte con remitos DOCX (/mercadolibre) "
             "o consultar el cierre de jornada (/cierre).\n"
+            "Escribe /ayuda para ver todos tus comandos."
+        ),
+        "picker": (
+            f"¡Hola{nombre}! 👋 Asistente de Picking y Movimientos Activo.\n"
+            "Puedo ayudarte a localizar productos en estantería (/stock <código>), "
+            "preparar envíos de Mercado Libre (/mercadolibre), armar tandas Full (/full) "
+            "o consultar pedidos del turno (/pedidos).\n"
             "Escribe /ayuda para ver todos tus comandos."
         ),
         "master": (

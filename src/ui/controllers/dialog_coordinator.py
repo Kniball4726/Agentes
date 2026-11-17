@@ -34,6 +34,7 @@ from ..dialogs import (
     mostrar_dialogo_confirmar_desarmar_pedido,
     mostrar_dialogo_crear_pedido,
     mostrar_dialogo_editar_pedido,
+    mostrar_dialogo_ajuste_bultos_express,
     mostrar_dialogo_enviar_correo,
     mostrar_dialogo_escaner_qr_despacho,
     mostrar_dialogo_formulario_producto,
@@ -52,6 +53,7 @@ from ..dialogs import (
     mostrar_ingreso_fabrica,
     mostrar_notificaciones_admin,
     mostrar_picking_guiado_full,
+    mostrar_dialogo_ola_picking,
     mostrar_planificar_full,
     mostrar_planificar_ingreso_fabrica,
     mostrar_registro_auditoria,
@@ -241,6 +243,9 @@ class DialogCoordinator:
     def mostrar_dialogo_editar_pedido(self, pedido: Any, al_final: Callable[[], None] | None = None) -> None:
         self._dispatch(mostrar_dialogo_editar_pedido, pedido, al_final)
 
+    def mostrar_dialogo_ajuste_bultos_express(self, pedido: Any, al_final: Callable[[], None] | None = None) -> None:
+        self._dispatch(mostrar_dialogo_ajuste_bultos_express, pedido, al_final)
+
     def confirmar_desarmar_pedido(self, pedido: Any, al_final: Callable[[], None] | None = None) -> None:
         self._dispatch(mostrar_dialogo_confirmar_desarmar_pedido, pedido, al_final)
 
@@ -302,6 +307,9 @@ class DialogCoordinator:
 
     def mostrar_picking_guiado_full(self, _evento: ft.Event | None = None) -> None:
         self._dispatch(mostrar_picking_guiado_full, _evento, close_drawer=True)
+
+    def mostrar_dialogo_ola_picking(self, pedidos: list[Any] | None = None) -> None:
+        self._dispatch(mostrar_dialogo_ola_picking, pedidos)
 
     def mostrar_descuento_mercado_libre(self, _evento: ft.Event | None = None) -> None:
         self._dispatch(mostrar_descuento_mercado_libre, _evento, close_drawer=True, ensure_picker=True)

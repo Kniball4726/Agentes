@@ -111,6 +111,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                         val_nom = (campo_edit.value or "").strip()
                         val_cod = (campo_cod.value or "").strip()
                         val_dir = (campo_dir.value or "").strip()
+                        campo_edit.error_text = None
                         try:
                             interfaz.order_store.actualizar_cliente(
                                 cid,
@@ -123,7 +124,10 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                             interfaz.notificar(f"Cliente '{val_nom}' actualizado.")
                             recargar_clientes()
                         except Exception as err:
-                            err_edit.value = str(err)
+                            err_msg = str(err)
+                            if "ya existe" in err_msg.lower():
+                                campo_edit.error_text = "El cliente ya existe en el sistema"
+                            err_edit.value = err_msg
                             interfaz.page.update()
 
                     campo_edit.on_submit = guardar_edit
@@ -249,7 +253,10 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
             msg_feedback.color = ft.Colors.GREEN_400
             recargar_clientes()
         except Exception as err:
-            msg_feedback.value = str(err)
+            err_msg = str(err)
+            if "ya existe" in err_msg.lower():
+                nuevo_cliente_txt.error_text = "El cliente ya existe en el sistema"
+            msg_feedback.value = err_msg
             msg_feedback.color = ft.Colors.RED_400
             interfaz.page.update()
 

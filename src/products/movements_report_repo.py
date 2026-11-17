@@ -361,3 +361,30 @@ class MovementsReportRepository:
                 }
             )
         return resultado
+
+    def obtener_mapa_runway_inventario(self, dias_ventana: int = 14) -> dict[str, float]:
+        """Calcula un mapa {codigo_producto: dias_runway} según el ritmo de salidas recientes."""
+        dias = max(1, int(dias_ventana))
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    m.product_code AS code,
+                    COALESCE(p.stock, 0) AS stock_actual,
+                    SUM(CASE WHEN m.quantity < 0 THEN ABS(m.quantity) ELSE 0 END) AS total_salidas
+                FROM stock_movements m
+                LEFT JOIN products p ON p.code = m.product_code
+                WHERE m.registered_at >= datetime('now', '-{dias} days', 'localtime')
+                GROUP BY m.product_code
+                HAVING total_salidas > 0
+                """
+            ).fetchall()
+
+        mapa: dict[str, float] = {}
+        for r in rows:
+            stk = int(r["stock_actual"] or 0)
+            sal = float(r["total_salidas"] or 0)
+            prom_diario = sal / dias
+            if prom_diario > 0:
+                mapa[str(r["code"])] = round(stk / prom_diario, 1)
+        return mapa

@@ -15,6 +15,7 @@ from .historial_archivos import (
     buscar_archivo_comprobante,
     buscar_archivo_descuento,
 )
+from .dlg_email import compartir_whatsapp_pedido
 
 
 def _icono_y_color_archivo(interfaz: Any, nombre_archivo: str) -> tuple[ft.IconData, str]:
@@ -51,6 +52,7 @@ def mostrar_detalle_pedido_modal(interfaz: Any, ped: Pedido) -> None:
         )
     acciones_dialogo.extend(
         [
+            interfaz.boton("WhatsApp", ft.Icons.CHAT, lambda _e: compartir_whatsapp_pedido(interfaz, ped)),
             interfaz.boton("Rótulos QR", ft.Icons.QR_CODE_2, lambda _e: interfaz.imprimir_rotulos_pedido(ped)),
             interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog()),
         ]

@@ -409,3 +409,6 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
         ],
     )
     interfaz.page.show_dialog(dialogo)
+
+
+from .dlg_ajuste_bultos import mostrar_dialogo_ajuste_bultos_express

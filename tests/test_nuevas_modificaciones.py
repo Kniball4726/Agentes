@@ -65,19 +65,18 @@ def test_descuento_sin_generar_documento(tmp_path: Path):
     assert reporte.reporte_stock.archivo_guardado == ""
 
 
-def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
-    """Verifica que las etiquetas se generen en A4 a razón de 10 por página (disposición 2x5)."""
+def test_etiquetas_6_por_hoja_a4(tmp_path: Path):
+    """Verifica que las etiquetas se generen en A4 a razón de 6 por página (disposición 2x3)."""
     destino = tmp_path / "etiquetas"
     destino.mkdir()
 
-    # Pedido con 10 bultos -> exactamente 1 página A4
-    # Pedido con 4 bultos -> 1 página A4 (4 etiquetas por página, grilla 2x2)
-    p4 = Pedido(
+    # Pedido con 6 bultos -> 1 página A4 (6 etiquetas por página, grilla 2x3)
+    p6 = Pedido(
         id=1,
         nota_pedido="REM-001",
         numero_pedido="PED-01",
         cliente="Comercial ABC",
-        bultos=4,
+        bultos=6,
         logistica="Canje",
         armador="Juan",
         tipo_archivo="pdf",
@@ -88,20 +87,20 @@ def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
-    pdf4 = generar_etiquetas_bultos_pdf(p4, destino)
-    reader4 = pypdf.PdfReader(str(pdf4))
-    assert len(reader4.pages) == 1
+    pdf6 = generar_etiquetas_bultos_pdf(p6, destino)
+    reader6 = pypdf.PdfReader(str(pdf6))
+    assert len(reader6.pages) == 1
     # Dimensiones A4 (595.27 x 841.89)
-    assert abs(float(reader4.pages[0].mediabox.width) - A4[0]) < 1.0
-    assert abs(float(reader4.pages[0].mediabox.height) - A4[1]) < 1.0
+    assert abs(float(reader6.pages[0].mediabox.width) - A4[0]) < 1.0
+    assert abs(float(reader6.pages[0].mediabox.height) - A4[1]) < 1.0
 
-    # Pedido con 5 bultos -> 2 páginas A4 (4 en la primera, 1 en la segunda)
-    p5 = Pedido(
+    # Pedido con 7 bultos -> 2 páginas A4 (6 en la primera, 1 en la segunda)
+    p7 = Pedido(
         id=2,
         nota_pedido="REM-002",
         numero_pedido="PED-02",
         cliente="Comercial ABC",
-        bultos=5,
+        bultos=7,
         logistica="Canje",
         armador="Juan",
         tipo_archivo="pdf",
@@ -112,9 +111,9 @@ def test_etiquetas_10_por_hoja_a4(tmp_path: Path):
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
-    pdf5 = generar_etiquetas_bultos_pdf(p5, destino)
-    reader5 = pypdf.PdfReader(str(pdf5))
-    assert len(reader5.pages) == 2
+    pdf7 = generar_etiquetas_bultos_pdf(p7, destino)
+    reader7 = pypdf.PdfReader(str(pdf7))
+    assert len(reader7.pages) == 2
 
 
 def test_cliente_auto_creacion(tmp_path: Path):
@@ -360,8 +359,8 @@ def test_etiquetas_llenar_hoja_a4_pedido_individual(tmp_path: Path):
     reader_lleno = pypdf.PdfReader(str(pdf_lleno))
     assert len(reader_lleno.pages) == 1
     texto_pagina = reader_lleno.pages[0].extract_text()
-    # Debe aparecer BULTO 1 DE 1 repetido 10 veces para llenar la cuadricula
-    assert texto_pagina.count("BULTO 1 DE 1") == 10
+    # Debe aparecer BULTO 1 DE 1 repetido 6 veces para llenar la cuadricula
+    assert texto_pagina.count("BULTO 1 DE 1") == 6
 
     # 1 bulto con llenar_hoja=False -> 1 hoja A4 pero sin repeticiones forzadas (celdas vacias)
     pdf_exacto = generar_etiquetas_bultos_pdf(p1, destino, llenar_hoja=False)
@@ -381,14 +380,14 @@ def test_etiquetas_lote_pedidos_a4(tmp_path: Path):
         nota_pedido="REM-101",
         numero_pedido="P-101",
         cliente="Cliente A",
-        bultos=4,
+        bultos=2,
         logistica="Expreso",
         armador="Armador 1",
         tipo_archivo="pdf",
         nombre_archivo="doc.pdf",
         agregado=False,
-        articulos_descontados=4,
-        resumen_items="4 un.",
+        articulos_descontados=2,
+        resumen_items="2 un.",
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
@@ -397,27 +396,27 @@ def test_etiquetas_lote_pedidos_a4(tmp_path: Path):
         nota_pedido="REM-102",
         numero_pedido="P-102",
         cliente="Cliente B",
-        bultos=6,
+        bultos=4,
         logistica="Canje",
         armador="Armador 2",
         tipo_archivo="pdf",
         nombre_archivo="doc.pdf",
         agregado=False,
-        articulos_descontados=6,
-        resumen_items="6 un.",
+        articulos_descontados=4,
+        resumen_items="4 un.",
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
 
-    # 4 + 6 = 10 bultos exactos -> 1 pagina A4 perfectamente completa
-    pdf_lote_10 = generar_etiquetas_lote_pedidos_pdf([p1, p2], destino, llenar_hoja=True)
-    reader10 = pypdf.PdfReader(str(pdf_lote_10))
-    assert len(reader10.pages) == 1
-    txt = reader10.pages[0].extract_text()
+    # 2 + 4 = 6 bultos exactos -> 1 pagina A4 perfectamente completa
+    pdf_lote_6 = generar_etiquetas_lote_pedidos_pdf([p1, p2], destino, llenar_hoja=True)
+    reader6 = pypdf.PdfReader(str(pdf_lote_6))
+    assert len(reader6.pages) == 1
+    txt = reader6.pages[0].extract_text()
     assert "Cliente A" in txt
     assert "Cliente B" in txt
 
-    # Lote de 11 bultos -> 2 paginas A4
+    # Lote de 7 bultos -> 2 paginas A4
     p3 = Pedido(
         id=103,
         nota_pedido="REM-103",
@@ -434,9 +433,9 @@ def test_etiquetas_lote_pedidos_a4(tmp_path: Path):
         created_at="2026-10-26 12:00:00",
         estado="descontado",
     )
-    pdf_lote_11 = generar_etiquetas_lote_pedidos_pdf([p1, p2, p3], destino, llenar_hoja=True)
-    reader11 = pypdf.PdfReader(str(pdf_lote_11))
-    assert len(reader11.pages) == 2
+    pdf_lote_7 = generar_etiquetas_lote_pedidos_pdf([p1, p2, p3], destino, llenar_hoja=True)
+    reader7 = pypdf.PdfReader(str(pdf_lote_7))
+    assert len(reader7.pages) == 2
 
     # Lote vacio genera excepcion
     import pytest
