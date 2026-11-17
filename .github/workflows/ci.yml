@@ -33,5 +33,7 @@ jobs:
           pip install pytest pytest-asyncio anyio
 
       - name: Run test suite
+        env:
+          PYTHONPATH: .
         run: |
-          pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short
