@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -140,10 +141,16 @@ class TestAdminVerStockEInformes(unittest.TestCase):
 
         # 3. En modo Escritorio con ruta específica existente
         interfaz.page.web = False
-        with patch.object(Path, "exists", return_value=True), \
-             patch("os.startfile") as mock_startfile:
-            interfaz.abrir_informe(ruta_especifica=ruta_fake)
-            mock_startfile.assert_called_once()
+        if sys.platform == "win32":
+            with patch.object(Path, "exists", return_value=True), \
+                 patch("os.startfile") as mock_startfile:
+                interfaz.abrir_informe(ruta_especifica=ruta_fake)
+                mock_startfile.assert_called_once()
+        else:
+            with patch.object(Path, "exists", return_value=True), \
+                 patch("src.ui.controllers.document_viewer_service.webbrowser.open") as mock_open:
+                interfaz.abrir_informe(ruta_especifica=ruta_fake)
+                mock_open.assert_called_once()
 
 
 if __name__ == "__main__":

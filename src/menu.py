@@ -20,11 +20,14 @@ _ADMIN_USUARIO = os.getenv("_ADMIN_USUARIO")
 _ADMIN_CLAVE = os.getenv("_ADMIN_CLAVE")
 
 if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _enc = (getattr(_stream, "encoding", None) or "").lower()
+            if _enc not in ("utf-8", "utf8") and hasattr(_stream, "reconfigure"):
+                _err_mode = getattr(_stream, "errors", None) or "replace"
+                _stream.reconfigure(encoding="utf-8", errors=_err_mode)
+        except Exception:
+            pass
 
 
 class MenuAgente:

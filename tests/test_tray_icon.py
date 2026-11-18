@@ -1,6 +1,11 @@
+import os
 import socket
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
+
+if sys.platform.startswith("linux") and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+    os.environ.setdefault("PYSTRAY_BACKEND", "dummy")
 
 from src.tray import (
     ESTADO_CLIENTE,

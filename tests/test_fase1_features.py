@@ -5,13 +5,15 @@
 """
 
 import os
+import sys
 import tempfile
 import time
 import types
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from src.archive_manager import archivar_comprobantes_antiguos, obtener_estadisticas_almacenamiento
 from src.orders import Pedido
@@ -52,7 +54,17 @@ class TestFase1Features(unittest.TestCase):
 
     def test_feedback_acustico_no_genera_excepciones(self):
         """Verifica que las funciones de emisión de tono se ejecuten de manera segura."""
-        with patch("winsound.Beep", return_value=None):
+        if sys.platform == "win32":
+            with patch("winsound.Beep", return_value=None):
+                emitir_tono_exito()
+                emitir_tono_error()
+        else:
+            fake_winsound = SimpleNamespace(Beep=MagicMock())
+            with patch.dict(sys.modules, {"winsound": fake_winsound}):
+                emitir_tono_exito()
+                emitir_tono_error()
+            self.assertEqual(fake_winsound.Beep.call_count, 2)
+            # Sin winsound disponible en el sistema debe degradar sin lanzar excepción
             emitir_tono_exito()
             emitir_tono_error()
 

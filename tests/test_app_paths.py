@@ -1,3 +1,5 @@
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,10 +14,14 @@ class ApplicationPathsTests(unittest.TestCase):
         self.assertEqual(application_root(), expected)
 
     def test_packaged_run_uses_executable_directory(self):
-        with patch("src.paths.sys.frozen", True, create=True), patch(
-            "src.paths.sys.executable", r"C:\release\StockAgent.exe"
-        ):
-            self.assertEqual(application_root(), Path(r"C:\release"))
+        with tempfile.TemporaryDirectory() as tmp:
+            release_dir = Path(tmp).resolve()
+            exe_name = "StockAgent.exe" if sys.platform == "win32" else "StockAgent"
+            fake_exe = release_dir / exe_name
+            with patch("src.paths.sys.frozen", True, create=True), patch(
+                "src.paths.sys.executable", str(fake_exe)
+            ):
+                self.assertEqual(application_root(), release_dir)
 
 
 if __name__ == "__main__":
