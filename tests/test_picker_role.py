@@ -121,6 +121,31 @@ class TestPickerRole(unittest.TestCase):
         self.assertIn("Descontar Mercado Libre", textos)
         self.assertNotIn("Cargar / Armar Pedido", textos)
 
+    def test_panel_acceso_rapido_operador(self):
+        """Verifica que el panel de acceso rápido para Operador no incluya Descontar Mercado Libre."""
+        oper_user = self.u_store.create_user("oper_test_panel", "OperPass1234!", "operador")
+        self.interfaz.usuario_actual = oper_user
+
+        ctrl = self.interfaz.panel_acceso_rapido()
+        self.assertTrue(ctrl.visible if hasattr(ctrl, "visible") else True)
+
+        def extraer_textos(control):
+            txts = []
+            if hasattr(control, "value") and control.value:
+                txts.append(str(control.value))
+            if hasattr(control, "content") and control.content:
+                txts.extend(extraer_textos(control.content))
+            if hasattr(control, "controls") and control.controls:
+                for c in control.controls:
+                    txts.extend(extraer_textos(c))
+            return txts
+
+        textos = extraer_textos(ctrl)
+        self.assertIn("Cargar / Armar Pedido", textos)
+        self.assertIn("Ingreso de Stock", textos)
+        self.assertIn("Egreso de Stock", textos)
+        self.assertNotIn("Descontar Mercado Libre", textos)
+
     def test_panel_acceso_rapido_administrador(self):
         """Verifica que el rol Administrador no tenga accesos rápidos táctiles."""
         admin_user = self.u_store.create_user("admin_test", "AdminPass1234!", "administrador")

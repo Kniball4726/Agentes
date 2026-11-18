@@ -211,7 +211,7 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
     - Master: Accesos rápidos de seguridad.
     - Picker: Ingreso, Egreso y Descontar Mercado Libre.
     - Administrador: Sin accesos rápidos táctiles (solo seguimiento operativo en vivo).
-    - Operador: Cargar Pedido, Descontar ML, Ingreso y Egreso.
+    - Operador: Cargar Pedido, Ingreso y Egreso.
     - Consulta / Otros: Oculto.
     """
     rol = str(getattr(getattr(interfaz, "usuario_actual", None), "role", "")).lower()
@@ -320,13 +320,6 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
                 ft.Icons.POST_ADD,
                 ft.Colors.BLUE_600,
                 interfaz.mostrar_crear_pedido,
-            ),
-            (
-                "Descontar Mercado Libre",
-                "Escaneo de etiquetas ML",
-                ft.Icons.STOREFRONT,
-                ft.Colors.AMBER_600,
-                interfaz.mostrar_descuento_mercado_libre,
             ),
             (
                 "Ingreso de Stock",
