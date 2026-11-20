@@ -32,16 +32,23 @@
       }
     });
 
-    // Limpiar cualquier FontManifest o index antiguo en CacheStorage
+    // Limpiar cualquier FontManifest, index antiguo o Service Worker en localhost
     if ('caches' in window) {
       caches.keys().then((names) => {
         names.forEach((name) => {
           caches.open(name).then((cache) => {
             cache.delete('/');
             cache.delete('/index.html');
+            cache.delete('/offline.html');
             cache.delete('/assets/FontManifest.json');
           });
         });
+      }).catch(() => {});
+    }
+    if ('serviceWorker' in navigator &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
       }).catch(() => {});
     }
 
@@ -197,14 +204,29 @@
       console.log("Flutter app loaded");
       document.getElementById('loading')?.remove();
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
-          .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
-          .catch(err => console.warn('[PWA] Aviso registro Service Worker:', err));
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((r) => r.unregister());
+          }).catch(() => {});
+        } else {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
+            .catch(err => console.warn('[PWA] Aviso registro Service Worker:', err));
+        }
       }
     });
   </script>
 
   <!-- fletAppConfig -->
+
+  <script>
+    if (!flet.canvasKitBaseUrl) {
+      flet.canvasKitBaseUrl = (flet.entrypointBaseUrl || "/") + "canvaskit/";
+    }
+    if (!flet.fontFallbackBaseUrl) {
+      flet.fontFallbackBaseUrl = (flet.assetBase || "/") + "assets/fonts/";
+    }
+  </script>
 
   <script src="python.js"></script>
 </head>

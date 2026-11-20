@@ -69,6 +69,14 @@ function debeOmitirCache(req, url) {
   ) {
     return true;
   }
+  // En el propio servidor local (localhost / 127.0.0.1), la navegación principal '/' va directo a Flet
+  if (
+    req.mode === 'navigate' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+    url.pathname !== '/scanner.html'
+  ) {
+    return true;
+  }
   if (SENSITIVE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     return true;
   }
@@ -116,12 +124,13 @@ sw.addEventListener('activate', (event) => {
             console.log('[SW] Eliminando caché antiguo:', name);
             return caches.delete(name);
           }
-          // Limpiar index.html y FontManifest antiguos si quedaron guardados en v1
+          // Limpiar restos antiguos y refrescar offline.html para evitar bloqueos tras actualizar
           return caches.open(name).then((c) => Promise.all([
             c.delete('/'),
             c.delete('/index.html'),
+            c.delete('/offline.html'),
             c.delete('/assets/FontManifest.json'),
-          ]));
+          ]).then(() => c.add(new Request('/offline.html', { cache: 'reload' })).catch(() => {})));
         })
       );
     }).then(() => sw.clients.claim())

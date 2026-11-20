@@ -14,7 +14,7 @@ import flet as ft
 
 from ..alertas_programadas import iniciar_planificador
 from ..logger_config import configurar_logging
-from ..ssl_manager import asegurar_certificado_ssl
+from ..ssl_manager import asegurar_ca_confiable_windows, asegurar_certificado_ssl
 from .middleware import configurar_middlewares_http
 from .network_utils import (
     PUERTO_WEB_DEFAULT,
@@ -265,6 +265,7 @@ def iniciar_servidor_web(
                 Path(ssl_certfile) if ssl_certfile else None,
                 Path(ssl_keyfile) if ssl_keyfile else None,
             )
+            asegurar_ca_confiable_windows(cert_path_final.parent / "stockagent_ca.crt")
             logger.info("Certificado SSL preparado para HTTPS: %s", cert_path_final)
         except Exception as exc_ssl:
             logger.warning("No se pudo preparar certificado SSL, continuando en HTTP: %s", exc_ssl)

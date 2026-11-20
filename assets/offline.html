@@ -239,14 +239,55 @@
       } catch (_e) {}
     })();
 
-    function reintentar() {
+    async function limpiarServiceWorkerAtascado() {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch (_e) {}
+    }
+
+    async function verificarServidorActivo() {
+      try {
+        const res = await fetch('/api/v1/sistema/ping?t=' + Date.now(), {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        if (res && res.ok) {
+          const statusEl = document.getElementById('txt-status');
+          if (statusEl) {
+            statusEl.textContent = '¡Servidor detectado! Entrando a StockAgent...';
+          }
+          await limpiarServiceWorkerAtascado();
+          window.location.replace('/?t=' + Date.now());
+          return true;
+        }
+      } catch (_e) {}
+      return false;
+    }
+
+    async function reintentar() {
       document.getElementById('txt-status').textContent = 'Comprobando conexión...';
+      await limpiarServiceWorkerAtascado();
       if (window.location.protocol === 'http:') {
         window.location.href = window.location.href.replace('http:', 'https:');
+      } else if (window.location.pathname === '/offline.html') {
+        window.location.replace('/?t=' + Date.now());
       } else {
         window.location.reload();
       }
     }
+
+    // Sondeo activo del servidor local cada 2.5 segundos (no depende solo del evento Wi-Fi del SO)
+    limpiarServiceWorkerAtascado().then(() => {
+      verificarServidorActivo();
+      setInterval(verificarServidorActivo, 2500);
+    });
 
     function conectarManual() {
       const statusEl = document.getElementById('txt-status');
