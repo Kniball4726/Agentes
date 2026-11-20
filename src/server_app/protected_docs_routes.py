@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import urllib.parse
 from fastapi import Depends
 from starlette.responses import FileResponse, JSONResponse
 
+from ..core.environment import get_descuentos_dir
 from ..paths import application_root
 
 logger = logging.getLogger("stockagent.server")
@@ -31,18 +33,27 @@ _MEDIA_TYPES_INFORME = {
 }
 
 
+def _content_disposition_seguro(disposition: str, nombre_archivo: str) -> str:
+    limpio = nombre_archivo.replace('"', "").replace("\r", "").replace("\n", "").replace(";", "_")
+    codificado = urllib.parse.quote(limpio)
+    return f'{disposition}; filename="{limpio}"; filename*=UTF-8\'\'{codificado}'
+
+
 def _buscar_informe_seguro(base_app: Path, nombre_seguro: str) -> Path | None:
+    base_desc = get_descuentos_dir().resolve()
     rutas_candidatas = [
-        base_app / "Descuentos" / "descuentos" / nombre_seguro,
-        base_app / "Descuentos" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "MercadoLibre" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "Mayoristas" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "Canjes" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "Fabrica" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "MercadoFull" / nombre_seguro,
-        base_app / "Descuentos" / "descontados" / "StockFisico" / nombre_seguro,
-        base_app / "Descuentos" / "Rotulos" / nombre_seguro,
+        base_desc / "descuentos" / nombre_seguro,
+        base_desc / nombre_seguro,
+        base_desc / "descontados" / nombre_seguro,
+        base_desc / "descontados" / "MercadoLibre" / nombre_seguro,
+        base_desc / "descontados" / "Mayoristas" / nombre_seguro,
+        base_desc / "descontados" / "Canjes" / nombre_seguro,
+        base_desc / "descontados" / "Fabrica" / nombre_seguro,
+        base_desc / "descontados" / "MercadoFull" / nombre_seguro,
+        base_desc / "descontados" / "StockFisico" / nombre_seguro,
+        base_desc / "Rotulos" / nombre_seguro,
+        base_desc / "Fabrica" / "Pedidos_Sugeridos" / nombre_seguro,
+        base_desc / "StockFisico" / "Comparativas" / nombre_seguro,
         base_app / "Fabrica" / "Pedidos_Sugeridos" / nombre_seguro,
         base_app / "StockFisico" / "Comparativas" / nombre_seguro,
     ]
@@ -51,7 +62,6 @@ def _buscar_informe_seguro(base_app: Path, nombre_seguro: str) -> Path | None:
         if res_cand.is_relative_to(base_app) and res_cand.exists() and res_cand.is_file():
             return res_cand
 
-    base_desc = (base_app / "Descuentos").resolve()
     if base_desc.exists():
         for arch in base_desc.rglob("*"):
             if arch.is_file() and arch.name == nombre_seguro:
@@ -90,7 +100,7 @@ def registrar_rutas_documentos_e_informes(app) -> None:
             media_type="application/pdf",
             filename=nombre_seguro,
             headers={
-                "Content-Disposition": f"inline; filename={nombre_seguro}",
+                "Content-Disposition": _content_disposition_seguro("inline", nombre_seguro),
                 "Cache-Control": "no-cache, no-store, must-revalidate",
             },
         )
@@ -140,7 +150,7 @@ def registrar_rutas_documentos_e_informes(app) -> None:
             media_type=media,
             filename=nombre_seguro,
             headers={
-                "Content-Disposition": f'{disposition}; filename="{nombre_seguro}"',
+                "Content-Disposition": _content_disposition_seguro(disposition, nombre_seguro),
                 "Cache-Control": "no-cache, no-store, must-revalidate",
             },
         )

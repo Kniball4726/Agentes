@@ -37,6 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _userController.dispose();
     _passwordController.dispose();
+    _apiService.dispose();
     super.dispose();
   }
 

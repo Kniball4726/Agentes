@@ -56,6 +56,7 @@ def procesar_cierre_plan_full_sync(
                 sincronizar_excel=True,
             )
         except Exception as exc_sm:
+            res["stock_error"] = str(exc_sm)
             print(f"[WARN] Error al descontar del catálogo central Full: {exc_sm}")
 
         nota_base = f"FULL-PLAN-{plan_id}" if es_final else f"FULL-PLAN-{plan_id}-PARCIAL"
@@ -131,6 +132,13 @@ async def ejecutar_cierre_plan_full_async(
         interfaz.notificar(str(resultado_ref.get("mensaje") or "No se pudo completar el cierre Full."))
         return resultado_ref
 
+    if resultado_ref.get("stock_error"):
+        interfaz.notificar(
+            f"⚠️ Cierre Full #{plan_id} registrado, pero hubo un error al descontar stock central: "
+            f"{resultado_ref['stock_error']}"
+        )
+        return resultado_ref
+
     total_un = int(resultado_ref.get("total_descontado") or 0)
     porc = float(resultado_ref.get("porcentaje") or 0.0)
     if es_final:
@@ -203,7 +211,7 @@ def _mostrar_dialogo_cierre_plan_full(interfaz: Any, *, es_final: bool) -> None:
             lbl_resumen.value = "No hay envíos de Mercado Full activos en preparación."
             lbl_aviso.value = "Solicite al administrador planificar un envío o verifique si ya fue cerrado."
             btn_confirmar.disabled = True
-            btn_confirmar.text = texto_btn
+            btn_confirmar.content = texto_btn
             interfaz.page.update()
             return
 
@@ -239,7 +247,7 @@ def _mostrar_dialogo_cierre_plan_full(interfaz: Any, *, es_final: bool) -> None:
                 )
                 lbl_aviso.color = ft.Colors.GREEN_400 if es_oscuro else ft.Colors.GREEN_800
             btn_confirmar.disabled = (pick <= 0 and desc <= 0)
-            btn_confirmar.text = (
+            btn_confirmar.content = (
                 f"✔ Confirmar Cierre Final ({pendiente} un. nuevas)"
                 if pendiente > 0
                 else "✔ Confirmar Cierre Final"
@@ -251,7 +259,7 @@ def _mostrar_dialogo_cierre_plan_full(interfaz: Any, *, es_final: bool) -> None:
             )
             lbl_aviso.color = ft.Colors.BLUE_300 if es_oscuro else ft.Colors.BLUE_800
             btn_confirmar.disabled = pendiente <= 0
-            btn_confirmar.text = (
+            btn_confirmar.content = (
                 f"📅 Confirmar Cierre Parcial ({pendiente} un.)"
                 if pendiente > 0
                 else "📅 Sin unidades nuevas para descontar"

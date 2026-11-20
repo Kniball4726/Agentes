@@ -11,7 +11,9 @@ import sqlite3
 from typing import Any
 import openpyxl
 
+from ..auth.events import notify_session_revocation
 from ..paths import application_root
+from .environment import is_qa_environment
 
 
 def ejecutar_zapping_produccion(
@@ -29,6 +31,11 @@ def ejecutar_zapping_produccion(
       movimientos de stock y logs de auditoría.
     - Resetea los contadores autoincrementales para reiniciar desde #1.
     """
+    if is_qa_environment():
+        raise RuntimeError(
+            "No se puede ejecutar el zapping de producción mientras el entorno QA está activo."
+        )
+
     from ..backup_manager import crear_backup_sistema
     from ..inventory.excel_sync import detectar_esquema
 
@@ -157,6 +164,7 @@ def ejecutar_zapping_produccion(
                     pass
             conn.commit()
             conn.execute("VACUUM")
+        notify_session_revocation("all")
 
     # 6. Resetear stock a 0 en Productos.xlsx
     if ruta_excel.exists():

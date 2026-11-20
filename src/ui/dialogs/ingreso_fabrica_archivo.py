@@ -50,6 +50,8 @@ def ejecutar_tarea_compatible(interfaz: Any, titulo: str, fn: Any) -> None:
 
 def registrar_ingreso_escaner(interfaz: Any, items_escaneados: dict[str, int], sobrescribir: bool) -> None:
     """Persiste el ingreso acumulado por escáner, movimientos y auditoría."""
+    rol_actual = getattr(getattr(interfaz, "usuario_actual", None), "role", "")
+    sobrescribir_seguro = bool(sobrescribir) and rol_actual == "administrador"
     total_unidades = sum(items_escaneados.values())
     cant_prods = len(items_escaneados)
     usr = getattr(interfaz.usuario_actual, "username", "operador")
@@ -57,7 +59,7 @@ def registrar_ingreso_escaner(interfaz: Any, items_escaneados: dict[str, int], s
 
     def aplicar_ingreso() -> None:
         sm = resolver_stock_manager_fabrica()(interfaz.menu.ruta_excel_base)
-        res = sm.registrar_ingreso_fabrica(copia_items, sobrescribir=sobrescribir)
+        res = sm.registrar_ingreso_fabrica(copia_items, sobrescribir=sobrescribir_seguro)
         print(f"[OK] Ingreso fábrica: {len(res)} productos actualizados.")
         for cod, (ant, nvo) in res.items():
             print(f"     Código {cod}: {ant} -> {nvo}")

@@ -8,6 +8,7 @@ from typing import Any
 import flet as ft
 
 from ...inventory import StockManager as _DefaultStockManager
+from ..components.debounce import Debouncer
 from ..theme import ROJO
 from .productos_modales import (
     confirmar_cambio_estado_producto,
@@ -187,11 +188,22 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                 ft.Container(height=420, content=productos),
             ],
             tight=True,
-            width=900,
+            width=interfaz.ancho_adaptable(900) if hasattr(interfaz, "ancho_adaptable") else 900,
         ),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )
-    busqueda.on_change = actualizar_lista
+    es_test = getattr(interfaz, "_is_mock", False) or "pytest" in sys.modules
+    debouncer = Debouncer(0.0 if es_test else 0.25)
+
+    def _al_escribir_busqueda(_e: Any = None) -> None:
+        debouncer.debounce(actualizar_lista)
+
+    def _al_enviar_busqueda(_e: Any = None) -> None:
+        debouncer.cancel()
+        actualizar_lista()
+
+    busqueda.on_change = _al_escribir_busqueda
+    busqueda.on_submit = _al_enviar_busqueda
     actualizar_lista()
     interfaz.page.show_dialog(dialogo)
 

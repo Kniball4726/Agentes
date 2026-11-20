@@ -111,15 +111,23 @@ def configurar_dialogos_adaptables_shell(interfaz: Any) -> None:
 
         def show_dialog_adaptable(dialogo):
             interfaz.cerrar_drawer_si_movil()
+            if isinstance(dialogo, ft.AlertDialog) and not getattr(dialogo, "_allow_dismiss", False):
+                if getattr(dialogo, "actions", None):
+                    dialogo.modal = True
             if hasattr(dialogo, "content") and dialogo.content is not None:
-                for ctrl in [dialogo.content, getattr(dialogo.content, "content", None)]:
-                    if ctrl is not None:
-                        w_orig = getattr(ctrl, "width", None)
-                        if isinstance(w_orig, (int, float)):
-                            ctrl.width = interfaz.ancho_adaptable(int(w_orig))
-                        h_orig = getattr(ctrl, "height", None)
-                        if isinstance(h_orig, (int, float)):
-                            ctrl.height = interfaz.alto_adaptable(int(h_orig))
+                visitados: set[int] = set()
+                cola = [dialogo.content, getattr(dialogo.content, "content", None)]
+                while cola:
+                    ctrl = cola.pop(0)
+                    if ctrl is None or id(ctrl) in visitados:
+                        continue
+                    visitados.add(id(ctrl))
+                    w_orig = getattr(ctrl, "width", None)
+                    if isinstance(w_orig, (int, float)) and w_orig > 320:
+                        ctrl.width = interfaz.ancho_adaptable(int(w_orig))
+                    h_orig = getattr(ctrl, "height", None)
+                    if isinstance(h_orig, (int, float)):
+                        ctrl.height = interfaz.alto_adaptable(int(h_orig))
             return orig_show(dialogo)
 
         page.show_dialog = show_dialog_adaptable
@@ -139,8 +147,11 @@ def configurar_ventana_shell(interfaz: Any, icon_path: Path) -> None:
     page.bgcolor = interfaz.fondo
     page.theme_mode = ft.ThemeMode.DARK
     page.theme = ft.Theme(color_scheme_seed=ROJO)
+    page.dark_theme = ft.Theme(color_scheme_seed=ROJO)
     if hasattr(page, "on_resize"):
         page.on_resize = interfaz._al_redimensionar
+    if hasattr(page, "on_disconnect") and hasattr(interfaz, "_al_desconectar"):
+        page.on_disconnect = interfaz._al_desconectar
     page.on_keyboard_event = interfaz._manejar_teclas_globales
     registrar_servicio_audio_web(interfaz)
     configurar_dialogos_adaptables_shell(interfaz)
@@ -151,6 +162,14 @@ def establecer_posicion_sidebar_ui(interfaz: Any, nueva_posicion: str) -> None:
     if nueva_posicion not in ("izquierda", "derecha", "arriba", "abajo", "oculto"):
         return
     interfaz.posicion_sidebar = nueva_posicion
+    usr = getattr(getattr(interfaz, "usuario_actual", None), "username", None)
+    if usr:
+        try:
+            from .user_preferences import guardar_preferencia_usuario
+
+            guardar_preferencia_usuario(usr, "posicion_sidebar", nueva_posicion)
+        except Exception:
+            pass
     interfaz.construir()
     nombre_pos = {
         "izquierda": "a la izquierda",
@@ -232,7 +251,7 @@ def construir_dashboard_shell(interfaz: Any) -> None:
         ],
         expand=True,
         spacing=16,
-        scroll=ft.ScrollMode.AUTO if es_movil else None,
+        scroll=ft.ScrollMode.AUTO,
     )
 
     if es_movil:
@@ -375,19 +394,19 @@ def fijar_estado_tarea_ui(interfaz: Any, texto: str, estado: str = "listo") -> N
     if hasattr(interfaz, "icono_estado_tarea") and interfaz.icono_estado_tarea:
         texto_lower = (texto or "").lower()
         if estado == "listo" or "listo" in texto_lower or "finalizad" in texto_lower:
-            interfaz.icono_estado_tarea.name = ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED
+            interfaz.icono_estado_tarea.icon = ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED
             interfaz.icono_estado_tarea.color = ft.Colors.GREEN_400
         elif estado == "error" or "error" in texto_lower or "fall" in texto_lower:
-            interfaz.icono_estado_tarea.name = ft.Icons.ERROR_OUTLINE_ROUNDED
+            interfaz.icono_estado_tarea.icon = ft.Icons.ERROR_OUTLINE_ROUNDED
             interfaz.icono_estado_tarea.color = ft.Colors.RED_400
         elif estado == "en_curso" or "curso" in texto_lower or "progreso" in texto_lower:
-            interfaz.icono_estado_tarea.name = ft.Icons.SYNC_ROUNDED
+            interfaz.icono_estado_tarea.icon = ft.Icons.SYNC_ROUNDED
             interfaz.icono_estado_tarea.color = ft.Colors.AMBER_400
         elif estado == "archivo":
-            interfaz.icono_estado_tarea.name = ft.Icons.DESCRIPTION_OUTLINED
+            interfaz.icono_estado_tarea.icon = ft.Icons.DESCRIPTION_OUTLINED
             interfaz.icono_estado_tarea.color = ft.Colors.LIGHT_BLUE_400
         else:
-            interfaz.icono_estado_tarea.name = ft.Icons.INFO_OUTLINE_ROUNDED
+            interfaz.icono_estado_tarea.icon = ft.Icons.INFO_OUTLINE_ROUNDED
             interfaz.icono_estado_tarea.color = interfaz.secundario
     if hasattr(interfaz, "page") and interfaz.page:
         try:
@@ -409,13 +428,31 @@ def construir_tarjeta_ui(interfaz: Any, contenido: ft.Control, expand: bool = Fa
 
 
 def copiar_al_portapapeles_ui(interfaz: Any, texto: str) -> None:
-    """Copia texto al portapapeles del cliente de forma segura."""
+    """Copia texto al portapapeles del cliente reutilizando un único servicio ft.Clipboard."""
+    page = getattr(interfaz, "page", None)
+    if not page:
+        return
     try:
-        if interfaz.page:
+        cb = getattr(interfaz, "_clipboard_service", None)
+        if cb is None:
             cb = ft.Clipboard()
-            interfaz.page.overlay.append(cb)
-            interfaz.page.update()
-            cb.set(str(texto))
+            interfaz._clipboard_service = cb
+        services = getattr(page, "services", None)
+        if isinstance(services, list) and cb not in services:
+            services.append(cb)
+            page.update()
+
+        valor = str(texto)
+        run_task = getattr(page, "run_task", None)
+        if callable(run_task):
+            async def _copiar() -> None:
+                await cb.set(valor)
+
+            run_task(_copiar)
+        else:
+            res = cb.set(valor)
+            if hasattr(res, "close"):
+                res.close()
     except Exception:
         pass
 

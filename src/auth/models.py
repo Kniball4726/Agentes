@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-UserRole = Literal["master", "administrador", "operador", "consulta", "picker"]
-USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta", "picker")
+UserRole = Literal["master", "administrador", "operador", "consulta", "picker", "despachador"]
+USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta", "picker", "despachador")
 DEFAULT_MASTER_USERNAME = "Auditoria"
 DEFAULT_MASTER_PASSWORD = "master1713"
 

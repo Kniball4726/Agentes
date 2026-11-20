@@ -8,7 +8,8 @@ from typing import Any
 import flet as ft
 
 from ...archive_manager import archivar_comprobantes_antiguos, obtener_estadisticas_almacenamiento
-from ...paths import application_root
+from ...paths import get_data_dir
+from ..design import colores_de, confirmar_accion_destructiva
 from ..theme import ROJO
 
 
@@ -17,11 +18,13 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
     if not interfaz.exigir_roles("master"):
         return
 
+    colores = colores_de(interfaz)
+    es_web = bool(getattr(getattr(interfaz, "page", None), "web", False))
     texto_pedidos = ft.Text("...", size=13, color=interfaz.texto)
     texto_descontados = ft.Text("...", size=13, color=interfaz.texto)
     texto_historicos = ft.Text("...", size=13, color=interfaz.texto)
     texto_total = ft.Text("...", size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto)
-    texto_resultado = ft.Text("", size=12, color=ft.Colors.GREEN_400)
+    texto_resultado = ft.Text("", size=12, color=colores.exito)
 
     dd_antiguedad = ft.Dropdown(
         label="Archivar comprobantes con antigüedad mayor a",
@@ -48,12 +51,7 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
 
     refrescar_estadisticas()
 
-    def ejecutar_archivado(_e: ft.Event | None = None) -> None:
-        try:
-            dias = int(dd_antiguedad.value or "30")
-        except ValueError:
-            dias = 30
-
+    def _do_archivado(dias: int) -> None:
         res = archivar_comprobantes_antiguos(dias_antiguedad=dias)
         movidos = res["archivos_movidos"]
         mb = res["mb_organizados"]
@@ -65,7 +63,7 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
             texto_resultado.value = (
                 f"✅ Se archivaron {movidos} comprobante(s) ({mb} MB) en subcarpetas: {c_str}"
             )
-            texto_resultado.color = ft.Colors.GREEN_400
+            texto_resultado.color = colores.exito
             try:
                 if hasattr(interfaz, "order_store") and interfaz.order_store:
                     usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
@@ -81,8 +79,26 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
             texto_resultado.color = interfaz.secundario
         interfaz.page.update()
 
+    def ejecutar_archivado(_e: ft.Event | None = None) -> None:
+        try:
+            dias = int(dd_antiguedad.value or "30")
+        except ValueError:
+            dias = 30
+
+        confirmar_accion_destructiva(
+            interfaz,
+            "Confirmar Archivado Histórico",
+            f"¿Confirmas mover al archivo histórico ('historico/YYYY/MM/') los comprobantes con más de {dias} días de antigüedad?",
+            lambda: _do_archivado(dias),
+            texto_confirmar="Sí, Organizar Ahora",
+            roles_permitidos=("master",),
+        )
+
     def abrir_carpeta_historico(_e: ft.Event | None = None) -> None:
-        dir_h = application_root() / "data" / "historico"
+        if es_web:
+            interfaz.notificar("La apertura de carpetas locales solo está disponible en la aplicación de escritorio.")
+            return
+        dir_h = get_data_dir() / "historico"
         dir_h.mkdir(parents=True, exist_ok=True)
         try:
             if sys.platform == "win32":
@@ -93,6 +109,7 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
         except Exception as exc:
             interfaz.notificar(f"No se pudo abrir la carpeta: {exc}")
 
+    ancho_dlg = interfaz.ancho_adaptable(520) if hasattr(interfaz, "ancho_adaptable") else 520
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
@@ -103,7 +120,7 @@ def mostrar_dialogo_archivo_historico(interfaz: Any, _e: ft.Event | None = None)
             spacing=10,
         ),
         content=ft.Container(
-            width=520,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     ft.Text(

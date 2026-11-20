@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 import flet as ft
 
+from ..design import tono_legible
 from ..theme import ROJO
 
 
@@ -55,6 +56,7 @@ def tarjeta_kpi_flujo(
 
 def construir_cabecera_flujo(interfaz: Any, es_oscuro: bool) -> ft.Row:
     """Construye la cabecera del panel de analítica operativa en tiempo real."""
+    c_verde = tono_legible("GREEN", es_oscuro)
     return ft.Row(
         [
             ft.Row(
@@ -72,11 +74,11 @@ def construir_cabecera_flujo(interfaz: Any, es_oscuro: bool) -> ft.Row:
             ft.Container(
                 content=ft.Row(
                     [
-                        ft.Icon(ft.Icons.SYNC, size=12, color=ft.Colors.GREEN_400),
+                        ft.Icon(ft.Icons.SYNC, size=12, color=c_verde),
                         ft.Text(
                             "Actualizado en vivo",
                             size=10,
-                            color=ft.Colors.GREEN_400 if es_oscuro else ft.Colors.GREEN_800,
+                            color=c_verde,
                             weight=ft.FontWeight.W_500,
                         ),
                     ],
@@ -85,7 +87,7 @@ def construir_cabecera_flujo(interfaz: Any, es_oscuro: bool) -> ft.Row:
                 ),
                 padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                 border_radius=10,
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.GREEN_400),
+                bgcolor=ft.Colors.with_opacity(0.12, c_verde),
             ),
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -99,6 +101,7 @@ def construir_tarjetas_graficos_flujo(
     ctrls: dict[str, Any],
 ) -> tuple[ft.Container, ft.Container]:
     """Construye las tarjetas izquierda (distribución) y derecha (top rotación y radar)."""
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
     tarjeta_distribucion = ft.Container(
         expand=not es_movil,
         bgcolor=interfaz.superficie,
@@ -118,7 +121,7 @@ def construir_tarjetas_graficos_flujo(
                 ft.Divider(height=10, color=ft.Colors.with_opacity(0.1, interfaz.texto)),
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.TRENDING_UP, size=15, color=ft.Colors.CYAN_400),
+                        ft.Icon(ft.Icons.TRENDING_UP, size=15, color=tono_legible("CYAN", es_oscuro)),
                         ft.Text("Evolución de Pedidos (Últimos 7 Días)", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                     ],
                     spacing=6,
@@ -127,7 +130,7 @@ def construir_tarjetas_graficos_flujo(
                 ft.Divider(height=10, color=ft.Colors.with_opacity(0.1, interfaz.texto)),
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.INPUT, size=15, color=ft.Colors.GREEN_500),
+                        ft.Icon(ft.Icons.INPUT, size=15, color=tono_legible("GREEN", es_oscuro)),
                         ft.Text("Distribución de Entradas por Origen", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                     ],
                     spacing=6,
@@ -149,7 +152,7 @@ def construir_tarjetas_graficos_flujo(
             [
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.LOCAL_FIRE_DEPARTMENT, size=15, color=ft.Colors.AMBER_400),
+                        ft.Icon(ft.Icons.LOCAL_FIRE_DEPARTMENT, size=15, color=tono_legible("AMBER", es_oscuro)),
                         ft.Text("Top 5 Productos con Mayor Rotación", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                     ],
                     spacing=6,
@@ -158,7 +161,7 @@ def construir_tarjetas_graficos_flujo(
                 ft.Divider(height=10, color=ft.Colors.with_opacity(0.1, interfaz.texto)),
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.PEOPLE_ALT, size=15, color=ft.Colors.BLUE_400),
+                        ft.Icon(ft.Icons.PEOPLE_ALT, size=15, color=tono_legible("BLUE", es_oscuro)),
                         ft.Text("Productividad de Armadores en Vivo", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                     ],
                     spacing=6,
@@ -167,7 +170,7 @@ def construir_tarjetas_graficos_flujo(
                 ft.Divider(height=10, color=ft.Colors.with_opacity(0.1, interfaz.texto)),
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, size=15, color=ft.Colors.RED_400),
+                        ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, size=15, color=tono_legible("RED", es_oscuro)),
                         ft.Text("Radar de Reposición (Stock Crítico)", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),
                     ],
                     spacing=6,
@@ -280,11 +283,13 @@ def renderizar_top_movimientos(
         columna.controls.append(ft.Text(mensaje_vacio, size=11, color=interfaz.secundario))
         return
 
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    c_ambar = tono_legible("AMBER", es_oscuro)
     for idx, it in enumerate(items, start=1):
         columna.controls.append(
             ft.Row(
                 [
-                    ft.Text(f"{idx}.", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400, width=16),
+                    ft.Text(f"{idx}.", size=11, weight=ft.FontWeight.BOLD, color=c_ambar, width=16),
                     ft.Text(f"[{it['codigo']}]", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto, width=65),
                     ft.Text(it["descripcion"], size=11, color=interfaz.secundario, expand=True, no_wrap=True),
                     ft.Text(f"{it['cantidad']} un.", size=11, weight=ft.FontWeight.BOLD, color=color_valor),
@@ -308,6 +313,7 @@ def renderizar_productividad_armadores(
         col_arm.controls.append(ft.Text("Sin armados registrados en la jornada.", size=11, color=interfaz.secundario))
         return
 
+    c_azul = tono_legible("BLUE", es_oscuro)
     max_arm = max((c for _, c, _ in armadores[:4]), default=1) or 1
     for armador, cant_a, bultos_a in armadores[:4]:
         ratio_a = min(1.0, cant_a / max_arm)
@@ -318,18 +324,18 @@ def renderizar_productividad_armadores(
                         [
                             ft.Row(
                                 [
-                                    ft.Icon(ft.Icons.PERSON_OUTLINE, size=13, color=ft.Colors.BLUE_400),
+                                    ft.Icon(ft.Icons.PERSON_OUTLINE, size=13, color=c_azul),
                                     ft.Text(armador or "Sin asignar", size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
                                 ],
                                 spacing=4,
                             ),
-                            ft.Text(f"{cant_a} ped. ({bultos_a} bultos)", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400),
+                            ft.Text(f"{cant_a} ped. ({bultos_a} bultos)", size=10, weight=ft.FontWeight.BOLD, color=c_azul),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
                     ft.ProgressBar(
                         value=ratio_a,
-                        color=ft.Colors.BLUE_400,
+                        color=c_azul,
                         bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_200,
                         height=3,
                         border_radius=2,
@@ -350,6 +356,7 @@ def renderizar_radar_criticos(
     if col_crit is None:
         return
     col_crit.controls.clear()
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
     criticos: list[Any] = []
     if product_store is not None:
         try:
@@ -378,7 +385,7 @@ def renderizar_radar_criticos(
             continue
 
         es_agotado = estado == "AGOTADO"
-        col_badge = ft.Colors.RED_400 if es_agotado else ft.Colors.AMBER_400
+        col_badge = tono_legible("RED" if es_agotado else "AMBER", es_oscuro)
         txt_badge = "AGOTADO" if es_agotado else "QUIEBRE"
         col_crit.controls.append(
             ft.Row(
@@ -399,11 +406,12 @@ def renderizar_radar_criticos(
         )
 
     if not col_crit.controls:
+        c_verde = tono_legible("GREEN", es_oscuro)
         col_crit.controls.append(
             ft.Row(
                 [
-                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=13, color=ft.Colors.GREEN_400),
-                    ft.Text("Todos los productos en niveles óptimos.", size=11, color=ft.Colors.GREEN_400),
+                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=13, color=c_verde),
+                    ft.Text("Todos los productos en niveles óptimos.", size=11, color=c_verde),
                 ],
                 spacing=6,
             )

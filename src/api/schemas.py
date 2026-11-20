@@ -11,8 +11,13 @@ from pydantic import BaseModel, Field
 # ==========================================
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., description="Nombre de usuario o correo electrónico")
-    password: str = Field(..., description="Contraseña del usuario")
+    username: str = Field(..., min_length=1, max_length=120, description="Nombre de usuario o correo electrónico")
+    password: str = Field(..., min_length=1, max_length=256, description="Contraseña del usuario")
+
+
+class ApiKeyCreateRequest(BaseModel):
+    client_name: str = Field(..., min_length=1, max_length=100, description="Nombre del cliente o ERP externo")
+    role: str = Field("operador", min_length=1, max_length=32, description="Rol asignado a la clave API")
 
 
 class UsuarioResponse(BaseModel):
@@ -52,11 +57,11 @@ class BuscarProductosResponse(BaseModel):
 
 
 class ActualizarUbicacionRequest(BaseModel):
-    ubicacion: str = Field(..., description="Ubicación física en el depósito (ej: A-02-3)")
+    ubicacion: str = Field(..., max_length=80, description="Ubicación física en el depósito (ej: A-02-3)")
 
 
 class AsociarBarcodeRequest(BaseModel):
-    cod_barras: str = Field(..., description="Código de barras EAN-13, Code-128 o QR")
+    cod_barras: str = Field(..., min_length=1, max_length=128, description="Código de barras EAN-13, Code-128 o QR")
 
 
 # ==========================================
@@ -64,8 +69,8 @@ class AsociarBarcodeRequest(BaseModel):
 # ==========================================
 
 class ConteoInventarioRequest(BaseModel):
-    conteo: Dict[str, int] = Field(..., description="Diccionario {codigo_o_sku: cantidad_contada}")
-    nombre_archivo: Optional[str] = Field(None, description="Nombre opcional del archivo comparativo")
+    conteo: Dict[str, int] = Field(..., max_length=5000, description="Diccionario {codigo_o_sku: cantidad_contada}")
+    nombre_archivo: Optional[str] = Field(None, max_length=160, description="Nombre opcional del archivo comparativo")
 
 
 class InventarioItemComparativa(BaseModel):
@@ -116,9 +121,10 @@ class PedidoDetalleResponse(BaseModel):
 
 
 class EscanearDespachoRequest(BaseModel):
-    codigo: str = Field(..., description="Texto del código QR escaneado o número de remito")
+    codigo: str = Field(..., min_length=1, max_length=256, description="Texto del código QR escaneado o número de remito")
     nuevo_estado: Optional[str] = Field(
         None,
+        max_length=32,
         description="Estado destino forzado: 'armado', 'despachado', 'entregado'. Si no se indica, avanza al siguiente.",
     )
 
@@ -130,7 +136,7 @@ class EscanearDespachoResponse(BaseModel):
 
 
 class EscanearLoteRequest(BaseModel):
-    items: List[EscanearDespachoRequest] = Field(..., description="Lista de escaneos acumulados offline")
+    items: List[EscanearDespachoRequest] = Field(..., max_length=500, description="Lista de escaneos acumulados offline")
 
 
 class EscanearLoteResponse(BaseModel):

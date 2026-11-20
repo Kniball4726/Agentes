@@ -60,11 +60,11 @@
 		<string>_http._tcp</string>
 	</array>
 
-	<!-- Permitir Conexiones HTTP y Redes Locales sin bloqueo TLS -->
+	<!-- Restringir ATS global y habilitar únicamente red local (LAN) -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
-		<true/>
+		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

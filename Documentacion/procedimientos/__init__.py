@@ -10,6 +10,7 @@ from .fichas import (
 )
 from .rol_administrador import construir_manual_administrador
 from .rol_consulta import construir_manual_consulta
+from .rol_despachador import construir_manual_despachador
 from .rol_master import construir_manual_master
 from .rol_operador import construir_manual_operador
 from .rol_picker import construir_manual_picker
@@ -27,6 +28,7 @@ __all__ = [
     "iniciar_manual_rol",
     "construir_manual_operador",
     "construir_manual_picker",
+    "construir_manual_despachador",
     "construir_manual_administrador",
     "construir_manual_master",
     "construir_manual_consulta",

@@ -12,6 +12,7 @@ from Documentacion.pdf_engine.presentacion_ejecutiva import construir_presentaci
 
 from .rol_administrador import construir_manual_administrador
 from .rol_consulta import construir_manual_consulta
+from .rol_despachador import construir_manual_despachador
 from .rol_master import construir_manual_master
 from .rol_operador import construir_manual_operador
 from .rol_picker import construir_manual_picker
@@ -35,6 +36,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
     rutas = {
         "operador": base_dir / "Manual_Operador.pdf",
         "picker": base_dir / "Manual_Picker.pdf",
+        "despachador": base_dir / "Manual_Despachador.pdf",
         "administrador": base_dir / "Manual_Administrador.pdf",
         "master": base_dir / "Manual_Master.pdf",
         "consulta": base_dir / "Manual_Consulta.pdf",
@@ -45,6 +47,7 @@ def generar_todos_los_manuales(directorio_destino: Path | str | None = None) -> 
 
     construir_manual_operador(rutas["operador"])
     construir_manual_picker(rutas["picker"])
+    construir_manual_despachador(rutas["despachador"])
     construir_manual_administrador(rutas["administrador"])
     construir_manual_master(rutas["master"])
     construir_manual_consulta(rutas["consulta"])

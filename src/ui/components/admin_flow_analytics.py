@@ -6,6 +6,7 @@ from contextlib import closing
 from typing import Any
 import flet as ft
 
+from ..design import tono_legible
 from .admin_flow_widgets import (
     construir_cabecera_flujo,
     construir_tarjetas_graficos_flujo,
@@ -34,19 +35,19 @@ def construir_panel_analitica_flujo_admin(interfaz: Any) -> ft.Control | None:
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
 
     # Controles dinámicos de KPIs
-    txt_entradas_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
+    txt_entradas_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=tono_legible("GREEN", es_oscuro))
     txt_entradas_sub = ft.Text("Fábrica y ajustes", size=10, color=interfaz.secundario)
 
-    txt_salidas_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400)
+    txt_salidas_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=tono_legible("RED", es_oscuro))
     txt_salidas_sub = ft.Text("Despachos y envíos", size=10, color=interfaz.secundario)
 
-    txt_balance_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
+    txt_balance_val = ft.Text("0 un.", size=16, weight=ft.FontWeight.BOLD, color=tono_legible("AMBER", es_oscuro))
     txt_balance_sub = ft.Text("Balance del día", size=10, color=interfaz.secundario)
 
-    txt_bultos_val = ft.Text("0 bultos", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400)
+    txt_bultos_val = ft.Text("0 bultos", size=16, weight=ft.FontWeight.BOLD, color=tono_legible("BLUE", es_oscuro))
     txt_bultos_sub = ft.Text("Cajas movilizadas", size=10, color=interfaz.secundario)
 
-    txt_semaforo_val = ft.Text("0 SKUs", size=15, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_400)
+    txt_semaforo_val = ft.Text("0 SKUs", size=15, weight=ft.FontWeight.BOLD, color=tono_legible("TEAL", es_oscuro))
     txt_semaforo_sub = ft.Text("Catálogo supervisado", size=10, color=interfaz.secundario)
 
     # Columnas de gráficos de distribución y tendencias
@@ -82,11 +83,11 @@ def construir_panel_analitica_flujo_admin(interfaz: Any) -> ft.Control | None:
     }
 
     # Tarjetas KPI superiores
-    kpi_entradas = _tarjeta_kpi_flujo(interfaz, "ENTRADAS HOY", txt_entradas_val, txt_entradas_sub, ft.Icons.MOVE_TO_INBOX, ft.Colors.GREEN_500)
-    kpi_salidas = _tarjeta_kpi_flujo(interfaz, "SALIDAS HOY", txt_salidas_val, txt_salidas_sub, ft.Icons.OUTBOX, ft.Colors.RED_500)
-    kpi_balance = _tarjeta_kpi_flujo(interfaz, "BALANCE NETO", txt_balance_val, txt_balance_sub, ft.Icons.COMPARE_ARROWS, ft.Colors.AMBER_500)
-    kpi_bultos = _tarjeta_kpi_flujo(interfaz, "BULTOS TOTALES", txt_bultos_val, txt_bultos_sub, ft.Icons.INVENTORY_2, ft.Colors.BLUE_500)
-    kpi_semaforo = _tarjeta_kpi_flujo(interfaz, "SALUD DE STOCK", txt_semaforo_val, txt_semaforo_sub, ft.Icons.HEALTH_AND_SAFETY, ft.Colors.TEAL_400)
+    kpi_entradas = _tarjeta_kpi_flujo(interfaz, "ENTRADAS HOY", txt_entradas_val, txt_entradas_sub, ft.Icons.MOVE_TO_INBOX, tono_legible("GREEN", es_oscuro))
+    kpi_salidas = _tarjeta_kpi_flujo(interfaz, "SALIDAS HOY", txt_salidas_val, txt_salidas_sub, ft.Icons.OUTBOX, tono_legible("RED", es_oscuro))
+    kpi_balance = _tarjeta_kpi_flujo(interfaz, "BALANCE NETO", txt_balance_val, txt_balance_sub, ft.Icons.COMPARE_ARROWS, tono_legible("AMBER", es_oscuro))
+    kpi_bultos = _tarjeta_kpi_flujo(interfaz, "BULTOS TOTALES", txt_bultos_val, txt_bultos_sub, ft.Icons.INVENTORY_2, tono_legible("BLUE", es_oscuro))
+    kpi_semaforo = _tarjeta_kpi_flujo(interfaz, "SALUD DE STOCK", txt_semaforo_val, txt_semaforo_sub, ft.Icons.HEALTH_AND_SAFETY, tono_legible("TEAL", es_oscuro))
     kpi_semaforo.tooltip = "Click para consultar inventario y catálogo"
     kpi_semaforo.on_click = lambda _: interfaz.mostrar_ver_stock() if hasattr(interfaz, "mostrar_ver_stock") else None
     kpi_semaforo.ink = True
@@ -164,13 +165,13 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
     signo = "+" if bal_net > 0 else ""
     ctrls["balance_val"].value = f"{signo}{bal_net} un."
     if bal_net > 0:
-        ctrls["balance_val"].color = ft.Colors.GREEN_400
+        ctrls["balance_val"].color = tono_legible("GREEN", es_oscuro)
         ctrls["balance_sub"].value = "Superávit de stock"
     elif bal_net < 0:
-        ctrls["balance_val"].color = ft.Colors.RED_400
+        ctrls["balance_val"].color = tono_legible("RED", es_oscuro)
         ctrls["balance_sub"].value = "Demanda mayor a entradas"
     else:
-        ctrls["balance_val"].color = ft.Colors.AMBER_400
+        ctrls["balance_val"].color = tono_legible("AMBER", es_oscuro)
         ctrls["balance_sub"].value = "Stock equilibrado"
 
     ctrls["bultos_val"].value = f"{bul_tot} bultos"
@@ -196,10 +197,10 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
 
     # 2. Gráfico de Barras: Salidas por Canal
     colores_canales = {
-        "mercado_libre": ft.Colors.AMBER_400,
-        "mercado_full": ft.Colors.CYAN_400,
-        "mayoristas": ft.Colors.BLUE_400,
-        "canjes": ft.Colors.PURPLE_400,
+        "mercado_libre": tono_legible("AMBER", es_oscuro),
+        "mercado_full": tono_legible("CYAN", es_oscuro),
+        "mayoristas": tono_legible("BLUE", es_oscuro),
+        "canjes": tono_legible("PURPLE", es_oscuro),
     }
     salidas_canales = datos.get("salidas_canales", {}) if sal_tot > 0 else {}
     renderizar_barras_distribucion(
@@ -209,7 +210,7 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
         "Sin salidas registradas en la jornada.",
         es_oscuro,
         colores_por_clave=colores_canales,
-        color_default=ft.Colors.GREY_400,
+        color_default=tono_legible("BLUE_GREY", es_oscuro),
     )
 
     # 2.b Evolución de Pedidos (Últimos 7 Días)
@@ -231,7 +232,7 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
         entradas_origen,
         "Sin ingresos registrados en la jornada.",
         es_oscuro,
-        color_default=ft.Colors.GREEN_400,
+        color_default=tono_legible("GREEN", es_oscuro),
     )
 
     # 4. Top 5 Salidas, Armadores y Radar Crítico
@@ -240,7 +241,7 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
         interfaz,
         datos.get("top_salidas", []),
         "Sin movimientos de salida.",
-        ft.Colors.RED_400,
+        tono_legible("RED", es_oscuro),
     )
     armadores = metricas_dash.get("rendimiento_armadores", []) if metricas_dash else []
     renderizar_productividad_armadores(ctrls.get("col_armadores"), interfaz, armadores, es_oscuro)
@@ -252,5 +253,5 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
         interfaz,
         datos.get("top_entradas", []),
         "Sin movimientos de entrada.",
-        ft.Colors.GREEN_400,
+        tono_legible("GREEN", es_oscuro),
     )

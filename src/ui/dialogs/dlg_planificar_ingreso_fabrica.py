@@ -4,20 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-import sys
 from typing import Any
 import flet as ft
 
-from ..theme import ROJO
-from ...inventory import StockManager as _DefaultStockManager
 from ...parsers.factory_parser import parsear_archivo_fabrica
-
-
-def _get_stock_manager():
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+from .picking_plan_shared import (
+    construir_fila_monitor_plan,
+    construir_fila_preview_plan,
+    resolver_stock_manager_ui as _get_stock_manager,
+)
 
 
 def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> None:
@@ -100,19 +95,7 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
 
         for cod, desc, cant in items_parseados:
             lista_items_nuevo.controls.append(
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                    border_radius=6,
-                    bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_100,
-                    content=ft.Row(
-                        [
-                            ft.Text(f"[{cod}]", weight=ft.FontWeight.BOLD, size=11, width=90),
-                            ft.Text(desc, size=11, expand=True, no_wrap=True),
-                            ft.Text(f"{cant} un.", weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400, size=11, width=60),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                )
+                construir_fila_preview_plan(cod, desc, cant, ft.Colors.GREEN_400, es_oscuro)
             )
         interfaz.page.update()
 
@@ -125,7 +108,7 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
                 txt_nombre_remito.value = f"Remito Fábrica - {a.stem}"
                 break
 
-    selector_archivo.on_change = al_cambiar_dropdown
+    selector_archivo.on_select = al_cambiar_dropdown
 
     if archivo_seleccionado[0]:
         cargar_datos_archivo(archivo_seleccionado[0])
@@ -222,14 +205,10 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
         lista_items_monitor.controls.clear()
         items = interfaz.order_store.obtener_items_plan_ingreso_fabrica(target_id)
         for it in items:
-            it_cod = it["codigo"]
-            it_desc = it["descripcion"]
             it_esp = it["cantidad_esperada"]
             it_ctrl = it["cantidad_controlada"]
             it_ingr = it.get("cantidad_ingresada", 0)
             it_comp = bool(it["completado"])
-
-            color_badge = ft.Colors.GREEN_400 if it_comp else (ft.Colors.AMBER_400 if it_ctrl > 0 else ft.Colors.GREY_400)
             if it_comp:
                 txt_badge = f"✔ CONTROLADO ({it_ingr} en stock)" if it_ingr > 0 else "✔ CONTROLADO"
             elif it_ctrl > 0:
@@ -238,28 +217,13 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
                 txt_badge = f"0/{it_esp} un."
 
             lista_items_monitor.controls.append(
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                    border_radius=6,
-                    bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_100,
-                    content=ft.Row(
-                        [
-                            ft.Icon(
-                                ft.Icons.CHECK_CIRCLE if it_comp else ft.Icons.RADIO_BUTTON_UNCHECKED,
-                                color=color_badge,
-                                size=16,
-                            ),
-                            ft.Text(f"[{it_cod}]", weight=ft.FontWeight.BOLD, size=11, width=80),
-                            ft.Text(it_desc, size=11, expand=True, no_wrap=True),
-                            ft.Container(
-                                content=ft.Text(txt_badge, size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                                bgcolor=color_badge,
-                                border_radius=4,
-                                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
+                construir_fila_monitor_plan(
+                    codigo=it["codigo"],
+                    descripcion=it["descripcion"],
+                    txt_badge=txt_badge,
+                    completado=it_comp,
+                    en_progreso=it_ctrl > 0,
+                    es_oscuro=es_oscuro,
                 )
             )
         interfaz.page.update()
@@ -269,7 +233,7 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
             plan_activo_id[0] = int(selector_plan.value)
             recargar_monitor(plan_activo_id[0])
 
-    selector_plan.on_change = al_cambiar_plan_dropdown
+    selector_plan.on_select = al_cambiar_plan_dropdown
 
     if plan_activo_id[0]:
         recargar_monitor(plan_activo_id[0])

@@ -132,14 +132,14 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                                         f"{len(pedidos_pendientes)} Pedidos Acumulados" if pedidos_pendientes else "Sin pedidos acumulados",
                                         weight=ft.FontWeight.BOLD,
                                         size=13,
-                                        color=ft.Colors.WHITE,
+                                        color=ft.Colors.WHITE if pedidos_pendientes else interfaz.texto,
                                     ),
                                     ft.Text(
                                         f"Total de {total_articulos_pendientes} unidades descontadas listas para cerrar jornada."
                                         if pedidos_pendientes
                                         else "Todos los pedidos anteriores están cerrados.",
                                         size=11,
-                                        color=ft.Colors.WHITE_70,
+                                        color=ft.Colors.WHITE_70 if pedidos_pendientes else interfaz.secundario,
                                     ),
                                 ],
                                 spacing=2,
@@ -205,9 +205,11 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
     boton_tab_historial.on_click = lambda _e: switch_tab(1)
 
     cuerpo_cierre = ft.Column([ft.Row([boton_tab_pendientes, boton_tab_historial], spacing=10), vista_pendientes, vista_historial], spacing=12, expand=True)
+    ancho_dlg = interfaz.ancho_adaptable(720) if hasattr(interfaz, "ancho_adaptable") else 720
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row([ft.Icon(ft.Icons.TASK_ALT, color=ROJO), ft.Text("Cierre de Jornada de Pedidos", weight=ft.FontWeight.BOLD)], spacing=8),
-        content=ft.Container(width=720, height=520, content=cuerpo_cierre),
+        content=ft.Container(width=ancho_dlg, height=520, content=cuerpo_cierre),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )
     interfaz.page.show_dialog(dialogo)

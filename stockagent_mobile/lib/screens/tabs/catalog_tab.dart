@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/auth_user.dart';
 import '../../models/product_item.dart';
@@ -7,11 +8,13 @@ import '../../theme/app_theme.dart';
 class CatalogTab extends StatefulWidget {
   final ApiService apiService;
   final AuthUser currentUser;
+  final bool isActive;
 
   const CatalogTab({
     super.key,
     required this.apiService,
     required this.currentUser,
+    this.isActive = false,
   });
 
   @override
@@ -20,8 +23,11 @@ class CatalogTab extends StatefulWidget {
 
 class _CatalogTabState extends State<CatalogTab> {
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  Timer? _debounceTimer;
   List<ProductItem> _productos = [];
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -30,13 +36,33 @@ class _CatalogTabState extends State<CatalogTab> {
   }
 
   @override
+  void didUpdateWidget(covariant CatalogTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isActive && oldWidget.isActive) {
+      _searchFocusNode.unfocus();
+    }
+  }
+
+  @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
+      _buscarProductos(query);
+    });
+  }
+
   Future<void> _buscarProductos(String query) async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final items = await widget.apiService.searchProducts(query, limit: 60);
       if (mounted) {
@@ -45,151 +71,203 @@ class _CatalogTabState extends State<CatalogTab> {
           _isLoading = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'No se pudo consultar el catálogo: $e';
+        });
+      }
     }
   }
 
-  void _abrirEditorUbicacion(ProductItem producto) {
-    final ubicacionCtrl = TextEditingController(text: producto.ubicacion);
+  Future<void> _abrirEditorUbicacion(ProductItem producto) async {
+    if (!widget.currentUser.canEditCatalog) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu rol no tiene permisos para editar ubicaciones.')),
+      );
+      return;
+    }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Ubicación: ${producto.code}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(producto.name, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: ubicacionCtrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Estantería / Posición',
-                hintText: 'Ej: A-02-3',
-                prefixIcon: Icon(Icons.shelves),
+    final ubicacionCtrl = TextEditingController(text: producto.ubicacion);
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Ubicación: ${producto.code}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(producto.name, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ubicacionCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Estantería / Posición',
+                  hintText: 'Ej: A-02-3',
+                  prefixIcon: Icon(Icons.shelves),
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('CANCELAR'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final nueva = ubicacionCtrl.text.trim();
+                Navigator.of(ctx).pop();
+                try {
+                  await widget.apiService.updateLocation(producto.code, nueva);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ubicación de ${producto.code} actualizada a $nueva')),
+                  );
+                  _buscarProductos(_searchController.text);
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              },
+              child: const Text('GUARDAR'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final nueva = ubicacionCtrl.text.trim();
-              Navigator.of(ctx).pop();
-              try {
-                await widget.apiService.updateLocation(producto.code, nueva);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Ubicación de ${producto.code} actualizada a $nueva')),
-                );
-                _buscarProductos(_searchController.text);
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error: $e')),
-                );
-              }
-            },
-            child: const Text('GUARDAR'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ubicacionCtrl.dispose();
+    }
   }
 
-  void _abrirEditorBarcode(ProductItem producto) {
-    final barcodeCtrl = TextEditingController(text: producto.codBarras);
+  Future<void> _abrirEditorBarcode(ProductItem producto) async {
+    if (!widget.currentUser.canEditCatalog) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu rol no tiene permisos para vincular códigos de barras.')),
+      );
+      return;
+    }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Código de Barras: ${producto.code}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(producto.name, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: barcodeCtrl,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Código EAN / Barras',
-                hintText: 'Ej: 7791234567890',
-                prefixIcon: Icon(Icons.qr_code),
+    final barcodeCtrl = TextEditingController(text: producto.codBarras);
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Código de Barras: ${producto.code}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(producto.name, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: barcodeCtrl,
+                autofocus: true,
+                // Soporta EAN-13 numéricos y códigos industriales alfanuméricos (Code-128 / Code-39)
+                keyboardType: TextInputType.text,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Código EAN / Code-128 / Barras',
+                  hintText: 'Ej: 7791234567890 o SKU-A12',
+                  prefixIcon: Icon(Icons.qr_code),
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('CANCELAR'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final nuevo = barcodeCtrl.text.trim();
+                Navigator.of(ctx).pop();
+                try {
+                  await widget.apiService.associateBarcode(producto.code, nuevo);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Código de barras de ${producto.code} actualizado')),
+                  );
+                  _buscarProductos(_searchController.text);
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              },
+              child: const Text('GUARDAR'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final nuevo = barcodeCtrl.text.trim();
-              Navigator.of(ctx).pop();
-              try {
-                await widget.apiService.associateBarcode(producto.code, nuevo);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Código de barras de ${producto.code} actualizado')),
-                );
-                _buscarProductos(_searchController.text);
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error: $e')),
-                );
-              }
-            },
-            child: const Text('GUARDAR'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      barcodeCtrl.dispose();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final puedeEditar = widget.currentUser.canEditCatalog;
+
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // Barra de Búsqueda
+            // Barra de Búsqueda con ValueListenableBuilder y Debounce
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              color: AppTheme.cardBg,
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Buscar por SKU, nombre o código de barras...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _buscarProductos('');
-                          },
-                        )
-                      : null,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                ),
-                onSubmitted: (val) => _buscarProductos(val),
+              color: Theme.of(context).colorScheme.surface,
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _searchController,
+                builder: (context, value, _) {
+                  return TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por SKU, nombre o código de barras...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: value.text.isNotEmpty
+                          ? IconButton(
+                              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _debounceTimer?.cancel();
+                                _searchController.clear();
+                                _buscarProductos('');
+                              },
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    ),
+                    onSubmitted: (val) {
+                      _debounceTimer?.cancel();
+                      _buscarProductos(val);
+                    },
+                  );
+                },
               ),
             ),
 
             // Encabezado de Resultados
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: AppTheme.darkBg,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: Theme.of(context).scaffoldBackgroundColor,
               child: Row(
                 children: [
                   Text(
@@ -198,7 +276,8 @@ class _CatalogTabState extends State<CatalogTab> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.refresh, size: 20, color: Colors.white54),
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    icon: const Icon(Icons.refresh, size: 22, color: Colors.white54),
                     onPressed: () => _buscarProductos(_searchController.text),
                   ),
                 ],
@@ -209,121 +288,188 @@ class _CatalogTabState extends State<CatalogTab> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _productos.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No se encontraron productos coincidentes.',
-                            style: TextStyle(color: AppTheme.textSecondary),
+                  : _errorMessage != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.redAccent),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _errorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () => _buscarProductos(_searchController.text),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Reintentar'),
+                                ),
+                              ],
+                            ),
                           ),
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _productos.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (ctx, idx) {
-                            final p = _productos[idx];
-                            return Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppTheme.cardBg,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: p.isCritical
-                                      ? Colors.redAccent.withValues(alpha: 0.4)
-                                      : AppTheme.borderColor,
-                                ),
+                      : _productos.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No se encontraron productos coincidentes.',
+                                style: TextStyle(color: AppTheme.textSecondary),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        p.code,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: () => _buscarProductos(_searchController.text),
+                              child: ListView.separated(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: _productos.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                itemBuilder: (ctx, idx) {
+                                  final p = _productos[idx];
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: p.isCritical
+                                            ? Colors.redAccent.withValues(alpha: 0.4)
+                                            : AppTheme.borderColor,
                                       ),
-                                      const Spacer(),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: p.isCritical
-                                              ? Colors.red.withValues(alpha: 0.15)
-                                              : Colors.green.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          'Stock: ${p.stock}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                            color: p.isCritical ? Colors.redAccent : Colors.greenAccent,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    p.name,
-                                    style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      // Ubicación
-                                      InkWell(
-                                        onTap: () => _abrirEditorUbicacion(p),
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.surfaceColor,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.shelves, size: 14, color: Colors.blueAccent),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                p.hasLocation ? p.ubicacion : 'Sin ubicación',
-                                                style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              p.code,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      // Código de barras
-                                      InkWell(
-                                        onTap: () => _abrirEditorBarcode(p),
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.surfaceColor,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.qr_code, size: 14, color: Colors.amberAccent),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                p.hasBarcode ? p.codBarras : 'Vincular código',
-                                                style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                            ),
+                                            const Spacer(),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 4,
                                               ),
-                                            ],
+                                              decoration: BoxDecoration(
+                                                color: p.isCritical
+                                                    ? Colors.red.withValues(alpha: 0.15)
+                                                    : Colors.green.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                'Stock: ${p.stock}',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                  color: p.isCritical
+                                                      ? Colors.redAccent
+                                                      : Colors.greenAccent,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          p.name,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textPrimary,
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            // Chip de Ubicación con altura >= 48dp apta para guantes
+                                            InkWell(
+                                              onTap: puedeEditar ? () => _abrirEditorUbicacion(p) : null,
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: ConstrainedBox(
+                                                constraints: const BoxConstraints(minHeight: 48),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.surfaceColor,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.shelves,
+                                                        size: 16,
+                                                        color: Colors.blueAccent,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        p.hasLocation ? p.ubicacion : 'Sin ubicación',
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.white70,
+                                                          fontWeight: FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Chip de Código de barras con altura >= 48dp apta para guantes
+                                            InkWell(
+                                              onTap: puedeEditar ? () => _abrirEditorBarcode(p) : null,
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: ConstrainedBox(
+                                                constraints: const BoxConstraints(minHeight: 48),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.surfaceColor,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.qr_code,
+                                                        size: 16,
+                                                        color: Colors.amberAccent,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        p.hasBarcode ? p.codBarras : 'Vincular código',
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.white70,
+                                                          fontWeight: FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
-                        ),
+                            ),
             ),
           ],
         ),

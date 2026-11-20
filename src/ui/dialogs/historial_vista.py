@@ -9,6 +9,7 @@ import flet as ft
 
 from ...orders import Pedido
 from ..components.debounce import Debouncer
+from ..design import colores_de
 from .historial_cards import (
     _coincide_pedido,
     _construir_encabezado_fecha,
@@ -71,9 +72,10 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
         on_select=_cambiar_tamano_pagina,
     )
+    colores = colores_de(interfaz)
     barra_paginacion = ft.Container(
-        bgcolor="#18181b",
-        border=ft.Border.all(1, "#27272a"),
+        bgcolor=colores.superficie_suave,
+        border=ft.Border.all(1, colores.borde),
         border_radius=8,
         padding=ft.Padding.symmetric(horizontal=12, vertical=4),
         content=ft.Row(
@@ -92,7 +94,9 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     def _on_row_hover(e: ft.HoverEvent) -> None:
         try:
-            e.control.bgcolor = "#26262b" if e.data == "true" else "#141416"
+            pal = colores_de(interfaz)
+            bg_hover = ft.Colors.with_opacity(0.08, pal.texto) if e.data == "true" else pal.superficie_suave
+            e.control.bgcolor = bg_hover
             e.control.update()
         except Exception:
             pass
@@ -104,9 +108,16 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         actualizar_vista(campo_busqueda.value or "")
 
     def _cambiar_estado_ped(ped_obj: Pedido, nuevo_est: str) -> None:
+        if not interfaz.exigir_roles("operador", "administrador"):
+            return
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+        puede_retroceder = bool(
+            interfaz.usuario_actual and interfaz.usuario_actual.role in ("administrador", "master")
+        )
         try:
-            interfaz.order_store.actualizar_estado_despacho(ped_obj.id, nuevo_est, usuario=usr, permitir_retroceso=True)
+            interfaz.order_store.actualizar_estado_despacho(
+                ped_obj.id, nuevo_est, usuario=usr, permitir_retroceso=puede_retroceder
+            )
             recargar_y_actualizar()
             interfaz.sincronizar_sesiones()
         except Exception as err:
@@ -188,7 +199,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
         for f_clave in sorted(pedidos_por_fecha.keys(), key=lambda d: ("0000-00-00" if d == "Sin fecha" else d), reverse=True):
             pedidos_grupo = sorted(pedidos_por_fecha[f_clave], key=lambda x: (x.created_at or "", x.id), reverse=True)
-            items_lista.controls.append(_construir_encabezado_fecha(f_clave, hoy_str, len(pedidos_grupo)))
+            items_lista.controls.append(_construir_encabezado_fecha(f_clave, hoy_str, len(pedidos_grupo), interfaz))
             for p in pedidos_grupo:
                 items_lista.controls.append(
                     _construir_fila_pedido(interfaz, p, pedidos_seleccionados, _toggle_sel, _on_row_hover, _cambiar_estado_ped)
@@ -214,11 +225,21 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         _actualizar_barra_lote()
 
     def _despachar_lote(st_nuevo: str) -> None:
+        if not interfaz.exigir_roles("operador", "administrador"):
+            return
         if not pedidos_seleccionados:
             return
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+        puede_retroceder = bool(
+            interfaz.usuario_actual and interfaz.usuario_actual.role in ("administrador", "master")
+        )
         try:
-            n_upd = interfaz.order_store.avanzar_estado_lote(list(pedidos_seleccionados), st_nuevo, usuario=usr)
+            n_upd = interfaz.order_store.avanzar_estado_lote(
+                list(pedidos_seleccionados),
+                st_nuevo,
+                usuario=usr,
+                permitir_retroceso=puede_retroceder,
+            )
             pedidos_seleccionados.clear()
             _actualizar_barra_lote()
             interfaz.reproducir_sonido("exito")
@@ -242,8 +263,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     barra_lote = ft.Container(
         visible=False,
-        bgcolor="#18181b",
-        border=ft.Border.all(1, "#27272a"),
+        bgcolor=colores.superficie_suave,
+        border=ft.Border.all(1, colores.borde),
         border_radius=8,
         padding=ft.Padding.symmetric(horizontal=12, vertical=6),
         content=ft.Row(
@@ -264,9 +285,9 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         prefix_icon=ft.Icons.SEARCH,
         dense=True,
         content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        bgcolor="#18181b",
-        border_color="#27272a",
-        color="#f4f4f5",
+        bgcolor=colores.superficie_suave,
+        border_color=colores.borde,
+        color=colores.texto,
         expand=True,
     )
     debouncer_pedidos = Debouncer(0.25)
@@ -293,11 +314,13 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     btn_f_desp = ft.OutlinedButton("Despachados", icon=ft.Icons.LOCAL_SHIPPING, on_click=lambda _e: cambiar_filtro_rapido("despachados"))
 
     def actualizar_botones_filtro() -> None:
+        pal = colores_de(interfaz)
+        bg_activo = ft.Colors.with_opacity(0.14, ft.Colors.BLUE_500)
         for b, tag in [(btn_f_todos, "todos"), (btn_f_hoy, "hoy"), (btn_f_pend, "pendientes"), (btn_f_desp, "despachados")]:
             b.style = (
-                ft.ButtonStyle(bgcolor="#27272a", color=ft.Colors.WHITE, side=ft.BorderSide(1, "#3b82f6"))
+                ft.ButtonStyle(bgcolor=bg_activo, color=pal.texto, side=ft.BorderSide(1, ft.Colors.BLUE_500))
                 if filtro_rapido_activo == tag
-                else ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color="#a1a1aa", side=ft.BorderSide(1, "#27272a"))
+                else ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color=pal.secundario, side=ft.BorderSide(1, pal.borde))
             )
 
     def cambiar_filtro_rapido(nuevo_filtro: str) -> None:
@@ -309,23 +332,29 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     actualizar_botones_filtro()
 
+    estilo_btn_accion = ft.ButtonStyle(
+        color=colores.texto,
+        bgcolor=colores.superficie_suave,
+        side=ft.BorderSide(1, colores.borde),
+    )
+
     barra_busqueda = ft.Column(
         [
             ft.Row(
                 [
                     campo_busqueda,
-                    ft.IconButton(icon=ft.Icons.CLEAR, icon_size=18, icon_color="#a1a1aa", tooltip="Borrar búsqueda", on_click=limpiar_busqueda),
+                    ft.IconButton(icon=ft.Icons.CLEAR, icon_size=18, icon_color=colores.secundario, tooltip="Borrar búsqueda", on_click=limpiar_busqueda),
                     ft.Button(
                         "Rótulos A4 (Lote)",
                         icon=ft.Icons.PRINT,
                         tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
-                        style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor="#27272a", side=ft.BorderSide(1, "#3f3f46")),
+                        style=estilo_btn_accion,
                         on_click=imprimir_lote_rotulos_a4,
                     ),
                     ft.Button(
                         "Escanear QR / Cambiar Estado",
                         icon=ft.Icons.QR_CODE_SCANNER,
-                        style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor="#27272a", side=ft.BorderSide(1, "#3f3f46")),
+                        style=estilo_btn_accion,
                         on_click=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
                     ),
                 ],
@@ -335,12 +364,12 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             ft.Row(
                 [
                     ft.Row(
-                        [ft.Text("Filtros rápidos:", size=11, color="#a1a1aa", weight=ft.FontWeight.BOLD), btn_f_todos, btn_f_hoy, btn_f_pend, btn_f_desp],
+                        [ft.Text("Filtros rápidos:", size=11, color=colores.secundario, weight=ft.FontWeight.BOLD), btn_f_todos, btn_f_hoy, btn_f_pend, btn_f_desp],
                         spacing=6,
                         wrap=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.TextButton("Seleccionar Visibles", icon=ft.Icons.CHECK_BOX_OUTLINED, icon_color="#a1a1aa", style=ft.ButtonStyle(color="#a1a1aa"), on_click=_sel_todos_visibles),
+                    ft.TextButton("Seleccionar Visibles", icon=ft.Icons.CHECK_BOX_OUTLINED, icon_color=colores.secundario, style=ft.ButtonStyle(color=colores.secundario), on_click=_sel_todos_visibles),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -351,23 +380,28 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         spacing=6,
     )
 
-    cabecera_columnas = construir_cabecera_columnas_historial()
+    cabecera_columnas = construir_cabecera_columnas_historial(interfaz)
 
     actualizar_vista("")
 
+    w_calc = interfaz.ancho_adaptable(1140) if hasattr(interfaz, "ancho_adaptable") else 1140
+    ancho_dlg = int(w_calc) if isinstance(w_calc, (int, float)) else 1140
+    bg_dlg = "#121214" if bool(getattr(interfaz, "modo_oscuro", True)) else colores.superficie
+
     dialogo = ft.AlertDialog(
-        bgcolor="#121214",
+        modal=True,
+        bgcolor=bg_dlg,
         title=ft.Row(
             [
-                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, color="#a1a1aa", size=22), ft.Text("Ver pedidos mayoristas", weight=ft.FontWeight.BOLD, color="#f4f4f5", size=18)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([texto_contador, ft.IconButton(icon=ft.Icons.CHECK_BOX_OUTLINED, icon_size=20, icon_color="#a1a1aa", tooltip="Seleccionar todos los pedidos visibles", on_click=_sel_todos_visibles)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, color=colores.secundario, size=22), ft.Text("Ver pedidos mayoristas", weight=ft.FontWeight.BOLD, color=colores.texto, size=18)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([texto_contador, ft.IconButton(icon=ft.Icons.CHECK_BOX_OUTLINED, icon_size=20, icon_color=colores.secundario, tooltip="Seleccionar todos los pedidos visibles", on_click=_sel_todos_visibles)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
         content=ft.Container(
-            width=1140,
+            width=ancho_dlg,
             height=660,
-            bgcolor="#121214",
+            bgcolor=bg_dlg,
             content=ft.Column([barra_busqueda, cabecera_columnas, items_lista, barra_paginacion], expand=True, spacing=4),
         ),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],

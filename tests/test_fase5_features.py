@@ -59,6 +59,7 @@ class TestFase5Features(unittest.TestCase):
             "CACHE_NAME = 'stockagent-pwa-v1'" in content
             or "CACHE_NAME = 'stockagent-pwa-v2'" in content
             or "CACHE_NAME = 'stockagent-pwa-v3'" in content
+            or "CACHE_NAME = 'stockagent-pwa-v4'" in content
         )
         self.assertIn("addEventListener('install'", content)
         self.assertIn("addEventListener('activate'", content)

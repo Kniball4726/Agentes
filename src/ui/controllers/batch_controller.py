@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import io
 import logging
 import sys
+import threading
 import traceback
 from typing import Any, Callable
 
@@ -14,6 +14,41 @@ import flet as ft
 
 logger = logging.getLogger(__name__)
 _PROCESAMIENTO_LOCAL_ACTIVO: bool = False
+_CAPTURE_LOCAL = threading.local()
+_STREAM_INSTALL_LOCK = threading.Lock()
+
+
+class _ThreadLocalCaptureStream:
+    """Proxy seguro por hilo que redirige stdout/stderr solo del hilo en captura sin afectar otras sesiones."""
+
+    def __init__(self, stream_base: Any) -> None:
+        self._base = stream_base
+
+    def write(self, data: str) -> int:
+        buf = getattr(_CAPTURE_LOCAL, "buffer", None)
+        if buf is not None:
+            return buf.write(data)
+        return self._base.write(data)
+
+    def flush(self) -> None:
+        buf = getattr(_CAPTURE_LOCAL, "buffer", None)
+        if buf is not None:
+            buf.flush()
+            return
+        self._base.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
+
+
+def _asegurar_captura_aislada_por_hilo() -> None:
+    if isinstance(sys.stdout, _ThreadLocalCaptureStream) and isinstance(sys.stderr, _ThreadLocalCaptureStream):
+        return
+    with _STREAM_INSTALL_LOCK:
+        if not isinstance(sys.stdout, _ThreadLocalCaptureStream):
+            sys.stdout = _ThreadLocalCaptureStream(sys.stdout)  # type: ignore[assignment]
+        if not isinstance(sys.stderr, _ThreadLocalCaptureStream):
+            sys.stderr = _ThreadLocalCaptureStream(sys.stderr)  # type: ignore[assignment]
 
 
 def es_procesamiento_global_activo() -> bool:
@@ -185,10 +220,15 @@ class BatchTaskController:
 
         salida = io.StringIO()
         exito = False
+        _asegurar_captura_aislada_por_hilo()
 
         def ejecutar() -> None:
-            with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(salida):
+            prev_buf = getattr(_CAPTURE_LOCAL, "buffer", None)
+            _CAPTURE_LOCAL.buffer = salida
+            try:
                 accion()
+            finally:
+                _CAPTURE_LOCAL.buffer = prev_buf
 
         try:
             await asyncio.to_thread(ejecutar)
@@ -208,7 +248,8 @@ class BatchTaskController:
             else:
                 self._host.actividad.controls.append(
                     ft.Text(
-                        f"[ERROR]\n{detalle}",
+                        f"[ERROR] {nombre}: no se pudo completar la operación ({type(exc).__name__}). "
+                        "Consulta el registro técnico del servidor para más detalles.",
                         color=ft.Colors.RED_400 if self._host.modo_oscuro else ft.Colors.RED_700,
                         size=14,
                     )

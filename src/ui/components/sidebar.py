@@ -148,7 +148,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 btn.bgcolor = ft.Colors.TRANSPARENT
                 btn.color = interfaz.texto
                 btn.elevation = 0
-                btn.height = 36
+                btn.height = 44 if getattr(interfaz, "es_pantalla_movil", False) else 36
                 btn.style = ft.ButtonStyle(
                     shape=ft.RoundedRectangleBorder(radius=6),
                     overlay_color=ft.Colors.with_opacity(0.08, interfaz.texto),

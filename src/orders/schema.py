@@ -110,6 +110,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
             estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en_proceso', 'completado', 'cancelado')),
             articulos_totales INTEGER NOT NULL DEFAULT 0,
             articulos_pickeados INTEGER NOT NULL DEFAULT 0,
+            articulos_descontados INTEGER NOT NULL DEFAULT 0,
             porcentaje REAL NOT NULL DEFAULT 0.0,
             picker_asignado TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -126,6 +127,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
             descripcion TEXT NOT NULL DEFAULT '',
             cantidad_solicitada INTEGER NOT NULL,
             cantidad_pickeada INTEGER NOT NULL DEFAULT 0,
+            cantidad_descontada INTEGER NOT NULL DEFAULT 0,
             completado INTEGER NOT NULL DEFAULT 0 CHECK (completado IN (0, 1))
         )
         """
@@ -170,6 +172,19 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
             tipo TEXT NOT NULL DEFAULT 'parcial',
             picker TEXT NOT NULL,
             articulos_ingresados INTEGER NOT NULL DEFAULT 0,
+            detalle_items TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cierres_parciales_full (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL REFERENCES planes_mercado_full(id) ON DELETE CASCADE,
+            tipo TEXT NOT NULL DEFAULT 'parcial',
+            picker TEXT NOT NULL DEFAULT '',
+            articulos_descontados INTEGER NOT NULL DEFAULT 0,
             detalle_items TEXT NOT NULL DEFAULT '{}',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -250,6 +265,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
 
     _migrar_constraint_docx(connection)
     _migrar_columnas_pedidos(connection)
+    _migrar_columnas_full(connection)
 
     for ddl in (
         "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)",
@@ -260,6 +276,7 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_planes_full_estado ON planes_mercado_full(estado)",
         "CREATE INDEX IF NOT EXISTS idx_plan_items_plan_id ON plan_mercado_full_items(plan_id)",
         "CREATE INDEX IF NOT EXISTS idx_plan_items_codigo ON plan_mercado_full_items(plan_id, codigo)",
+        "CREATE INDEX IF NOT EXISTS idx_cierres_full_plan ON cierres_parciales_full(plan_id)",
         "CREATE INDEX IF NOT EXISTS idx_planes_fabrica_estado ON planes_ingreso_fabrica(estado)",
         "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_plan_id ON plan_ingreso_fabrica_items(plan_id)",
         "CREATE INDEX IF NOT EXISTS idx_plan_fabrica_items_codigo ON plan_ingreso_fabrica_items(plan_id, codigo)",
@@ -286,6 +303,21 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS despacho_bultos_escaneados (
+            pedido_id INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+            bulto_num INTEGER NOT NULL CHECK (bulto_num >= 1),
+            total_bultos INTEGER NOT NULL CHECK (total_bultos >= 1),
+            escaneado_por TEXT NOT NULL DEFAULT '',
+            escaneado_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (pedido_id, bulto_num)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_despacho_bultos_pedido ON despacho_bultos_escaneados(pedido_id)"
     )
 
 
@@ -376,3 +408,35 @@ def _migrar_columnas_pedidos(connection: sqlite3.Connection) -> None:
         WHERE COALESCE(canal, '') = ''
         """
     )
+
+
+def _migrar_columnas_full(connection: sqlite3.Connection) -> None:
+    """Asegura columnas para cierres multidía y tabla de cierres parciales de Mercado Full."""
+    cols_plan = {
+        r["name"] for r in connection.execute("PRAGMA table_info(planes_mercado_full)").fetchall()
+    }
+    if "articulos_descontados" not in cols_plan:
+        connection.execute(
+            "ALTER TABLE planes_mercado_full ADD COLUMN articulos_descontados INTEGER NOT NULL DEFAULT 0"
+        )
+    cols_items = {
+        r["name"] for r in connection.execute("PRAGMA table_info(plan_mercado_full_items)").fetchall()
+    }
+    if "cantidad_descontada" not in cols_items:
+        connection.execute(
+            "ALTER TABLE plan_mercado_full_items ADD COLUMN cantidad_descontada INTEGER NOT NULL DEFAULT 0"
+        )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cierres_parciales_full (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL REFERENCES planes_mercado_full(id) ON DELETE CASCADE,
+            tipo TEXT NOT NULL DEFAULT 'parcial',
+            picker TEXT NOT NULL DEFAULT '',
+            articulos_descontados INTEGER NOT NULL DEFAULT 0,
+            detalle_items TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+

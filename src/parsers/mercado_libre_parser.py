@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 from docx import Document
 
 from .remito_parser import ItemRemito, ResultadoRemito
+from .safe_loader import cargar_docx_seguro
 
 _UMBRAL_SIMILITUD = 0.84
 _MARGEN_MINIMO_SIMILITUD = 0.08
@@ -129,8 +130,7 @@ def parsear_pedido_mercado_libre(
 ) -> ResultadoRemito:
     """Procesa líneas de producto numeradas y usa su número inicial como cantidad."""
     path = Path(ruta_docx)
-    with open(path, "rb") as _f_docx:
-        documento = Document(_f_docx)
+    documento = cargar_docx_seguro(path)
     descripciones_catalogo: Dict[str, List[str]] = {}
     for codigo, nombre in productos_catalogo:
         if nombre:

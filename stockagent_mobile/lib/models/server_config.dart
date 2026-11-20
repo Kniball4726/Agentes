@@ -3,15 +3,17 @@ class ServerConfig {
   final String host;
   final String port;
   final String protocol;
+  final String? certSha256;
 
   static const String defaultHost = '192.168.100.19';
   static const String defaultPort = '8550';
-  static const String defaultProtocol = 'http';
+  static const String defaultProtocol = 'https';
 
   const ServerConfig({
     this.host = defaultHost,
     this.port = defaultPort,
     this.protocol = defaultProtocol,
+    this.certSha256,
   });
 
   /// Crea una configuración inicial por defecto
@@ -104,11 +106,13 @@ class ServerConfig {
     String? host,
     String? port,
     String? protocol,
+    String? certSha256,
   }) {
     return ServerConfig(
       host: host ?? this.host,
       port: port ?? this.port,
       protocol: protocol ?? this.protocol,
+      certSha256: certSha256 ?? this.certSha256,
     );
   }
 
@@ -118,6 +122,7 @@ class ServerConfig {
       'host': host.trim(),
       'port': normalizedPort,
       'protocol': normalizedProtocol,
+      if (certSha256 != null && certSha256!.isNotEmpty) 'certSha256': certSha256,
     };
   }
 
@@ -127,6 +132,7 @@ class ServerConfig {
       host: json['host'] as String? ?? '',
       port: json['port'] as String? ?? defaultPort,
       protocol: json['protocol'] as String? ?? defaultProtocol,
+      certSha256: json['certSha256'] as String?,
     );
   }
 
@@ -137,10 +143,12 @@ class ServerConfig {
           runtimeType == other.runtimeType &&
           host == other.host &&
           port == other.port &&
-          protocol == other.protocol;
+          protocol == other.protocol &&
+          certSha256 == other.certSha256;
 
   @override
-  int get hashCode => host.hashCode ^ port.hashCode ^ protocol.hashCode;
+  int get hashCode =>
+      host.hashCode ^ port.hashCode ^ protocol.hashCode ^ (certSha256?.hashCode ?? 0);
 
   @override
   String toString() => fullUrl;

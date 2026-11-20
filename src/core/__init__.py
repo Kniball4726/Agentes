@@ -1,5 +1,6 @@
 """Módulo central con excepciones de dominio, infraestructura y utilidades comunes."""
 
+from .delegation import DelegadoAtributo
 from .exceptions import (
     StockAgentError,
     DomainError,
@@ -28,11 +29,36 @@ from .environment import (
     get_data_dir,
     get_descuentos_dir,
     get_db_path,
+    resolver_data_dir_para_raiz,
 )
 from .system_reset import ejecutar_zapping_produccion
 from .sqlite_utils import open_sqlite_connection, sqlite_connection
+from .network_security import (
+    NoRedirectHandler,
+    SSRFBlockedError,
+    crear_contexto_tls_estricto,
+    es_ip_prohibida,
+    firmar_payload_hmac,
+    sanitizar_cabecera_mime,
+    validar_url_externa_segura,
+)
+from .sanitize_utils import (
+    escapar_html_telegram,
+    escapar_texto_reportlab,
+    sanitizar_celda_excel,
+    sanitizar_fila_excel,
+)
+from .security_utils import (
+    es_ruta_unc_o_sistema,
+    es_url_navegable_segura,
+    resolver_ruta_confinada,
+    ruta_en_directorios_permitidos,
+    sanitizar_componente_archivo,
+    validar_nombre_impresora_seguro,
+)
 
 __all__ = [
+    "DelegadoAtributo",
     "StockAgentError",
     "DomainError",
     "InfrastructureError",
@@ -58,7 +84,25 @@ __all__ = [
     "get_data_dir",
     "get_descuentos_dir",
     "get_db_path",
+    "resolver_data_dir_para_raiz",
     "ejecutar_zapping_produccion",
     "open_sqlite_connection",
     "sqlite_connection",
+    "NoRedirectHandler",
+    "SSRFBlockedError",
+    "crear_contexto_tls_estricto",
+    "es_ip_prohibida",
+    "firmar_payload_hmac",
+    "sanitizar_cabecera_mime",
+    "validar_url_externa_segura",
+    "escapar_html_telegram",
+    "escapar_texto_reportlab",
+    "sanitizar_celda_excel",
+    "sanitizar_fila_excel",
+    "sanitizar_componente_archivo",
+    "resolver_ruta_confinada",
+    "ruta_en_directorios_permitidos",
+    "es_ruta_unc_o_sistema",
+    "validar_nombre_impresora_seguro",
+    "es_url_navegable_segura",
 ]

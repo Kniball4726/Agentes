@@ -106,7 +106,7 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any, tab_inicial: int = 0) -> None:
             activos = [p for p in pedidos_ml if seleccionados_ml.get(p.id, False)]
             total_u = sum(p.articulos_descontados for p in activos)
             btn_confirmar.visible = True
-            btn_confirmar.text = "Cerrar Colecta Mercado Libre"
+            btn_confirmar.content = "Cerrar Colecta Mercado Libre"
             btn_confirmar.icon = ft.Icons.STOREFRONT
             btn_confirmar.bgcolor = ROJO
             if not activos:
@@ -122,7 +122,7 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any, tab_inicial: int = 0) -> None:
             activos = [p for p in pedidos_full if seleccionados_full.get(p.id, False)]
             total_u = sum(p.articulos_descontados for p in activos)
             btn_confirmar.visible = True
-            btn_confirmar.text = "Cerrar Envío Mercado Full (Pallet)"
+            btn_confirmar.content = "Cerrar Envío Mercado Full (Pallet)"
             btn_confirmar.icon = ft.Icons.LOCAL_SHIPPING
             btn_confirmar.bgcolor = ft.Colors.AMBER_800
             if not activos:

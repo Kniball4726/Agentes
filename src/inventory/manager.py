@@ -91,9 +91,11 @@ class StockManager:
                 else self.ruta_excel_base.parent
             )
             from ..core.environment import is_qa_environment
-            dir_data = "data_qa" if is_qa_environment() or parent_name == "descuentos_qa" else "data"
+            es_qa = is_qa_environment() or parent_name == "descuentos_qa"
+            dir_data = "data_qa" if es_qa else "data"
             candidato_db = carpeta_base_datos / dir_data / "productos.sqlite3"
-            if not candidato_db.exists() and (carpeta_base_datos / "data" / "productos.sqlite3").exists():
+            # Nunca hacer fallback a producción (data/) si el entorno activo es QA
+            if not es_qa and not candidato_db.exists() and (carpeta_base_datos / "data" / "productos.sqlite3").exists():
                 candidato_db = carpeta_base_datos / "data" / "productos.sqlite3"
             self.ruta_base_datos = candidato_db
         self.product_store = ProductStore(self.ruta_base_datos)

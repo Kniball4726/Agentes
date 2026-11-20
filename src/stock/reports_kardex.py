@@ -9,6 +9,7 @@ from typing import Any
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Spacer
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_fila_excel
 from .report_styles import (
     _autoajustar_columnas_excel,
     compilar_pdf_reporte,
@@ -63,7 +64,7 @@ def generar_reporte_kardex_producto(
             headers,
         )
         for idx, m in enumerate(movimientos):
-            ws.append([
+            ws.append(sanitizar_fila_excel([
                 m["fecha"].replace("T", " "),
                 m["tipo"],
                 m["detalle"] or "-",
@@ -72,7 +73,7 @@ def generar_reporte_kardex_producto(
                 int(m["entrada"]),
                 int(m["salida"]),
                 int(m["stock_resultante"]),
-            ])
+            ]))
             estilizar_fila_excel(ws, ws.max_row, len(headers), idx % 2 == 1)
         if not movimientos:
             ws.append(["—", "-", "Sin movimientos registrados en el rango.", "-", int(producto["stock"]), 0, 0, int(producto["stock"])])
@@ -82,7 +83,11 @@ def generar_reporte_kardex_producto(
         return ruta_salida
 
     st = crear_estilos_pdf()
-    subtitulo = f"<b>{producto['code']}</b> — {producto['name']} | Stock Actual: <b>{producto['stock']}</b> | Ubic.: {ubic} | Emitido: {fecha_legible}"
+    subtitulo = (
+        f"<b>{escapar_texto_reportlab(producto['code'])}</b> — {escapar_texto_reportlab(producto['name'])} | "
+        f"Stock Actual: <b>{int(producto['stock'])}</b> | Ubic.: {escapar_texto_reportlab(ubic)} | "
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)}"
+    )
     filas: list[list[Any]] = [[
         Paragraph("Fecha / Hora", st["th"]),
         Paragraph("Tipo", st["th"]),
@@ -96,14 +101,14 @@ def generar_reporte_kardex_producto(
     if movimientos:
         for m in movimientos:
             filas.append([
-                Paragraph(str(m["fecha"]).replace("T", " ")[:16], st["td_center"]),
-                Paragraph(str(m["tipo"])[:18], st["td_center"]),
-                Paragraph(str(m["detalle"] or "-")[:34], st["td"]),
-                Paragraph(str(m["usuario"])[:14], st["td_center"]),
-                Paragraph(str(m["stock_anterior"]), st["td_center"]),
-                Paragraph(f"+{m['entrada']}" if m["entrada"] else "—", st["td_center"]),
-                Paragraph(f"-{m['salida']}" if m["salida"] else "—", st["td_center"]),
-                Paragraph(f"<b>{m['stock_resultante']}</b>", st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(m["fecha"]).replace("T", " ")[:16]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(m["tipo"])[:18]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(m["detalle"] or "-")[:34]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(m["usuario"])[:14]), st["td_center"]),
+                Paragraph(str(int(m["stock_anterior"])), st["td_center"]),
+                Paragraph(f"+{int(m['entrada'])}" if m["entrada"] else "—", st["td_center"]),
+                Paragraph(f"-{int(m['salida'])}" if m["salida"] else "—", st["td_center"]),
+                Paragraph(f"<b>{int(m['stock_resultante'])}</b>", st["td_center"]),
             ])
     else:
         filas.append([
@@ -166,7 +171,7 @@ def generar_reporte_rotacion_consumo(
         )
         for idx, r in enumerate(ranking, start=1):
             cob = "SIN COBERTURA" if r["stock_actual"] <= 0 else (f"{r['cobertura_dias']} d." if r["cobertura_dias"] < 900 else "999+ d.")
-            ws.append([idx, r["code"], r["name"], r["ubicacion"] or "-", r["total_salidas"], r["promedio_diario"], r["stock_actual"], cob])
+            ws.append(sanitizar_fila_excel([idx, r["code"], r["name"], r["ubicacion"] or "-", r["total_salidas"], r["promedio_diario"], r["stock_actual"], cob]))
             estilizar_fila_excel(ws, ws.max_row, len(headers), idx % 2 == 0)
         _autoajustar_columnas_excel(ws)
         wb.save(ruta_salida)
@@ -174,7 +179,10 @@ def generar_reporte_rotacion_consumo(
         return ruta_salida
 
     st = crear_estilos_pdf()
-    subtitulo = f"Ventana analizada: últimos <b>{dias} días</b> | Emitido: {fecha_legible} | Resp: <b>{usuario}</b>"
+    subtitulo = (
+        f"Ventana analizada: últimos <b>{int(dias)} días</b> | "
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)} | Resp: <b>{escapar_texto_reportlab(usuario)}</b>"
+    )
     filas: list[list[Any]] = [[
         Paragraph("#", st["th"]),
         Paragraph("Código", st["th"]),
@@ -195,8 +203,8 @@ def generar_reporte_rotacion_consumo(
                 cob_cell = Paragraph(f"{cob_val} d." if cob_val < 900 else "999+ d.", st["td_center"])
             filas.append([
                 Paragraph(str(idx), st["td_center"]),
-                Paragraph(str(r["code"]), st["td_center"]),
-                Paragraph(str(r["name"])[:48], st["td"]),
+                Paragraph(escapar_texto_reportlab(str(r["code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(r["name"])[:48]), st["td"]),
                 Paragraph(f"<b>{r['total_salidas']}</b>", st["td_center"]),
                 Paragraph(str(r["promedio_diario"]), st["td_center"]),
                 Paragraph(str(r["stock_actual"]), st["td_center"]),

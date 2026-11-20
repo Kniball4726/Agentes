@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 
 from .. import secretos
+from ..core.environment import get_data_dir
+from ..core.network_security import crear_contexto_tls_estricto
 from ..paths import application_root
 
 CONFIG_ML_PATH_DEFAULT = "data/config_mercadolibre.json"
@@ -20,8 +22,9 @@ _CAMPOS_SECRETOS_ML = ("client_secret", "access_token", "refresh_token")
 
 
 def _obtener_ruta_config_ml(root_path: Path | None = None) -> Path:
-    root = root_path or application_root()
-    return root / CONFIG_ML_PATH_DEFAULT
+    if root_path is not None:
+        return root_path / CONFIG_ML_PATH_DEFAULT
+    return get_data_dir() / "config_mercadolibre.json"
 
 
 def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
@@ -139,7 +142,7 @@ def renovar_token_ml(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=crear_contexto_tls_estricto()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             nuevo_access = str(data.get("access_token", ""))
             nuevo_refresh = str(data.get("refresh_token", refresh_token))
@@ -164,7 +167,10 @@ def renovar_token_ml(
 
 
 def verificar_credenciales_ml(
-    config: dict[str, Any] | None = None, root_path: Path | None = None
+    config: dict[str, Any] | None = None,
+    root_path: Path | None = None,
+    *,
+    _reintento: bool = False,
 ) -> tuple[bool, str, dict[str, Any]]:
     """Comprueba la validez del Access Token consultando el perfil del usuario autenticado (/users/me)."""
     cfg = config or cargar_config_mercadolibre(root_path)
@@ -185,7 +191,7 @@ def verificar_credenciales_ml(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=8, context=crear_contexto_tls_estricto()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             nickname = data.get("nickname", "Desconocido")
             user_id = data.get("id", "")
@@ -198,12 +204,12 @@ def verificar_credenciales_ml(
             return True, f"Conexión exitosa con la cuenta '{nickname}' (ID: {user_id})", data
 
     except urllib.error.HTTPError as he:
-        if he.code == 401 and cfg.get("refresh_token"):
-            # Intentar renovación automática
+        if he.code == 401 and not _reintento and cfg.get("refresh_token"):
+            # Intentar renovación automática (máximo un reintento)
             exito_renov, msg_renov, nuevo_tok = renovar_token_ml(cfg, root_path=root_path)
             if exito_renov:
                 cfg["access_token"] = nuevo_tok
-                return verificar_credenciales_ml(cfg, root_path=root_path)
+                return verificar_credenciales_ml(cfg, root_path=root_path, _reintento=True)
             return False, f"Token expirado y falló la renovación: {msg_renov}", {}
         return False, f"Error HTTP {he.code} de Mercado Libre: {he.reason}", {}
     except Exception as e:
@@ -215,6 +221,8 @@ def consultar_ordenes_ml(
     horas: int = 48,
     limit: int = 50,
     root_path: Path | None = None,
+    *,
+    _reintento: bool = False,
 ) -> tuple[bool, str, list[dict[str, Any]]]:
     """Descarga de la API de Mercado Libre las órdenes recientes pagadas."""
     cfg = config or cargar_config_mercadolibre(root_path)
@@ -255,7 +263,7 @@ def consultar_ordenes_ml(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=12, context=crear_contexto_tls_estricto()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             results = data.get("results", [])
 
@@ -265,10 +273,12 @@ def consultar_ordenes_ml(
             return True, f"Se sincronizaron {len(results)} órdenes de Mercado Libre.", results
 
     except urllib.error.HTTPError as he:
-        if he.code == 401 and cfg.get("refresh_token"):
+        if he.code == 401 and not _reintento and cfg.get("refresh_token"):
             ok_renov, _, _ = renovar_token_ml(cfg, root_path=root_path)
             if ok_renov:
-                return consultar_ordenes_ml(cfg, horas=horas, limit=limit, root_path=root_path)
+                return consultar_ordenes_ml(
+                    cfg, horas=horas, limit=limit, root_path=root_path, _reintento=True
+                )
         return False, f"Error HTTP {he.code} al consultar órdenes: {he.reason}", []
     except Exception as e:
         return False, f"Error al consultar órdenes de Mercado Libre: {e}", []

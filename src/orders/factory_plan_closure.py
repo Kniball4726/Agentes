@@ -140,6 +140,7 @@ def ejecutar_cierre_parcial_fabrica(
     """Registra un cierre parcial diario y devuelve `{codigo: cantidad}` pendiente por ingresar."""
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with connect_fn() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         plan_row = connection.execute(
             """
             SELECT id, nombre_remito, archivo_remito, articulos_esperados,
@@ -150,9 +151,11 @@ def ejecutar_cierre_parcial_fabrica(
             (plan_id,),
         ).fetchone()
         if not plan_row:
+            connection.rollback()
             return {"exito": False, "motivo": "no_encontrado", "mensaje": f"Remito #{plan_id} no existe."}
 
         if plan_row["estado"] in ("completado", "cancelado"):
+            connection.rollback()
             return {"exito": False, "motivo": "plan_cerrado", "mensaje": f"El remito ya está en estado '{plan_row['estado']}'."}
 
         items_rows = connection.execute(
@@ -162,6 +165,7 @@ def ejecutar_cierre_parcial_fabrica(
 
         items_a_ingresar = _acreditar_delta_items_fabrica(connection, items_rows, actualizar_todos=False)
         if not items_a_ingresar:
+            connection.rollback()
             return {
                 "exito": False,
                 "motivo": "sin_pendientes",
@@ -220,17 +224,22 @@ def ejecutar_cierre_final_fabrica(
     """Finaliza un plan de ingreso de fábrica acreditando solo el remanente pendiente."""
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with connect_fn() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         plan_row = connection.execute(
             """
             SELECT id, nombre_remito, archivo_remito, articulos_esperados,
-                   articulos_controlados, articulos_ingresados, picker_asignado
+                   articulos_controlados, articulos_ingresados, estado, picker_asignado
             FROM planes_ingreso_fabrica
             WHERE id = ?
             """,
             (plan_id,),
         ).fetchone()
         if not plan_row:
+            connection.rollback()
             return {"exito": False, "motivo": "no_encontrado"}
+        if plan_row["estado"] in ("completado", "cancelado"):
+            connection.rollback()
+            return {"exito": False, "motivo": "plan_cerrado", "mensaje": f"El remito ya está en estado '{plan_row['estado']}'."}
 
         items_rows = connection.execute(
             f"SELECT {_PLAN_ITEM_COLUMNS} FROM plan_ingreso_fabrica_items WHERE plan_id = ?",

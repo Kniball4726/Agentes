@@ -7,6 +7,7 @@ from typing import Any, Callable
 import flet as ft
 
 from ...orders import Pedido
+from ..design import colores_de
 from ..theme import ROJO
 from .historial_archivos import abrir_comprobante_pedido
 from .historial_detalle import mostrar_detalle_pedido_modal
@@ -50,7 +51,7 @@ def _estado_visual_despacho(p: Pedido) -> tuple[str, str, str, str]:
     return "#2563eb", "ARMADO", "despachado", "Marcar como DESPACHADO"
 
 
-def _construir_encabezado_fecha(f_clave: str, hoy_str: str, cant: int) -> ft.Container:
+def _construir_encabezado_fecha(f_clave: str, hoy_str: str, cant: int, interfaz: Any | None = None) -> ft.Container:
     fecha_display = f_clave
     try:
         partes = f_clave.split("-")
@@ -59,13 +60,14 @@ def _construir_encabezado_fecha(f_clave: str, hoy_str: str, cant: int) -> ft.Con
     except Exception:
         pass
     es_hoy = f_clave == hoy_str
+    colores = colores_de(interfaz)
     return ft.Container(
-        bgcolor="#18181c",
+        bgcolor="#18181c" if colores.modo_oscuro else colores.superficie_suave,
         border=ft.Border(
             left=ft.BorderSide(4, ROJO),
-            top=ft.BorderSide(1, "#27272a"),
-            right=ft.BorderSide(1, "#27272a"),
-            bottom=ft.BorderSide(1, "#27272a"),
+            top=ft.BorderSide(1, colores.borde),
+            right=ft.BorderSide(1, colores.borde),
+            bottom=ft.BorderSide(1, colores.borde),
         ),
         border_radius=ft.BorderRadius(top_left=4, bottom_left=4, top_right=8, bottom_right=8),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
@@ -75,7 +77,7 @@ def _construir_encabezado_fecha(f_clave: str, hoy_str: str, cant: int) -> ft.Con
                 ft.Row(
                     [
                         ft.Icon(ft.Icons.CALENDAR_MONTH, size=16, color=ROJO),
-                        ft.Text(fecha_display, weight=ft.FontWeight.BOLD, size=13, color="#f4f4f5"),
+                        ft.Text(fecha_display, weight=ft.FontWeight.BOLD, size=13, color=colores.texto),
                         *(
                             [
                                 ft.Container(
@@ -117,16 +119,17 @@ def _construir_fila_pedido(
     col_desp_bg, lbl_desp, sig_estado, tip_estado = _estado_visual_despacho(p)
 
     nota_obs = ""
-    col_obs = "#a1a1aa"
+    colores = colores_de(interfaz)
+    col_obs = colores.secundario
     if getattr(p, "agregado", False):
         nota_obs = "agregado"
-        col_obs = "#eab308"
+        col_obs = colores.advertencia
     elif p.resumen_items:
         res_c = p.resumen_items.strip()
         nota_obs = (res_c[:18] + "...") if len(res_c) > 20 else res_c
 
     badge_firma = ft.Container(
-        content=ft.Text("ANULADO" if es_anulado else lbl_desp, size=10, weight=ft.FontWeight.BOLD, color="#ffffff"),
+        content=ft.Text("ANULADO" if es_anulado else lbl_desp, size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
         bgcolor="#dc2626" if es_anulado else col_desp_bg,
         padding=ft.Padding.symmetric(horizontal=6, vertical=2),
         border_radius=4,
@@ -135,8 +138,8 @@ def _construir_fila_pedido(
     )
 
     return ft.Container(
-        bgcolor="#141416",
-        border=ft.Border(bottom=ft.BorderSide(0.5, "#222226")),
+        bgcolor=colores.superficie_suave,
+        border=ft.Border(bottom=ft.BorderSide(0.5, colores.borde)),
         padding=ft.Padding.symmetric(horizontal=12, vertical=6),
         ink=True,
         on_hover=on_row_hover,
@@ -153,14 +156,14 @@ def _construir_fila_pedido(
                     width=30,
                     alignment=ft.Alignment(-1, 0),
                 ),
-                ft.Container(content=ft.Text(p.nota_pedido or "-", size=12, color="#f4f4f5"), width=75),
+                ft.Container(content=ft.Text(p.nota_pedido or "-", size=12, color=colores.texto), width=75),
                 ft.Container(
                     content=ft.Row(
                         [
                             ft.IconButton(
                                 icon=ft.Icons.DESCRIPTION_OUTLINED,
                                 icon_size=15,
-                                icon_color="#9ca3af",
+                                icon_color=colores.secundario,
                                 tooltip=f"Ver/reimprimir comprobante ({p.nombre_archivo or 'Sin archivo'})",
                                 on_click=lambda _e, ped=p: abrir_comprobante_pedido(interfaz, ped),
                                 style=ft.ButtonStyle(padding=0),
@@ -171,7 +174,7 @@ def _construir_fila_pedido(
                                 p.cliente or "Sin Cliente",
                                 size=12,
                                 weight=ft.FontWeight.BOLD,
-                                color="#f4f4f5",
+                                color=colores.texto,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                                 max_lines=1,
                                 expand=True,
@@ -182,10 +185,10 @@ def _construir_fila_pedido(
                     ),
                     width=240,
                 ),
-                ft.Container(content=ft.Text(p.numero_pedido or "-", size=12, color="#d4d4d8"), width=65),
-                ft.Container(content=ft.Text(str(p.bultos), size=12, weight=ft.FontWeight.BOLD, color="#d4d4d8"), width=55),
-                ft.Container(content=ft.Text(p.logistica or "-", size=12, color="#d4d4d8", overflow=ft.TextOverflow.ELLIPSIS, max_lines=1), width=170),
-                ft.Container(content=ft.Text(p.armador or "-", size=12, color="#a1a1aa", overflow=ft.TextOverflow.ELLIPSIS, max_lines=1), width=140),
+                ft.Container(content=ft.Text(p.numero_pedido or "-", size=12, color=colores.secundario), width=65),
+                ft.Container(content=ft.Text(str(p.bultos), size=12, weight=ft.FontWeight.BOLD, color=colores.texto), width=55),
+                ft.Container(content=ft.Text(p.logistica or "-", size=12, color=colores.secundario, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1), width=170),
+                ft.Container(content=ft.Text(p.armador or "-", size=12, color=colores.secundario, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1), width=140),
                 ft.Container(
                     content=ft.Text(
                         nota_obs,
@@ -198,11 +201,11 @@ def _construir_fila_pedido(
                     width=90,
                 ),
                 ft.Container(
-                    content=ft.Text(getattr(p, "fecha_retiro", "") or "-", size=11, color="#a1a1aa", overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                    content=ft.Text(getattr(p, "fecha_retiro", "") or "-", size=11, color=colores.secundario, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
                     width=115,
                 ),
                 ft.Container(content=badge_firma, width=90),
-                ft.Container(content=ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color="#71717a"), width=30, alignment=ft.Alignment(1, 0)),
+                ft.Container(content=ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=colores.secundario), width=30, alignment=ft.Alignment(1, 0)),
             ],
             spacing=6,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -210,17 +213,18 @@ def _construir_fila_pedido(
     )
 
 
-def construir_cabecera_columnas_historial() -> ft.Container:
+def construir_cabecera_columnas_historial(interfaz: Any | None = None) -> ft.Container:
     """Genera la cabecera tabular fija de la vista histórica de pedidos."""
+    colores = colores_de(interfaz)
     return ft.Container(
-        bgcolor="#18181b",
+        bgcolor=colores.superficie_suave,
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        border=ft.Border(bottom=ft.BorderSide(1, "#27272a")),
+        border=ft.Border(bottom=ft.BorderSide(1, colores.borde)),
         content=ft.Row(
             [
                 ft.Container(width=30),
                 *[
-                    ft.Container(content=ft.Text(lbl, size=12, weight=ft.FontWeight.W_500, color="#9ca3af"), width=w)
+                    ft.Container(content=ft.Text(lbl, size=12, weight=ft.FontWeight.W_500, color=colores.secundario), width=w)
                     for lbl, w in (
                         ("Nota", 75), ("Cliente", 240), ("Numero", 65), ("Bultos", 55),
                         ("Logistica", 170), ("Preparador", 140), ("Nota", 90),

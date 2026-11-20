@@ -19,10 +19,9 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
             ("Espacio en Disco", "telemetria_disco", ft.Icons.STORAGE),
             ("Salud Servidor", "telemetria_salud", ft.Icons.HEALTH_AND_SAFETY),
         ]
-    elif interfaz.usuario_actual and interfaz.usuario_actual.role in ("picker", "administrador"):
-        # Administrador y Picker no muestran esta hilera superior de tarjetas clásicas de métricas
-        # ("PDF de la jornada", "Canjes", etc.) para maximizar el espacio vertical
-        # del seguimiento operativo y el panel de analítica ejecutiva 360°.
+    elif interfaz.usuario_actual and interfaz.usuario_actual.role in ("picker", "administrador", "despachador"):
+        # Administrador, Picker y Despachador no muestran esta hilera superior de tarjetas clásicas
+        # ("PDF de la jornada", "Canjes", etc.) para maximizar el espacio vertical de sus paneles dedicados.
         if hasattr(interfaz, "contadores") and isinstance(interfaz.contadores, dict):
             for clave in ("pdf", "canjes", "ml", "total", "informes", "quiebres"):
                 interfaz.contadores[clave] = ft.Text("0", visible=False)
@@ -53,7 +52,7 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
                             width=40,
                             height=40,
                             border_radius=10,
-                            bgcolor=ft.Colors.RED_50,
+                            bgcolor=ft.Colors.with_opacity(0.16, ROJO) if interfaz.modo_oscuro else ft.Colors.RED_50,
                             alignment=ft.Alignment.CENTER,
                             content=ft.Icon(icono, color=ROJO, size=20),
                         ),
@@ -87,7 +86,16 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
     es_picker = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "picker")
     es_operador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "operador")
+    es_despachador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "despachador")
     es_movil = bool(interfaz.es_pantalla_movil)
+    if es_despachador:
+        from ..dialogs.dlg_modulo_despacho import construir_vista_modulo_despacho
+        vista_despacho, refrescar_despacho = construir_vista_modulo_despacho(
+            interfaz, modo_dialogo=False
+        )
+        interfaz._refrescar_modulo_despacho = refrescar_despacho
+        return vista_despacho
+    interfaz._refrescar_modulo_despacho = None
     if es_master:
         titulo_derecha = "Eventos de auditoría recientes"
         icono_derecha = ft.Icons.SECURITY
@@ -131,7 +139,7 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
         [
             # Header con fecha y contador de bultos acumulados
             ft.Container(
-                bgcolor=interfaz.fondo_acento if interfaz.modo_oscuro else ft.Colors.RED_50,
+                bgcolor=ft.Colors.with_opacity(0.16, ROJO) if interfaz.modo_oscuro else ft.Colors.RED_50,
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ROJO)),
                 border_radius=8,
                 padding=ft.Padding.symmetric(horizontal=12, vertical=8),
@@ -141,7 +149,11 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
                             [
                                 ft.Row(
                                     [
-                                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=14, color=ROJO),
+                                        ft.Icon(
+                                            ft.Icons.CALENDAR_TODAY,
+                                            size=14,
+                                            color=ft.Colors.RED_300 if interfaz.modo_oscuro else ROJO,
+                                        ),
                                         interfaz.header_pedidos_fecha,
                                     ],
                                     spacing=6,
@@ -215,7 +227,7 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
     - Consulta / Otros: Oculto.
     """
     rol = str(getattr(getattr(interfaz, "usuario_actual", None), "role", "")).lower()
-    if rol in ("consulta", ""):
+    if rol in ("consulta", "despachador", ""):
         return ft.Container(height=0, visible=False)
 
     es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))

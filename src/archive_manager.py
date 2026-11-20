@@ -9,15 +9,22 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from .core.environment import get_data_dir
 from .paths import application_root
+
+
+def _resolver_data_dir(root_path: Path | None = None) -> Path:
+    if root_path is not None:
+        return Path(root_path) / "data"
+    return get_data_dir()
 
 
 def obtener_estadisticas_almacenamiento(root_path: Path | None = None) -> dict[str, Any]:
     """Calcula la cantidad de archivos y volumen ocupado en las carpetas de comprobantes."""
-    root = root_path or application_root()
-    dir_pedidos = root / "data" / "pedidos_archivos"
-    dir_descontados = root / "data" / "descontados"
-    dir_historico = root / "data" / "historico"
+    data_dir = _resolver_data_dir(root_path)
+    dir_pedidos = data_dir / "pedidos_archivos"
+    dir_descontados = data_dir / "descontados"
+    dir_historico = data_dir / "historico"
 
     def _medir_dir(d: Path) -> tuple[int, int]:
         if not d.exists():
@@ -47,15 +54,15 @@ def archivar_comprobantes_antiguos(
     dias_antiguedad: int = 30, root_path: Path | None = None
 ) -> dict[str, Any]:
     """Organiza comprobantes que superen los días de antigüedad en `data/historico/YYYY/MM/`."""
-    root = root_path or application_root()
-    dir_historico = root / "data" / "historico"
+    data_dir = _resolver_data_dir(root_path)
+    dir_historico = data_dir / "historico"
     dir_historico.mkdir(parents=True, exist_ok=True)
 
     limite_dt = datetime.now() - timedelta(days=dias_antiguedad)
 
     origenes = [
-        root / "data" / "pedidos_archivos",
-        root / "data" / "descontados",
+        data_dir / "pedidos_archivos",
+        data_dir / "descontados",
     ]
 
     movidos = 0

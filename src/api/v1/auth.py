@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 
 from ..deps import crear_sesion, get_current_user, get_user_store, require_roles, revocar_sesion
-from ..schemas import LoginRequest, LoginResponse, UsuarioResponse
+from ..schemas import ApiKeyCreateRequest, LoginRequest, LoginResponse, UsuarioResponse
 from ...auth import USER_ROLES, UserStore
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
@@ -63,8 +63,13 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="La cuenta de usuario se encuentra deshabilitada.",
         )
+    if getattr(user, "must_change_password", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Debe actualizar su contraseña obligatoria desde el panel web/escritorio antes de acceder a la API.",
+        )
 
-    token = crear_sesion(user)
+    token = crear_sesion(user, user_store)
     usuario_resp = UsuarioResponse(
         id=user.id,
         username=user.username,
@@ -116,27 +121,30 @@ async def logout(
 
 @router.post("/api-keys", summary="Crear API Key para integración externa (Exclusivo Master)")
 async def crear_api_key(
-    client_name: str,
-    role: str = "operador",
+    payload: Optional[ApiKeyCreateRequest] = Body(None),
+    client_name: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
     user: Dict[str, Any] = Depends(require_roles("master")),
     user_store: UserStore = Depends(get_user_store),
 ):
-    """Genera una nueva API Key para conectar ERPs o scripts externos."""
-    if not client_name or not client_name.strip():
+    """Genera una nueva API Key para conectar ERPs o scripts externos (acepta JSON body preferentemente)."""
+    nombre_cliente = (payload.client_name if payload is not None else (client_name or "")).strip()
+    rol_solicitado = (payload.role if payload is not None else (role or "operador")).strip().lower()
+
+    if not nombre_cliente:
         raise HTTPException(status_code=400, detail="Debe indicar el nombre del cliente o sistema externo.")
 
-    role_limpio = (role or "").strip().lower()
-    if role_limpio not in USER_ROLES:
+    if rol_solicitado not in USER_ROLES:
         raise HTTPException(
             status_code=400,
             detail=f"Rol no válido. Roles permitidos: {', '.join(USER_ROLES)}.",
         )
 
-    raw_key, key_hash = user_store.create_api_key(client_name.strip(), role=role_limpio)
+    raw_key, key_hash = user_store.create_api_key(nombre_cliente, role=rol_solicitado)
     return {
         "ok": True,
-        "client_name": client_name.strip(),
-        "role": role_limpio,
+        "client_name": nombre_cliente,
+        "role": rol_solicitado,
         "api_key": raw_key,
         "message": "Guarde esta clave API en un lugar seguro. No se volverá a mostrar completa.",
     }

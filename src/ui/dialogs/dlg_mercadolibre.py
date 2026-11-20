@@ -13,6 +13,7 @@ from ...integrations.mercado_libre_api import (
     mapear_orden_ml_a_items,
     verificar_credenciales_ml,
 )
+from ..design import campo_secreto_seguro, colores_de, resolver_secreto
 from ..theme import ROJO
 from .mercadolibre_api_cards import (
     construir_contenido_dialogo_ml,
@@ -25,7 +26,11 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
     if not interfaz.exigir_roles("administrador", "master"):
         return
 
+    colores = colores_de(interfaz)
     cfg = cargar_config_mercadolibre()
+    secret_guardado = str(cfg.get("client_secret", "") or "")
+    access_guardado = str(cfg.get("access_token", "") or "")
+    refresh_guardado = str(cfg.get("refresh_token", "") or "")
 
     # Variables de estado de la vista
     ordenes_cargadas: list[dict[str, Any]] = []
@@ -38,11 +43,9 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         hint_text="Ej: 1234567890123456",
         dense=True,
     )
-    input_client_secret = ft.TextField(
-        label="Client Secret",
-        value=cfg.get("client_secret", ""),
-        password=True,
-        can_reveal_password=True,
+    input_client_secret = campo_secreto_seguro(
+        "Client Secret",
+        secret_guardado,
         dense=True,
     )
     input_seller_id = ft.TextField(
@@ -51,19 +54,15 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         hint_text="Ej: 123456789 (se completa automáticamente al probar conexión)",
         dense=True,
     )
-    input_access_token = ft.TextField(
-        label="Access Token",
-        value=cfg.get("access_token", ""),
-        password=True,
-        can_reveal_password=True,
+    input_access_token = campo_secreto_seguro(
+        "Access Token",
+        access_guardado,
         dense=True,
         multiline=False,
     )
-    input_refresh_token = ft.TextField(
-        label="Refresh Token",
-        value=cfg.get("refresh_token", ""),
-        password=True,
-        can_reveal_password=True,
+    input_refresh_token = campo_secreto_seguro(
+        "Refresh Token",
+        refresh_guardado,
         dense=True,
     )
     switch_activo = ft.Switch(
@@ -89,19 +88,19 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
     )
 
     def probar_conexion_api(_e: ft.Event | None = None) -> None:
-        tok = (input_access_token.value or "").strip()
+        tok = resolver_secreto(input_access_token, cfg.get("access_token", "") or access_guardado)
         if not tok:
             texto_estado_config.value = "⚠️ Debes ingresar un Access Token para probar la conexión."
-            texto_estado_config.color = ft.Colors.AMBER_400
+            texto_estado_config.color = colores.advertencia
             interfaz.page.update()
             return
 
         test_cfg = {
             "app_id": (input_app_id.value or "").strip(),
-            "client_secret": (input_client_secret.value or "").strip(),
+            "client_secret": resolver_secreto(input_client_secret, cfg.get("client_secret", "") or secret_guardado),
             "seller_id": (input_seller_id.value or "").strip(),
             "access_token": tok,
-            "refresh_token": (input_refresh_token.value or "").strip(),
+            "refresh_token": resolver_secreto(input_refresh_token, cfg.get("refresh_token", "") or refresh_guardado),
             "activo": bool(switch_activo.value),
         }
         texto_estado_config.value = "Comprobando conexión con Mercado Libre..."
@@ -111,21 +110,25 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         ok, msg, data = verificar_credenciales_ml(test_cfg)
         if ok:
             texto_estado_config.value = f"✅ {msg}"
-            texto_estado_config.color = ft.Colors.GREEN_400
+            texto_estado_config.color = colores.exito
             if data.get("id") and not input_seller_id.value:
                 input_seller_id.value = str(data["id"])
         else:
             texto_estado_config.value = f"❌ {msg}"
-            texto_estado_config.color = ft.Colors.RED_400
+            texto_estado_config.color = colores.error
         interfaz.page.update()
 
     def guardar_config_api(_e: ft.Event | None = None) -> None:
+        nonlocal secret_guardado, access_guardado, refresh_guardado
+        secret_guardado = resolver_secreto(input_client_secret, cfg.get("client_secret", "") or secret_guardado)
+        access_guardado = resolver_secreto(input_access_token, cfg.get("access_token", "") or access_guardado)
+        refresh_guardado = resolver_secreto(input_refresh_token, cfg.get("refresh_token", "") or refresh_guardado)
         nueva_cfg = {
             "app_id": (input_app_id.value or "").strip(),
-            "client_secret": (input_client_secret.value or "").strip(),
+            "client_secret": secret_guardado,
             "seller_id": (input_seller_id.value or "").strip(),
-            "access_token": (input_access_token.value or "").strip(),
-            "refresh_token": (input_refresh_token.value or "").strip(),
+            "access_token": access_guardado,
+            "refresh_token": refresh_guardado,
             "activo": bool(switch_activo.value),
             "filtro_estado": "paid",
             "horas_atras": 48,
@@ -134,6 +137,14 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         }
         guardar_config_mercadolibre(nueva_cfg)
         cfg.update(nueva_cfg)
+        order_store = getattr(interfaz, "order_store", None)
+        if order_store and hasattr(order_store, "registrar_auditoria"):
+            usr_nom = getattr(getattr(interfaz, "usuario_actual", None), "username", "Master")
+            order_store.registrar_auditoria(
+                usr_nom,
+                "CONFIG_MERCADOLIBRE_ACTUALIZADA",
+                f"App ID: {nueva_cfg['app_id'] or 'N/A'} (activo={nueva_cfg['activo']})",
+            )
         interfaz.notificar("Configuración de Mercado Libre API guardada correctamente.")
 
     def renderizar_lista_ordenes() -> None:
@@ -142,7 +153,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
             lista_ordenes_view.controls.append(
                 ft.Container(
                     padding=20,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment.CENTER,
                     content=ft.Text(
                         "No hay órdenes para mostrar en este período.",
                         color=interfaz.secundario,
@@ -283,6 +294,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         on_guardar_config=guardar_config_api,
     )
 
+    ancho_dlg = interfaz.ancho_adaptable(680) if hasattr(interfaz, "ancho_adaptable") else 680
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
@@ -294,7 +306,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
         ),
         content=ft.Container(
             content=contenido_dialogo,
-            width=680,
+            width=ancho_dlg,
             height=460,
         ),
         actions=[
@@ -305,7 +317,7 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
                 color=ft.Colors.WHITE,
                 on_click=confirmar_descuento_seleccionadas,
             ),
-            ft.TextButton("Cerrar", on_click=lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog()),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )

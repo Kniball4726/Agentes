@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'tls_pinning_service.dart';
 
 class AppUpdateInfo {
   final int versionCode;
@@ -12,6 +13,7 @@ class AppUpdateInfo {
   final String releaseNotes;
   final int fileSize;
   final String updatedAt;
+  final String sha256;
 
   AppUpdateInfo({
     required this.versionCode,
@@ -20,6 +22,7 @@ class AppUpdateInfo {
     required this.releaseNotes,
     required this.fileSize,
     required this.updatedAt,
+    this.sha256 = '',
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -27,9 +30,11 @@ class AppUpdateInfo {
       versionCode: (json['version_code'] as num?)?.toInt() ?? 1,
       versionName: json['version_name']?.toString() ?? '1.0.0',
       apkUrl: json['apk_url']?.toString() ?? '/actualizaciones/StockAgent.apk',
-      releaseNotes: json['release_notes']?.toString() ?? 'Actualización disponible para StockAgent.',
+      releaseNotes:
+          json['release_notes']?.toString() ?? 'Actualización disponible para StockAgent.',
       fileSize: (json['file_size'] as num?)?.toInt() ?? 0,
       updatedAt: json['updated_at']?.toString() ?? '',
+      sha256: json['sha256']?.toString().trim().toLowerCase() ?? '',
     );
   }
 
@@ -75,22 +80,46 @@ class UpdateService {
     return null;
   }
 
-  /// Descarga el APK desde el servidor y activa el instalador de Android
+  /// Verifica que la URL de descarga del APK pertenezca al mismo servidor configurado.
+  static bool isValidSameOriginUrl(String downloadUrl, String? expectedServerOrigin) {
+    final dlUri = Uri.tryParse(downloadUrl);
+    if (dlUri == null || !dlUri.hasScheme || dlUri.host.isEmpty) return false;
+    if (expectedServerOrigin == null || expectedServerOrigin.trim().isEmpty) return true;
+    final originUri = Uri.tryParse(expectedServerOrigin.trim());
+    if (originUri == null || originUri.host.isEmpty) return false;
+    return dlUri.host.toLowerCase() == originUri.host.toLowerCase() &&
+        dlUri.port == originUri.port &&
+        dlUri.scheme.toLowerCase() == originUri.scheme.toLowerCase();
+  }
+
+  /// Descarga el APK desde el servidor, valida su hash SHA-256 y activa el instalador de Android
   Future<void> downloadAndInstall({
     required String downloadUrl,
+    String? expectedSha256,
+    String? expectedServerOrigin,
     required void Function(double progress) onProgress,
     required void Function(String error) onError,
   }) async {
     http.Client? client;
     IOSink? sink;
     try {
+      if (!isValidSameOriginUrl(downloadUrl, expectedServerOrigin)) {
+        onError('La URL del APK no pertenece al servidor configurado. Descarga bloqueada.');
+        return;
+      }
+
       final cacheDirStr = await _channel.invokeMethod<String>('getCacheDirectory');
       if (cacheDirStr == null || cacheDirStr.isEmpty) {
         onError('No se pudo acceder a la carpeta temporal del dispositivo.');
         return;
       }
 
-      final targetFile = File('$cacheDirStr/StockAgent_update.apk');
+      final updatesDir = Directory('$cacheDirStr/updates');
+      if (!await updatesDir.exists()) {
+        await updatesDir.create(recursive: true);
+      }
+
+      final targetFile = File('${updatesDir.path}/StockAgent_update.apk');
       if (await targetFile.exists()) {
         try {
           await targetFile.delete();
@@ -127,9 +156,36 @@ class UpdateService {
       client.close();
       client = null;
 
-      // Disparar instalación nativa
+      final cleanExpectedHash = (expectedSha256 ?? '').trim().toLowerCase();
+      if (cleanExpectedHash.isNotEmpty) {
+        String actualHash = '';
+        try {
+          actualHash = (await _channel.invokeMethod<String>(
+                    'computeFileSha256',
+                    {'filePath': targetFile.path},
+                  ))
+                  ?.trim()
+                  .toLowerCase() ??
+              '';
+        } catch (_) {
+          actualHash = TlsPinningService.sha256Hex(await targetFile.readAsBytes());
+        }
+
+        if (actualHash.isNotEmpty && actualHash != cleanExpectedHash) {
+          try {
+            await targetFile.delete();
+          } catch (_) {}
+          onError(
+            'Verificación SHA-256 fallida: el APK descargado está corrupto o fue alterado.',
+          );
+          return;
+        }
+      }
+
+      // Disparar instalación nativa con verificación de ruta, hash y packageName
       final installed = await _channel.invokeMethod<bool>('installApk', <String, dynamic>{
         'filePath': targetFile.path,
+        if (cleanExpectedHash.isNotEmpty) 'expectedSha256': cleanExpectedHash,
       });
 
       if (installed != true) {

@@ -284,13 +284,13 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
                 "nombre_boton": "Centro de Reportes, Copia de Seguridad y Gestionar Usuarios",
                 "icono_str": "[👥]",
                 "modulo": "INFORMES, RESGUARDO E IAM",
-                "proposito_funcional": "Centro Unificado de Reportes SQLite (`Movimientos Estándar`, `Descuentos por Canal`, `Planilla Toma de Inventario Físico` ciega/valorizada, `Auditoría Física`, `Kardex SKU`, `Rotación y Cobertura`), acceso protegido (`?dt=`), respaldo `.zip` en `data/backups/` y alta/reseteo de cuentas Operador, Picker y Consulta.",
-                "datos_modificados": "Consultas SQLite de solo lectura, reportes PDF A4/Excel, tabla `users` (PBKDF2-SHA256) y archivos `Backup_StockAgent_*.zip`.",
+                "proposito_funcional": "Centro Unificado de Reportes SQLite (`Movimientos Estándar`, `Descuentos por Canal`, `Planilla Toma de Inventario Físico` ciega/valorizada, `Auditoría Física`, `Kardex SKU`, `Rotación y Cobertura`), acceso protegido (`?dt=`), respaldo `.zip` en `data/backups/` y alta/reseteo de cuentas Operador, Picker, Despachador y Consulta.",
+                "datos_modificados": "Consultas SQLite de solo lectura, reportes PDF A4/Excel con sanitización anti-fórmulas, tabla `users` (PBKDF2-SHA256) y archivos `Backup_StockAgent_*.zip`.",
                 "pasos_procedimiento": [
-                    "En <b>'Gestionar usuarios'</b>, crear o resetear cuentas Operador, Picker o Consulta.",
-                    "En <b>'Copia de Seguridad'</b>, generar respaldo manual antes de inventarios anuales.",
+                    "En <b>'Gestionar usuarios'</b>, crear o resetear cuentas Operador, Picker, Despachador o Consulta.",
+                    "En <b>'Copia de Seguridad'</b>, generar respaldo manual verificado con `PRAGMA integrity_check` antes de inventarios anuales.",
                 ],
-                "resultado_obtenido": "Gestión delegada de personal y continuidad operativa.",
+                "resultado_obtenido": "Gestión delegada de personal y continuidad operativa con confirmación de acciones destructivas.",
                 "validaciones_advertencias": "Un Administrador NO puede crear ni modificar Administradores ni la cuenta Master (SoD).",
             },
             {

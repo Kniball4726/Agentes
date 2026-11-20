@@ -7,8 +7,19 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ..theme import BORDE, FONDO, SECUNDARIO, SUPERFICIE, TEXTO
-from ..user_preferences import obtener_preferencias_usuario
+from ..theme import (
+    BORDE_CLARO,
+    BORDE_OSCURO,
+    FONDO_CLARO,
+    FONDO_OSCURO,
+    SECUNDARIO_CLARO,
+    SECUNDARIO_OSCURO,
+    SUPERFICIE_CLARO,
+    SUPERFICIE_OSCURO,
+    TEXTO_CLARO,
+    TEXTO_OSCURO,
+)
+from ..user_preferences import guardar_preferencia_usuario, obtener_preferencias_usuario
 
 
 @dataclass(frozen=True)
@@ -23,41 +34,22 @@ class ThemePalette:
     fondo_acento: Any
 
 
-_PALETA_INTERACTIVA = {
+_PALETA_TEMA = {
     True: ThemePalette(
-        fondo=ft.Colors.BLACK,
-        superficie=ft.Colors.BLUE_GREY_900,
-        texto=ft.Colors.WHITE,
-        secundario=ft.Colors.BLUE_GREY_300,
-        borde=ft.Colors.BLUE_GREY_700,
-        fondo_acento=ft.Colors.RED_700,
+        fondo=FONDO_OSCURO,
+        superficie=SUPERFICIE_OSCURO,
+        texto=TEXTO_OSCURO,
+        secundario=SECUNDARIO_OSCURO,
+        borde=BORDE_OSCURO,
+        fondo_acento=ft.Colors.BLUE_GREY_800,
     ),
     False: ThemePalette(
-        fondo=ft.Colors.GREY_100,
-        superficie=ft.Colors.WHITE,
-        texto=ft.Colors.BLUE_GREY_900,
-        secundario=ft.Colors.BLUE_GREY_600,
-        borde=ft.Colors.GREY_300,
+        fondo=FONDO_CLARO,
+        superficie=SUPERFICIE_CLARO,
+        texto=TEXTO_CLARO,
+        secundario=SECUNDARIO_CLARO,
+        borde=BORDE_CLARO,
         fondo_acento=ft.Colors.RED_50,
-    ),
-}
-
-_PALETA_PREFERENCIA = {
-    True: ThemePalette(
-        fondo=FONDO,
-        superficie=SUPERFICIE,
-        texto=TEXTO,
-        secundario=SECUNDARIO,
-        borde=BORDE,
-        fondo_acento=ft.Colors.GREY_900,
-    ),
-    False: ThemePalette(
-        fondo=ft.Colors.WHITE,
-        superficie=ft.Colors.GREY_50,
-        texto=ft.Colors.BLACK,
-        secundario=ft.Colors.GREY_700,
-        borde=ft.Colors.GREY_300,
-        fondo_acento=ft.Colors.GREY_100,
     ),
 }
 
@@ -72,15 +64,17 @@ class ThemeController:
         host: Any,
         on_rebuild: Callable[[], None] | None = None,
         prefs_loader: Callable[[str], dict[str, Any]] | None = None,
+        prefs_saver: Callable[[str, str, Any], None] | None = None,
     ) -> None:
         self._host = host
         self._on_rebuild = on_rebuild
         self._prefs_loader = prefs_loader or obtener_preferencias_usuario
+        self._prefs_saver = prefs_saver or guardar_preferencia_usuario
 
     def aplicar_paleta(self, modo_oscuro: bool, usar_paleta_preferencia: bool = False) -> None:
-        """Asigna la paleta correspondiente en los atributos visuales del host."""
-        tabla = _PALETA_PREFERENCIA if usar_paleta_preferencia else _PALETA_INTERACTIVA
-        paleta = tabla[bool(modo_oscuro)]
+        """Asigna la paleta unificada claro/oscuro en los atributos visuales del host."""
+        _ = usar_paleta_preferencia
+        paleta = _PALETA_TEMA[bool(modo_oscuro)]
         self._host.modo_oscuro = bool(modo_oscuro)
         self._host.fondo = paleta.fondo
         self._host.superficie = paleta.superficie
@@ -90,9 +84,16 @@ class ThemeController:
         self._host.fondo_acento = paleta.fondo_acento
 
     def alternar_tema(self, _evento: ft.Event | None = None) -> None:
-        """Invierte el modo claro/oscuro actual y reconstruye la interfaz."""
+        """Invierte el modo claro/oscuro actual, persiste la preferencia y reconstruye la interfaz."""
         nuevo_oscuro = not bool(getattr(self._host, "modo_oscuro", True))
         self.aplicar_paleta(nuevo_oscuro, usar_paleta_preferencia=False)
+        usuario = getattr(self._host, "usuario_actual", None)
+        username = getattr(usuario, "username", None)
+        if isinstance(username, str) and username.strip():
+            try:
+                self._prefs_saver(username, "modo_oscuro", nuevo_oscuro)
+            except Exception:
+                pass
         rebuild = self._on_rebuild or getattr(self._host, "construir", None)
         if callable(rebuild):
             rebuild()

@@ -62,6 +62,14 @@ _COMANDOS_POR_ROL: dict[str, str] = {
         "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
         "• /limpiar: Limpia la pantalla del chat."
     ),
+    "despachador": (
+        "📋 Comandos disponibles para Despachador:\n"
+        "• /pedidos: Resumen del estado de pedidos para despacho.\n"
+        "• /msg [@usuario] <mensaje>: Envía un mensaje interno a un compañero o al equipo.\n"
+        "• /equipo: Abre el canal de comunicación interna entre usuarios.\n"
+        "• /limpiar: Limpia la pantalla del chat.\n"
+        "• /ayuda: Muestra esta ayuda."
+    ),
 }
 
 _CHIPS_POR_ROL: dict[str, list[tuple[str, str, str]]] = {
@@ -109,6 +117,11 @@ _CHIPS_POR_ROL: dict[str, list[tuple[str, str, str]]] = {
         ("Ver Pedidos", "/pedidos", "RECEIPT_LONG"),
         ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
     ],
+    "despachador": [
+        ("Chat Equipo", "/equipo", "CHAT"),
+        ("Ver Pedidos", "/pedidos", "LOCAL_SHIPPING"),
+        ("Ayuda Comandos", "/ayuda", "HELP_OUTLINE"),
+    ],
 }
 
 _PIES_POR_ROL: dict[str, str] = {
@@ -117,6 +130,7 @@ _PIES_POR_ROL: dict[str, str] = {
     "administrador": "Usa /stock <cód>, /criticos, /reposicion, /diagnostico, /estado o /ayuda",
     "consulta": "Usa /stock <cód>, /criticos, /informes o /ayuda",
     "picker": "Usa /stock <cód>, /mercadolibre, /full, /fabrica, /pedidos o /ayuda",
+    "despachador": "Usa /pedidos, /equipo o /ayuda",
 }
 
 
@@ -137,6 +151,12 @@ def obtener_mensaje_bienvenida(rol: str, nombre_usuario: str = "") -> str:
             "preparar envíos de Mercado Libre (/mercadolibre), armar tandas Full (/full) "
             "o consultar pedidos del turno (/pedidos).\n"
             "Escribe /ayuda para ver todos tus comandos."
+        ),
+        "despachador": (
+            f"¡Hola{nombre}! 👋 Módulo de Despacho Activo.\n"
+            "Puedes escanear los rótulos QR de cada bulto con la pistola lectora o despachar manualmente "
+            "confirmando la cantidad de bultos para pasar pedidos a DESPACHADO.\n"
+            "Usa /pedidos o /equipo si necesitas coordinar con el depósito."
         ),
         "master": (
             f"¡Hola{nombre}! 👋 Consola de Seguridad y Auditoría Activa.\n"

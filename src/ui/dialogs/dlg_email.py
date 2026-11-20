@@ -21,6 +21,15 @@ def compartir_correo(interfaz: Any, _evento: ft.Event | None = None, ruta_especi
     mostrar_dialogo_enviar_correo(interfaz, archivos_iniciales=archivos_init)
 
 
+def _abrir_url_whatsapp(interfaz: Any, url: str) -> None:
+    es_web = bool(getattr(getattr(interfaz, "page", None), "web", False))
+    if es_web and hasattr(interfaz, "abrir_url_en_navegador"):
+        interfaz.abrir_url_en_navegador(url)
+        return
+    if not webbrowser.open(url):
+        raise RuntimeError("No se pudo abrir WhatsApp Web.")
+
+
 def compartir_whatsapp(interfaz: Any, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
     """Abre la carpeta del informe y redirige a WhatsApp Web."""
     if not interfaz.exigir_roles(*USER_ROLES):
@@ -29,9 +38,9 @@ def compartir_whatsapp(interfaz: Any, _evento: ft.Event | None = None, ruta_espe
     if ruta is None:
         return
     try:
-        interfaz.abrir_carpeta_informe(ruta)
-        if not webbrowser.open("https://web.whatsapp.com/"):
-            raise RuntimeError("No se pudo abrir WhatsApp Web.")
+        if not bool(getattr(getattr(interfaz, "page", None), "web", False)):
+            interfaz.abrir_carpeta_informe(ruta)
+        _abrir_url_whatsapp(interfaz, "https://web.whatsapp.com/")
     except (OSError, RuntimeError) as error:
         interfaz.notificar(f"No se pudo abrir WhatsApp o el archivo:\n{error}")
 
@@ -65,8 +74,7 @@ def compartir_whatsapp_pedido(interfaz: Any, pedido: Any, telefono: str = "") ->
         url = f"https://web.whatsapp.com/send?text={texto_encoded}"
 
     try:
-        if not webbrowser.open(url):
-            raise RuntimeError("No se pudo abrir el navegador para WhatsApp Web.")
+        _abrir_url_whatsapp(interfaz, url)
     except Exception as error:
         interfaz.notificar(f"No se pudo abrir WhatsApp:\n{error}")
 
@@ -272,12 +280,16 @@ def mostrar_dialogo_enviar_correo(
                             ft.Text(
                                 "No hay archivos adjuntos. Selecciona uno abajo o examina tu PC.",
                                 size=12,
-                                color=ft.Colors.AMBER_900,
+                                color=ft.Colors.AMBER_300 if interfaz.modo_oscuro else ft.Colors.AMBER_900,
                             ),
                         ],
                         spacing=6,
                     ),
-                    bgcolor=ft.Colors.AMBER_50,
+                    bgcolor=(
+                        ft.Colors.with_opacity(0.14, ft.Colors.AMBER_500)
+                        if interfaz.modo_oscuro
+                        else ft.Colors.AMBER_50
+                    ),
                     padding=ft.Padding.symmetric(vertical=6, horizontal=8),
                     border_radius=6,
                 )
@@ -308,8 +320,15 @@ def mostrar_dialogo_enviar_correo(
                         content=ft.Row(
                             [
                                 ft.Icon(icono, color=color_ico, size=18),
-                                ft.Text(p.name, size=12, weight=ft.FontWeight.BOLD, expand=True, no_wrap=True),
-                                ft.Text(tamano_txt, size=11, color=ft.Colors.GREY_600),
+                                ft.Text(
+                                    p.name,
+                                    size=12,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=interfaz.texto,
+                                    expand=True,
+                                    no_wrap=True,
+                                ),
+                                ft.Text(tamano_txt, size=11, color=interfaz.secundario),
                                 ft.IconButton(
                                     icon=ft.Icons.CLOSE,
                                     icon_size=16,
@@ -321,7 +340,11 @@ def mostrar_dialogo_enviar_correo(
                             spacing=6,
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
-                        bgcolor=ft.Colors.GREY_100,
+                        bgcolor=(
+                            ft.Colors.with_opacity(0.06, ft.Colors.WHITE)
+                            if interfaz.modo_oscuro
+                            else ft.Colors.GREY_100
+                        ),
                         padding=ft.Padding.symmetric(horizontal=8, vertical=2),
                         border_radius=6,
                     )
@@ -366,11 +389,13 @@ def mostrar_dialogo_enviar_correo(
         asunto_final = (asunto_input.value or "").strip() or "Informe de Depósito"
         cuerpo_final = cuerpo_input.value or ""
 
-        from ..app_config import guardar_correo_cierre
-        guardar_correo_cierre(dest_raw)
-        cfg = obtener_config_email()
-        cfg["destinatarios_guardados"] = dest_raw
-        guardar_config_email(cfg)
+        rol_actual = getattr(getattr(interfaz, "usuario_actual", None), "role", "")
+        if rol_actual in ("operador", "administrador", "master"):
+            from ..app_config import guardar_correo_cierre
+            guardar_correo_cierre(dest_raw)
+            cfg = obtener_config_email()
+            cfg["destinatarios_guardados"] = dest_raw
+            guardar_config_email(cfg)
 
         interfaz.page.pop_dialog()
 
@@ -385,7 +410,25 @@ def mostrar_dialogo_enviar_correo(
         else:
             interfaz.notificar(f"⚠️ {mensaje}")
 
+    es_master_email = getattr(getattr(interfaz, "usuario_actual", None), "role", "") == "master"
+    acciones_correo: list[ft.Control] = []
+    if es_master_email:
+        acciones_correo.append(
+            ft.IconButton(
+                icon=ft.Icons.SETTINGS,
+                tooltip="Configurar servidor SMTP (Gmail / Outlook / Servidor propio)",
+                on_click=lambda _e: interfaz.mostrar_configuracion_smtp(),
+            )
+        )
+    acciones_correo.extend(
+        [
+            ft.Button("Enviar Correo", icon=ft.Icons.SEND, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=enviar),
+            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+        ]
+    )
+
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.EMAIL, color=ft.Colors.BLUE_400, size=22),
@@ -394,7 +437,7 @@ def mostrar_dialogo_enviar_correo(
             spacing=8,
         ),
         content=ft.Container(
-            width=550,
+            width=interfaz.ancho_adaptable(550) if hasattr(interfaz, "ancho_adaptable") else 550,
             content=ft.Column(
                 [
                     ft.Text("Archivos Adjuntos:", size=12, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
@@ -429,14 +472,6 @@ def mostrar_dialogo_enviar_correo(
                 scroll=ft.ScrollMode.AUTO,
             ),
         ),
-        actions=[
-            ft.IconButton(
-                icon=ft.Icons.SETTINGS,
-                tooltip="Configurar servidor SMTP (Gmail / Outlook / Servidor propio)",
-                on_click=lambda _e: interfaz.mostrar_configuracion_smtp(),
-            ),
-            ft.Button("Enviar Correo", icon=ft.Icons.SEND, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=enviar),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
-        ],
+        actions=acciones_correo,
     )
     interfaz.page.show_dialog(dialogo)

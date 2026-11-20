@@ -239,10 +239,15 @@ def crear_ventana_chat_flotante(interfaz: Any) -> ft.Container:
         on_click=lambda _e: cambiar_tab("equipo"),
     )
 
-    es_movil = getattr(interfaz, "es_pantalla_movil", False)
+    es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
+    alto_movil = (
+        interfaz.alto_adaptable(480, margen=80)
+        if hasattr(interfaz, "alto_adaptable")
+        else 480
+    )
     ventana = ft.Container(
         width=None if es_movil else 420,
-        height=480 if es_movil else 550,
+        height=alto_movil if es_movil else 550,
         left=8 if es_movil else None,
         right=8 if es_movil else 24,
         bottom=75 if es_movil else 90,

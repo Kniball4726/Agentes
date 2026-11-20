@@ -22,13 +22,33 @@ import sys
 import urllib.parse
 
 from .. import secretos
+from ..core.environment import resolver_data_dir_para_raiz
+from ..core.network_security import (
+    crear_contexto_tls_estricto,
+    es_ip_prohibida,
+    sanitizar_cabecera_mime,
+)
 from ..paths import application_root
 
 RUTA_CONFIG_EMAIL = application_root() / "data" / "email_config.json"
 
 
 def _ruta_config_email() -> Path:
-    return application_root() / "data" / "email_config.json"
+    return resolver_data_dir_para_raiz(application_root()) / "email_config.json"
+
+
+def _validar_servidor_smtp(servidor: str) -> str:
+    limpio = sanitizar_cabecera_mime(servidor)
+    if not limpio or " " in limpio:
+        raise ValueError("Servidor SMTP inválido.")
+    host_lower = limpio.lower().rstrip(".")
+    permitir_local = os.environ.get("STOCKAGENT_ALLOW_LOCAL_SMTP", "0").strip() == "1"
+    if not permitir_local:
+        if host_lower in ("localhost", "127.0.0.1", "::1", "169.254.169.254", "metadata.google.internal"):
+            raise ValueError("Servidor SMTP local/metadata bloqueado por política de seguridad.")
+        if es_ip_prohibida(host_lower, permitir_lan_privada=True):
+            raise ValueError("Dirección IP de servidor SMTP restringida por seguridad.")
+    return limpio
 
 
 CONFIG_EMAIL_DEFECTO: dict = {
@@ -119,17 +139,19 @@ def probar_conexion_smtp(config: dict) -> tuple[bool, str]:
         return False, "Falta especificar el servidor SMTP (ej: smtp.gmail.com)."
 
     try:
+        servidor = _validar_servidor_smtp(servidor)
+        tls_ctx = crear_contexto_tls_estricto()
         if usar_ssl:
-            server = smtplib.SMTP_SSL(servidor, puerto, timeout=12)
+            with smtplib.SMTP_SSL(servidor, puerto, timeout=12, context=tls_ctx) as server:
+                if usuario and password:
+                    server.login(usuario, password)
         else:
-            server = smtplib.SMTP(servidor, puerto, timeout=12)
-            if usar_tls:
-                server.starttls()
+            with smtplib.SMTP(servidor, puerto, timeout=12) as server:
+                if usar_tls:
+                    server.starttls(context=tls_ctx)
+                if usuario and password:
+                    server.login(usuario, password)
 
-        if usuario and password:
-            server.login(usuario, password)
-
-        server.quit()
         return True, "Conexión SMTP establecida con éxito."
     except Exception as err:
         return False, f"Error al conectar con el servidor SMTP:\n{err}"
@@ -148,21 +170,21 @@ def enviar_via_smtp(
     puerto = int(cfg.get("smtp_puerto") or 587)
     usuario = (cfg.get("smtp_usuario") or "").strip()
     password = (cfg.get("smtp_password") or "").strip()
-    remitente = (cfg.get("remitente") or "").strip() or usuario
+    remitente = sanitizar_cabecera_mime((cfg.get("remitente") or "").strip() or usuario)
     usar_tls = bool(cfg.get("smtp_usar_tls", True))
     usar_ssl = bool(cfg.get("smtp_usar_ssl", False))
 
     if not servidor or not usuario:
         return False, "No se han configurado los datos del servidor SMTP."
 
-    dest_limpios = [d.strip() for d in destinatarios if d.strip()]
+    dest_limpios = [sanitizar_cabecera_mime(d) for d in destinatarios if sanitizar_cabecera_mime(d)]
     if not dest_limpios:
         return False, "No se indicaron destinatarios válidos."
 
     msg = MIMEMultipart()
     msg["From"] = remitente
     msg["To"] = ", ".join(dest_limpios)
-    msg["Subject"] = asunto
+    msg["Subject"] = sanitizar_cabecera_mime(asunto)
 
     msg.attach(MIMEText(cuerpo, "plain", "utf-8"))
 
@@ -177,22 +199,26 @@ def enviar_via_smtp(
         parte = MIMEBase(categoria, subcategoria)
         parte.set_payload(ruta.read_bytes())
         encoders.encode_base64(parte)
-        parte.add_header("Content-Disposition", f'attachment; filename="{ruta.name}"')
+        nombre_adjunto = sanitizar_cabecera_mime(ruta.name).replace('"', "'")
+        parte.add_header("Content-Disposition", "attachment", filename=nombre_adjunto)
         msg.attach(parte)
 
     try:
+        servidor = _validar_servidor_smtp(servidor)
+        tls_ctx = crear_contexto_tls_estricto()
         if usar_ssl:
-            server = smtplib.SMTP_SSL(servidor, puerto, timeout=20)
+            with smtplib.SMTP_SSL(servidor, puerto, timeout=20, context=tls_ctx) as server:
+                if usuario and password:
+                    server.login(usuario, password)
+                server.sendmail(remitente, dest_limpios, msg.as_string())
         else:
-            server = smtplib.SMTP(servidor, puerto, timeout=20)
-            if usar_tls:
-                server.starttls()
+            with smtplib.SMTP(servidor, puerto, timeout=20) as server:
+                if usar_tls:
+                    server.starttls(context=tls_ctx)
+                if usuario and password:
+                    server.login(usuario, password)
+                server.sendmail(remitente, dest_limpios, msg.as_string())
 
-        if usuario and password:
-            server.login(usuario, password)
-
-        server.sendmail(remitente, dest_limpios, msg.as_string())
-        server.quit()
         return True, "Correo enviado correctamente con todos sus archivos adjuntos vía SMTP."
     except Exception as err:
         return False, f"Fallo al enviar correo por SMTP:\n{err}"

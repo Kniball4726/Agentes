@@ -19,7 +19,7 @@ def renderizar_auditoria_master(interfaz: Any, eventos_auditoria: list[Any]) -> 
     for ev in eventos_auditoria[:15]:
         accion_ev = getattr(ev, "accion", "")
         usuario_ev = getattr(ev, "usuario", "")
-        fecha_ev = getattr(ev, "fecha", "")
+        fecha_ev = getattr(ev, "created_at", "") or getattr(ev, "fecha", "")
         detalle_ev = getattr(ev, "detalle", "")
 
         if "LOGIN" in accion_ev or "AUTH" in accion_ev:

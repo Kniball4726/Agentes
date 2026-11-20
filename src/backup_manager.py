@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -17,18 +18,29 @@ import zipfile
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
+import stat
 from typing import Any
 
+from .auth.events import notify_session_revocation
+from .core.environment import resolver_data_dir_para_raiz
+from .core.security_utils import es_ruta_unc_o_sistema
 from .paths import application_root
 
 logger = logging.getLogger("stockagent")
 
 BASES_SQLITE = ("pedidos.sqlite3", "productos.sqlite3", "usuarios.sqlite3")
 ARCHIVOS_CONFIG = ("usuarios.json", "config_notificaciones.json", "email_config.json", "backup_config.json")
+_MAX_ZIP_ENTRIES = 1000
+_MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024  # 512 MB
+_EXTENSIONES_EXCEL_RESTORE = {".xlsx", ".xls"}
+
+
+def _resolver_data_dir() -> Path:
+    return resolver_data_dir_para_raiz(application_root())
 
 
 def _ruta_config_backup() -> Path:
-    return application_root() / "data" / "backup_config.json"
+    return _resolver_data_dir() / "backup_config.json"
 
 
 def obtener_config_backup() -> dict[str, Any]:
@@ -57,6 +69,8 @@ def guardar_config_backup(carpeta_externa: str | dict[str, Any], max_backups: in
     else:
         ext = (carpeta_externa or "").strip()
         max_b = int(max_backups or 30)
+    if ext and es_ruta_unc_o_sistema(ext):
+        raise ValueError("La carpeta de respaldo externo no puede ser una ruta de red UNC ni del sistema.")
     datos = {
         "carpeta_externa": ext,
         "max_backups": max(5, max_b),
@@ -103,7 +117,7 @@ def crear_backup_sistema(
 ) -> Path:
     """Genera un archivo .zip con el respaldo completo de las bases SQLite, configs y Excel."""
     raiz = application_root()
-    data_dir = raiz / "data"
+    data_dir = _resolver_data_dir()
     carpeta_backups = carpeta_destino or (data_dir / "backups")
     carpeta_backups.mkdir(parents=True, exist_ok=True)
 
@@ -155,7 +169,7 @@ def crear_backup_sistema(
     # Copia opcional a carpeta externa/secundaria si está configurada
     cfg_backup = obtener_config_backup()
     carpeta_ext_str = str(cfg_backup.get("carpeta_externa", "")).strip()
-    if carpeta_ext_str:
+    if carpeta_ext_str and not es_ruta_unc_o_sistema(carpeta_ext_str):
         try:
             carpeta_ext = Path(carpeta_ext_str)
             carpeta_ext.mkdir(parents=True, exist_ok=True)
@@ -184,8 +198,7 @@ def crear_backup_sistema(
 
 def listar_backups_disponibles(carpeta_destino: Path | None = None) -> list[Path]:
     """Lista los archivos .zip de backup disponibles ordenados del más reciente al más antiguo."""
-    raiz = application_root()
-    carpeta_backups = carpeta_destino or (raiz / "data" / "backups")
+    carpeta_backups = carpeta_destino or (_resolver_data_dir() / "backups")
     if not carpeta_backups.exists():
         return []
     return sorted(
@@ -193,6 +206,31 @@ def listar_backups_disponibles(carpeta_destino: Path | None = None) -> list[Path
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
+
+
+def _validar_entradas_zip_backup(zf: zipfile.ZipFile, tmp_dir: Path) -> str | None:
+    """Valida que un ZIP de backup no contenga Zip Slip, symlinks ni zip bombs."""
+    tmp_resolved = tmp_dir.resolve()
+    entradas = zf.infolist()
+    if len(entradas) > _MAX_ZIP_ENTRIES:
+        return "El archivo .zip supera la cantidad máxima de entradas permitidas."
+    total_bytes = 0
+    for info in entradas:
+        miembro = Path(info.filename)
+        if ".." in miembro.parts:
+            return "El archivo .zip contiene rutas inválidas."
+        if miembro.is_absolute() or info.filename.startswith(("/", "\\")):
+            return "El archivo .zip contiene rutas fuera del destino."
+        modo = info.external_attr >> 16
+        if stat.S_ISLNK(modo):
+            return "El archivo .zip contiene enlaces simbólicos no permitidos."
+        destino_miembro = (tmp_dir / info.filename).resolve()
+        if not destino_miembro.is_relative_to(tmp_resolved):
+            return "El archivo .zip contiene rutas fuera del destino."
+        total_bytes += max(0, int(info.file_size))
+        if total_bytes > _MAX_ZIP_UNCOMPRESSED_BYTES:
+            return "El archivo .zip supera el tamaño descomprimido máximo permitido."
+    return None
 
 
 def restaurar_backup_sistema(
@@ -212,21 +250,16 @@ def restaurar_backup_sistema(
         return False, f"El archivo '{ruta_zip.name}' no es un archivo .zip válido.", []
 
     raiz = application_root()
-    data_dir = raiz / "data"
+    data_dir = _resolver_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="restore_stockagent_") as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
-        tmp_resolved = tmp_dir.resolve()
         try:
             with zipfile.ZipFile(ruta_zip, mode="r") as zf:
-                for info in zf.infolist():
-                    miembro = Path(info.filename)
-                    if miembro.is_absolute() or ".." in miembro.parts:
-                        return False, "El archivo .zip contiene rutas inválidas.", []
-                    destino_miembro = (tmp_dir / info.filename).resolve()
-                    if not destino_miembro.is_relative_to(tmp_resolved):
-                        return False, "El archivo .zip contiene rutas fuera del destino.", []
+                err_zip = _validar_entradas_zip_backup(zf, tmp_dir)
+                if err_zip:
+                    return False, err_zip, []
                 zf.extractall(tmp_dir)
         except Exception as exc:
             return False, f"Error al extraer el archivo .zip: {exc}", []
@@ -265,8 +298,17 @@ def restaurar_backup_sistema(
                     src_conn.backup(dst_conn)
                 restaurados.append(db_temp.name)
             except Exception:
+                for sufijo_wal in ("-wal", "-shm"):
+                    wal_path = Path(f"{destino_db}{sufijo_wal}")
+                    try:
+                        wal_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 shutil.copy2(db_temp, destino_db)
                 restaurados.append(db_temp.name)
+
+        if "usuarios.sqlite3" in restaurados:
+            notify_session_revocation("all")
 
         # Restaurar archivos de configuración
         for nombre_cfg in ARCHIVOS_CONFIG:
@@ -275,10 +317,12 @@ def restaurar_backup_sistema(
                 shutil.copy2(cfg_temp, data_dir / nombre_cfg)
                 restaurados.append(nombre_cfg)
 
-        # Restaurar Excel maestro si está en el backup
+        # Restaurar Excel maestro si está en el backup (solo formatos sin macros .xlsx/.xls)
         carpeta_excel_tmp = tmp_dir / "excel_base"
         if carpeta_excel_tmp.exists():
-            for archivo_xlsx in carpeta_excel_tmp.glob("*.xls*"):
+            for archivo_xlsx in carpeta_excel_tmp.iterdir():
+                if not archivo_xlsx.is_file() or archivo_xlsx.suffix.lower() not in _EXTENSIONES_EXCEL_RESTORE:
+                    continue
                 destino_excel = ruta_excel_base or (raiz / archivo_xlsx.name)
                 try:
                     shutil.copy2(archivo_xlsx, destino_excel)
@@ -302,7 +346,7 @@ def restaurar_backup_sistema(
 def ejecutar_diagnostico_salud_sistema() -> dict[str, Any]:
     """Ejecuta un diagnóstico completo de salud para el rol Master: bases de datos, espacio en disco y respaldos."""
     raiz = application_root()
-    data_dir = raiz / "data"
+    data_dir = _resolver_data_dir()
 
     dbs = {
         "usuarios": data_dir / "usuarios.sqlite3",

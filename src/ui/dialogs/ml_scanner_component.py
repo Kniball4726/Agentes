@@ -10,6 +10,8 @@ import flet as ft
 
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
 from ..theme import ROJO
+from ...core.environment import get_data_dir
+from ...core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
 from ...inventory import StockManager as _DefaultStockManager
 from ...paths import application_root
 from ...stock.models import RegistroDescuento
@@ -391,11 +393,13 @@ class MercadoLibreScannerComponent:
                     )
                 )
 
-            nombre_doc = f"ML_SCAN_{nota_ml}.docx"
-            dest_pedidos = application_root() / "data" / "pedidos_archivos"
+            nota_segura = sanitizar_componente_archivo(nota_ml, fallback="ML_SCAN")
+            nombre_doc = f"ML_SCAN_{nota_segura}.docx"
+            dest_pedidos = get_data_dir() / "pedidos_archivos"
             dest_pedidos.mkdir(parents=True, exist_ok=True)
+            ruta_doc_segura = resolver_ruta_confinada(dest_pedidos, nombre_doc)
             hash_doc = generar_docx_respaldo_escaner(
-                dest_pedidos / nombre_doc, nota_ml, cliente_ml, armador_nom, total_unidades, items_pedido_store
+                ruta_doc_segura, nota_ml, cliente_ml, armador_nom, total_unidades, items_pedido_store
             )
 
             sm.actualizar_stock_base(

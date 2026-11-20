@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 import flet as ft
 
+from ..components.debounce import Debouncer
+from ..design import colores_de, tono_legible
 from ..theme import ROJO
 from ..commands import (
     buscar_clientes_palette,
@@ -19,18 +22,28 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
     """Abre la paleta de comandos universal para búsqueda instantánea en todo el sistema."""
     if not interfaz.usuario_actual or not interfaz.page:
         return
+    if getattr(interfaz, "_command_palette_abierto", False) is True:
+        return
+    interfaz._command_palette_abierto = True
 
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    colores = colores_de(interfaz)
     rol = getattr(interfaz.usuario_actual, "role", "consulta")
     accesos_rapidos = obtener_catalogo_completo_comandos(rol, interfaz)
+    primer_accion: list[Any] = [None]
 
     resultados_lista = ft.ListView(expand=True, spacing=6, height=360)
     indicador_estado = ft.Text("Escribe para buscar productos, clientes, pedidos o comandos...", size=11, color=interfaz.secundario)
 
-    def ejecutar_accion(callback: Any) -> None:
+    def _cerrar_palette() -> None:
+        interfaz._command_palette_abierto = False
         try:
             interfaz.page.pop_dialog()
         except Exception:
             pass
+
+    def ejecutar_accion(callback: Any) -> None:
+        _cerrar_palette()
         if callable(callback):
             callback()
 
@@ -65,7 +78,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         p_stock = int(prod["stock"] if hasattr(prod, "__getitem__") else getattr(prod, "stock_actual", getattr(prod, "stock", 0)))
         p_ubic = str(prod["ubicacion"] if hasattr(prod, "__getitem__") else getattr(prod, "ubicacion", "") or "")
 
-        stk_color = ft.Colors.GREEN_400 if p_stock > 5 else (ft.Colors.AMBER_400 if p_stock > 0 else ft.Colors.RED_400)
+        stk_color = colores.exito if p_stock > 5 else (colores.advertencia if p_stock > 0 else colores.error)
         loc_txt = f" · Ubic: {p_ubic}" if p_ubic else ""
 
         def copiar_y_notificar(cod_val=p_code):
@@ -137,7 +150,9 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
 
         def abrir_ped(ped_obj=p):
             interfaz.page.pop_dialog()
-            if rol == "operador":
+            if rol == "despachador":
+                interfaz.mostrar_modulo_despacho()
+            elif rol == "operador":
                 interfaz.mostrar_dialogo_editar_pedido(ped_obj, al_final=interfaz.actualizar_listas)
             else:
                 interfaz.mostrar_detalle_pedido_modal(ped_obj)
@@ -176,11 +191,14 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
     def renderizar_resultados(query: str = "") -> None:
         q = (query or "").strip().lower()
         resultados_lista.controls.clear()
+        primer_accion[0] = None
 
         # Si el campo está vacío, mostramos los accesos directos principales
         if not q:
             indicador_estado.value = "Accesos rápidos sugeridos (escribe para buscar en profundidad):"
             for titulo, desc, icono, col, cb in accesos_rapidos:
+                if primer_accion[0] is None:
+                    primer_accion[0] = cb
                 resultados_lista.controls.append(
                     ft.Container(
                         bgcolor=interfaz.superficie,
@@ -224,28 +242,32 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                 ft.Text("ACCIONES Y MÓDULOS", size=10, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
             )
             for titulo, desc, icono, col, cb in comandos_match:
+                if primer_accion[0] is None:
+                    primer_accion[0] = cb
                 total_encontrados += 1
                 resultados_lista.controls.append(_renderizar_item_comando(titulo, desc, icono, col, cb))
 
-        # 2. Búsqueda de Productos (no aplicable a rol master por SoD)
-        if rol != "master" and hasattr(interfaz, "product_store"):
+        # 2. Búsqueda de Productos (no aplicable a roles master/despachador por SoD)
+        if rol not in ("master", "despachador") and hasattr(interfaz, "product_store"):
             prods = buscar_productos_palette(q, getattr(interfaz, "product_store", None))
             if prods:
                 resultados_lista.controls.append(
-                    ft.Text("PRODUCTOS EN STOCK", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400)
+                    ft.Text("PRODUCTOS EN STOCK", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("BLUE", es_oscuro))
                 )
                 for prod in prods:
                     total_encontrados += 1
                     resultados_lista.controls.append(_renderizar_item_producto(prod))
 
-        # 3. Búsqueda de Clientes (no aplicable a rol master por SoD)
-        if rol != "master" and hasattr(interfaz, "order_store"):
+        # 3. Búsqueda de Clientes (no aplicable a roles master/despachador por SoD)
+        if rol not in ("master", "despachador") and hasattr(interfaz, "order_store"):
             clis = buscar_clientes_palette(q, getattr(interfaz, "order_store", None))
             if clis:
                 resultados_lista.controls.append(
-                    ft.Text("CLIENTES", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_400)
+                    ft.Text("CLIENTES", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("TEAL", es_oscuro))
                 )
                 for cli in clis:
+                    if primer_accion[0] is None:
+                        primer_accion[0] = interfaz.mostrar_gestion_clientes
                     total_encontrados += 1
                     resultados_lista.controls.append(_renderizar_item_cliente(cli))
 
@@ -254,7 +276,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             peds = buscar_pedidos_palette(q, getattr(interfaz, "order_store", None))
             if peds:
                 resultados_lista.controls.append(
-                    ft.Text("PEDIDOS Y REMITOS", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
+                    ft.Text("PEDIDOS Y REMITOS", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("AMBER", es_oscuro))
                 )
                 for p in peds:
                     total_encontrados += 1
@@ -282,16 +304,29 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         if interfaz.page:
             interfaz.page.update()
 
+    es_test = getattr(interfaz, "_is_mock", False) or "pytest" in sys.modules
+    debouncer_cmd = Debouncer(0.0 if es_test else 0.2)
+
+    def _on_submit_busqueda(e: ft.Event) -> None:
+        debouncer_cmd.cancel()
+        renderizar_resultados(e.control.value)
+        if callable(primer_accion[0]):
+            ejecutar_accion(primer_accion[0])
+
     campo_busqueda = ft.TextField(
         hint_text="Buscar productos, clientes, remitos o acciones...",
         prefix_icon=ft.Icons.SEARCH,
         autofocus=True,
         dense=True,
-        on_change=lambda e: renderizar_resultados(e.control.value),
+        on_change=lambda e: debouncer_cmd.debounce(lambda val=e.control.value: renderizar_resultados(val)),
+        on_submit=_on_submit_busqueda,
     )
 
+    w_calc = interfaz.ancho_adaptable(580) if hasattr(interfaz, "ancho_adaptable") else 580
+    ancho_dlg = int(w_calc) if isinstance(w_calc, (int, float)) else 580
     dialogo = ft.AlertDialog(
         modal=True,
+        on_dismiss=lambda _e: setattr(interfaz, "_command_palette_abierto", False),
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.TERMINAL, color=ROJO, size=20),
@@ -307,7 +342,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         content=ft.Container(
-            width=580,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     campo_busqueda,
@@ -320,7 +355,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ),
         ),
         actions=[
-            interfaz.boton_dialogo("Cerrar (Esc)", lambda _e: interfaz.page.pop_dialog()),
+            interfaz.boton_dialogo("Cerrar (Esc)", lambda _e: _cerrar_palette()),
         ],
     )
 

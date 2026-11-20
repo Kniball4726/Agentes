@@ -123,7 +123,7 @@ def _mostrar_alerta_preventiva_quiebre(
     """Despliega confirmación previa cuando el comprobante dejará productos en quiebre."""
     filas_q = [
         ft.Text(
-            f"• [{d.codigo}] {d.nombre_producto}: Stock actual {d.stock_original} → Descuenta {d.cantidad_descontada} → Quedará en {d.stock_nuevo} un.",
+            f"• [{d.codigo}] {getattr(d, 'nombre_producto', '')}: Stock actual {getattr(d, 'stock_anterior', getattr(d, 'stock_original', 0))} → Descuenta {d.cantidad_descontada} → Quedará en {d.stock_nuevo} un.",
             size=11,
             color=ft.Colors.RED_400,
             weight=ft.FontWeight.W_500,
@@ -189,6 +189,12 @@ def ejecutar_descuento_y_registro_pedido(
     cache_simulacion: dict[str, Any],
 ) -> None:
     """Aplica descuento en StockManager SQLite-first, registra en OrderStore y notifica éxito."""
+    tx_id = f"PED_{remito}_{hash_comprobante[:10] if hash_comprobante else ''}"
+    if hasattr(interfaz.order_store, "registrar_transaccion_idempotente"):
+        if not interfaz.order_store.registrar_transaccion_idempotente(tx_id, "CREAR_PEDIDO", remito):
+            print(f"[IDEMPOTENCIA] Transacción duplicada ignorada antes de descontar stock: {tx_id}")
+            return
+
     stock_mgr = cache_simulacion.get("stock_mgr")
     reporte = cache_simulacion.get("reporte")
     if stock_mgr is None or reporte is None:
@@ -215,12 +221,6 @@ def ejecutar_descuento_y_registro_pedido(
     if reporte and reporte.documentos_verificados:
         for doc in reporte.documentos_verificados:
             sin_coincidencia_doc.extend(doc.descripciones_sin_coincidencia)
-
-    tx_id = f"PED_{remito}_{hash_comprobante[:10] if hash_comprobante else ''}"
-    if hasattr(interfaz.order_store, "registrar_transaccion_idempotente"):
-        if not interfaz.order_store.registrar_transaccion_idempotente(tx_id, "CREAR_PEDIDO", remito):
-            print(f"[IDEMPOTENCIA] Transacción duplicada ignorada: {tx_id}")
-            return
 
     interfaz.order_store.registrar_pedido(
         nota_pedido=remito,

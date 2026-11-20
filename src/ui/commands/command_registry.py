@@ -35,6 +35,7 @@ def obtener_comandos_rol(rol: str, interfaz: Any) -> list[TipoComando]:
         ])
     elif rol == "administrador":
         comandos.extend([
+            ("Despacho (Pedidos Despachados)", "Consulta en solo lectura de pedidos despachados", ft.Icons.LOCAL_SHIPPING, ROJO, interfaz.mostrar_modulo_despacho),
             ("Ver Stock", "Consulta de existencias y niveles en tiempo real", ft.Icons.VISIBILITY, ft.Colors.CYAN_400, interfaz.mostrar_ver_stock),
             ("Gestionar Productos", "Catálogo maestro y existencias en Productos.xlsx", ft.Icons.ADD_BOX, ft.Colors.BLUE_400, interfaz.mostrar_gestion_productos),
             ("Métricas y Rendimiento", "Dashboard ejecutivo, rotación y volumen", ft.Icons.INSIGHTS, ft.Colors.PURPLE_400, interfaz.mostrar_dashboard_metricas),
@@ -78,6 +79,10 @@ def obtener_comandos_rol(rol: str, interfaz: Any) -> list[TipoComando]:
             ("Archivado Histórico", "Archivar pedidos antiguos y compactar base de datos", ft.Icons.AUTO_DELETE, ft.Colors.BROWN_400, interfaz.mostrar_dialogo_archivo_historico),
             ("Mercado Libre API (Credenciales)", "Configuración OAuth y sincronización API", ft.Icons.CLOUD_SYNC, ft.Colors.AMBER_600, interfaz.mostrar_sincronizacion_mercadolibre),
             ("Manual de Uso", "Documentación oficial del usuario master en PDF", ft.Icons.MENU_BOOK, ft.Colors.CYAN_400, interfaz.mostrar_manual_usuario),
+        ])
+    elif rol == "despachador":
+        comandos.extend([
+            ("Despacho", "Control de despacho QR por bultos y confirmación manual", ft.Icons.LOCAL_SHIPPING, ROJO, interfaz.mostrar_modulo_despacho),
         ])
     elif rol == "picker":
         comandos.extend([

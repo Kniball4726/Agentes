@@ -169,9 +169,11 @@ flowchart TD
     M["Master (Auditoria / Desarrollo)"] -->|Crea / Gestiona| A["Administradores"]
     M -->|Crea / Gestiona| O["Operadores"]
     M -->|Crea / Gestiona| P["Pickers"]
+    M -->|Crea / Gestiona| D["Despachadores"]
     M -->|Crea / Gestiona| C["Consulta"]
     A -->|Crea / Gestiona| O
     A -->|Crea / Gestiona| P
+    A -->|Crea / Gestiona| D
     A -->|Crea / Gestiona| C
     A -.->|Bloqueado| M
 ```
@@ -203,14 +205,15 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
     * `v3.0.0`: Reestructuración integral botón a botón por fichas SOP para cada rol, módulo de auditoría de cierres descendente para administradores y visor documental Zero-Cache.
     * `v3.1.0` / `v2.2.0`: Arquitectura completamente modular (`src/` + `Documentacion/pdf_engine/` + `Documentacion/procedimientos/`), endurecimiento HTTPS por defecto, Firewall en perfil privado, cifrado DPAPI/Fernet en secretos, enlaces con token HMAC `?dt=`, Swagger deshabilitado por defecto y matriz SoD de 5 roles.
 
-* **Manuales Oficiales Generados (8 PDFs):**
+* **Manuales Oficiales Generados (9 PDFs):**
   * **Manual del Operador (`Manual_Operador.pdf`):** Cubre la botonera rápida de carga y los comandos del operador: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Centro de Reportes / Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
   * **Manual del Picker (`Manual_Picker.pdf`):** Alineado estrictamente con su menú lateral acotado por SoD: *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Mercadería*, *Ingreso de Fábrica*, *Egreso de Mercadería*, *Paleta de Comandos F2*, *Chat Interno* y *Manual de Uso* (acceso HTTPS `?dt=`).
-  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los módulos de supervisión y operación gerencial: *Panel Express (Entrada, Salida, Gestionar Productos, Ver Stock)*, *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios (Operador / Picker / Consulta)* y *Manual de Uso*.
-  * **Manual Master (`Manual_Master.pdf`):** Cubre los comandos técnicos de infraestructura, IAM y seguridad SoD: *Panel Express (Gestionar Usuarios, Registro de Auditoría)*, *Documentación y Estado API* (`STOCKAGENT_ENABLE_API_DOCS=0` por defecto), *Gestión de API Keys*, *Sesiones Activas IAM*, *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP (cifrado DPAPI/Fernet)*, *Alertas Telegram*, *Mercado Libre API (Credenciales cifradas)*, *Firewall Privado y Accesos LAN*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
+  * **Manual del Despachador (`Manual_Despachador.pdf`):** Especializado en expedición y control de muelle: *Consola de Despacho de Pedidos*, *Escaneo de Rótulos QR Bulto a Bulto (`i/N`)*, *Despacho Manual con Confirmación de Bultos*, *App Móvil con Cola FIFO y Persistencia Offline*, *Modo Lector Láser / Modo Claro Alto Contraste*, *Chat Interno* y *Manual de Uso*.
+  * **Manual del Administrador (`Manual_Administrador.pdf`):** Cubre los módulos de supervisión y operación gerencial: *Panel Express (Entrada, Salida, Gestionar Productos, Ver Stock)*, *Gestionar productos*, *Ajustar stock / Fábrica*, *Comparativa stock físico*, *Sincronizar con Excel*, *Generar pedido fábrica (Excel)*, *Historial de Pedidos*, *Cierres de Operarios*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Mercado Libre API (Sync)*, *Descontar Mercado Full*, *Métricas y Rendimiento*, *Estadísticas de salida*, *Radar de anomalías*, *Heatmap y Picking*, *Abrir informe*, *Compartir por correo*, *WhatsApp Web*, *Copia de Seguridad*, *Gestionar usuarios (Operador / Picker / Despachador / Consulta)* y *Manual de Uso*.
+  * **Manual Master (`Manual_Master.pdf`):** Cubre los comandos técnicos de infraestructura, IAM y seguridad SoD: *Panel Express (Gestionar Usuarios, Registro de Auditoría)*, *Documentación y Estado API* (`STOCKAGENT_ENABLE_API_DOCS=0` por defecto), *Gestión de API Keys*, *Sesiones Activas IAM*, *Copia de Seguridad*, *Restaurar documentos (Rollback)*, *Archivado Histórico*, *Configuración SMTP (TLS estricto + DPAPI/Fernet)*, *Alertas Telegram*, *Mercado Libre API (Credenciales cifradas)*, *PKI Local CA+Hoja (<=397 días), OTA SHA-256, Firewall Privado y Accesos LAN*, *Gestionar usuarios (IAM global)* y *Manual de Uso*.
   * **Manual de Consulta (`Manual_Consulta.pdf`):** Cubre los comandos de solo lectura: *Centro de Reportes / Abrir informe*, *Historial de Pedidos (solo lectura)*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
-  * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo de 12 capítulos ISO/UPEL con diagramas BPMN, infraestructura HTTPS/Firewall, gestión del cambio SGC y la matriz SoD unificada de 5 roles.
-  * **Manual Clásico de Uso (`Manual_de_Uso_StockAgent.pdf`):** Documento general generado directamente desde `Documentacion/generar_manual_pdf.py`.
+  * **Manual General e Imprimible (`Manual_General.pdf` / `Manual_Maestro_Imprimible.pdf`):** Compendio institucional completo de 12 capítulos ISO/UPEL con diagramas BPMN, infraestructura HTTPS/PKI/Firewall, gestión del cambio SGC y la matriz SoD unificada.
+  * **Manual Clásico de Uso (`Manual_de_Uso_StockAgent.pdf`) y Presentación Ejecutiva (`Presentacion_Ejecutiva_StockAgent.pdf`):** Documentos generales e institucionales compilados automáticamente.
 
 * **Visualización Dinámica e Inmediata Protegida por Token (Zero-Cache):**
   * **Modo Web / Red Local:** El servidor expone los endpoints protegidos `/documentacion/{archivo}` y `/documentos/ver` con verificación de sesión o token HMAC firmado (`?v=timestamp&dt=<token>`). Cada vez que la documentación se regenera, **los cambios se reflejan de inmediato en los clientes autenticados sin limpiar la caché del navegador ni exponer documentos sin autorización**.
@@ -1128,6 +1131,19 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
     * **Ciclo Determinístico SQLite (`src/core/sqlite_utils.py`):** Uso uniforme de `sqlite_connection` con `contextlib.closing()`, modo WAL y claves foráneas activas en toda apertura de SQLite en `src/` y `scripts/`, verificado mediante `tests/test_sqlite_closing.py`.
     * **Arquitectura Acíclica (`src/core` ↔ `src/products` / `src/products/schema.py`):** Eliminación completa de dependencias circulares en arranque e importación diferida hacia dominio de productos e inventario, respaldada por `tests/test_sqlite_first_architecture.py`.
 
+20. **Modularización del Formulario Principal de Carga de Pedidos (`pedidos_crear_componentes.py` + `pedidos_crear.py`):**
+    * Se eliminó el diseño monolítico previo de más de 415 líneas en `src/ui/dialogs/pedidos_crear.py`, segregando responsabilidades en componentes autónomos y testeables:
+      - **`SelectorClientePedido` (`pedidos_crear_componentes.py`):** Componente reactivo para búsqueda en vivo, lista de sugerencias con autocompletado inteligente y alta automática de clientes nuevos sin fricción.
+      - **`SelectorComprobantePedido` (`pedidos_crear_componentes.py`):** Gestor desacoplado de subida y transferencia de archivos (.pdf, .xlsx, .docx), validación preventiva anti-duplicados por hash criptográfico SHA-256 y auto-extracción de metadatos del remito.
+      - **`SelectorFechaRetiroPedido` (`pedidos_crear_componentes.py`):** Componente modular con control de calendario (`ft.DatePicker`), TextField interactivo y botón de borrado de fecha.
+      - **`pedidos_crear.py` (Orquestador Liviano):** Reduce el código a un ensamblador declarativo y limpio, delegando la visualización de quiebres en `pedidos_crear_modales.py` y garantizando compatibilidad 100% con la suite de pruebas.
+
+21. **Cierre Multidía y Gestión de Lotes en Mercado Envíos Full (`full_plan_closure.py` + `full_plan_repo.py`):**
+    * Soporte para preparación escalonada de envíos Full que abarquen múltiples jornadas de trabajo:
+      - **Cierres Parciales Diarios:** `registrar_cierre_parcial_mercado_full` descuenta exclusivamente las unidades nuevas pickeadas (`delta = pickeada - descontada`), registrando cada lote en `cierres_parciales_full` y evitando dobles descuentos.
+      - **Cierre Definitivo:** `registrar_cierre_final_mercado_full` descuenta cualquier remanente pendiente y marca el plan como completado, permitiendo el cierre aun cuando el avance sea parcial (< 100%).
+      - **Integración UI Picking y Despacho:** Modales dedicados en `dlg_cierre_full_plan.py` y acciones accesibles desde `DialogCoordinator` y `InterfazFlet` tanto para rol `picker` como `operador`.
+
 ### Esquema de Bases de Datos SQLite
 
 #### `data/productos.sqlite3`
@@ -1644,12 +1660,12 @@ flowchart LR
 
 ### Arquitectura del Cliente Móvil
 
-A diferencia de empaquetar un intérprete de Python completo dentro del teléfono (lo que haría la app excesivamente pesada y lenta), la arquitectura adopta un modelo de **Cliente Ligero Inteligente (Shell Nativo)**:
+A diferencia de empaquetar un intérprete de Python completo dentro del teléfono (lo que haría la app excesivamente pesada y lenta), la arquitectura adopta un modelo de **Cliente Nativo Flutter Desacoplado con Seguridad Criptográfica**:
 
-1. **Rendimiento Nativo:** Desarrollado sobre el motor gráfico de Flutter (Impeller/Skia), garantizando 60/120 FPS y consistencia visual exacta en cualquier marca de teléfono.
-2. **Mantenimiento Cero en Móviles:** Cualquier cambio en la lógica de negocio, catálogos, fórmulas o reportes realizado en la PC se refleja **al instante en todos los teléfonos** conectados, sin necesidad de compilar ni reinstalar los APKs.
-3. **Persistencia de Configuración:** Utiliza almacenamiento seguro (`SharedPreferences`) para recordar la IP del servidor de la PC.
-4. **Acceso Directo a Hardware:** Integra permisos nativos para la cámara del dispositivo, alimentando el módulo de escaneo de códigos de barra (`scanner.html`).
+1. **Rendimiento Nativo y Ergonomía en Depósito (`>= 48dp`):** Desarrollado sobre el motor gráfico de Flutter (Impeller/Skia), con objetivos táctiles aptos para guantes (`>= 48dp`), **Modo Claro de Alto Contraste** para luz solar directa, **Modo Lector Láser** (sin teclado virtual) y gestión explícita de foco entre pestañas (`IndexedStack`).
+2. **TLS Certificate Pinning (TOFU) y Anti-Downgrade (`TlsPinningService`):** Conecta por defecto sobre `HTTPS`, fija la huella digital del certificado X.509 del servidor en el primer enlace validado y prohíbe cualquier degradación silenciosa hacia `HTTP` en texto plano.
+3. **Almacenamiento Cifrado en Hardware (`AndroidKeyStore`):** Cifra el token de sesión (`Bearer Token`) con `AES/GCM/NoPadding` de 256 bits mediante el canal nativo `com.stockagent.mobile/secure_storage` y aísla los borradores y colas offline por nombre de usuario (`username`).
+4. **Colas FIFO y Resiliencia Offline Persistente:** Ráfagas de escaneo láser procesadas en orden FIFO sin descartar lecturas, con persistencia en disco ante cortes de Wi-Fi y **auto-sincronización** al reconectar con el servidor.
 
 ---
 
@@ -1712,14 +1728,14 @@ sequenceDiagram
 #### ¿Cómo Funciona el Ecosistema OTA?
 1. **Control de Versiones en `pubspec.yaml`:**
    * La versión de la app móvil se define con la nomenclatura estándar `version: 1.0.1+2`, donde `1.0.1` es el nombre visible (`versionName`) y `2` es el número entero incremental (`versionCode`).
-2. **Distribución Automática desde el Servidor (`src/server_app/static_routes.py`):**
+2. **Distribución Automática y Firma `SHA-256` desde el Servidor (`src/server_app/static_routes.py`):**
    * El servidor expone dos endpoints especializados:
-     - `GET /api/version` (o `/actualizaciones/version.json`): Devuelve el manifiesto JSON con `version_code`, `version_name`, novedades y URL de descarga.
-     - `GET /api/apk` (o `/actualizaciones/StockAgent.apk`): Sirve el archivo APK binario con encabezados `application/vnd.android.package-archive` y control de caché deshabilitado.
-3. **Flujo en el Dispositivo Móvil:**
-   * Al abrir la app en el teléfono, el servicio `UpdateService` consulta la versión del servidor en segundo plano.
-   * Si `version_remota > version_local`, se despliega un diálogo emergente: *"Actualización disponible. ¿Deseas descargar e instalar la versión X.X.X?"*.
-   * Al confirmar, la app descarga el paquete directamente en el almacenamiento temporal del dispositivo mostrando el porcentaje de avance y lanza el instalador nativo del sistema operativo.
+     - `GET /api/version` (o `/actualizaciones/version.json`): Devuelve el manifiesto JSON con `version_code`, `version_name`, novedades, URL de descarga y el hash criptográfico `sha256` del binario APK (calculado y cacheado por `st_mtime` y `st_size`).
+     - `GET /actualizaciones/StockAgent.apk` (o `/dist_movil/StockAgent.apk`): Sirve el archivo APK binario con encabezados `application/vnd.android.package-archive` y control de caché deshabilitado.
+3. **Flujo Seguro en el Dispositivo Móvil (`UpdateService` + `MainActivity.kt`):**
+   * Al abrir la app en el teléfono, `UpdateService` consulta `/actualizaciones/version.json` en segundo plano.
+   * Si `version_remota > version_local`, despliega `UpdateDialog` (protegido con `PopScope` durante la descarga).
+   * Al confirmar, la app verifica que la URL pertenezca al mismo origen del servidor configurado, descarga el APK dentro del directorio confinado `cacheDir/updates/`, valida que su hash `SHA-256` coincida con el publicado por el servidor y verifica con `PackageManager.getPackageArchiveInfo` que `packageName == com.stockagent.mobile` antes de lanzar el instalador nativo de Android.
 4. **Nota Importante para la Primera Instalación:**
    * Para que el teléfono pueda autogestionar sus actualizaciones futuras, el APK instalado inicialmente debe contar con el código de actualización OTA compilado (versión con soporte OTA). Si se compila un nuevo APK pero el teléfono aún tiene una versión legacy anterior que no poseía este módulo, dicha versión inicial debe instalarse manualmente por única vez; a partir de allí, todas las versiones subsiguientes se actualizarán automáticamente vía Wi-Fi.
 

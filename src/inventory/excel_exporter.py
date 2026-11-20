@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
+from ..core.sanitize_utils import sanitizar_celda_excel
 from .template_sync import _reemplazar_atomicamente
 
 if TYPE_CHECKING:
@@ -81,8 +82,8 @@ def exportar_catalogo_a_excel(
     fila_actual = 4
     for prod in activos:
         cod_raw = str(prod["code"]).strip()
-        cod_val = int(cod_raw) if cod_raw.isdigit() else cod_raw
-        nom_val = str(prod["name"]).strip()
+        cod_val = int(cod_raw) if cod_raw.isdigit() else sanitizar_celda_excel(cod_raw)
+        nom_val = sanitizar_celda_excel(str(prod["name"]).strip())
         stk_val = int(prod["stock"])
 
         c_cod = hoja_activos.cell(fila_actual, 1, cod_val)
@@ -134,12 +135,12 @@ def exportar_catalogo_a_excel(
         f_inact = 4
         for prod in inactivos:
             cod_raw = str(prod["code"]).strip()
-            cod_val = int(cod_raw) if cod_raw.isdigit() else cod_raw
+            cod_val = int(cod_raw) if cod_raw.isdigit() else sanitizar_celda_excel(cod_raw)
             hoja_inactivos.cell(f_inact, 1, cod_val).alignment = alineacion_centro
-            hoja_inactivos.cell(f_inact, 2, str(prod["name"]).strip())
+            hoja_inactivos.cell(f_inact, 2, sanitizar_celda_excel(str(prod["name"]).strip()))
             hoja_inactivos.cell(f_inact, 3, int(prod["stock"])).alignment = alineacion_derecha
-            hoja_inactivos.cell(f_inact, 4, str(prod["cod_barras"] or "-")).alignment = alineacion_centro
-            hoja_inactivos.cell(f_inact, 5, str(prod["ubicacion"] or "-")).alignment = alineacion_centro
+            hoja_inactivos.cell(f_inact, 4, sanitizar_celda_excel(str(prod["cod_barras"] or "-"))).alignment = alineacion_centro
+            hoja_inactivos.cell(f_inact, 5, sanitizar_celda_excel(str(prod["ubicacion"] or "-"))).alignment = alineacion_centro
             f_inact += 1
 
         hoja_inactivos.column_dimensions["A"].width = 14

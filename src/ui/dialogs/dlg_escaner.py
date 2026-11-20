@@ -10,17 +10,23 @@ def mostrar_dialogo_escaner_qr_despacho(
     al_actualizar: Callable[[], None] | None = None,
 ) -> None:
     """Modal para escanear códigos QR de rótulos de bulto o ingresar remito y avanzar estado."""
-    if interfaz.usuario_actual is None:
+    if not interfaz.exigir_roles("operador", "administrador", "picker"):
         return
+    es_admin = bool(
+        interfaz.usuario_actual and interfaz.usuario_actual.role in ("administrador", "master")
+    )
+    opciones_modo = [
+        ft.DropdownOption(key="auto", text="Avanzar automáticamente (Armado → Despachado → Entregado)"),
+        ft.DropdownOption(key="despachado", text="Marcar siempre como DESPACHADO"),
+        ft.DropdownOption(key="entregado", text="Marcar siempre como ENTREGADO"),
+    ]
+    if es_admin:
+        opciones_modo.append(ft.DropdownOption(key="armado", text="Volver a ARMADO"))
+
     selector_modo = ft.Dropdown(
         label="Acción al escanear / ingresar",
         value="auto",
-        options=[
-            ft.DropdownOption(key="auto", text="Avanzar automáticamente (Armado → Despachado → Entregado)"),
-            ft.DropdownOption(key="despachado", text="Marcar siempre como DESPACHADO"),
-            ft.DropdownOption(key="entregado", text="Marcar siempre como ENTREGADO"),
-            ft.DropdownOption(key="armado", text="Volver a ARMADO"),
-        ],
+        options=opciones_modo,
         dense=True,
     )
     input_qr = ft.TextField(
@@ -37,31 +43,47 @@ def mostrar_dialogo_escaner_qr_despacho(
     )
 
     def procesar_escaneo(_e: ft.Event | None = None) -> None:
+        if not interfaz.exigir_roles("operador", "administrador", "picker"):
+            return
         raw = (input_qr.value or "").strip()
         if not raw:
             return
         modo_sel = selector_modo.value or "auto"
         estado_forzado = None if modo_sel == "auto" else modo_sel
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+        puede_retroceder = bool(
+            interfaz.usuario_actual and interfaz.usuario_actual.role in ("administrador", "master")
+        )
         ok, msg, ped = interfaz.order_store.avanzar_estado_por_codigo(
             codigo_qr_o_remito=raw,
             usuario=usr,
             nuevo_estado=estado_forzado,
+            permitir_retroceso=puede_retroceder,
         )
-        input_qr.value = ""
+        color_estado = (
+            (ft.Colors.GREEN_300 if interfaz.modo_oscuro else ft.Colors.GREEN_800)
+            if ok
+            else (ft.Colors.RED_300 if interfaz.modo_oscuro else ft.Colors.RED_800)
+        )
         msg_estado.value = f"{'✅' if ok else '❌'} {msg}"
-        msg_estado.color = ft.Colors.GREEN_400 if ok else ft.Colors.RED_400
+        msg_estado.color = color_estado
         if ped is not None:
+            bg_ok = ft.Colors.GREEN_900 if interfaz.modo_oscuro else ft.Colors.GREEN_50
+            bg_err = ft.Colors.RED_900 if interfaz.modo_oscuro else ft.Colors.RED_50
             historial_escaneos.controls.insert(
                 0,
                 ft.Container(
                     padding=8,
                     border_radius=6,
-                    bgcolor=ft.Colors.GREEN_900 if (ok and interfaz.modo_oscuro) else (ft.Colors.GREEN_50 if ok else ft.Colors.RED_50),
+                    bgcolor=bg_ok if ok else bg_err,
                     border=ft.Border.all(1, ft.Colors.GREEN_600 if ok else ft.Colors.RED_400),
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if ok else ft.Icons.INFO, color=ft.Colors.GREEN_400 if ok else ft.Colors.RED_400, size=18),
+                            ft.Icon(
+                                ft.Icons.CHECK_CIRCLE if ok else ft.Icons.INFO,
+                                color=color_estado,
+                                size=18,
+                            ),
                             ft.Text(
                                 f"[{datetime.now().strftime('%H:%M:%S')}] Remito {ped.nota_pedido} ({ped.cliente}) → {ped.estado_despacho.upper()}",
                                 size=12,
@@ -92,7 +114,7 @@ def mostrar_dialogo_escaner_qr_despacho(
             spacing=8,
         ),
         content=ft.Container(
-            width=560,
+            width=interfaz.ancho_adaptable(560) if hasattr(interfaz, "ancho_adaptable") else 560,
             content=ft.Column(
                 [
                     selector_modo,

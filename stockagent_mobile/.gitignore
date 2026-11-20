@@ -1,0 +1,30 @@
+# Flutter / Dart / Build artifacts
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+
+# Android generated files, crash dumps & secrets
+*.apk
+*.aab
+*.jks
+*.keystore
+android/local.properties
+android/key.properties
+android/.gradle/
+android/.kotlin/
+android/captures/
+android/hs_err_pid*.log
+android/replay_pid*.log
+**/GeneratedPluginRegistrant.*
+
+# iOS / macOS generated files
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/

@@ -66,12 +66,11 @@ def _obtener_ip_tailscale() -> Optional[str]:
 
 
 def _copiar_al_portapapeles(texto: str) -> bool:
-    """Copia una cadena de texto al portapapeles nativo de Windows."""
+    """Copia una cadena de texto al portapapeles nativo de Windows sin invocar shell."""
     try:
         subprocess.run(
-            "clip",
+            ["clip"],
             input=texto.encode("utf-16"),
-            shell=True,
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

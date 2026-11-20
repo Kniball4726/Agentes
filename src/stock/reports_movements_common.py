@@ -11,6 +11,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Table, TableStyle
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_celda_excel, sanitizar_fila_excel
 from .report_styles import (
     _BORDER_THIN,
     _FILL_HEADER,
@@ -28,14 +29,14 @@ def _construir_bloque_kpis_pdf(tarjetas: list[tuple[str, str]], st: dict[str, Pa
     """Construye una fila horizontal compacta de tarjetas KPI en PDF."""
     fila_titulos = [
         Paragraph(
-            f"<b>{lbl}</b>",
+            f"<b>{escapar_texto_reportlab(lbl)}</b>",
             ParagraphStyle("KpiT", parent=st["sub"], fontSize=7.5, alignment=1, textColor=colors.HexColor("#475569")),
         )
         for lbl, _ in tarjetas
     ]
     fila_valores = [
         Paragraph(
-            f"<b>{val}</b>",
+            f"<b>{escapar_texto_reportlab(val)}</b>",
             ParagraphStyle("KpiV", parent=st["td_center"], fontSize=11, leading=13, textColor=colors.HexColor("#0f172a")),
         )
         for _, val in tarjetas
@@ -68,7 +69,7 @@ def _construir_titulo_seccion_pdf(texto: str, st: dict[str, ParagraphStyle]) -> 
         spaceBefore=6,
         spaceAfter=4,
     )
-    return Paragraph(texto, estilo)
+    return Paragraph(escapar_texto_reportlab(texto), estilo)
 
 
 def _construir_firmas_pdf(st: dict[str, ParagraphStyle]) -> Table:
@@ -104,12 +105,12 @@ def _escribir_seccion_excel(
     """Agrega un bloque titulado con encabezados, filas cebreadas y totales opcionales."""
     if ws.max_row > 1:
         ws.append([])
-    ws.append([titulo_seccion])
+    ws.append([sanitizar_celda_excel(titulo_seccion)])
     fila_sec = ws.max_row
     ws.cell(fila_sec, 1).font = Font(name="Calibri", size=11, bold=True, color="1E293B")
     ws.cell(fila_sec, 1).fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
 
-    ws.append(headers)
+    ws.append(sanitizar_fila_excel(headers))
     fila_hdr = ws.max_row
     for c_idx in range(1, len(headers) + 1):
         celda = ws.cell(fila_hdr, c_idx)
@@ -118,11 +119,11 @@ def _escribir_seccion_excel(
         celda.alignment = Alignment(horizontal="center", vertical="center")
 
     for idx_r, row_vals in enumerate(filas):
-        ws.append(row_vals)
+        ws.append(sanitizar_fila_excel(row_vals))
         estilizar_fila_excel(ws, ws.max_row, len(headers), idx_r % 2 == 1)
 
     if fila_totales:
-        ws.append(fila_totales)
+        ws.append(sanitizar_fila_excel(fila_totales))
         r_tot = ws.max_row
         fill_tot = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
         for c_idx in range(1, len(headers) + 1):

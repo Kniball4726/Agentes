@@ -144,30 +144,47 @@ def ejecutar_transaccion_movimiento_rapido(
             pass
 
         msg_tipo = "Entrada registrada" if es_ingreso else "Salida registrada"
+        revertido = [False]
 
         def _deshacer_movimiento(_ev: Any = None) -> None:
+            if revertido[0]:
+                return
+            revertido[0] = True
             try:
-                sm.actualizar_stock_base(codigo, stock_previo, sincronizar_excel=True)
+                reversion = -cantidad_ajuste
+                sm.registrar_ingreso_fabrica({codigo: reversion}, sobrescribir=False)
+                if hasattr(sm, "product_store") and sm.product_store:
+                    sm.product_store.register_movements(
+                        [(codigo, nombre, reversion, "reversion_movimiento_rapido")],
+                        usuario=usuario_nom,
+                        detalle=f"Reversión de {msg_tipo.lower()} ({motivo})",
+                    )
                 if hasattr(interfaz, "order_store") and interfaz.order_store:
                     interfaz.order_store.registrar_auditoria(
                         usuario=usuario_nom,
                         accion="DESHACER_MOVIMIENTO_RAPIDO",
-                        detalle=f"Reversión de {msg_tipo.lower()} para {codigo} ({qty} u.). Stock restaurado a {stock_previo}.",
+                        detalle=f"Reversión de {msg_tipo.lower()} para {codigo} ({qty} u.). Stock restaurado aprox. a {stock_previo}.",
                     )
                 if hasattr(interfaz, "reproducir_sonido"):
                     interfaz.reproducir_sonido("exito")
-                interfaz.notificar(f"↩️ Se revirtió el movimiento de {codigo}. Stock restaurado a {stock_previo}.", ft.Colors.BLUE_700)
+                interfaz.notificar(f"↩️ Se revirtió el movimiento de {codigo} ({qty} u.).", ft.Colors.BLUE_700)
                 if hasattr(interfaz, "actualizar_estado"):
                     interfaz.actualizar_estado()
             except Exception as exc_undo:
+                revertido[0] = False
                 interfaz.notificar(f"Error al revertir movimiento: {exc_undo}", ft.Colors.RED_700)
+
+        if cerrar_al_final:
+            on_cerrar()
 
         try:
             snack_undo = ft.SnackBar(
                 content=ft.Text(f"✅ {msg_tipo}: {codigo} ({qty} u.)", color=ft.Colors.WHITE, size=13),
-                action="Deshacer",
-                action_color=ft.Colors.AMBER_300,
-                on_action=_deshacer_movimiento,
+                action=ft.SnackBarAction(
+                    label="Deshacer",
+                    text_color=ft.Colors.AMBER_300,
+                    on_click=_deshacer_movimiento,
+                ),
                 duration=6000,
                 bgcolor=color_tema,
             )
@@ -182,8 +199,6 @@ def ejecutar_transaccion_movimiento_rapido(
             except Exception:
                 pass
 
-        if cerrar_al_final:
-            on_cerrar()
         return True
     except Exception as ex:
         on_error(f"Error al registrar movimiento: {ex}")

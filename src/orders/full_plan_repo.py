@@ -7,6 +7,7 @@ from typing import Any
 
 from ..parsers.remito_parser import normalizar_codigo
 from ..products.barcode_utils import coincide_codigo_o_barras
+from .full_plan_closure import ejecutar_cierre_final_full, ejecutar_cierre_parcial_full
 
 
 from .protocols import OrderConnectFn
@@ -67,7 +68,7 @@ class FullPlanRepository:
             row = connection.execute(
                 """
                 SELECT id, nombre_envio, archivo_excel, creado_por, estado,
-                       articulos_totales, articulos_pickeados, porcentaje,
+                       articulos_totales, articulos_pickeados, articulos_descontados, porcentaje,
                        picker_asignado, created_at, updated_at
                 FROM planes_mercado_full
                 WHERE id = ?
@@ -84,7 +85,7 @@ class FullPlanRepository:
             row = connection.execute(
                 """
                 SELECT id, nombre_envio, archivo_excel, creado_por, estado,
-                       articulos_totales, articulos_pickeados, porcentaje,
+                       articulos_totales, articulos_pickeados, articulos_descontados, porcentaje,
                        picker_asignado, created_at, updated_at
                 FROM planes_mercado_full
                 WHERE estado IN ('en_proceso', 'pendiente')
@@ -103,7 +104,7 @@ class FullPlanRepository:
                 rows = connection.execute(
                     """
                     SELECT id, nombre_envio, archivo_excel, creado_por, estado,
-                           articulos_totales, articulos_pickeados, porcentaje,
+                           articulos_totales, articulos_pickeados, articulos_descontados, porcentaje,
                            picker_asignado, created_at, updated_at
                     FROM planes_mercado_full
                     WHERE estado = ?
@@ -115,7 +116,7 @@ class FullPlanRepository:
                 rows = connection.execute(
                     """
                     SELECT id, nombre_envio, archivo_excel, creado_por, estado,
-                           articulos_totales, articulos_pickeados, porcentaje,
+                           articulos_totales, articulos_pickeados, articulos_descontados, porcentaje,
                            picker_asignado, created_at, updated_at
                     FROM planes_mercado_full
                     ORDER BY id DESC
@@ -338,3 +339,48 @@ class FullPlanRepository:
             )
             connection.commit()
             return cursor.rowcount > 0
+
+    def registrar_cierre_parcial_mercado_full(self, plan_id: int, picker: str = "") -> dict[str, Any]:
+        """Registra un cierre parcial multidía para un envío Full deduciendo solo las unidades nuevas pickeadas."""
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                res = ejecutar_cierre_parcial_full(connection, plan_id, picker=picker)
+                if res.get("exito"):
+                    connection.commit()
+                else:
+                    connection.rollback()
+                return res
+            except Exception:
+                connection.rollback()
+                raise
+
+    def registrar_cierre_final_mercado_full(self, plan_id: int, picker: str = "") -> dict[str, Any]:
+        """Finaliza un envío Full deduciendo cualquier delta pendiente y cerrando el plan."""
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                res = ejecutar_cierre_final_full(connection, plan_id, picker=picker)
+                if res.get("exito"):
+                    connection.commit()
+                else:
+                    connection.rollback()
+                return res
+            except Exception:
+                connection.rollback()
+                raise
+
+    def listar_cierres_parciales_full(self, plan_id: int) -> list[dict[str, Any]]:
+        """Devuelve el historial de cierres (parciales y final) de un plan Full."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, plan_id, tipo, picker, articulos_descontados, detalle_items, created_at
+                FROM cierres_parciales_full
+                WHERE plan_id = ?
+                ORDER BY id DESC
+                """,
+                (plan_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
+from ..core.delegation import DelegadoAtributo
 from ..core.exceptions import UserStoreError
 from ..core.sqlite_utils import sqlite_connection
 from .api_tokens_repo import ApiTokensRepository
@@ -35,6 +36,16 @@ _notify_session_revocation = notify_session_revocation
 _USER_COLUMNS = (
     "id, username, role, active, must_change_password, nombre, email, created_at, updated_at"
 )
+_DUMMY_PASSWORD_HASH: str | None = None
+_MAX_PASSWORD_INPUT_LEN = 256
+
+
+def _obtener_dummy_password_hash() -> str:
+    """Genera una única vez un hash PBKDF2 dummy para igualar tiempos ante usuarios inexistentes."""
+    global _DUMMY_PASSWORD_HASH
+    if _DUMMY_PASSWORD_HASH is None:
+        _DUMMY_PASSWORD_HASH = hash_clave("invalid-user-dummy-password")
+    return _DUMMY_PASSWORD_HASH
 
 
 class UserStore:
@@ -56,43 +67,15 @@ class UserStore:
         with self._connect() as connection, connection:
             inicializar_esquema(connection)
 
-    @staticmethod
-    def _migrar_columnas(connection: sqlite3.Connection) -> None:
-        migrar_columnas(connection)
-
-    @staticmethod
-    def _normalizar_usuario(username: str) -> str:
-        return normalizar_usuario(username)
-
-    @staticmethod
-    def _validar_clave(password: str) -> None:
-        validar_clave(password)
-
-    @staticmethod
-    def _validar_rol(role: str) -> UserRole:
-        return validar_rol(role)
-
-    @staticmethod
-    def _validar_nombre(nombre: str) -> str:
-        return validar_nombre(nombre)
-
-    @staticmethod
-    def _validar_email(email: str) -> str:
-        return validar_email(email)
-
-    @staticmethod
-    def _verificar_email_unico(
-        connection: sqlite3.Connection, email: str, except_user_id: int | None = None
-    ) -> None:
-        verificar_email_unico(connection, email, except_user_id=except_user_id)
-
-    @staticmethod
-    def _hash_clave(password: str) -> str:
-        return hash_clave(password)
-
-    @staticmethod
-    def _verificar_clave(password: str, stored_hash: str) -> bool:
-        return verificar_clave(password, stored_hash)
+    _migrar_columnas = staticmethod(migrar_columnas)
+    _normalizar_usuario = staticmethod(normalizar_usuario)
+    _validar_clave = staticmethod(validar_clave)
+    _validar_rol = staticmethod(validar_rol)
+    _validar_nombre = staticmethod(validar_nombre)
+    _validar_email = staticmethod(validar_email)
+    _verificar_email_unico = staticmethod(verificar_email_unico)
+    _hash_clave = staticmethod(hash_clave)
+    _verificar_clave = staticmethod(verificar_clave)
 
     @property
     def has_users(self) -> bool:
@@ -216,6 +199,8 @@ class UserStore:
         restante = self.segundos_bloqueo_restantes(identificador, ahora)
         if restante > 0:
             return AuthResult(None, "locked", retry_after=restante)
+        if len(str(password or "")) > _MAX_PASSWORD_INPUT_LEN:
+            return self._registrar_fallo(identificador, ahora)
         with self._connect() as connection:
             row = connection.execute(
                 f"""
@@ -233,7 +218,7 @@ class UserStore:
                         (DEFAULT_MASTER_USERNAME,),
                     ).fetchone()
             if row is None:
-                verificar_clave(password, hash_clave("invalid-user-password"))
+                verificar_clave(password, _obtener_dummy_password_hash())
                 return self._registrar_fallo(identificador, ahora)
 
         nombre_cuenta = row["username"]
@@ -464,81 +449,23 @@ class UserStore:
             updated_at=str(row["updated_at"] or "") if "updated_at" in keys and row["updated_at"] is not None else "",
         )
 
-    # Delegación explícita a repositorios desacoplados (bloqueo y sesiones/claves API)
+    # Delegación por descriptor a repositorios especializados (bloqueo y sesiones/claves API)
+    segundos_bloqueo_restantes = DelegadoAtributo("lockout_repo", LockoutRepository)
+    _registrar_fallo = DelegadoAtributo("lockout_repo", LockoutRepository, "registrar_fallo")
+    _limpiar_intentos = DelegadoAtributo("lockout_repo", LockoutRepository, "limpiar_intentos")
+    unlock_user = DelegadoAtributo("lockout_repo", LockoutRepository)
+    list_locked_usernames = DelegadoAtributo("lockout_repo", LockoutRepository)
 
-    def segundos_bloqueo_restantes(self, username: str, ahora: float | None = None) -> int:
-        return self.lockout_repo.segundos_bloqueo_restantes(username, ahora=ahora)
-
-    def _registrar_fallo(self, username: str, ahora: float) -> AuthResult:
-        return self.lockout_repo.registrar_fallo(username, ahora)
-
-    def _limpiar_intentos(self, username: str) -> None:
-        self.lockout_repo.limpiar_intentos(username)
-
-    def unlock_user(self, username: str) -> None:
-        self.lockout_repo.unlock_user(username)
-
-    def list_locked_usernames(self) -> list[str]:
-        return self.lockout_repo.list_locked_usernames()
-
-    def create_api_session(
-        self,
-        token_hash: str,
-        user_id: int,
-        username: str,
-        role: str,
-        nombre: str = "",
-        email: str = "",
-        created_at: float | None = None,
-        last_active: float | None = None,
-    ) -> None:
-        self.api_tokens_repo.create_api_session(
-            token_hash=token_hash,
-            user_id=user_id,
-            username=username,
-            role=role,
-            nombre=nombre,
-            email=email,
-            created_at=created_at,
-            last_active=last_active,
-        )
-
-    def get_api_session(self, token_hash: str) -> dict | None:
-        return self.api_tokens_repo.get_api_session(token_hash)
-
-    def update_api_session_activity(
-        self, token_hash: str, last_active: float | None = None
-    ) -> None:
-        self.api_tokens_repo.update_api_session_activity(token_hash, last_active=last_active)
-
-    def revoke_api_session(self, token_hash: str) -> bool:
-        return self.api_tokens_repo.revoke_api_session(token_hash)
-
-    def revoke_user_api_sessions(self, user_id: int) -> int:
-        return self.api_tokens_repo.revoke_user_api_sessions(user_id)
-
-    def cleanup_expired_api_sessions(self, max_age_seconds: float) -> int:
-        return self.api_tokens_repo.cleanup_expired_api_sessions(max_age_seconds)
-
-    def create_api_key(
-        self, client_name: str, role: str = "operador"
-    ) -> tuple[str, str]:
-        return self.api_tokens_repo.create_api_key(client_name, role=role)
-
-    def validate_api_key(self, raw_key: str) -> dict | None:
-        return self.api_tokens_repo.validate_api_key(raw_key)
-
-    def list_api_keys(self) -> list[dict]:
-        return self.api_tokens_repo.list_api_keys()
-
-    def revoke_api_key(self, key_hash: str) -> bool:
-        return self.api_tokens_repo.revoke_api_key(key_hash)
-
-    def delete_api_key(self, key_hash: str) -> bool:
-        return self.api_tokens_repo.delete_api_key(key_hash)
-
-    def list_api_sessions(self, max_records: int = 100) -> list[dict]:
-        return self.api_tokens_repo.list_api_sessions(max_records=max_records)
-
-    def revoke_all_sessions(self) -> int:
-        return self.api_tokens_repo.revoke_all_sessions()
+    create_api_session = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    get_api_session = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    update_api_session_activity = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    revoke_api_session = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    revoke_user_api_sessions = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    cleanup_expired_api_sessions = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    create_api_key = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    validate_api_key = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    list_api_keys = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    revoke_api_key = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    delete_api_key = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    list_api_sessions = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)
+    revoke_all_sessions = DelegadoAtributo("api_tokens_repo", ApiTokensRepository)

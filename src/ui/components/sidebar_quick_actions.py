@@ -179,6 +179,21 @@ def _construir_accesos_admin(
 
 def construir_acceso_rapido_sidebar(interfaz: Any, rol: str) -> ft.Control | None:
     """Devuelve la botonera de acceso rápido acorde al rol activo o None si no aplica."""
+    if rol == "despachador":
+        btn_despacho = _crear_boton_rapido_sidebar(
+            texto="Despacho",
+            icono=ft.Icons.QR_CODE_SCANNER,
+            color_icono=ft.Colors.WHITE,
+            color_texto=ft.Colors.WHITE,
+            bgcolor=ROJO,
+            height=44,
+            text_size=13,
+            icon_size=20,
+            spacing=8,
+            tooltip="⚡ Abrir módulo de Despacho (Pistola QR / Manual)",
+            on_click=lambda _: interfaz.mostrar_modulo_despacho(),
+        )
+        return ft.Column([ft.Row([btn_despacho])], spacing=6, tight=True)
     if rol not in ("operador", "administrador", "picker", "master"):
         return None
     if rol == "master":

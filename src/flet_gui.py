@@ -40,6 +40,7 @@ from .ui.components import (
     construir_panel_informes_actividad,
     construir_panel_metricas,
     construir_sidebar_controls,
+    detener_heartbeat_red,
     iniciar_heartbeat_red_daemon,
     manejar_cambio_navegacion_movil,
     reproducir_sonido_web,
@@ -218,9 +219,13 @@ class InterfazFlet:
     mostrar_centro_reportes = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_detalle_pedido_modal = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_escaner_qr_despacho = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_modulo_despacho = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_imprimir_descuentos = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_cierre_jornada = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_cierre_mercado = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_cierre_mercado_envios = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_cierre_parcial_mercado_full = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    mostrar_cierre_final_mercado_full = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_historial_cierres_admin = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_acceso_admin = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_ver_stock = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
@@ -442,6 +447,11 @@ class InterfazFlet:
         icon_path = Path(__file__).resolve().parent / "img" / "ultratech.ico"
         configurar_ventana_shell(self, icon_path)
 
+    def _al_desconectar(self, _evento: Any = None) -> None:
+        """Libera recursos y detiene hilos de monitoreo cuando la sesión cliente se desconecta."""
+        detener_heartbeat_red(self)
+        SESIONES_ACTIVAS.discard(self)
+
     def _sidebar_horizontal_controls(self) -> list[ft.Control]:
         from .ui.components.sidebar import construir_sidebar_horizontal_controls
         return construir_sidebar_horizontal_controls(self)
@@ -482,13 +492,11 @@ class InterfazFlet:
         return control
 
     @staticmethod
-    def boton_dialogo(texto: str, accion: Callable) -> ft.Button:
-        return ft.Button(
-            content=texto,
-            bgcolor=ROJO,
-            color=ft.Colors.WHITE,
-            on_click=accion,
-        )
+    def boton_dialogo(texto: str, accion: Callable, variante: str = "auto") -> ft.Button:
+        """Botón de diálogo con jerarquía semántica (Cancelar/Cerrar neutros, destructivos diferenciados)."""
+        from .ui.design import boton_dialogo_semantico
+
+        return boton_dialogo_semantico(texto, accion, variante)  # type: ignore[arg-type]
 
     def _actualizar_icono_notificaciones(self) -> None:
         sm_cls = getattr(self, "_stock_manager_factory", None) or StockManager
@@ -526,14 +534,20 @@ class InterfazFlet:
         actualizar_estado_dashboard(self, _evento)
 
     def recargar_ambiente(self) -> None:
-        """Recarga los almacenes de datos y el menú según el ambiente activo (Producción o QA)."""
+        """Recarga los almacenes de datos, la API REST y la interfaz según el ambiente activo."""
+        from .api.deps import reset_api_stores
+
+        reset_api_stores(revocar_sesiones_memoria=True)
         deps = self._construir_dependencias_por_defecto()
         self._deps = deps
         self.user_store = deps.user_store
         self.order_store = deps.order_store
         self.product_store = deps.product_store
         self.menu = deps.menu
-        self.actualizar_estado()
+        if self.usuario_actual is not None:
+            self.construir()
+        else:
+            self.actualizar_estado()
         try:
             self.page.update()
         except Exception:
@@ -561,9 +575,12 @@ class InterfazFlet:
             except Exception:
                 pass
         dialogo = ft.AlertDialog(
+            modal=True,
             title=ft.Text("Aviso"),
+            icon=ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.ON_SURFACE_VARIANT),
             content=ft.Text(mensaje),
             actions=[self.boton_dialogo("Aceptar", lambda _e: self.page.pop_dialog())],
+            actions_alignment=ft.MainAxisAlignment.END,
         )
         self.page.show_dialog(dialogo)
 
@@ -595,9 +612,6 @@ class InterfazFlet:
 
     def reproducir_sonido(self, tipo: str = "exito") -> None:
         """Emite un feedback sonoro breve (Web Audio API) en el navegador / cliente."""
-        reproducir_sonido_web(self, tipo)
-
-    def _reproducir_sonido_legacy(self, tipo: str = "exito") -> None:
         reproducir_sonido_web(self, tipo)
 
     def mostrar_command_palette(self, _evento: ft.Event | None = None) -> None:

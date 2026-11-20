@@ -10,7 +10,41 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ...core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
+
 logger = logging.getLogger(__name__)
+
+_MAGIC_BYTES_EXT: dict[str, tuple[bytes, ...]] = {
+    "pdf": (b"%PDF-",),
+    "xlsx": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+    "docx": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+    "zip": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+    "xls": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", b"PK\x03\x04"),
+}
+
+
+def _validar_magic_bytes(ext: str, cabecera: bytes) -> bool:
+    """Verifica firmas binarias (magic bytes) para los formatos documentales soportados."""
+    firmas = _MAGIC_BYTES_EXT.get(ext.lstrip(".").lower())
+    if not firmas:
+        return True
+    if not cabecera:
+        return False
+    return any(cabecera.startswith(f) for f in firmas)
+
+
+def _reservar_destino_exclusivo(carpeta_destino: Path, stem: str, suffix: str) -> Path:
+    """Reserva atómicamente una ruta sin sobrescribir archivos previos usando modo exclusivo 'xb'."""
+    candidato = resolver_ruta_confinada(carpeta_destino, f"{stem}{suffix}")
+    contador = 1
+    while True:
+        try:
+            with open(candidato, "xb"):
+                pass
+            return candidato
+        except FileExistsError:
+            candidato = resolver_ruta_confinada(carpeta_destino, f"{stem}_{contador}{suffix}")
+            contador += 1
 
 
 class FileTransferService:
@@ -145,43 +179,57 @@ class FileTransferService:
         max_subida_bytes = 25 * 1024 * 1024  # 25 MB
         try:
             for item in seleccionados:
-                nombre_limpio = Path(item.name).name
-                if ext_limpias:
-                    ext_item = Path(nombre_limpio).suffix.lstrip(".").lower()
-                    if ext_item not in ext_limpias:
-                        rechazados.append(nombre_limpio)
-                        continue
-                peso_bytes = (
-                    len(item.bytes)
-                    if (item.bytes and len(item.bytes) > 0)
-                    else (Path(item.path).stat().st_size if (item.path and Path(item.path).exists()) else 0)
+                nombre_orig = Path(str(item.name or "")).name
+                suffix_orig = Path(nombre_orig).suffix
+                ext_item = suffix_orig.lstrip(".").lower()
+                stem_limpio = sanitizar_componente_archivo(Path(nombre_orig).stem, fallback="archivo")
+                suffix_limpio = (
+                    f".{sanitizar_componente_archivo(suffix_orig.lstrip('.'), fallback=ext_item)}"
+                    if ext_item
+                    else ""
                 )
+                nombre_limpio = f"{stem_limpio}{suffix_limpio}"
+                if ext_limpias and ext_item not in ext_limpias:
+                    rechazados.append(nombre_orig or nombre_limpio)
+                    continue
+
+                tiene_bytes = item.bytes is not None and len(item.bytes) > 0
+                origen_path = Path(item.path) if item.path else None
+                if tiene_bytes:
+                    peso_bytes = len(item.bytes)
+                    cabecera = bytes(item.bytes[:16])
+                elif origen_path and origen_path.exists():
+                    peso_bytes = origen_path.stat().st_size
+                    with open(origen_path, "rb") as fh_head:
+                        cabecera = fh_head.read(16)
+                else:
+                    peso_bytes = 0
+                    cabecera = b""
+
                 if peso_bytes > max_subida_bytes:
                     self._notificar(
                         f"El archivo '{nombre_limpio}' ({peso_bytes // (1024 * 1024)} MB) supera el límite máximo de 25 MB."
                     )
                     continue
 
-                destino = carpeta_destino / nombre_limpio
-                _cnt = 1
-                while destino.exists():
-                    try:
-                        with open(destino, "ab"):
-                            pass
-                        break
-                    except OSError:
-                        destino = carpeta_destino / f"{Path(nombre_limpio).stem}_{_cnt}{Path(nombre_limpio).suffix}"
-                        _cnt += 1
-                if item.bytes and len(item.bytes) > 0:
+                if ext_item in _MAGIC_BYTES_EXT and not _validar_magic_bytes(ext_item, cabecera):
+                    rechazados.append(nombre_orig or nombre_limpio)
+                    continue
+
+                if tiene_bytes:
+                    destino = _reservar_destino_exclusivo(carpeta_destino, stem_limpio, suffix_limpio)
                     destino.write_bytes(item.bytes)
                     guardados.append(destino)
-                elif item.path:
-                    origen = Path(item.path)
-                    if origen.exists():
-                        if origen.resolve() != destino.resolve():
-                            shutil.copy2(origen, destino)
+                elif origen_path and origen_path.exists():
+                    destino_directo = resolver_ruta_confinada(carpeta_destino, nombre_limpio)
+                    if origen_path.resolve() == destino_directo.resolve():
+                        guardados.append(destino_directo)
+                    else:
+                        destino = _reservar_destino_exclusivo(carpeta_destino, stem_limpio, suffix_limpio)
+                        shutil.copy2(origen_path, destino)
                         guardados.append(destino)
                 elif item.bytes is not None:
+                    destino = _reservar_destino_exclusivo(carpeta_destino, stem_limpio, suffix_limpio)
                     destino.write_bytes(item.bytes)
                     guardados.append(destino)
         except Exception as error:

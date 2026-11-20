@@ -312,7 +312,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                     ft.Row(
                         [
                             ft.Text(
-                                "Panel de control",
+                                "Módulo Despacho" if interfaz.usuario_actual.role == "despachador" else "Panel de control",
                                 size=28,
                                 weight=ft.FontWeight.BOLD,
                                 color=interfaz.texto,
@@ -323,25 +323,37 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Text(
-                        (f"Consola de Seguridad, IAM y Auditoría · Red local: {esquema_red}://{ip_red}:{puerto_red}"
-                         if interfaz.usuario_actual.role == "master"
-                         else f"Gestiona tus documentos, inventario y actividad · Red local: {esquema_red}://{ip_red}:{puerto_red}"),
+                        (
+                            f"Consola de Seguridad, IAM y Auditoría · Red local: {esquema_red}://{ip_red}:{puerto_red}"
+                            if interfaz.usuario_actual.role == "master"
+                            else (
+                                f"Control de despacho por pistola QR y cantidad de bultos · Red local: {esquema_red}://{ip_red}:{puerto_red}"
+                                if interfaz.usuario_actual.role == "despachador"
+                                else f"Gestiona tus documentos, inventario y actividad · Red local: {esquema_red}://{ip_red}:{puerto_red}"
+                            )
+                        ),
                         size=14,
                         color=interfaz.secundario,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=2,
                     ),
-                    (ft.Text("Módulo de Administración Técnica y Auditoría de Seguridad", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
-                     if interfaz.usuario_actual.role == "master"
-                     else (
-                         ft.Text("Módulo de Picking y Despacho · Movimientos de Stock", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
-                         if interfaz.usuario_actual.role == "picker"
-                         else interfaz.pendientes_texto
-                     )),
+                    (
+                        ft.Text("Módulo de Administración Técnica y Auditoría de Seguridad", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
+                        if interfaz.usuario_actual.role == "master"
+                        else (
+                            ft.Text("Módulo de Picking y Despacho · Movimientos de Stock", size=12, color=ROJO, weight=ft.FontWeight.BOLD)
+                            if interfaz.usuario_actual.role == "picker"
+                            else interfaz.pendientes_texto
+                        )
+                    ),
                 ],
                 spacing=4,
+                expand=True,
             ),
             ft.Row(
                 fila_acciones,
                 spacing=10,
+                wrap=True,
             ),
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,

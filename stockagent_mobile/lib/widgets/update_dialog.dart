@@ -36,6 +36,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     await widget.updateService.downloadAndInstall(
       downloadUrl: widget.downloadFullUrl,
+      expectedSha256: widget.updateInfo.sha256,
       onProgress: (p) {
         if (mounted) {
           setState(() => _progress = p);
@@ -57,7 +58,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
     final info = widget.updateInfo;
     final porcentaje = (_progress * 100).toInt();
 
-    return AlertDialog(
+    return PopScope(
+      canPop: !_isDownloading,
+      child: AlertDialog(
       backgroundColor: AppTheme.cardBg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -213,12 +216,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              'Preparando instalación en Android...',
+              'Verificando firma SHA-256 y preparando instalación...',
               style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontStyle: FontStyle.italic),
             ),
           ),
         ],
       ],
+      ),
     );
   }
 }

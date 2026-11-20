@@ -12,6 +12,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
+from ..core.sanitize_utils import sanitizar_fila_excel
 from .report_styles import (
     _BORDER_THIN,
     _FILL_WHITE,
@@ -86,7 +87,7 @@ def generar_reporte_stock_critico(
                 int(it.get("suggested_order", 0)),
                 estado,
             ]
-            ws.append(fila)
+            ws.append(sanitizar_fila_excel(fila))
             for c_idx in range(1, len(fila) + 1):
                 c = ws.cell(idx, c_idx)
                 c.fill = fill_actual
@@ -198,7 +199,7 @@ def generar_reporte_catalogo_stock(
         for idx, p in enumerate(prods, start=5):
             cod, nom, bar, ubi, stk, act = _extraer_campos_producto(p)
             fill_actual = _FILL_ZEBRA if idx % 2 == 0 else _FILL_WHITE
-            ws.append([cod, nom, bar or "-", ubi or "-", stk, "Activo" if act else "Inactivo"])
+            ws.append(sanitizar_fila_excel([cod, nom, bar or "-", ubi or "-", stk, "Activo" if act else "Inactivo"]))
             for c_idx in range(1, 7):
                 c = ws.cell(idx, c_idx)
                 c.fill = fill_actual

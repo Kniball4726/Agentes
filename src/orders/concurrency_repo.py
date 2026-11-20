@@ -25,6 +25,7 @@ class ConcurrencyRepository:
         """
         limite = (datetime.now() - timedelta(minutes=expiracion_minutos)).isoformat()
         with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             # Limpiar bloqueos expirados
             connection.execute(
                 "DELETE FROM pedidos_bloqueos WHERE bloqueado_at < ?", (limite,)
@@ -86,6 +87,7 @@ class ConcurrencyRepository:
         if not tx_id:
             return True
         with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             limite = (datetime.now() - timedelta(hours=1)).isoformat()
             connection.execute(
                 "DELETE FROM transacciones_procesadas WHERE created_at < ?", (limite,)

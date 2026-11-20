@@ -56,7 +56,7 @@ def _construir_elementos_etiqueta_termica(
     guia_txt = f"<br/><b>N° DE GUÍA / TRACKING:</b> <font color='#dc2626'>{escape(n_guia)}</font>" if n_guia else ""
     info_logistica_txt = (
         f"<b>TRANSPORTE / VÍA:</b> {escape(pedido.logistica)}<br/>"
-        f"<b>ARMADOR:</b> {escape(pedido.armador)}  |  <b>FECHA:</b> {f_ret}{guia_txt}"
+        f"<b>ARMADOR:</b> {escape(pedido.armador)}  |  <b>FECHA:</b> {escape(f_ret)}{guia_txt}"
     )
     estilo_log_info = ParagraphStyle(f"Term_LogInfo_{bulto_idx}", parent=styles["Normal"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#1e293b"))
     t_info = Table([[Paragraph(info_logistica_txt, estilo_log_info)]], colWidths=[ancho_util])

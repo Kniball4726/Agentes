@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ...core.security_utils import es_url_navegable_segura
 from ...paths import application_root
 from ..dialogs import (
     compartir_correo,
@@ -65,6 +66,10 @@ class DocumentViewerService:
 
     def abrir_url_en_navegador(self, url: str) -> None:
         """Abre una URL en nueva pestaña/ventana compatible con Flet clásico, 1.0 y navegador."""
+        if not es_url_navegable_segura(url):
+            logger.warning("URL bloqueada por esquema no permitido: %s", url)
+            self._notificar("No se puede abrir la dirección solicitada.")
+            return
         page = getattr(self._host, "page", None)
         if not page:
             return
@@ -118,7 +123,7 @@ class DocumentViewerService:
             pass
 
     def ruta_informe(self) -> Path | None:
-        if not self._exigir_roles("operador", "picker", "administrador", "master", "consulta"):
+        if not self._exigir_roles("operador", "picker", "despachador", "administrador", "master", "consulta"):
             return None
         seleccionado = getattr(self._host, "informe_seleccionado", None)
         if seleccionado and seleccionado.exists():
@@ -140,6 +145,8 @@ class DocumentViewerService:
 
     def mostrar_manual_usuario(self, _evento: ft.Event | None = None) -> None:
         """Abre directamente la documentación oficial en PDF correspondiente al rol activo."""
+        if not self._exigir_roles("operador", "picker", "despachador", "administrador", "master", "consulta"):
+            return
         usuario = getattr(self._host, "usuario_actual", None)
         if usuario is None:
             return
@@ -148,6 +155,7 @@ class DocumentViewerService:
         mapa_archivos = {
             "operador": "Manual_Operador.pdf",
             "picker": "Manual_Picker.pdf",
+            "despachador": "Manual_Despachador.pdf",
             "administrador": "Manual_Administrador.pdf",
             "master": "Manual_Master.pdf",
             "consulta": "Manual_Consulta.pdf",
@@ -192,7 +200,7 @@ class DocumentViewerService:
         **kwargs: Any,
     ) -> None:
         if hasattr(self._host, "exigir_roles") and not self._exigir_roles(
-            "operador", "picker", "administrador", "master", "consulta"
+            "operador", "picker", "despachador", "administrador", "master", "consulta"
         ):
             return
         if ruta_especifica is None:
@@ -251,18 +259,22 @@ class DocumentViewerService:
         _evento: ft.Event | None = None,
     ) -> None:
         """Muestra el diálogo modal con opciones de descarga e impresión Windows."""
+        if not self._exigir_roles("operador", "picker", "despachador", "administrador", "master", "consulta"):
+            return
         target = ruta_archivo or self.ruta_informe()
         if target is None:
             return
         mostrar_dialogo_opciones_documento(self._host, target)
 
     def abrir_carpeta_informe(self, ruta: Path | None = None, ruta_especifica: Path | None = None) -> None:
+        if not self._exigir_roles("operador", "picker", "despachador", "administrador", "master", "consulta"):
+            return
         target = ruta or ruta_especifica or self.ruta_informe()
         if target is None:
             return
         target = Path(target)
         if getattr(self._host.page, "web", False):
-            self._notificar(f"Ubicación en servidor: {target.parent if target.is_file() else target}")
+            self._notificar("La apertura directa de carpetas locales solo está disponible en modo escritorio.")
             return
         try:
             if sys.platform == "win32":

@@ -10,11 +10,15 @@ import '../../widgets/barcode_scan_field.dart';
 class InventoryTab extends StatefulWidget {
   final ApiService apiService;
   final AuthUser currentUser;
+  final bool isActive;
+  final bool laserMode;
 
   const InventoryTab({
     super.key,
     required this.apiService,
     required this.currentUser,
+    this.isActive = true,
+    this.laserMode = false,
   });
 
   @override
@@ -36,6 +40,18 @@ class _InventoryTabState extends State<InventoryTab> {
   }
 
   @override
+  void didUpdateWidget(covariant InventoryTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _barcodeFocusNode.requestFocus();
+      });
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _barcodeFocusNode.unfocus();
+    }
+  }
+
+  @override
   void dispose() {
     _barcodeTextCtrl.dispose();
     _barcodeFocusNode.dispose();
@@ -48,6 +64,26 @@ class _InventoryTabState extends State<InventoryTab> {
     _controller.procesarCodigo(codigo);
     _barcodeTextCtrl.clear();
     _barcodeFocusNode.requestFocus();
+  }
+
+  void _eliminarConDeshacer(String sku) {
+    final cantPrevia = _controller.conteo[sku] ?? 0;
+    _controller.eliminarItem(sku);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Eliminado $sku ($cantPrevia un.) del conteo'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'DESHACER',
+          textColor: Colors.amberAccent,
+          onPressed: () {
+            _controller.deshacerEliminacion();
+          },
+        ),
+      ),
+    );
   }
 
   void _confirmarVaciar() {
@@ -81,7 +117,10 @@ class _InventoryTabState extends State<InventoryTab> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
     );
 
     try {
@@ -134,6 +173,7 @@ class _InventoryTabState extends State<InventoryTab> {
                   ),
                   const Spacer(),
                   IconButton(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.of(ctx).pop(),
                   ),
@@ -232,17 +272,21 @@ class _InventoryTabState extends State<InventoryTab> {
 
     if (confirmar != true) return;
 
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Enviando a la PC...', style: TextStyle(color: Colors.white70)),
-          ],
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Enviando a la PC...', style: TextStyle(color: Colors.white70)),
+            ],
+          ),
         ),
       ),
     );
@@ -266,11 +310,11 @@ class _InventoryTabState extends State<InventoryTab> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Row(
-          children: const [
+        title: const Row(
+          children: [
             Icon(Icons.check_circle, color: Colors.green, size: 28),
             SizedBox(width: 10),
-            Text('¡Inventario Procesado!'),
+            Expanded(child: Text('¡Inventario Procesado!')),
           ],
         ),
         content: Column(
@@ -303,61 +347,63 @@ class _InventoryTabState extends State<InventoryTab> {
           body: SafeArea(
             child: Column(
               children: [
-                // Panel de Control Superior: Escáner y Multiplicador
+                // Panel Superior Ergonómico: Multiplicador arriba (>= 48dp) y Escáner de ancho completo abajo
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  color: AppTheme.cardBg,
+                  color: Theme.of(context).colorScheme.surface,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          // Selector de multiplicador de cantidad
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceColor,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              children: [1, 5, 10, 50].map((m) {
-                                final isSel = _controller.multiplicador == m;
-                                return InkWell(
-                                  onTap: () => _controller.setMultiplicador(m),
-                                  borderRadius: BorderRadius.circular(10),
+                      // Selector de multiplicador con botones aptos para uso con guantes (>= 48dp)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [1, 5, 10, 50].map((m) {
+                            final isSel = _controller.multiplicador == m;
+                            return Expanded(
+                              child: InkWell(
+                                onTap: () => _controller.setMultiplicador(m),
+                                borderRadius: BorderRadius.circular(12),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(minHeight: 48),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    alignment: Alignment.center,
                                     decoration: BoxDecoration(
                                       color: isSel ? AppTheme.primaryRed : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
                                       '+$m',
                                       style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                        fontSize: 14,
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
                                         color: isSel ? Colors.white : AppTheme.textSecondary,
                                       ),
                                     ),
                                   ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Campo de Escaneo de Código de Barras / SKU
-                          Expanded(
-                            child: BarcodeScanField(
-                              controller: _barcodeTextCtrl,
-                              focusNode: _barcodeFocusNode,
-                              hintText: 'Escanear o escribir SKU...',
-                              onSubmitted: _enviarCodigo,
-                            ),
-                          ),
-                        ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // Campo de Escaneo de Código de Barras / SKU a ancho completo
+                      BarcodeScanField(
+                        controller: _barcodeTextCtrl,
+                        focusNode: _barcodeFocusNode,
+                        autofocus: widget.isActive,
+                        laserMode: widget.laserMode,
+                        hintText: 'Escanear o escribir SKU / EAN...',
+                        onSubmitted: _enviarCodigo,
                       ),
                       if (_controller.statusBanner != null) ...[
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: _controller.statusBannerOk
                                 ? Colors.green.withValues(alpha: 0.15)
@@ -368,7 +414,7 @@ class _InventoryTabState extends State<InventoryTab> {
                             children: [
                               Icon(
                                 _controller.statusBannerOk ? Icons.check_circle : Icons.error_outline,
-                                size: 16,
+                                size: 18,
                                 color: _controller.statusBannerOk ? Colors.greenAccent : Colors.redAccent,
                               ),
                               const SizedBox(width: 8),
@@ -392,8 +438,8 @@ class _InventoryTabState extends State<InventoryTab> {
 
                 // Barra de Resumen del Lote
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: AppTheme.darkBg,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   child: Row(
                     children: [
                       Text(
@@ -403,12 +449,14 @@ class _InventoryTabState extends State<InventoryTab> {
                       const Spacer(),
                       if (_controller.isNotEmpty) ...[
                         IconButton(
-                          icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white54, size: 20),
+                          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                          icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white54, size: 22),
                           tooltip: 'Vaciar lista',
                           onPressed: _confirmarVaciar,
                         ),
                         IconButton(
-                          icon: const Icon(Icons.analytics_outlined, color: Colors.blueAccent, size: 20),
+                          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                          icon: const Icon(Icons.analytics_outlined, color: Colors.blueAccent, size: 22),
                           tooltip: 'Ver diferencias',
                           onPressed: _verComparativaPreliminar,
                         ),
@@ -420,10 +468,10 @@ class _InventoryTabState extends State<InventoryTab> {
                 // Lista de Productos Contados
                 Expanded(
                   child: _controller.isEmpty
-                      ? Center(
+                      ? const Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
+                            children: [
                               Icon(Icons.barcode_reader, size: 64, color: Colors.white24),
                               SizedBox(height: 12),
                               Text(
@@ -432,7 +480,7 @@ class _InventoryTabState extends State<InventoryTab> {
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'Las lecturas se guardan automáticamente',
+                                'Las lecturas se guardan automáticamente (incluso offline)',
                                 style: TextStyle(color: Colors.white24, fontSize: 12),
                               ),
                             ],
@@ -448,9 +496,9 @@ class _InventoryTabState extends State<InventoryTab> {
                             final nombre = _controller.nombresCache[sku] ?? 'Producto en catálogo';
 
                             return Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: AppTheme.cardBg,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: AppTheme.borderColor),
                               ),
@@ -472,22 +520,32 @@ class _InventoryTabState extends State<InventoryTab> {
                                     ),
                                   ),
                                   Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        icon: const Icon(Icons.remove_circle_outline, size: 22, color: Colors.white60),
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        tooltip: 'Restar 1',
+                                        icon: const Icon(Icons.remove_circle_outline, size: 24, color: Colors.white70),
                                         onPressed: () => _controller.modificarCantidad(sku, -1),
                                       ),
-                                      Text(
-                                        '$cant',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                                        child: Text(
+                                          '$cant',
+                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.add_circle_outline, size: 22, color: Colors.white60),
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        tooltip: 'Sumar 1',
+                                        icon: const Icon(Icons.add_circle_outline, size: 24, color: Colors.white70),
                                         onPressed: () => _controller.modificarCantidad(sku, 1),
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.close, size: 18, color: Colors.redAccent),
-                                        onPressed: () => _controller.eliminarItem(sku),
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        tooltip: 'Eliminar ítem',
+                                        icon: const Icon(Icons.close, size: 20, color: Colors.redAccent),
+                                        onPressed: () => _eliminarConDeshacer(sku),
                                       ),
                                     ],
                                   ),
@@ -502,10 +560,10 @@ class _InventoryTabState extends State<InventoryTab> {
                 if (_controller.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.all(12),
-                    color: AppTheme.cardBg,
+                    color: Theme.of(context).colorScheme.surface,
                     child: SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: 50,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.cloud_upload_outlined),
                         label: const Text(

@@ -44,6 +44,37 @@ def _pedido_a_detalle(pedido: Pedido, order_store: OrderStore) -> PedidoDetalleR
     )
 
 
+def _procesar_escaneo_por_rol(
+    order_store: OrderStore,
+    codigo: str,
+    nuevo_estado: Optional[str],
+    user: Dict[str, Any],
+) -> tuple[bool, str, Optional[Pedido]]:
+    """Aplica la lógica de escaneo según el rol: `despachador` verifica bultos y solo pasa a `despachado`."""
+    rol = str(user.get("role", "")).strip().lower()
+    usuario_operario = user.get("nombre") or user.get("username") or (rol or "operador")
+    if rol == "despachador":
+        if nuevo_estado and nuevo_estado.strip().lower() != "despachado":
+            return (
+                False,
+                "El rol despachador solo tiene permiso para pasar pedidos al estado 'despachado'.",
+                None,
+            )
+        res = order_store.registrar_escaneo_bulto_despacho(
+            codigo_qr_o_remito=codigo,
+            usuario=usuario_operario,
+        )
+        return bool(res["ok"]), str(res["mensaje"]), res["pedido"]
+
+    puede_retroceder = rol in ("administrador", "master")
+    return order_store.avanzar_estado_por_codigo(
+        codigo_qr_o_remito=codigo,
+        usuario=usuario_operario,
+        nuevo_estado=nuevo_estado,
+        permitir_retroceso=puede_retroceder,
+    )
+
+
 @router.post(
     "/escanear",
     response_model=EscanearDespachoResponse,
@@ -52,18 +83,17 @@ def _pedido_a_detalle(pedido: Pedido, order_store: OrderStore) -> PedidoDetalleR
 async def escanear_despacho(
     req: EscanearDespachoRequest,
     order_store: OrderStore = Depends(get_order_store),
-    user: Dict[str, Any] = Depends(require_roles("operador", "administrador")),
+    user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "despachador")),
 ):
     """Procesa el escaneo de un código QR de bulto o número de remito.
 
-    Avanza el pedido al siguiente estado logístico (Armado → Despachado → Entregado)
-    o aplica el estado especificado, registrando el operario y la hora exacta.
+    Para el rol `despachador`, verifica bulto por bulto y únicamente cambia de `armado` → `despachado`.
     """
-    usuario_operario = user.get("nombre") or user.get("username") or "operador"
-    ok, mensaje, pedido = order_store.avanzar_estado_por_codigo(
-        codigo_qr_o_remito=req.codigo,
-        usuario=usuario_operario,
+    ok, mensaje, pedido = _procesar_escaneo_por_rol(
+        order_store=order_store,
+        codigo=req.codigo,
         nuevo_estado=req.nuevo_estado,
+        user=user,
     )
 
     pedido_detalle: Optional[PedidoDetalleResponse] = None
@@ -85,19 +115,19 @@ async def escanear_despacho(
 async def escanear_despacho_lote(
     req: EscanearLoteRequest,
     order_store: OrderStore = Depends(get_order_store),
-    user: Dict[str, Any] = Depends(require_roles("operador", "administrador")),
+    user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "despachador")),
 ):
     """Procesa un lote de escaneos acumulados en cola offline durante microcortes Wi-Fi."""
-    usuario_operario = user.get("nombre") or user.get("username") or "operador"
     resultados: List[EscanearDespachoResponse] = []
     exitosos = 0
     fallidos = 0
 
     for item in req.items:
-        ok, mensaje, pedido = order_store.avanzar_estado_por_codigo(
-            codigo_qr_o_remito=item.codigo,
-            usuario=usuario_operario,
+        ok, mensaje, pedido = _procesar_escaneo_por_rol(
+            order_store=order_store,
+            codigo=item.codigo,
             nuevo_estado=item.nuevo_estado,
+            user=user,
         )
         det: Optional[PedidoDetalleResponse] = None
         if pedido is not None:

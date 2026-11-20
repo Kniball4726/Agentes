@@ -1,6 +1,9 @@
 """Diálogo modal para la gestión y CRUD de clientes."""
+import sys
 from typing import Any
 import flet as ft
+from ..components.debounce import Debouncer
+from ..design import colores_de, marcar_error
 from ..theme import ROJO
 
 
@@ -9,6 +12,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
     if not interfaz.exigir_roles("operador", "administrador"):
         return
 
+    colores = colores_de(interfaz)
     usr_nom = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
 
     filtro_txt = ft.TextField(
@@ -111,7 +115,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                         val_nom = (campo_edit.value or "").strip()
                         val_cod = (campo_cod.value or "").strip()
                         val_dir = (campo_dir.value or "").strip()
-                        campo_edit.error_text = None
+                        marcar_error(campo_edit, None)
                         try:
                             interfaz.order_store.actualizar_cliente(
                                 cid,
@@ -126,7 +130,7 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                         except Exception as err:
                             err_msg = str(err)
                             if "ya existe" in err_msg.lower():
-                                campo_edit.error_text = "El cliente ya existe en el sistema"
+                                marcar_error(campo_edit, "El cliente ya existe en el sistema")
                             err_edit.value = err_msg
                             interfaz.page.update()
 
@@ -238,36 +242,40 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
         cod = (nuevo_codigo_txt.value or "").strip()
         dir_c = (nueva_direccion_txt.value or "").strip()
         if not nom:
-            nuevo_cliente_txt.error_text = "El nombre del cliente es obligatorio"
+            marcar_error(nuevo_cliente_txt, "El nombre del cliente es obligatorio")
             msg_feedback.value = "Por favor ingresa un nombre para el cliente."
-            msg_feedback.color = ft.Colors.RED_400
+            msg_feedback.color = colores.error
             interfaz.page.update()
             return
-        nuevo_cliente_txt.error_text = None
+        marcar_error(nuevo_cliente_txt, None)
         try:
             interfaz.order_store.crear_cliente(nom, usuario=usr_nom, codigo=cod, direccion=dir_c)
             nuevo_cliente_txt.value = ""
             nuevo_codigo_txt.value = ""
             nueva_direccion_txt.value = ""
             msg_feedback.value = f"✓ Cliente '{nom}' agregado correctamente."
-            msg_feedback.color = ft.Colors.GREEN_400
+            msg_feedback.color = colores.exito
             recargar_clientes()
         except Exception as err:
             err_msg = str(err)
             if "ya existe" in err_msg.lower():
-                nuevo_cliente_txt.error_text = "El cliente ya existe en el sistema"
+                marcar_error(nuevo_cliente_txt, "El cliente ya existe en el sistema")
             msg_feedback.value = err_msg
-            msg_feedback.color = ft.Colors.RED_400
+            msg_feedback.color = colores.error
             interfaz.page.update()
 
-    filtro_txt.on_change = lambda _e: recargar_clientes(recargar_db=False)
+    es_test = getattr(interfaz, "_is_mock", False) or "pytest" in sys.modules
+    debouncer_cli = Debouncer(0.0 if es_test else 0.25)
+    filtro_txt.on_change = lambda _e: debouncer_cli.debounce(lambda: recargar_clientes(recargar_db=False))
+    filtro_txt.on_submit = lambda _e: (debouncer_cli.cancel(), recargar_clientes(recargar_db=False))
     nuevo_cliente_txt.on_submit = agregar_cliente
 
+    ancho_dlg = interfaz.ancho_adaptable(560) if hasattr(interfaz, "ancho_adaptable") else 560
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row([ft.Icon(ft.Icons.PEOPLE_ALT, color=ROJO), ft.Text("Gestión de Clientes", weight=ft.FontWeight.BOLD)]),
         content=ft.Container(
-            width=560,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     ft.Text("Registrar nuevo cliente:", size=12, weight=ft.FontWeight.BOLD),

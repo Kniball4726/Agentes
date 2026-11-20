@@ -98,6 +98,24 @@ class _RegistroConexionesMiddleware:
                     pass
 
 
+_CORS_ORIGIN_REGEX_LAN_TAILSCALE = (
+    r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3})(:\d+)?$"
+)
+_CSP_API_ESTRICTA = "default-src 'self'; frame-ancestors 'self'; object-src 'self'; base-uri 'self'"
+_CSP_APP_WEB = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self' data:; "
+    "connect-src 'self' ws: wss:; "
+    "frame-ancestors 'self'; "
+    "base-uri 'self'"
+)
+
+
 def configurar_middlewares_http(app) -> None:
     """Registra trazabilidad de red, política CORS LAN/Tailscale y cabeceras HTTP seguras."""
     try:
@@ -110,14 +128,10 @@ def configurar_middlewares_http(app) -> None:
 
         app.add_middleware(
             CORSMiddleware,
-            allow_origin_regex=(
-                r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+"
-                r"|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+"
-                r"|100\.\d+\.\d+\.\d+)(:\d+)?$"
-            ),
+            allow_origin_regex=_CORS_ORIGIN_REGEX_LAN_TAILSCALE,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With", "Accept"],
         )
 
         @app.middleware("http")
@@ -125,6 +139,15 @@ def configurar_middlewares_http(app) -> None:
             response = await call_next(request)
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+            if request.url.scheme == "https":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            ruta = request.url.path or "/"
+            if ruta.startswith(("/api/", "/documentos/", "/documentacion/", "/descargas/")):
+                response.headers.setdefault("Content-Security-Policy", _CSP_API_ESTRICTA)
+            else:
+                response.headers.setdefault("Content-Security-Policy", _CSP_APP_WEB)
             return response
     except Exception as exc_cors:
         logger.warning("No se pudo activar CORS en la API: %s", exc_cors)

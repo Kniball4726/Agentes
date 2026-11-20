@@ -1,7 +1,11 @@
 .env
 .venv
 /data/
+/data_qa/
 Descuentos
+Descuentos_QA/
+MagicMock/
+scratch/
 ejecutar.bat
 ttech
 build/
@@ -9,7 +13,21 @@ dist/
 *.spec
 __pycache__/
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
 .gradle/
 *.lock
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.log
+*.apk
+*.aab
+*.key
+*.pem
+*.crt
+.clave_secretos
 .env_active
+
 

@@ -1,4 +1,4 @@
-"""Motor de persistencia SQLite y lógica de negocio para pedidos, clientes y cierres."""
+"""Motor de persistencia SQLite y fachada compuesta para pedidos, clientes y cierres."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
+from ..core.delegation import DelegadoAtributo
 from ..core.sqlite_utils import sqlite_connection
 from .audit_repo import AuditRepository
 from .channel_report_repo import ChannelReportRepository
@@ -17,21 +18,18 @@ from .concurrency_repo import ConcurrencyRepository
 from .dispatch_repo import DispatchRepository
 from .factory_plan_repo import FactoryPlanRepository
 from .full_plan_repo import FullPlanRepository
+from .models import Pedido
 from .order_core_repo import OrderCoreRepository
-from .stock_flow_repo import StockFlowRepository
-from .models import (
-    CierreJornada,
-    CierreMercado,
-    Cliente,
-    MensajeChat,
-    Pedido,
-    RegistroAuditoria,
-)
 from .schema import inicializar_esquema_pedidos
+from .stock_flow_repo import StockFlowRepository
 
 
 class OrderStore:
-    """Gestor unificado de almacenamiento y operaciones de pedidos, clientes y despachos."""
+    """Gestor unificado de almacenamiento y operaciones de pedidos, clientes y despachos.
+
+    Ensambla por composición los repositorios especializados de dominio y expone
+    una fachada cohesiva mediante descriptores ``DelegadoAtributo``.
+    """
 
     _initialized_dbs: set[tuple[str, int, int]] = set()
 
@@ -76,482 +74,7 @@ class OrderStore:
         )
         self._initialize()
 
-    # ------------------------------------------------------------------
-    # Delegadores de repositorios compuestos
-    # ------------------------------------------------------------------
-
-    def registrar_auditoria(self, usuario: str, accion: str, detalle: str) -> None:
-        self.audit_repo.registrar_auditoria(usuario, accion, detalle)
-
-    def listar_auditoria(
-        self,
-        limit: int = 150,
-        filtro_usuario: str = "",
-        filtro_accion: str = "",
-        filtro_texto: str = "",
-        filtro: str = "",
-    ) -> list[RegistroAuditoria]:
-        return self.audit_repo.listar_auditoria(
-            limit=limit,
-            filtro_usuario=filtro_usuario,
-            filtro_accion=filtro_accion,
-            filtro_texto=filtro_texto,
-            filtro=filtro,
-        )
-
-    @staticmethod
-    def _filtro_fechas(
-        columna: str,
-        fecha_desde: str | None,
-        fecha_hasta: str | None,
-    ) -> tuple[str, list[str]]:
-        return AuditRepository._filtro_fechas(columna, fecha_desde, fecha_hasta)
-
-    def obtener_metricas_dashboard(
-        self,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-    ) -> dict:
-        return self.audit_repo.obtener_metricas_dashboard(
-            fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta,
-        )
-
-    def obtener_descuentos_operario_por_canal(
-        self,
-        pedidos_ids: list[int] | None = None,
-        solo_pendientes: bool = True,
-        fecha_desde: str = "",
-        fecha_hasta: str = "",
-        cierre_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.channel_report_repo.obtener_descuentos_operario_por_canal(
-            pedidos_ids=pedidos_ids,
-            solo_pendientes=solo_pendientes,
-            fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta,
-            cierre_id=cierre_id,
-        )
-
-    def obtener_ventana_ultimo_cierre(
-        self,
-        cierre_id: int | None = None,
-    ) -> tuple[str, str, int | None]:
-        return self.channel_report_repo.obtener_ventana_ultimo_cierre(cierre_id=cierre_id)
-
-    def obtener_pedido_resumen_chat(self, nota_pedido: str) -> str:
-        return self.chat_repo.obtener_pedido_resumen_chat(nota_pedido)
-
-    def enviar_mensaje_chat(
-        self,
-        emisor: str,
-        mensaje: str,
-        destinatario: str = "Todos",
-    ) -> MensajeChat:
-        return self.chat_repo.enviar_mensaje_chat(
-            emisor,
-            mensaje,
-            destinatario=destinatario,
-        )
-
-    def listar_mensajes_chat(self, usuario: str, limite: int = 60) -> list[MensajeChat]:
-        return self.chat_repo.listar_mensajes_chat(usuario, limite=limite)
-
-    def contar_mensajes_no_leidos(self, usuario: str) -> int:
-        return self.chat_repo.contar_mensajes_no_leidos(usuario)
-
-    def marcar_mensajes_leidos(self, usuario: str) -> None:
-        self.chat_repo.marcar_mensajes_leidos(usuario)
-
-    def listar_clientes(self) -> list[Cliente]:
-        return self.client_repo.listar_clientes()
-
-    def listar_nombres_clientes(self) -> list[str]:
-        return self.client_repo.listar_nombres_clientes()
-
-    def buscar_clientes(self, query: str = "") -> list[Cliente]:
-        return self.client_repo.buscar_clientes(query=query)
-
-    def crear_cliente(
-        self,
-        nombre: str,
-        usuario: str = "Sistema",
-        codigo: str = "",
-        direccion: str = "",
-    ) -> Cliente:
-        return self.client_repo.crear_cliente(
-            nombre,
-            usuario=usuario,
-            codigo=codigo,
-            direccion=direccion,
-        )
-
-    def registrar_cliente(
-        self,
-        nombre: str,
-        usuario: str = "Sistema",
-        codigo: str = "",
-        direccion: str = "",
-    ) -> Cliente:
-        return self.client_repo.registrar_cliente(
-            nombre,
-            usuario=usuario,
-            codigo=codigo,
-            direccion=direccion,
-        )
-
-    def obtener_o_crear_cliente(
-        self,
-        nombre: str,
-        codigo: str = "",
-        direccion: str = "",
-        usuario: str = "Sistema",
-    ) -> Cliente:
-        return self.client_repo.obtener_o_crear_cliente(
-            nombre,
-            codigo=codigo,
-            direccion=direccion,
-            usuario=usuario,
-        )
-
-    def actualizar_cliente(
-        self,
-        cliente_id: int,
-        nuevo_nombre: str,
-        actualizar_pedidos: bool = True,
-        usuario: str = "Sistema",
-        codigo: str | None = None,
-        direccion: str | None = None,
-    ) -> Cliente:
-        return self.client_repo.actualizar_cliente(
-            cliente_id,
-            nuevo_nombre,
-            actualizar_pedidos=actualizar_pedidos,
-            usuario=usuario,
-            codigo=codigo,
-            direccion=direccion,
-        )
-
-    def eliminar_cliente(self, cliente_id: int, usuario: str = "Sistema") -> None:
-        self.client_repo.eliminar_cliente(cliente_id, usuario=usuario)
-
-    def listar_pedidos_pendientes_cierre(self) -> list[Pedido]:
-        return self.closure_repo.listar_pedidos_pendientes_cierre()
-
-    def contar_pedidos_pendientes_cierre_por_tipo(self) -> dict[str, int]:
-        return self.closure_repo.contar_pedidos_pendientes_cierre_por_tipo()
-
-    def obtener_items_pendientes_cierre(self) -> list[tuple[str, str, int, list[str]]]:
-        return self.closure_repo.obtener_items_pendientes_cierre()
-
-    def registrar_cierre(
-        self,
-        usuario: str,
-        pedidos_ids: list[int],
-        articulos_totales: int,
-        resumen_pedidos: str,
-        archivo_pdf: str = "",
-        archivo_excel: str = "",
-        archivo_hoja_ruta: str = "",
-    ) -> int:
-        return self.closure_repo.registrar_cierre(
-            usuario,
-            pedidos_ids,
-            articulos_totales,
-            resumen_pedidos,
-            archivo_pdf=archivo_pdf,
-            archivo_excel=archivo_excel,
-            archivo_hoja_ruta=archivo_hoja_ruta,
-        )
-
-    def listar_cierres(self, limit: int = 50) -> list[CierreJornada]:
-        return self.closure_repo.listar_cierres(limit=limit)
-
-    def obtener_pedidos_por_cierre(self, cierre_id: int) -> list[Pedido]:
-        return self.closure_repo.obtener_pedidos_por_cierre(cierre_id)
-
-    def actualizar_hoja_ruta_cierre(self, cierre_id: int, archivo_hoja_ruta: str) -> None:
-        self.closure_repo.actualizar_hoja_ruta_cierre(cierre_id, archivo_hoja_ruta)
-
-    def listar_pedidos_mercado_pendientes_cierre(
-        self,
-        tipo: str = "TODOS",
-        armador: str | None = None,
-    ) -> list[Pedido]:
-        return self.closure_repo.listar_pedidos_mercado_pendientes_cierre(
-            tipo=tipo,
-            armador=armador,
-        )
-
-    def obtener_items_mercado_pendientes(
-        self,
-        pedidos_ids: list[int],
-    ) -> list[tuple[str, str, int, list[str]]]:
-        return self.closure_repo.obtener_items_mercado_pendientes(pedidos_ids)
-
-    def registrar_cierre_mercado(
-        self,
-        usuario: str,
-        tipo_mercado: str,
-        pedidos_ids: list[int],
-        articulos_totales: int,
-        resumen_pedidos: str,
-        archivo_pdf: str = "",
-        archivo_excel: str = "",
-    ) -> int:
-        return self.closure_repo.registrar_cierre_mercado(
-            usuario,
-            tipo_mercado,
-            pedidos_ids,
-            articulos_totales,
-            resumen_pedidos,
-            archivo_pdf=archivo_pdf,
-            archivo_excel=archivo_excel,
-        )
-
-    def listar_cierres_mercado(self, limit: int = 50) -> list[CierreMercado]:
-        return self.closure_repo.listar_cierres_mercado(limit=limit)
-
-    def adquirir_bloqueo_pedido(
-        self,
-        pedido_id: int,
-        usuario: str,
-        expiracion_minutos: int = 5,
-    ) -> tuple[bool, str, str]:
-        return self.concurrency_repo.adquirir_bloqueo_pedido(
-            pedido_id,
-            usuario,
-            expiracion_minutos=expiracion_minutos,
-        )
-
-    def liberar_bloqueo_pedido(self, pedido_id: int, usuario: str | None = None) -> None:
-        self.concurrency_repo.liberar_bloqueo_pedido(pedido_id, usuario=usuario)
-
-    def consultar_bloqueo_pedido(
-        self,
-        pedido_id: int,
-        expiracion_minutos: int = 5,
-    ) -> tuple[str, str] | None:
-        return self.concurrency_repo.consultar_bloqueo_pedido(
-            pedido_id,
-            expiracion_minutos=expiracion_minutos,
-        )
-
-    def registrar_transaccion_idempotente(
-        self,
-        tx_id: str,
-        accion: str,
-        detalle: str = "",
-    ) -> bool:
-        return self.concurrency_repo.registrar_transaccion_idempotente(
-            tx_id,
-            accion,
-            detalle=detalle,
-        )
-
-    @staticmethod
-    def extraer_remito_de_codigo(texto: str) -> str:
-        return DispatchRepository.extraer_remito_de_codigo(texto)
-
-    def buscar_pedido_por_nota(self, nota_pedido: str) -> Pedido | None:
-        return self.dispatch_repo.buscar_pedido_por_nota(nota_pedido)
-
-    def actualizar_estado_despacho(
-        self,
-        pedido_id: int,
-        nuevo_estado: str,
-        usuario: str = "Sistema",
-        permitir_retroceso: bool = False,
-    ) -> Pedido:
-        return self.dispatch_repo.actualizar_estado_despacho(
-            pedido_id,
-            nuevo_estado,
-            usuario=usuario,
-            permitir_retroceso=permitir_retroceso,
-        )
-
-    def avanzar_estado_lote(
-        self,
-        pedido_ids: list[int],
-        nuevo_estado: str,
-        usuario: str = "Operador",
-    ) -> int:
-        return self.dispatch_repo.avanzar_estado_lote(
-            pedido_ids,
-            nuevo_estado,
-            usuario=usuario,
-        )
-
-    def avanzar_estado_por_codigo(
-        self,
-        codigo: str = "",
-        usuario: str = "Sistema",
-        *,
-        codigo_qr_o_remito: str = "",
-        nuevo_estado: str | None = None,
-    ) -> tuple[bool, str, Pedido | None]:
-        return self.dispatch_repo.avanzar_estado_por_codigo(
-            codigo=codigo,
-            usuario=usuario,
-            codigo_qr_o_remito=codigo_qr_o_remito,
-            nuevo_estado=nuevo_estado,
-        )
-
-    def crear_plan_ingreso_fabrica(
-        self,
-        nombre_remito: str,
-        archivo_remito: str,
-        creado_por: str,
-        items: list[tuple[str, str, int]],
-    ) -> int:
-        return self.factory_plan_repo.crear_plan_ingreso_fabrica(
-            nombre_remito,
-            archivo_remito,
-            creado_por,
-            items,
-        )
-
-    def obtener_plan_ingreso_fabrica(self, plan_id: int) -> dict[str, Any] | None:
-        return self.factory_plan_repo.obtener_plan_ingreso_fabrica(plan_id)
-
-    def obtener_plan_activo_ingreso_fabrica(self) -> dict[str, Any] | None:
-        return self.factory_plan_repo.obtener_plan_activo_ingreso_fabrica()
-
-    def listar_planes_ingreso_fabrica(
-        self,
-        estado: str | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.factory_plan_repo.listar_planes_ingreso_fabrica(estado=estado)
-
-    def obtener_items_plan_ingreso_fabrica(self, plan_id: int) -> list[dict[str, Any]]:
-        return self.factory_plan_repo.obtener_items_plan_ingreso_fabrica(plan_id)
-
-    def registrar_escaneo_item_ingreso_fabrica(
-        self,
-        plan_id: int,
-        codigo_escaneado: str,
-        cantidad: int = 1,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.factory_plan_repo.registrar_escaneo_item_ingreso_fabrica(
-            plan_id,
-            codigo_escaneado,
-            cantidad=cantidad,
-            picker=picker,
-        )
-
-    def ajustar_cantidad_item_ingreso_fabrica(
-        self,
-        plan_id: int,
-        codigo: str,
-        nueva_cantidad: int,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.factory_plan_repo.ajustar_cantidad_item_ingreso_fabrica(
-            plan_id,
-            codigo,
-            nueva_cantidad,
-            picker=picker,
-        )
-
-    def registrar_cierre_parcial_ingreso_fabrica(
-        self,
-        plan_id: int,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.factory_plan_repo.registrar_cierre_parcial_ingreso_fabrica(
-            plan_id,
-            picker=picker,
-        )
-
-    def finalizar_plan_ingreso_fabrica(
-        self,
-        plan_id: int,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.factory_plan_repo.finalizar_plan_ingreso_fabrica(
-            plan_id,
-            picker=picker,
-        )
-
-    def listar_cierres_parciales_fabrica(self, plan_id: int) -> list[dict[str, Any]]:
-        return self.factory_plan_repo.listar_cierres_parciales_fabrica(plan_id)
-
-    def cancelar_plan_ingreso_fabrica(self, plan_id: int) -> bool:
-        return self.factory_plan_repo.cancelar_plan_ingreso_fabrica(plan_id)
-
-    def crear_plan_mercado_full(
-        self,
-        nombre_envio: str,
-        archivo_excel: str,
-        creado_por: str,
-        items: list[tuple[str, str, int]],
-    ) -> int:
-        return self.full_plan_repo.crear_plan_mercado_full(
-            nombre_envio,
-            archivo_excel,
-            creado_por,
-            items,
-        )
-
-    def obtener_plan_mercado_full(self, plan_id: int) -> dict[str, Any] | None:
-        return self.full_plan_repo.obtener_plan_mercado_full(plan_id)
-
-    def obtener_plan_activo_mercado_full(self) -> dict[str, Any] | None:
-        return self.full_plan_repo.obtener_plan_activo_mercado_full()
-
-    def listar_planes_mercado_full(
-        self,
-        estado: str | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.full_plan_repo.listar_planes_mercado_full(estado=estado)
-
-    def obtener_items_plan_full(self, plan_id: int) -> list[dict[str, Any]]:
-        return self.full_plan_repo.obtener_items_plan_full(plan_id)
-
-    def registrar_escaneo_item_plan(
-        self,
-        plan_id: int,
-        codigo_escaneado: str,
-        cantidad: int = 1,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.full_plan_repo.registrar_escaneo_item_plan(
-            plan_id,
-            codigo_escaneado,
-            cantidad=cantidad,
-            picker=picker,
-        )
-
-    def ajustar_cantidad_item_plan(
-        self,
-        plan_id: int,
-        codigo: str,
-        nueva_cantidad: int,
-        picker: str = "",
-    ) -> dict[str, Any]:
-        return self.full_plan_repo.ajustar_cantidad_item_plan(
-            plan_id,
-            codigo,
-            nueva_cantidad,
-            picker=picker,
-        )
-
-    def finalizar_plan_mercado_full(
-        self,
-        plan_id: int,
-        picker: str = "",
-    ) -> bool:
-        return self.full_plan_repo.finalizar_plan_mercado_full(
-            plan_id,
-            picker=picker,
-        )
-
-    def cancelar_plan_mercado_full(self, plan_id: int) -> bool:
-        return self.full_plan_repo.cancelar_plan_mercado_full(plan_id)
-
-    def obtener_flujo_stock_diario(self, fecha: str = "") -> dict[str, Any]:
-        return self.stock_flow_repo.obtener_flujo_stock_diario(fecha=fecha)
+    # --- Conexión e Inicialización de Esquema ---
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
@@ -583,107 +106,145 @@ class OrderStore:
         if sig_after is not None:
             self._initialized_dbs.add(sig_after)
 
-    @staticmethod
-    def _map_pedido(row: sqlite3.Row) -> Pedido:
-        return OrderCoreRepository.map_pedido(row)
+    # --- Auditoría y Métricas (AuditRepository) ---
+    registrar_auditoria = DelegadoAtributo("audit_repo", AuditRepository)
+    listar_auditoria = DelegadoAtributo("audit_repo", AuditRepository)
+    obtener_metricas_dashboard = DelegadoAtributo("audit_repo", AuditRepository)
+    _filtro_fechas = staticmethod(AuditRepository._filtro_fechas)
 
-    def _obtener_fila_pedido(self, connection: sqlite3.Connection, pedido_id: int) -> sqlite3.Row | None:
-        return self.order_core_repo.obtener_fila_pedido(connection, pedido_id)
+    # --- Reportes por Canal (ChannelReportRepository) ---
+    obtener_descuentos_operario_por_canal = DelegadoAtributo(
+        "channel_report_repo", ChannelReportRepository
+    )
+    obtener_ventana_ultimo_cierre = DelegadoAtributo(
+        "channel_report_repo", ChannelReportRepository
+    )
 
-    def existe_nota_pedido(self, nota_pedido: str) -> bool:
-        """Indica si ya existe un pedido registrado con la nota especificada."""
-        return self.order_core_repo.existe_nota_pedido(nota_pedido)
+    # --- Chat Colaborativo (ChatRepository) ---
+    obtener_pedido_resumen_chat = DelegadoAtributo("chat_repo", ChatRepository)
+    enviar_mensaje_chat = DelegadoAtributo("chat_repo", ChatRepository)
+    listar_mensajes_chat = DelegadoAtributo("chat_repo", ChatRepository)
+    contar_mensajes_no_leidos = DelegadoAtributo("chat_repo", ChatRepository)
+    marcar_mensajes_leidos = DelegadoAtributo("chat_repo", ChatRepository)
 
-    def registrar_pedido(
-        self,
-        nota_pedido: str,
-        numero_pedido: str,
-        cliente: str,
-        bultos: int,
-        logistica: str,
-        armador: str,
-        tipo_archivo: str,
-        nombre_archivo: str,
-        agregado: bool = False,
-        articulos_descontados: int = 0,
-        resumen_items: str = "",
-        fecha_retiro: str = "",
-        archivo_descuento: str = "",
-        items: list[tuple[str, str, int]] | None = None,
-        archivo_hash: str = "",
-        numero_guia: str = "",
-        items_sin_coincidencia: list[tuple[str, str]] | None = None,
-        canal: str = "",
-    ) -> Pedido:
-        """Valida e inserta un nuevo pedido junto a sus ítems y registro de auditoría."""
-        return self.order_core_repo.registrar_pedido(
-            nota_pedido=nota_pedido,
-            numero_pedido=numero_pedido,
-            cliente=cliente,
-            bultos=bultos,
-            logistica=logistica,
-            armador=armador,
-            tipo_archivo=tipo_archivo,
-            nombre_archivo=nombre_archivo,
-            agregado=agregado,
-            articulos_descontados=articulos_descontados,
-            resumen_items=resumen_items,
-            fecha_retiro=fecha_retiro,
-            archivo_descuento=archivo_descuento,
-            items=items,
-            archivo_hash=archivo_hash,
-            numero_guia=numero_guia,
-            items_sin_coincidencia=items_sin_coincidencia,
-            canal=canal,
-        )
+    # --- Gestión de Clientes (ClientRepository) ---
+    listar_clientes = DelegadoAtributo("client_repo", ClientRepository)
+    listar_nombres_clientes = DelegadoAtributo("client_repo", ClientRepository)
+    buscar_clientes = DelegadoAtributo("client_repo", ClientRepository)
+    crear_cliente = DelegadoAtributo("client_repo", ClientRepository)
+    registrar_cliente = DelegadoAtributo("client_repo", ClientRepository)
+    obtener_o_crear_cliente = DelegadoAtributo("client_repo", ClientRepository)
+    actualizar_cliente = DelegadoAtributo("client_repo", ClientRepository)
+    eliminar_cliente = DelegadoAtributo("client_repo", ClientRepository)
 
-    def buscar_pedido_por_hash(self, archivo_hash: str) -> Pedido | None:
-        """Busca un pedido activo por el hash SHA-256 del archivo origen."""
-        return self.order_core_repo.buscar_pedido_por_hash(archivo_hash)
+    # --- Cierres de Jornada y Mercado (ClosureRepository) ---
+    listar_pedidos_pendientes_cierre = DelegadoAtributo("closure_repo", ClosureRepository)
+    contar_pedidos_pendientes_cierre_por_tipo = DelegadoAtributo(
+        "closure_repo", ClosureRepository
+    )
+    obtener_items_pendientes_cierre = DelegadoAtributo("closure_repo", ClosureRepository)
+    registrar_cierre = DelegadoAtributo("closure_repo", ClosureRepository)
+    listar_cierres = DelegadoAtributo("closure_repo", ClosureRepository)
+    obtener_pedidos_por_cierre = DelegadoAtributo("closure_repo", ClosureRepository)
+    actualizar_hoja_ruta_cierre = DelegadoAtributo("closure_repo", ClosureRepository)
+    listar_pedidos_mercado_pendientes_cierre = DelegadoAtributo(
+        "closure_repo", ClosureRepository
+    )
+    obtener_items_mercado_pendientes = DelegadoAtributo("closure_repo", ClosureRepository)
+    registrar_cierre_mercado = DelegadoAtributo("closure_repo", ClosureRepository)
+    listar_cierres_mercado = DelegadoAtributo("closure_repo", ClosureRepository)
 
-    def listar_pedidos(self, limit: int = 50) -> list[Pedido]:
-        """Lista los pedidos más recientes en orden descendente por ID."""
-        return self.order_core_repo.listar_pedidos(limit=limit)
+    # --- Concurrencia e Idempotencia (ConcurrencyRepository) ---
+    adquirir_bloqueo_pedido = DelegadoAtributo("concurrency_repo", ConcurrencyRepository)
+    liberar_bloqueo_pedido = DelegadoAtributo("concurrency_repo", ConcurrencyRepository)
+    consultar_bloqueo_pedido = DelegadoAtributo("concurrency_repo", ConcurrencyRepository)
+    registrar_transaccion_idempotente = DelegadoAtributo(
+        "concurrency_repo", ConcurrencyRepository
+    )
 
-    def obtener_resumen_pedidos_por_fecha(self, limit: int = 30) -> list[dict[str, int | str]]:
-        """Agrupa los pedidos armados (no anulados) por fecha en orden descendente."""
-        return self.order_core_repo.obtener_resumen_pedidos_por_fecha(limit=limit)
+    # --- Despacho y Escaneo QR (DispatchRepository) ---
+    extraer_remito_de_codigo = staticmethod(DispatchRepository.extraer_remito_de_codigo)
+    extraer_datos_qr_despacho = staticmethod(DispatchRepository.extraer_datos_qr_despacho)
+    listar_pedidos_por_estado_despacho = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    obtener_bultos_escaneados = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    obtener_mapa_bultos_escaneados = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    registrar_escaneo_bulto_despacho = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    despachar_pedido_manual = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    buscar_pedido_por_nota = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    actualizar_estado_despacho = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    avanzar_estado_lote = DelegadoAtributo("dispatch_repo", DispatchRepository)
+    avanzar_estado_por_codigo = DelegadoAtributo("dispatch_repo", DispatchRepository)
 
-    def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
-        """Marca un pedido como anulado y registra el motivo en auditoría."""
-        self.order_core_repo.anular_pedido(pedido_id, motivo=motivo, usuario=usuario)
+    # --- Planes de Ingreso de Fábrica (FactoryPlanRepository) ---
+    crear_plan_ingreso_fabrica = DelegadoAtributo("factory_plan_repo", FactoryPlanRepository)
+    obtener_plan_ingreso_fabrica = DelegadoAtributo("factory_plan_repo", FactoryPlanRepository)
+    obtener_plan_activo_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    listar_planes_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    obtener_items_plan_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    registrar_escaneo_item_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    ajustar_cantidad_item_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    registrar_cierre_parcial_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    finalizar_plan_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    listar_cierres_parciales_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
+    cancelar_plan_ingreso_fabrica = DelegadoAtributo(
+        "factory_plan_repo", FactoryPlanRepository
+    )
 
-    def obtener_items_sin_coincidencia(self, pedido_id: int) -> list[tuple[str, str]]:
-        """Devuelve la lista JSON de ítems sin coincidencia guardada para un pedido."""
-        return self.order_core_repo.obtener_items_sin_coincidencia(pedido_id)
+    # --- Planes de Mercado Envíos Full (FullPlanRepository) ---
+    crear_plan_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    obtener_plan_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    obtener_plan_activo_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    listar_planes_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    obtener_items_plan_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    registrar_escaneo_item_plan = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    ajustar_cantidad_item_plan = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    finalizar_plan_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    cancelar_plan_mercado_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
+    registrar_cierre_parcial_mercado_full = DelegadoAtributo(
+        "full_plan_repo", FullPlanRepository
+    )
+    registrar_cierre_final_mercado_full = DelegadoAtributo(
+        "full_plan_repo", FullPlanRepository
+    )
+    listar_cierres_parciales_full = DelegadoAtributo("full_plan_repo", FullPlanRepository)
 
-    def guardar_items_sin_coincidencia(self, pedido_id: int, items: list[tuple[str, str]]) -> None:
-        """Guarda el detalle JSON de ítems sin coincidencia para un pedido."""
-        self.order_core_repo.guardar_items_sin_coincidencia(pedido_id, items)
+    # --- Flujo Diario de Stock (StockFlowRepository) ---
+    obtener_flujo_stock_diario = DelegadoAtributo("stock_flow_repo", StockFlowRepository)
 
-    def obtener_items_pedido(self, pedido_id: int) -> list[tuple[str, str, int]]:
-        """Retorna los ítems descontados asociados a un pedido."""
-        return self.order_core_repo.obtener_items_pedido(pedido_id)
-
-    def actualizar_datos_pedido(
-        self,
-        pedido_id: int,
-        cliente: str | None = None,
-        numero_pedido: str | None = None,
-        bultos: int | None = None,
-        logistica: str | None = None,
-        fecha_retiro: str | None = None,
-        usuario: str = "Sistema",
-        numero_guia: str | None = None,
-    ) -> Pedido:
-        """Actualiza metadatos editables de un pedido con validación y trazabilidad."""
-        return self.order_core_repo.actualizar_datos_pedido(
-            pedido_id=pedido_id,
-            cliente=cliente,
-            numero_pedido=numero_pedido,
-            bultos=bultos,
-            logistica=logistica,
-            fecha_retiro=fecha_retiro,
-            usuario=usuario,
-            numero_guia=numero_guia,
-        )
+    # --- Operaciones Core de Pedidos (OrderCoreRepository) ---
+    _map_pedido = staticmethod(OrderCoreRepository.map_pedido)
+    _obtener_fila_pedido = DelegadoAtributo(
+        "order_core_repo", OrderCoreRepository, "obtener_fila_pedido"
+    )
+    existe_nota_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    registrar_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    buscar_pedido_por_hash = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    listar_pedidos = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    obtener_resumen_pedidos_por_fecha = DelegadoAtributo(
+        "order_core_repo", OrderCoreRepository
+    )
+    anular_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    obtener_items_sin_coincidencia = DelegadoAtributo(
+        "order_core_repo", OrderCoreRepository
+    )
+    guardar_items_sin_coincidencia = DelegadoAtributo(
+        "order_core_repo", OrderCoreRepository
+    )
+    obtener_items_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    actualizar_datos_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)

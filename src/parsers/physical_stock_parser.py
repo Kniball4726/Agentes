@@ -5,9 +5,9 @@ Extrae los códigos de los productos y las cantidades físicas contadas por el o
 
 from pathlib import Path
 from typing import Dict, List, Tuple
-import openpyxl
 import xlrd
 from .remito_parser import normalizar_codigo
+from .safe_loader import MAX_EXCEL_COLS, MAX_EXCEL_ROWS, cargar_workbook_seguro, validar_xls_seguro
 
 
 HEADERS_CODIGO = ["CODIGO", "CÓDIGO", "COD", "SKU", "ARTICULO", "ARTÍCULO", "ID"]
@@ -69,23 +69,24 @@ def parsear_excel_stock_fisico(
     items_crudos: List[Tuple[str, str, int]] = []
 
     if ext == ".xls":
-        with open(path, "rb") as _f_xls:
-            libro = xlrd.open_workbook(file_contents=_f_xls.read())
+        libro = xlrd.open_workbook(file_contents=validar_xls_seguro(path))
         hoja = libro.sheet_by_index(0)
+        max_cols_xls = min(hoja.ncols, MAX_EXCEL_COLS)
+        max_rows_xls = min(hoja.nrows, MAX_EXCEL_ROWS)
 
         primeras_filas = [
-            [str(hoja.cell_value(r, c)).strip().upper() for c in range(hoja.ncols)]
-            for r in range(min(20, hoja.nrows))
+            [str(hoja.cell_value(r, c)).strip().upper() for c in range(max_cols_xls)]
+            for r in range(min(20, max_rows_xls))
         ]
         col_cod, col_desc, col_cant, fila_inicio = _detectar_columnas(primeras_filas)
 
         if col_cod == -1 or col_cant == -1:
             col_cod = 0
-            col_desc = 1 if hoja.ncols > 2 else -1
-            col_cant = 2 if hoja.ncols > 2 else (1 if hoja.ncols > 1 else 0)
+            col_desc = 1 if max_cols_xls > 2 else -1
+            col_cant = 2 if max_cols_xls > 2 else (1 if max_cols_xls > 1 else 0)
             fila_inicio = 0
 
-        for r in range(fila_inicio, hoja.nrows):
+        for r in range(fila_inicio, max_rows_xls):
             val_cod = hoja.cell_value(r, col_cod)
             val_cant = hoja.cell_value(r, col_cant)
             val_desc = hoja.cell_value(r, col_desc) if col_desc != -1 else ""
@@ -110,18 +111,21 @@ def parsear_excel_stock_fisico(
                 items_crudos.append((cod, str(val_desc).strip(), cant))
 
     else:
-        wb = openpyxl.load_workbook(str(path), data_only=True)
+        wb = cargar_workbook_seguro(path, data_only=True)
         try:
             hoja = wb.active
             if hoja is None:
                 return {}, []
 
+            max_cols_xlsx = min(hoja.max_column or 0, MAX_EXCEL_COLS)
+            max_rows_xlsx = min(hoja.max_row or 0, MAX_EXCEL_ROWS)
+
             primeras_filas = [
                 [
                     str(hoja.cell(r, c).value or "").strip().upper()
-                    for c in range(1, hoja.max_column + 1)
+                    for c in range(1, max_cols_xlsx + 1)
                 ]
-                for r in range(1, min(20, hoja.max_row + 1))
+                for r in range(1, min(20, max_rows_xlsx + 1))
             ]
             col_cod_0, col_desc_0, col_cant_0, fila_inicio_0 = _detectar_columnas(
                 primeras_filas
@@ -129,8 +133,8 @@ def parsear_excel_stock_fisico(
 
             if col_cod_0 == -1 or col_cant_0 == -1:
                 col_cod = 1
-                col_desc = 2 if hoja.max_column > 2 else -1
-                col_cant = 3 if hoja.max_column > 2 else (2 if hoja.max_column > 1 else 1)
+                col_desc = 2 if max_cols_xlsx > 2 else -1
+                col_cant = 3 if max_cols_xlsx > 2 else (2 if max_cols_xlsx > 1 else 1)
                 fila_inicio = 1
             else:
                 col_cod = col_cod_0 + 1
@@ -138,7 +142,7 @@ def parsear_excel_stock_fisico(
                 col_cant = col_cant_0 + 1
                 fila_inicio = fila_inicio_0 + 1
 
-            for r in range(fila_inicio, hoja.max_row + 1):
+            for r in range(fila_inicio, max_rows_xlsx + 1):
                 val_cod = hoja.cell(r, col_cod).value
                 val_cant = hoja.cell(r, col_cant).value
                 val_desc = hoja.cell(r, col_desc).value if col_desc != -1 else ""

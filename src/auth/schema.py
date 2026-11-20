@@ -9,11 +9,15 @@ from .password import hash_clave, verificar_clave
 
 
 def migrar_esquema(connection: sqlite3.Connection) -> None:
-    """Migra la restricción CHECK histórica de roles si faltan 'master' o 'picker'."""
+    """Migra la restricción CHECK histórica de roles si faltan 'master', 'picker' o 'despachador'."""
     row = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
     ).fetchone()
-    if row and row[0] and ("'master'" not in row[0] or "'picker'" not in row[0]):
+    if row and row[0] and (
+        "'master'" not in row[0]
+        or "'picker'" not in row[0]
+        or "'despachador'" not in row[0]
+    ):
         connection.execute("PRAGMA foreign_keys = OFF")
         connection.execute(
             """
@@ -22,7 +26,7 @@ def migrar_esquema(connection: sqlite3.Connection) -> None:
                 username TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL CHECK (
-                    role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
+                    role IN ('master', 'administrador', 'operador', 'consulta', 'picker', 'despachador')
                 ),
                 active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
                 must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
@@ -46,6 +50,7 @@ def migrar_esquema(connection: sqlite3.Connection) -> None:
                 "nombre",
                 "email",
                 "created_at",
+                "updated_at",
             ]
             if c in old_cols
         ]
@@ -176,7 +181,7 @@ def inicializar_esquema(connection: sqlite3.Connection) -> None:
             username TEXT NOT NULL COLLATE NOCASE UNIQUE,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL CHECK (
-                role IN ('master', 'administrador', 'operador', 'consulta', 'picker')
+                role IN ('master', 'administrador', 'operador', 'consulta', 'picker', 'despachador')
             ),
             active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
             must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),

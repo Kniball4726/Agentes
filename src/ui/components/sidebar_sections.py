@@ -25,7 +25,7 @@ def _crear_boton_cierre_jornada(interfaz: Any, ancho: int | None = 218) -> ft.Bu
     btn.bgcolor = ft.Colors.TRANSPARENT
     btn.color = interfaz.texto
     btn.elevation = 0
-    btn.height = 36
+    btn.height = 44 if getattr(interfaz, "es_pantalla_movil", False) else 36
     btn.style = ft.ButtonStyle(
         shape=ft.RoundedRectangleBorder(radius=6),
         overlay_color=ft.Colors.with_opacity(0.08, interfaz.texto),
@@ -81,6 +81,27 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
         ("Manual de Uso", ft.Icons.MENU_BOOK, interfaz.mostrar_manual_usuario),
         ("Búsqueda Rápida (F2)", ft.Icons.SEARCH, interfaz.mostrar_command_palette),
     ]
+
+    if rol == "despachador":
+        herramientas_despachador = [
+            ("Preferencias de Interfaz", ft.Icons.TUNE, lambda _: mostrar_dialogo_preferencias(interfaz)),
+            ("Chat Interno", ft.Icons.CHAT_BUBBLE, interfaz.alternar_chat_flotante),
+            ("Búsqueda Rápida (F2)", ft.Icons.SEARCH, interfaz.mostrar_command_palette),
+        ]
+        return [
+            SeccionMenu(
+                titulo="DESPACHO",
+                icono=ft.Icons.LOCAL_SHIPPING,
+                items=[
+                    ("Despacho", ft.Icons.QR_CODE_SCANNER, interfaz.mostrar_modulo_despacho),
+                ],
+            ),
+            SeccionMenu(
+                titulo="HERRAMIENTAS",
+                icono=ft.Icons.BUILD,
+                items=herramientas_despachador,
+            ),
+        ]
 
     if rol == "picker":
         return [
@@ -171,6 +192,7 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
                 titulo="SUPERVISIÓN",
                 icono=ft.Icons.FACT_CHECK,
                 items=[
+                    ("Despacho (Pedidos Despachados)", ft.Icons.LOCAL_SHIPPING, interfaz.mostrar_modulo_despacho),
                     ("Cierres de Operarios", ft.Icons.FACT_CHECK, interfaz.mostrar_historial_cierres_admin),
                     ("Historial de Pedidos", ft.Icons.RECEIPT_LONG, interfaz.mostrar_historial_pedidos),
                     ("Radar de anomalías", ft.Icons.AUTO_GRAPH, interfaz.mostrar_dialogo_anomalias),
@@ -284,6 +306,8 @@ def obtener_secciones_rol(interfaz: Any) -> list[SeccionMenu]:
 def _obtener_seccion_predeterminada(rol: str) -> str:
     """Devuelve la sección que debe abrirse por defecto según el rol del usuario."""
     mapa = {
+        "despachador": "DESPACHO",
+        "picker": "DESPACHO",
         "operador": "PREPARACIÓN Y DESPACHO",
         "administrador": "SUPERVISIÓN",
         "master": "SEGURIDAD Y ACCESOS",
@@ -302,20 +326,20 @@ def verificar_pendientes_categoria(interfaz: Any, titulo_categoria: str) -> tupl
                 if total > 0:
                     return (True, f"{total} pedido(s) pendiente(s) de cierre")
 
-        if titulo_categoria == "ENTRADA DE MERCADERÍA":
+        if titulo_categoria in ("ENTRADA DE MERCADERÍA", "MOVIMIENTOS DE STOCK"):
             if hasattr(interfaz, "menu") and interfaz.menu and hasattr(interfaz.menu, "_obtener_pendientes_fabrica"):
                 fab = interfaz.menu._obtener_pendientes_fabrica()
                 if len(fab) > 0:
                     return (True, f"{len(fab)} remito(s) de fábrica pendiente(s)")
 
-        if titulo_categoria in ("PREPARACIÓN Y DESPACHO", "CANALES DE VENTA"):
+        if titulo_categoria in ("PREPARACIÓN Y DESPACHO", "CANALES DE VENTA", "DESPACHO"):
             if hasattr(interfaz, "menu") and interfaz.menu:
                 pendientes = interfaz.menu._obtener_pendientes()
                 total_archivos = sum(len(p) for p in pendientes if isinstance(p, list))
                 if total_archivos > 0:
                     return (True, f"{total_archivos} archivo(s) de pedidos pendiente(s)")
 
-        if titulo_categoria == "INVENTARIO Y REPOSICIÓN":
+        if titulo_categoria in ("INVENTARIO Y REPOSICIÓN", "SUPERVISIÓN", "ANALÍTICA"):
             if getattr(interfaz, "alerta_quiebre_activa", False):
                 return (True, "Productos en quiebre de stock o bajo el mínimo")
     except Exception:

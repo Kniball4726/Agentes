@@ -13,6 +13,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 import openpyxl
 
+from ..core.sanitize_utils import sanitizar_celda_excel
 from ..parsers.remito_parser import normalizar_codigo
 from .protocols import InventoryHostProtocol
 
@@ -138,10 +139,10 @@ class TemplateSyncService:
                             f"Las filas de '{codigo_actual}' en Productos.xlsx no coinciden con el catálogo."
                         )
 
-                    codigo_excel = int(codigo_nuevo) if codigo_nuevo.isdigit() else codigo_nuevo
+                    codigo_excel = int(codigo_nuevo) if codigo_nuevo.isdigit() else sanitizar_celda_excel(codigo_nuevo)
                     for fila in filas_producto:
                         hoja.cell(fila, self._host._col_codigo, codigo_excel)
-                        hoja.cell(fila, self._host._col_nombre, nombre)
+                        hoja.cell(fila, self._host._col_nombre, sanitizar_celda_excel(nombre))
                         self._escribir_stock_en_celdas(hoja, fila, stock)
 
                     _reemplazar_atomicamente(ruta_excel, lambda p: libro.save(p))
@@ -233,9 +234,9 @@ class TemplateSyncService:
                             destino.number_format = origen.number_format
                     hoja.row_dimensions[fila_nueva].height = hoja.row_dimensions[fila_referencia].height
 
-                    codigo_excel = int(cod_nuevo_norm) if cod_nuevo_norm.isdigit() else cod_nuevo_norm
+                    codigo_excel = int(cod_nuevo_norm) if cod_nuevo_norm.isdigit() else sanitizar_celda_excel(cod_nuevo_norm)
                     hoja.cell(fila_nueva, self._host._col_codigo, codigo_excel)
-                    hoja.cell(fila_nueva, self._host._col_nombre, str(nombre_nuevo).strip())
+                    hoja.cell(fila_nueva, self._host._col_nombre, sanitizar_celda_excel(str(nombre_nuevo).strip()))
                     self._escribir_stock_en_celdas(hoja, fila_nueva, stock_inicial or 0)
 
                     _reemplazar_atomicamente(ruta_excel, lambda p: libro.save(p))

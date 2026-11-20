@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import hmac
 import os
 import shutil
 from typing import Callable
@@ -51,7 +52,9 @@ def autenticar_admin_cli() -> bool:
                 print("\n  [CANCELADO] Autenticacion cancelada por el usuario.")
                 return False
 
-        if usuario == admin_usuario and clave == admin_clave:
+        usuario_ok = hmac.compare_digest(usuario.encode("utf-8"), str(admin_usuario).encode("utf-8"))
+        clave_ok = hmac.compare_digest(clave.encode("utf-8"), str(admin_clave).encode("utf-8"))
+        if usuario_ok and clave_ok:
             print("  [OK] Acceso autorizado.\n")
             return True
 

@@ -15,6 +15,8 @@ from typing import Any
 
 from docx import Document
 
+from ..core.environment import get_data_dir
+from ..core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
 from ..parsers.mercado_libre_parser import _buscar_codigo
 from ..parsers.remito_parser import normalizar_codigo
 from ..paths import application_root
@@ -197,11 +199,11 @@ def descontar_orden_ml_api(
     if not items:
         return False, f"La orden {ref_pedido} no tiene ítems válidos para descontar."
 
-    # Generar el archivo .docx de respaldo en data/pedidos_archivos/
-    root = root_path or application_root()
-    carpeta_pedidos = root / "data" / "pedidos_archivos"
-    nombre_doc = f"ML_API_{orden_id}.docx"
-    ruta_doc = carpeta_pedidos / nombre_doc
+    # Generar el archivo .docx de respaldo en el directorio de datos activo
+    carpeta_pedidos = (Path(root_path) / "data" / "pedidos_archivos") if root_path is not None else (get_data_dir() / "pedidos_archivos")
+    orden_id_seguro = sanitizar_componente_archivo(str(orden_id), fallback="orden")
+    nombre_doc = f"ML_API_{orden_id_seguro}.docx"
+    ruta_doc = resolver_ruta_confinada(carpeta_pedidos, nombre_doc)
     generar_documento_orden_ml_docx(orden_procesada, ruta_doc)
 
     # Preparar descuentos para StockManager

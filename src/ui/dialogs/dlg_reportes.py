@@ -205,8 +205,8 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
         ventana_rotacion.visible = sel == "rotacion_consumo"
         _actualizar_visibilidad_fechas()
 
-    tipo_reporte.on_change = al_cambiar_tipo
-    preset_periodo.on_change = _actualizar_visibilidad_fechas
+    tipo_reporte.on_select = al_cambiar_tipo
+    preset_periodo.on_select = _actualizar_visibilidad_fechas
 
     estado_indicador = ft.Text("", size=12, color=ft.Colors.GREEN_400, visible=False)
     progreso = ft.ProgressBar(visible=False, height=4)

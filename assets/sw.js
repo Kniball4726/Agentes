@@ -9,7 +9,7 @@
 
 const sw = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 
-const CACHE_NAME = 'stockagent-pwa-v3';
+const CACHE_NAME = 'stockagent-pwa-v4';
 
 const STATIC_ASSETS = [
   '/manifest.json',
@@ -24,6 +24,75 @@ const STATIC_ASSETS = [
   '/icons/icon-maskable-192.png',
   '/icons/icon-maskable-512.png',
 ];
+
+const STATIC_PREFIXES = ['/css/', '/js/', '/icons/'];
+const SENSITIVE_PREFIXES = [
+  '/api/',
+  '/documentos/',
+  '/documentacion/',
+  '/docs/',
+  '/descargas/',
+  '/actualizaciones/',
+];
+
+/**
+ * Determina si una ruta corresponde exclusivamente a un activo estático público cacheable.
+ * @param {string} pathname
+ * @returns {boolean}
+ */
+function esRecursoEstaticoPermitido(pathname) {
+  if (STATIC_ASSETS.includes(pathname)) {
+    return true;
+  }
+  return STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/**
+ * Determina si una solicitud debe omitir completamente el caché del Service Worker.
+ * @param {Request} req
+ * @param {URL} url
+ * @returns {boolean}
+ */
+function debeOmitirCache(req, url) {
+  if (
+    req.method !== 'GET' ||
+    url.origin !== sw.location.origin ||
+    url.protocol.startsWith('ws') ||
+    url.pathname.startsWith('/ws') ||
+    url.pathname.endsWith('.wasm') ||
+    url.pathname.endsWith('.mjs') ||
+    url.pathname.includes('canvaskit') ||
+    url.pathname.includes('main.dart') ||
+    url.pathname.includes('flutter_bootstrap') ||
+    url.pathname.includes('FontManifest') ||
+    url.pathname.includes('AssetManifest')
+  ) {
+    return true;
+  }
+  if (SENSITIVE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    return true;
+  }
+  if (req.headers.has('Authorization') || url.searchParams.has('dt')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Comprueba si las cabeceras de respuesta permiten almacenamiento en CacheStorage.
+ * @param {Response} response
+ * @returns {boolean}
+ */
+function respuestaEsCacheable(response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') {
+    return false;
+  }
+  const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+  if (cacheControl.includes('no-store') || cacheControl.includes('private')) {
+    return false;
+  }
+  return true;
+}
 
 // 1. Instalación y Precaching de la Shell de la Aplicación
 sw.addEventListener('install', (event) => {
@@ -59,36 +128,25 @@ sw.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia de Enrutamiento y Fetch Resiliente
+// 3. Estrategia de Enrutamiento y Fetch Resiliente (Allowlist estricta de estáticos)
 sw.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Ignorar peticiones no GET, orígenes externos y tráfico WebSocket/motor de Flet (/ws, .wasm, canvaskit)
-  if (
-    req.method !== 'GET' ||
-    url.origin !== sw.location.origin ||
-    url.protocol.startsWith('ws') ||
-    url.pathname.startsWith('/ws') ||
-    url.pathname.endsWith('.wasm') ||
-    url.pathname.endsWith('.mjs') ||
-    url.pathname.includes('canvaskit') ||
-    url.pathname.includes('main.dart') ||
-    url.pathname.includes('flutter_bootstrap') ||
-    url.pathname.includes('FontManifest') ||
-    url.pathname.includes('AssetManifest')
-  ) {
+  // Nunca interceptar ni cachear APIs, documentos con token, autenticación o motor WebSocket/Flet
+  if (debeOmitirCache(req, url)) {
     return;
   }
 
-  // A. Peticiones de Navegación HTML (páginas completas)
+  // A. Peticiones de Navegación HTML (network-first con respaldo únicamente a páginas offline/scanner)
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(async () => {
-        // Si falló la red (microcorte WiFi), intentar responder con la página cacheada o contingencia offline
-        const cachedPage = await caches.match(req);
-        if (cachedPage) {
-          return cachedPage;
+        if (url.pathname === '/scanner.html') {
+          const cachedScanner = await caches.match('/scanner.html');
+          if (cachedScanner) {
+            return cachedScanner;
+          }
         }
         const offlinePage = await caches.match('/offline.html');
         return offlinePage || new Response('Sin conexión a la red local.', {
@@ -99,12 +157,16 @@ sw.addEventListener('fetch', (event) => {
     return;
   }
 
-  // B. Recursos Estáticos propios (iconos, scanner offline, css, manifest)
+  // B. Solo cachear recursos incluidos en la allowlist explícita de activos estáticos públicos
+  if (!esRecursoEstaticoPermitido(url.pathname)) {
+    return;
+  }
+
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
       if (cachedResponse) {
         fetch(req).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+          if (respuestaEsCacheable(networkResponse)) {
             caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResponse));
           }
         }).catch(() => {});
@@ -112,7 +174,7 @@ sw.addEventListener('fetch', (event) => {
       }
 
       return fetch(req).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+        if (!respuestaEsCacheable(networkResponse)) {
           return networkResponse;
         }
         const responseToCache = networkResponse.clone();

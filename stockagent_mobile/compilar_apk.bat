@@ -85,7 +85,7 @@ if not exist "%DESTINO%" mkdir "%DESTINO%"
 
 copy /y "build\app\outputs\flutter-apk\app-release.apk" "%DESTINO%\StockAgent.apk" >nul
 
-powershell -NoProfile -Command "$c = Get-Content 'pubspec.yaml' -Raw; if ($c -match 'version:\s*([0-9\.]+)\+([0-9]+)') { $v = $matches[1]; $code = [int]$matches[2] } else { $v = '1.0.0'; $code = 1 }; $apk = Get-Item '%DESTINO%\StockAgent.apk'; $info = [ordered]@{ version_code = $code; version_name = $v; apk_url = '/actualizaciones/StockAgent.apk'; release_notes = 'Actualización lista en el servidor con mejoras en carga de pedidos y sincronización.'; file_size = $apk.Length; updated_at = (Get-Date -Format 'dd/MM/yyyy HH:mm') }; $info | ConvertTo-Json | Set-Content '%DESTINO%\version.json' -Encoding UTF8"
+powershell -NoProfile -Command "$c = Get-Content 'pubspec.yaml' -Raw; if ($c -match 'version:\s*([0-9\.]+)\+([0-9]+)') { $v = $matches[1]; $code = [int]$matches[2] } else { $v = '1.0.0'; $code = 1 }; $apk = Get-Item '%DESTINO%\StockAgent.apk'; $hash = (Get-FileHash '%DESTINO%\StockAgent.apk' -Algorithm SHA256).Hash.ToLower(); $info = [ordered]@{ version_code = $code; version_name = $v; apk_url = '/actualizaciones/StockAgent.apk'; sha256 = $hash; release_notes = 'Actualización lista en el servidor con mejoras en carga de pedidos y sincronización.'; file_size = $apk.Length; updated_at = (Get-Date -Format 'dd/MM/yyyy HH:mm') }; $info | ConvertTo-Json | Set-Content '%DESTINO%\version.json' -Encoding UTF8"
 
 echo ==================================================================
 echo   COMPILACION EXITOSA!

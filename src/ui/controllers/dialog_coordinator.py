@@ -13,6 +13,10 @@ from ..components import (
     imprimir_rotulos_pedido_ui,
     imprimir_rotulos_termicos_pedido_ui,
 )
+from ..dialogs.cierre.dlg_cierre_full_plan import (
+    mostrar_cierre_final_mercado_full,
+    mostrar_cierre_parcial_mercado_full,
+)
 from ..dialogs import (
     confirmar_restaurar,
     generar_pedido_fabrica,
@@ -37,6 +41,7 @@ from ..dialogs import (
     mostrar_dialogo_ajuste_bultos_express,
     mostrar_dialogo_enviar_correo,
     mostrar_dialogo_escaner_qr_despacho,
+    mostrar_modulo_despacho,
     mostrar_dialogo_formulario_producto,
     mostrar_dialogo_gestion_clientes,
     mostrar_dialogo_gestion_productos,
@@ -185,6 +190,14 @@ class DialogCoordinator:
     def mostrar_escaner_qr_despacho(self, al_actualizar: Callable[[], None] | None = None) -> None:
         self._dispatch(mostrar_dialogo_escaner_qr_despacho, al_actualizar)
 
+    def mostrar_modulo_despacho(self, _evento: ft.Event | None = None) -> None:
+        self._dispatch(
+            mostrar_modulo_despacho,
+            _evento,
+            close_drawer=True,
+            roles=("despachador", "administrador"),
+        )
+
     def mostrar_imprimir_descuentos(self, _evento: ft.Event | None = None) -> None:
         self._dispatch(mostrar_imprimir_descuentos, _evento)
 
@@ -205,6 +218,28 @@ class DialogCoordinator:
     def mostrar_cierre_mercado(self, _evento: ft.Event | None = None) -> None:
         self._dispatch(
             mostrar_dialogo_cierre_mercado,
+            roles=("picker", "operador", "administrador", "master"),
+        )
+
+    def mostrar_cierre_mercado_envios(self, _evento: ft.Event | None = None) -> None:
+        self._dispatch(
+            mostrar_dialogo_cierre_mercado,
+            tab_inicial=0,
+            close_drawer=True,
+            roles=("picker", "operador", "administrador", "master"),
+        )
+
+    def mostrar_cierre_parcial_mercado_full(self, _evento: ft.Event | None = None) -> None:
+        self._dispatch(
+            mostrar_cierre_parcial_mercado_full,
+            close_drawer=True,
+            roles=("picker", "operador", "administrador", "master"),
+        )
+
+    def mostrar_cierre_final_mercado_full(self, _evento: ft.Event | None = None) -> None:
+        self._dispatch(
+            mostrar_cierre_final_mercado_full,
+            close_drawer=True,
             roles=("picker", "operador", "administrador", "master"),
         )
 

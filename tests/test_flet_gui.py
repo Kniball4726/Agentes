@@ -145,8 +145,8 @@ class FletGuiTests(unittest.TestCase):
             page.window.icon,
             str(Path(__file__).resolve().parent.parent / "src" / "img" / "ultratech.ico"),
         )
-        # Comandos para administrador (incluye Centro de Reportes y Ver Stock, sin Imprimir Descuento)
-        self.assertEqual(len(interfaz.controles_tarea), 18)
+        # Comandos para administrador (incluye Despacho solo lectura, Centro de Reportes y Ver Stock, sin Imprimir Descuento)
+        self.assertEqual(len(interfaz.controles_tarea), 19)
         bienvenida = cast(ft.Container, interfaz.conversacion.controls[0])
         contenido = cast(ft.Column, bienvenida.content)
         self.assertEqual(cast(ft.Text, contenido.controls[0]).value, "Agente")
@@ -507,7 +507,7 @@ class FletGuiTests(unittest.TestCase):
         interfaz, _, page = self.crear_interfaz(role="administrador")
         with tempfile.TemporaryDirectory() as temp_dir:
             dest_dir = Path(temp_dir) / "MercadoFull"
-            fake_file = SimpleNamespace(name="full_envio.xlsx", bytes=b"DATA123", path=None)
+            fake_file = SimpleNamespace(name="full_envio.xlsx", bytes=b"PK\x03\x04DATA123", path=None)
 
             pick_kwargs = {}
 
@@ -532,7 +532,7 @@ class FletGuiTests(unittest.TestCase):
                 )
             )
             self.assertEqual(len(guardados), 1)
-            self.assertEqual(guardados[0].read_bytes(), b"DATA123")
+            self.assertEqual(guardados[0].read_bytes(), b"PK\x03\x04DATA123")
             # Verificar que el selector nativo abra en modo ANY sin filtros que deshabiliten archivos
             self.assertEqual(pick_kwargs.get("file_type"), ft.FilePickerFileType.ANY)
             self.assertIsNone(pick_kwargs.get("allowed_extensions"))
@@ -540,7 +540,7 @@ class FletGuiTests(unittest.TestCase):
             asyncio.run(interfaz._descargar_archivo_navegador(guardados[0]))
             self.assertEqual(len(saved_calls), 1)
             self.assertEqual(saved_calls[0]["file_name"], "full_envio.xlsx")
-            self.assertEqual(saved_calls[0]["src_bytes"], b"DATA123")
+            self.assertEqual(saved_calls[0]["src_bytes"], b"PK\x03\x04DATA123")
 
     def test_file_picker_remitos_permite_mayusculas_y_formatos(self):
         interfaz, _, _ = self.crear_interfaz(role="operador")

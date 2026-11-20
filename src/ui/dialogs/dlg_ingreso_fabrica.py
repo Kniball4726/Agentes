@@ -62,7 +62,7 @@ def mostrar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> N
     if not interfaz.exigir_roles("operador", "administrador", "picker"):
         return
 
-    es_operador = getattr(interfaz.usuario_actual, "role", None) == "operador"
+    es_admin = getattr(interfaz.usuario_actual, "role", None) == "administrador"
     stock_manager = _get_stock_manager()(interfaz.menu.ruta_excel_base)
 
     modo_sobrescribir = ft.Checkbox(
@@ -334,7 +334,7 @@ def mostrar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> N
     )
     refrescar_vista_escaner()
 
-    if es_operador:
+    if not es_admin:
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Row([ft.Icon(ft.Icons.INVENTORY_2, color=ROJO, size=24), ft.Text("Ingreso de Fábrica (Escáner de Recepción)", weight=ft.FontWeight.BOLD)], spacing=8),

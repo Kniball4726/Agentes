@@ -11,11 +11,17 @@ import '../../widgets/order_status_badge.dart';
 class DispatchTab extends StatefulWidget {
   final ApiService apiService;
   final AuthUser currentUser;
+  final bool isActive;
+  final bool laserMode;
+  final ValueNotifier<int>? reconnectSyncTrigger;
 
   const DispatchTab({
     super.key,
     required this.apiService,
     required this.currentUser,
+    this.isActive = false,
+    this.laserMode = false,
+    this.reconnectSyncTrigger,
   });
 
   @override
@@ -34,10 +40,41 @@ class _DispatchTabState extends State<DispatchTab> {
       apiService: widget.apiService,
       currentUser: widget.currentUser,
     );
+    widget.reconnectSyncTrigger?.addListener(_onReconnectTriggered);
+  }
+
+  @override
+  void didUpdateWidget(covariant DispatchTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reconnectSyncTrigger != widget.reconnectSyncTrigger) {
+      oldWidget.reconnectSyncTrigger?.removeListener(_onReconnectTriggered);
+      widget.reconnectSyncTrigger?.addListener(_onReconnectTriggered);
+    }
+    if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _qrFocusNode.requestFocus();
+      });
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _qrFocusNode.unfocus();
+    }
+  }
+
+  Future<void> _onReconnectTriggered() async {
+    if (_controller.colaOffline.isEmpty) return;
+    final cantidad = await _controller.sincronizarColaOffline();
+    if (mounted && cantidad > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔄 $cantidad escaneo(s) offline sincronizados automáticamente.'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
+    widget.reconnectSyncTrigger?.removeListener(_onReconnectTriggered);
     _qrController.dispose();
     _qrFocusNode.dispose();
     _controller.dispose();
@@ -134,6 +171,8 @@ class _DispatchTabState extends State<DispatchTab> {
 
   @override
   Widget build(BuildContext context) {
+    final puedeRevertirArmado = widget.currentUser.canRevertDispatchState;
+
     return ListenableBuilder(
       listenable: _controller,
       builder: (ctx, _) {
@@ -144,39 +183,55 @@ class _DispatchTabState extends State<DispatchTab> {
                 // Cabecera de Escaneo y Selector de Acción
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  color: AppTheme.cardBg,
+                  color: Theme.of(context).colorScheme.surface,
                   child: Column(
                     children: [
-                      // Selector de Acción
+                      // Selector de Acción filtrado por permisos RBAC
                       Container(
+                        constraints: const BoxConstraints(minHeight: 48),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceColor,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             isExpanded: true,
-                            value: _controller.modoSeleccionado,
+                            value: (!puedeRevertirArmado && _controller.modoSeleccionado == 'armado')
+                                ? 'auto'
+                                : _controller.modoSeleccionado,
                             dropdownColor: AppTheme.cardBg,
                             icon: const Icon(Icons.arrow_drop_down, color: AppTheme.textSecondary),
-                            items: const [
-                              DropdownMenuItem(
+                            items: [
+                              const DropdownMenuItem(
                                 value: 'auto',
-                                child: Text('Acción: Avanzar Automático (Armado → Despachado → Entregado)', style: TextStyle(fontSize: 12)),
+                                child: Text(
+                                  'Acción: Avanzar Automático (Armado → Despachado → Entregado)',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                               ),
-                              DropdownMenuItem(
+                              const DropdownMenuItem(
                                 value: 'despachado',
-                                child: Text('Acción: Marcar siempre como DESPACHADO', style: TextStyle(fontSize: 12)),
+                                child: Text(
+                                  'Acción: Marcar siempre como DESPACHADO',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                               ),
-                              DropdownMenuItem(
+                              const DropdownMenuItem(
                                 value: 'entregado',
-                                child: Text('Acción: Marcar siempre como ENTREGADO', style: TextStyle(fontSize: 12)),
+                                child: Text(
+                                  'Acción: Marcar siempre como ENTREGADO',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                               ),
-                              DropdownMenuItem(
-                                value: 'armado',
-                                child: Text('Acción: Volver a ARMADO', style: TextStyle(fontSize: 12)),
-                              ),
+                              if (puedeRevertirArmado)
+                                const DropdownMenuItem(
+                                  value: 'armado',
+                                  child: Text(
+                                    'Acción: Volver a ARMADO (Solo Admin)',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
                             ],
                             onChanged: (val) {
                               if (val != null) _controller.setModo(val);
@@ -184,12 +239,14 @@ class _DispatchTabState extends State<DispatchTab> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
 
                       // Input de Escáner QR / Remito
                       BarcodeScanField(
                         controller: _qrController,
                         focusNode: _qrFocusNode,
+                        autofocus: widget.isActive,
+                        laserMode: widget.laserMode,
                         hintText: 'Escanear QR de rótulo o N° de remito...',
                         onSubmitted: _enviarCodigo,
                       ),
@@ -207,7 +264,7 @@ class _DispatchTabState extends State<DispatchTab> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '⚡ ${_controller.colaOffline.length} escaneo(s) en buffer offline',
+                            '⚡ ${_controller.colaOffline.length} escaneo(s) en cola offline persistida',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -237,8 +294,8 @@ class _DispatchTabState extends State<DispatchTab> {
 
                 // Barra de pestañas o vistas (Historial vs Pedidos Activos)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: AppTheme.darkBg,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   child: Row(
                     children: [
                       Text(
@@ -249,16 +306,18 @@ class _DispatchTabState extends State<DispatchTab> {
                       ),
                       const Spacer(),
                       IconButton(
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                         icon: Icon(
                           _controller.verListaPendientes ? Icons.history : Icons.format_list_bulleted,
-                          size: 20,
+                          size: 22,
                           color: AppTheme.primaryRed,
                         ),
                         tooltip: _controller.verListaPendientes ? 'Ver Historial' : 'Ver Pedidos',
                         onPressed: _controller.alternarVista,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.refresh, size: 20, color: Colors.white54),
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                        icon: const Icon(Icons.refresh, size: 22, color: Colors.white54),
                         tooltip: 'Recargar',
                         onPressed: _controller.cargarPedidos,
                       ),
@@ -271,63 +330,99 @@ class _DispatchTabState extends State<DispatchTab> {
                   child: _controller.verListaPendientes
                       ? _controller.cargandoPedidos
                           ? const Center(child: CircularProgressIndicator())
-                          : _controller.pedidosActivos.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No hay pedidos registrados.',
-                                    style: TextStyle(color: AppTheme.textSecondary),
+                          : _controller.errorCargaPedidos != null
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.redAccent),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _controller.errorCargaPedidos!,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        ElevatedButton.icon(
+                                          onPressed: _controller.cargarPedidos,
+                                          icon: const Icon(Icons.refresh),
+                                          label: const Text('Reintentar'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 )
-                              : ListView.separated(
-                                  padding: const EdgeInsets.all(12),
-                                  itemCount: _controller.pedidosActivos.length,
-                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                  itemBuilder: (ctx, idx) {
-                                    final p = _controller.pedidosActivos[idx];
-                                    return InkWell(
-                                      onTap: () => _verDetallePedido(p),
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
+                              : _controller.pedidosActivos.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'No hay pedidos registrados.',
+                                        style: TextStyle(color: AppTheme.textSecondary),
+                                      ),
+                                    )
+                                  : RefreshIndicator(
+                                      onRefresh: _controller.cargarPedidos,
+                                      child: ListView.separated(
                                         padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.cardBg,
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(color: AppTheme.borderColor),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                        itemCount: _controller.pedidosActivos.length,
+                                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                        itemBuilder: (ctx, idx) {
+                                          final p = _controller.pedidosActivos[idx];
+                                          return InkWell(
+                                            onTap: () => _verDetallePedido(p),
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.surface,
+                                                borderRadius: BorderRadius.circular(10),
+                                                border: Border.all(color: AppTheme.borderColor),
+                                              ),
+                                              child: Row(
                                                 children: [
-                                                  Text(
-                                                    'Remito #${p.notaPedido}',
-                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          'Remito #${p.notaPedido}',
+                                                          style: const TextStyle(
+                                                            fontWeight: FontWeight.bold,
+                                                            fontSize: 14,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(height: 2),
+                                                        Text(
+                                                          p.cliente,
+                                                          style: const TextStyle(
+                                                            fontSize: 12,
+                                                            color: AppTheme.textPrimary,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          '${p.bultos} bultos · ${p.logistica}',
+                                                          style: const TextStyle(
+                                                            fontSize: 11,
+                                                            color: AppTheme.textSecondary,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    p.cliente,
-                                                    style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                                                  ),
-                                                  Text(
-                                                    '${p.bultos} bultos · ${p.logistica}',
-                                                    style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                                                  ),
+                                                  OrderStatusBadge(estado: p.estadoDespacho),
                                                 ],
                                               ),
                                             ),
-                                            OrderStatusBadge(estado: p.estadoDespacho),
-                                          ],
-                                        ),
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
-                                )
+                                    )
                       : _controller.historial.isEmpty
-                          ? Center(
+                          ? const Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
+                                children: [
                                   Icon(Icons.qr_code_2_rounded, size: 64, color: Colors.white24),
                                   SizedBox(height: 12),
                                   Text(

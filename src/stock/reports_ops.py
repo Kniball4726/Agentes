@@ -11,6 +11,7 @@ from openpyxl.styles import Alignment
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph
 
+from ..core.sanitize_utils import sanitizar_fila_excel
 from .report_styles import (
     _BORDER_THIN,
     _FILL_WHITE,
@@ -63,7 +64,7 @@ def generar_reporte_pedidos_despacho(
         for idx, p in enumerate(pedidos, start=5):
             fill_actual = _FILL_ZEBRA if idx % 2 == 0 else _FILL_WHITE
             f_str = str(getattr(p, "created_at", "") or getattr(p, "fecha", ""))[:16]
-            ws.append([
+            ws.append(sanitizar_fila_excel([
                 getattr(p, "nota_pedido", ""),
                 getattr(p, "cliente", "") or "-",
                 getattr(p, "logistica", "") or "-",
@@ -71,7 +72,7 @@ def generar_reporte_pedidos_despacho(
                 getattr(p, "armador", "") or "-",
                 getattr(p, "estado_despacho", "") or "-",
                 f_str,
-            ])
+            ]))
             for c_idx in range(1, 8):
                 c = ws.cell(idx, c_idx)
                 c.fill = fill_actual
@@ -147,7 +148,7 @@ def generar_reporte_cierres_historicos(
             art_tot = int(getattr(c, "articulos_totales", 0) or getattr(c, "total_bultos", 0) or 0)
             op = getattr(c, "usuario", "") or getattr(c, "operador", "") or "-"
             arch = getattr(c, "archivo_pdf", "") or getattr(c, "archivo_informe", "") or "-"
-            ws.append([getattr(c, "id", idx), f_cie, cant_ped, art_tot, op, arch])
+            ws.append(sanitizar_fila_excel([getattr(c, "id", idx), f_cie, cant_ped, art_tot, op, arch]))
             for c_idx in range(1, 7):
                 cell_c = ws.cell(idx, c_idx)
                 cell_c.fill = fill_actual

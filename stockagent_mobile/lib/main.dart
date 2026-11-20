@@ -11,23 +11,30 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Barra de navegación y estado en estilo oscuro coherente con StockAgent
+  final storageService = await StorageService.init();
+  final bool usarTemaClaro = storageService.isLightTheme;
+  AppTheme.themeModeNotifier.value =
+      usarTemaClaro ? ThemeMode.light : ThemeMode.dark;
+
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
+    SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: AppTheme.darkBg,
-      systemNavigationBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: usarTemaClaro ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: usarTemaClaro ? AppTheme.lightBg : AppTheme.darkBg,
+      systemNavigationBarIconBrightness:
+          usarTemaClaro ? Brightness.dark : Brightness.light,
     ),
   );
 
-  final storageService = await StorageService.init();
   final bool yaConfigurado = storageService.hasValidConfig();
 
   AuthUser? usuarioActivo;
   if (yaConfigurado) {
     final rawUser = storageService.getAuthUser();
-    usuarioActivo = AuthUser.deserialize(rawUser);
+    final token = storageService.getAuthToken();
+    if (token != null && token.trim().isNotEmpty) {
+      usuarioActivo = AuthUser.deserialize(rawUser);
+    }
   }
 
   runApp(StockAgentMobileApp(
@@ -64,11 +71,18 @@ class StockAgentMobileApp extends StatelessWidget {
       pantallaInicial = LoginScreen(storageService: storageService);
     }
 
-    return MaterialApp(
-      title: 'StockAgent Móvil',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: pantallaInicial,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppTheme.themeModeNotifier,
+      builder: (context, currentMode, _) {
+        return MaterialApp(
+          title: 'StockAgent Móvil',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: currentMode,
+          home: pantallaInicial,
+        );
+      },
     );
   }
 }

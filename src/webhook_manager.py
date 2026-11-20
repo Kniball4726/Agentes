@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import urllib.error
 import urllib.parse
@@ -13,6 +14,14 @@ from pathlib import Path
 from typing import Any
 import uuid
 
+from . import secretos
+from .core.environment import resolver_data_dir_para_raiz
+from .core.network_security import (
+    NoRedirectHandler,
+    crear_contexto_tls_estricto,
+    firmar_payload_hmac,
+    validar_url_externa_segura,
+)
 from .paths import application_root
 
 logger = logging.getLogger(__name__)
@@ -25,7 +34,11 @@ EVENTOS_DISPONIBLES: tuple[str, ...] = (
 
 
 def _ruta_webhooks() -> Path:
-    return application_root() / "data" / "webhooks.json"
+    return resolver_data_dir_para_raiz(application_root()) / "webhooks.json"
+
+
+def _permitir_lan_webhooks() -> bool:
+    return os.environ.get("STOCKAGENT_ALLOW_LAN_WEBHOOKS", "0").strip() == "1"
 
 
 def obtener_webhooks() -> list[dict[str, Any]]:
@@ -42,12 +55,12 @@ def obtener_webhooks() -> list[dict[str, Any]]:
     return []
 
 
-def _validar_url_webhook(url: str) -> str:
-    limpia = str(url or "").strip()
-    parsed = urllib.parse.urlparse(limpia)
-    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
-        raise ValueError("La URL del webhook debe comenzar con http:// o https:// y contener un host válido.")
-    return limpia
+def _validar_url_webhook(url: str, *, resolver_dns: bool = False) -> str:
+    return validar_url_externa_segura(
+        url,
+        resolver_dns=resolver_dns,
+        permitir_lan_privada=_permitir_lan_webhooks(),
+    )
 
 
 def guardar_webhook(
@@ -55,9 +68,10 @@ def guardar_webhook(
     eventos: list[str] | None = None,
     descripcion: str = "",
     activo: bool = True,
+    secreto: str = "",
 ) -> dict[str, Any]:
     """Registra o actualiza una suscripción de webhook."""
-    url_valida = _validar_url_webhook(url)
+    url_valida = _validar_url_webhook(url, resolver_dns=False)
     ruta = _ruta_webhooks()
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
@@ -69,12 +83,14 @@ def guardar_webhook(
         if ev in EVENTOS_DISPONIBLES
     ]
 
+    secreto_limpio = str(secreto or "").strip()
     item = {
         "id": webhook_id,
         "url": url_valida,
         "descripcion": descripcion.strip(),
         "eventos": eventos_filtrados or list(EVENTOS_DISPONIBLES),
         "activo": activo,
+        "secreto": secretos.cifrar(secreto_limpio) if secreto_limpio else "",
         "created_at": datetime.now().isoformat(sep=" ", timespec="seconds"),
         "ultimo_envio": "",
         "ultimo_estado": "",
@@ -108,7 +124,17 @@ def eliminar_webhook(webhook_id: str) -> bool:
         return False
 
 
-def probar_webhook(url: str) -> tuple[bool, str]:
+def _resolver_secreto_webhook(item: dict[str, Any] | None = None) -> str:
+    raw = str((item or {}).get("secreto", "") or "").strip()
+    if raw:
+        try:
+            return secretos.descifrar(raw)
+        except secretos.SecretoError:
+            return ""
+    return os.environ.get("STOCKAGENT_WEBHOOK_SECRET", "").strip()
+
+
+def probar_webhook(url: str, secreto: str = "") -> tuple[bool, str]:
     """Envía un payload de prueba (Ping) al endpoint especificado y reporta el resultado."""
     payload = {
         "event": "PING_TEST",
@@ -116,14 +142,14 @@ def probar_webhook(url: str) -> tuple[bool, str]:
         "mensaje": "Prueba de conectividad desde StockAgent Webhook Dispatcher",
         "sistema": "StockAgent 2026",
     }
-    return _enviar_http(url, payload)
+    return _enviar_http(url, payload, secreto=secreto or os.environ.get("STOCKAGENT_WEBHOOK_SECRET", "").strip())
 
 
 def despachar_evento_webhook(evento: str, datos: dict[str, Any]) -> None:
     """Despacha un evento a todos los webhooks activos suscritos en un hilo en segundo plano."""
     webhooks = obtener_webhooks()
     destinos = [
-        w["url"] for w in webhooks
+        (w["url"], _resolver_secreto_webhook(w)) for w in webhooks
         if w.get("activo", True) and evento in w.get("eventos", [])
     ]
     if not destinos:
@@ -137,27 +163,33 @@ def despachar_evento_webhook(evento: str, datos: dict[str, Any]) -> None:
 
     # Despachar asíncronamente en background sin bloquear la UI ni transacciones
     def _worker():
-        for url in destinos:
-            _enviar_http(url, payload)
+        for url, sec in destinos:
+            _enviar_http(url, payload, secreto=sec)
 
     threading.Thread(target=_worker, daemon=True).start()
 
 
-def _enviar_http(url: str, payload: dict[str, Any]) -> tuple[bool, str]:
-    """Envía un payload JSON mediante HTTP/HTTPS POST con timeout estricto."""
+def _enviar_http(url: str, payload: dict[str, Any], *, secreto: str = "") -> tuple[bool, str]:
+    """Envía un payload JSON mediante HTTP/HTTPS POST sin redirecciones, con anti-SSRF y firma HMAC."""
     try:
-        url_valida = _validar_url_webhook(url)
+        url_valida = _validar_url_webhook(url, resolver_dns=True)
         data_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": "StockAgent-Webhook/1.0",
+            **firmar_payload_hmac(data_bytes, secreto),
+        }
         req = urllib.request.Request(
             url_valida,
             data=data_bytes,
-            headers={
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "StockAgent-Webhook/1.0",
-            },
+            headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        opener = urllib.request.build_opener(
+            NoRedirectHandler(),
+            urllib.request.HTTPSHandler(context=crear_contexto_tls_estricto()),
+        )
+        with opener.open(req, timeout=8) as resp:
             codigo = resp.getcode()
             if 200 <= codigo < 300:
                 return True, f"HTTP {codigo} OK"

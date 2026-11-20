@@ -8,10 +8,14 @@ Este directorio contiene el código fuente principal de **StockAgent**, estructu
 
 ```text
 src/
-├── core/                       # Núcleo de excepciones y contratos de dominio
-│   ├── __init__.py             # Exportaciones públicas de excepciones y entorno
+├── core/                       # Núcleo de excepciones, seguridad, sanitización y delegación
+│   ├── __init__.py             # Exportaciones públicas de excepciones, seguridad y entorno
+│   ├── delegation.py           # Descriptor no-datos DelegadoAtributo para composición en stores/fachadas
 │   ├── exceptions.py           # Jerarquía unificada de errores tipados
 │   ├── environment.py          # Aislamiento de perfiles de ejecución (Producción vs QA Sandbox)
+│   ├── network_security.py     # Protección anti-SSRF, TLS estricto, HMAC-SHA256 y sanitización MIME
+│   ├── sanitize_utils.py       # Sanitización anti-fórmulas Excel/CSV y escape HTML/XML (Telegram/ReportLab)
+│   ├── security_utils.py       # Confinamiento de rutas, validación de impresoras y URLs seguras
 │   ├── sqlite_utils.py         # Apertura configurada y cierre determinista (closing) de SQLite
 │   └── system_reset.py         # Restablecimiento controlado a estado virgen (Clean Slate)
 │
@@ -103,7 +107,8 @@ src/
 │   ├── thermal_labels.py       # Etiquetas térmicas continuas (100x150 mm)
 │   └── a4_labels.py            # Planchas compactas A4 para bultos
 │
-├── parsers/                    # Parsers modulares de comprobantes (PDF, Excel, DOCX)
+├── parsers/                    # Parsers modulares de comprobantes (PDF, Excel, DOCX) con límites anti-DoS
+│   ├── safe_loader.py          # Validación anti-DoS de tamaño/páginas/celdas y mitigación Zip-Bomb (defusedxml)
 │   ├── remito_parser.py        # Parser de remitos mayoristas PDF
 │   ├── canjes_parser.py        # Parser de planillas de canjes Excel
 │   ├── mercado_libre_parser.py # Parser de órdenes DOCX de Mercado Libre
@@ -134,7 +139,8 @@ src/
 │   ├── service.py              # Ciclo de vida global del icono y notificaciones de red
 │   └── tray_controller.py      # Controlador pystray y menú contextual
 │
-├── ui/                         # Capa de presentación gráfica y vistas (Flet)
+├── ui/                         # Capa de presentación gráfica y vistas (Flet 1.0.x)
+│   ├── design/                 # Sistema de Diseño Unificado (tokens WCAG AA, botones semánticos, diálogos, forms)
 │   ├── theme.py                # Paleta de colores corporativos Ultratech y tokens visuales
 │   ├── app_config.py           # Constantes de configuración GUI
 │   ├── protocols.py            # Contratos tipados (Protocol) e inyección de AppDependencies
@@ -149,24 +155,27 @@ src/
 │   │                           # floating_chat_intents, header, mobile_nav, network_heartbeat,
 │   │                           # panels, print_labels, sidebar, sidebar_horizontal,
 │   │                           # sidebar_quick_actions, sidebar_sections, window_manager
-│   ├── shell_builder.py        # Constructor de shell visual responsive y barra móvil
+│   ├── shell_builder.py        # Constructor de shell visual responsive y barra móvil por rol
 │   └── dialogs/                # Módulos desacoplados por caso de uso:
-│                               # auth_* + dlg_auth, analytics_widgets + analytics_rotacion +
-│                               # analytics_metricas + dlg_analytics, api_panel_tabs + dlg_api + dlg_api_keys,
-│                               # cierre/ (incl. cierre_mercado_cards) + dlg_cierre, dlg_clientes,
+│                               # _shared (re-exporta src/ui/design), auth_* + dlg_auth,
+│                               # analytics_widgets + analytics_rotacion + analytics_metricas + dlg_analytics,
+│                               # api_panel_tabs + dlg_api + dlg_api_keys (unificado),
+│                               # cierre/ (incl. cierre_mercado_cards) + dlg_cierre,
+│                               # despacho_componentes + dlg_modulo_despacho, dlg_clientes,
 │                               # dlg_command_palette, dlg_email, dlg_escaner, dlg_anomalias,
-│                               # dlg_archivo_historico, dlg_backup, dlg_control_ingreso_fabrica,
-│                               # dlg_gestion_ambientes, dlg_picking_guiado_full, dlg_planificar_full,
-│                               # dlg_planificar_ingreso_fabrica, dlg_heatmap + heatmap_render,
+│                               # dlg_archivo_historico, dlg_backup,
+│                               # picking_plan_shared + dlg_control_ingreso_fabrica +
+│                               # dlg_picking_guiado_full + dlg_planificar_full + dlg_planificar_ingreso_fabrica,
+│                               # dlg_gestion_ambientes, dlg_heatmap + heatmap_render,
 │                               # historial_cards + historial_* + dlg_historial_pedidos, dlg_informes,
 │                               # dlg_ingreso_fabrica + ingreso_fabrica_archivo,
 │                               # dlg_inventario_vivo + inventario_vivo_views, dlg_mercado_full,
 │                               # dlg_mercadolibre + mercadolibre_api_cards,
 │                               # dlg_mercadolibre_descuento + ml_*, dlg_movimientos_rapidos + *_ops,
-│                               # dlg_pedido_fabrica, pedidos_crear + pedidos_crear_modales +
-│                               # pedidos_gestion + dlg_pedidos, dlg_preferencias,
+│                               # dlg_pedido_fabrica, pedidos_crear + pedidos_crear_componentes +
+│                               # pedidos_crear_modales + pedidos_gestion + dlg_pedidos, dlg_preferencias,
 │                               # dlg_productos + productos_modales, dlg_quiebre + quiebre_banner,
-│                               # dlg_reportes, dlg_restaurar, dlg_smtp,
+│                               # dlg_reportes, dlg_restaurar, dlg_sincronizar_excel, dlg_smtp,
 │                               # dlg_stock_fisico + stock_fisico_views, dlg_stock_ops (fachada),
 │                               # dlg_telegram, dlg_usuarios, dlg_ver_stock
 │
@@ -326,7 +335,7 @@ Ubicado en `.github/workflows/ci.yml`:
 
 ## 🧪 9. Verificación y Cobertura de Pruebas
 
-Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas (`.\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short`):
-* **Total de módulos de prueba:** `67` archivos `tests/test_*.py` (`61` módulos ejecutados en sandbox con `360` pruebas y `7` subtests aprobados; `6` módulos ASGI `TestClient` ejecutables en host con sockets).
-* **Tasa de éxito:** 100% pasando sobre la batería verificada (`360 passed, 7 subtests passed`).
-* **Retrocompatibilidad:** Cero rupturas de contratos; todas las fachadas y objetivos de parches existentes quedan preservados.
+Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas (`.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider`):
+* **Total de pruebas aprobadas:** `489 passed, 7 subtests passed, 0 failed` (incluyendo las suites integrales `test_fase1_security_ui_fixes.py`, `test_fase2_backend_hardening.py`, `test_fase3_design_system_ux.py`, `test_fase4_mobile_security_ux.py` y `test_rol_despachador.py`).
+* **Tasa de éxito:** 100% pasando sobre toda la batería de pruebas unitarias y de integración.
+* **Retrocompatibilidad:** Cero rupturas de contratos; todas las fachadas y descriptores `DelegadoAtributo` preservan las firmas públicas e inyección de mocks.

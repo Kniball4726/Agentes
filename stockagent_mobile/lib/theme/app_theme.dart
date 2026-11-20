@@ -10,6 +10,18 @@ class AppTheme {
   static const Color textSecondary = Color(0xFF9E9E9E);
   static const Color successGreen = Color(0xFF4CAF50);
 
+  // Paleta de alto contraste diurno para exteriores / luz solar directa en depósito
+  static const Color lightBg = Color(0xFFF5F7FA);
+  static const Color lightCardBg = Color(0xFFFFFFFF);
+  static const Color lightSurface = Color(0xFFEDF1F7);
+  static const Color lightBorder = Color(0xFFCBD5E1);
+  static const Color lightTextPrimary = Color(0xFF0F172A);
+  static const Color lightTextSecondary = Color(0xFF334155);
+
+  /// Notificador global para alternar entre Modo Oscuro y Modo Claro de Alto Contraste.
+  static final ValueNotifier<ThemeMode> themeModeNotifier =
+      ValueNotifier<ThemeMode>(ThemeMode.dark);
+
   static RoundedRectangleBorder get standardBorder =>
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
 
@@ -57,8 +69,68 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryRed,
           foregroundColor: Colors.white,
+          minimumSize: const Size(48, 48),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 4,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  static ThemeData get lightTheme {
+    return ThemeData(
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: lightBg,
+      primaryColor: primaryRed,
+      colorScheme: const ColorScheme.light(
+        primary: primaryRed,
+        secondary: primaryRed,
+        surface: lightCardBg,
+        onSurface: lightTextPrimary,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: lightCardBg,
+        foregroundColor: lightTextPrimary,
+        elevation: 1,
+        centerTitle: true,
+        titleTextStyle: TextStyle(
+          color: lightTextPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: lightSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: lightBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: lightBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: primaryRed, width: 2),
+        ),
+        labelStyle: const TextStyle(color: lightTextSecondary),
+        hintStyle: const TextStyle(color: lightTextSecondary),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryRed,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(48, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
           textStyle: const TextStyle(
             fontSize: 16,

@@ -35,12 +35,15 @@ class DiscountEngineService:
         carpeta_destino = Path(carpeta_destino)
         fecha_generacion = datetime.now()
         fecha_hora_str = fecha_generacion.strftime("%d-%m-%Y_%H-%M-%S")
+        from ..core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
+
+        prefijo_seguro = sanitizar_componente_archivo(prefijo_archivo, fallback="Descuento")
         nombre_archivo = (
-            f"{prefijo_archivo}_{fecha_hora_str}.xls"
+            f"{prefijo_seguro}_{fecha_hora_str}.xls"
             if prefijo_archivo != "Descuento"
             else f"Descuento{fecha_hora_str}.xls"
         )
-        ruta_guardado = carpeta_destino / nombre_archivo
+        ruta_guardado = resolver_ruta_confinada(carpeta_destino, nombre_archivo)
         ruta_pdf = ruta_guardado.with_suffix(".pdf")
 
         descuentos: List[RegistroDescuento] = []

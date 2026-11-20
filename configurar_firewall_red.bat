@@ -9,7 +9,8 @@ net session >nul 2>&1
 if not errorlevel 1 goto :EJECUTAR
 
 echo [INFO] Solicitando permisos de administrador...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '--elevated' -Verb RunAs" >nul 2>&1
+set "STOCKAGENT_FW_SCRIPT=%~f0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:STOCKAGENT_FW_SCRIPT -ArgumentList '--elevated' -Verb RunAs" >nul 2>&1
 exit /b
 
 :EJECUTAR

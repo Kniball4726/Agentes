@@ -24,7 +24,7 @@ class ConfigScreen extends StatefulWidget {
 
 class _ConfigScreenState extends State<ConfigScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _networkService = NetworkService();
+  late final NetworkService _networkService;
 
   late TextEditingController _hostController;
   late TextEditingController _portController;
@@ -36,6 +36,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   @override
   void initState() {
     super.initState();
+    _networkService = NetworkService(storageService: widget.storageService);
     final currentConfig = widget.storageService.loadConfig();
     _hostController = TextEditingController(text: currentConfig.host);
     _portController = TextEditingController(text: currentConfig.port);
@@ -111,18 +112,38 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _guardarYConectar() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final config = _buildConfigFromInputs();
+    final oldConfig = widget.storageService.loadConfig();
+    final baseConfig = _buildConfigFromInputs();
+    final pinnedCert = (_testResult != null &&
+            _testResult!.isSuccess &&
+            _testResult!.resolvedConfig != null &&
+            _testResult!.resolvedConfig!.host.trim().toLowerCase() ==
+                baseConfig.host.trim().toLowerCase())
+        ? _testResult!.resolvedConfig!.certSha256
+        : null;
+    final config = baseConfig.copyWith(certSha256: pinnedCert);
+
+    final hostChanged = widget.storageService.isConfigured &&
+        (oldConfig.host.trim().toLowerCase() != config.host.trim().toLowerCase() ||
+            oldConfig.normalizedPort != config.normalizedPort);
+
+    if (hostChanged) {
+      await widget.storageService.logout();
+      await widget.storageService.clearPinnedCertSha256(oldConfig.host);
+    }
+
     await widget.storageService.saveConfig(config);
 
     if (!mounted) return;
 
-    if (widget.isModal) {
+    if (widget.isModal && !hostChanged) {
       Navigator.of(context).pop(true);
     } else {
-      Navigator.of(context).pushReplacement(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => LoginScreen(storageService: widget.storageService),
         ),
+        (route) => false,
       );
     }
   }

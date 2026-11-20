@@ -15,6 +15,8 @@ from reportlab.lib.units import cm
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_celda_excel, sanitizar_fila_excel
+
 _FILL_HEADER = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
 _FILL_ZEBRA = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 _FILL_WHITE = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
@@ -84,11 +86,11 @@ def crear_hoja_reporte_excel(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = titulo_hoja
-    ws.append([titulo_reporte])
+    ws.append([sanitizar_celda_excel(titulo_reporte)])
     ws.cell(1, 1).font = Font(name="Calibri", size=14, bold=True, color="1E293B")
-    ws.append([subtitulo])
+    ws.append([sanitizar_celda_excel(subtitulo)])
     ws.append([])
-    ws.append(headers)
+    ws.append(sanitizar_fila_excel(headers))
     for c_idx in range(1, len(headers) + 1):
         cell = ws.cell(4, c_idx)
         cell.fill = _FILL_HEADER
@@ -165,7 +167,7 @@ def compilar_pdf_reporte(
         bottomMargin=1.8 * cm,
     )
     elementos: list[Any] = [
-        Paragraph(titulo_doc, st["titulo"]),
+        Paragraph(escapar_texto_reportlab(titulo_doc), st["titulo"]),
         Paragraph(subtitulo_html, st["sub"]),
         Spacer(1, 0.4 * cm),
         *cuerpo_extra,

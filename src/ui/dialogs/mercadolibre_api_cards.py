@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ..design import colores_de
 from ..theme import ROJO
 
 
@@ -17,6 +18,7 @@ def construir_tarjeta_orden_ml(
     on_check_change: Callable[[ft.Event], None],
 ) -> ft.Container:
     """Construye la tarjeta visual de una orden sincronizada de Mercado Libre."""
+    colores = colores_de(interfaz)
     if ya_procesado:
         chip_estado = ft.Container(
             content=ft.Text("YA DESCONTADO", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_300),
@@ -42,13 +44,13 @@ def construir_tarjeta_orden_ml(
     filas_items: list[ft.Control] = []
     for it in ord_info["items_coincidentes"]:
         stk_post = it["stock_actual"] - it["cantidad"]
-        stk_color = ft.Colors.RED_400 if stk_post < 0 else interfaz.secundario
+        stk_color = colores.error if stk_post < 0 else interfaz.secundario
         filas_items.append(
             ft.Row(
                 [
                     ft.Text(f"[{it['codigo']}]", weight=ft.FontWeight.BOLD, size=11, width=70),
                     ft.Text(it["nombre"], size=11, expand=True, no_wrap=True),
-                    ft.Text(f"-{it['cantidad']} un.", color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD, size=11, width=60),
+                    ft.Text(f"-{it['cantidad']} un.", color=colores.error, weight=ft.FontWeight.BOLD, size=11, width=60),
                     ft.Text(f"Stock: {it['stock_actual']} -> {stk_post}", size=11, color=stk_color, width=130),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -59,11 +61,11 @@ def construir_tarjeta_orden_ml(
         filas_items.append(
             ft.Row(
                 [
-                    ft.Icon(ft.Icons.WARNING_AMBER, color=ft.Colors.AMBER_400, size=14),
+                    ft.Icon(ft.Icons.WARNING_AMBER, color=colores.advertencia, size=14),
                     ft.Text(
                         f"No reconocido: {no_it['titulo']} (Cant: {no_it['cantidad']})",
                         size=11,
-                        color=ft.Colors.AMBER_400,
+                        color=colores.advertencia,
                         expand=True,
                     ),
                 ],

@@ -1,4 +1,4 @@
-"""Utilidades compartidas para diálogos Flet (foco seguro y resolución de StockManager)."""
+"""Utilidades compartidas para diálogos Flet (foco seguro, StockManager y sistema de diseño)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,24 @@ import sys
 from typing import Any
 
 from ...inventory import StockManager as _DefaultStockManager
+from ..design import (  # noqa: F401 - reexportados para todos los diálogos
+    boton_cancelar,
+    boton_dialogo_semantico,
+    boton_peligro,
+    boton_primario,
+    campo_numerico,
+    campo_secreto_seguro,
+    colores_de,
+    colores_semanticos,
+    confirmar_accion_destructiva,
+    crear_dialogo_estandar,
+    fijar_ocupado,
+    limpiar_errores,
+    marcar_error,
+    resolver_secreto,
+    validar_entero_no_negativo,
+    validar_fecha_ddmmaaaa,
+)
 
 
 def resolve_stock_manager(*mod_names: str):

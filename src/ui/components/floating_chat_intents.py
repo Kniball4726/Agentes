@@ -46,6 +46,20 @@ _INTENCIONES_BLOQUEADAS_PICKER = frozenset({
     "backup",
     "metricas",
 })
+_INTENCIONES_BLOQUEADAS_DESPACHADOR = frozenset({
+    "simular",
+    "reposicion",
+    "diagnostico",
+    "buscar_stock",
+    "criticos",
+    "cierre",
+    "mercadolibre",
+    "auditoria",
+    "informes",
+    "ultimo_informe",
+    "backup",
+    "metricas",
+})
 
 
 def _resolver_stock_manager():
@@ -91,6 +105,11 @@ def _validar_permiso_intencion(rol: str, intencion: str) -> str | None:
         return (
             "⚠️ Esta función no está disponible para el perfil Picker.\n"
             "Como Picker puedes consultar /stock, /mercadolibre, /pedidos o comunicarte por /equipo."
+        )
+    if rol == "despachador" and intencion in _INTENCIONES_BLOQUEADAS_DESPACHADOR:
+        return (
+            "⚠️ El rol Despachador está dedicado exclusivamente al módulo Despacho.\n"
+            "Puedes consultar /pedidos o comunicarte con el depósito por /equipo."
         )
     return None
 

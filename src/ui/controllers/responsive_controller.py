@@ -33,27 +33,45 @@ class ResponsiveController:
         return fn() if callable(fn) else []
 
     @property
+    def es_tablet(self) -> bool:
+        """Determina si el viewport corresponde a una tablet (768–1199px o iPad)."""
+        page = getattr(self._host, "page", None)
+        ua = str(getattr(page, "client_user_agent", "") or "").lower()
+        w = getattr(page, "width", None)
+        if "ipad" in ua:
+            return True
+        if isinstance(w, (int, float)) and 768 <= w < 1200:
+            if not any(tok in ua for tok in ("iphone", "ipod", "mobile", "; wv")):
+                return True
+        return False
+
+    @property
     def es_pantalla_movil(self) -> bool:
         """Determina si la pantalla actual corresponde a un dispositivo o viewport móvil."""
         page = getattr(self._host, "page", None)
         ua = str(getattr(page, "client_user_agent", "") or "").lower()
+        w = getattr(page, "width", None)
+        if "ipad" in ua and isinstance(w, (int, float)) and w >= 768:
+            return False
         if any(tok in ua for tok in ("android", "iphone", "ipad", "ipod", "mobile", "; wv")):
             return True
         plat = str(getattr(page, "platform", "") or "").lower()
         if any(tok in plat for tok in ("android", "ios")):
             return True
-        w = getattr(page, "width", None)
         if isinstance(w, (int, float)) and w > 0:
             return bool(w < 768)
         return False
 
     def ancho_adaptable(self, deseado: int, margen: int = 24) -> int:
-        """Calcula el ancho óptimo respetando el viewport móvil si está disponible."""
+        """Calcula el ancho óptimo respetando el viewport móvil/tablet si está disponible."""
         page = getattr(self._host, "page", None)
         w = getattr(page, "width", None)
         if self.es_pantalla_movil:
             if isinstance(w, (int, float)) and 0 < w < 768:
                 return min(deseado, max(260, int(w - margen)))
+            ua = str(getattr(page, "client_user_agent", "") or "").lower()
+            if "ipad" in ua and isinstance(w, (int, float)) and w >= 768:
+                return min(deseado, max(280, int(w - margen)))
             return min(deseado, max(260, 360 - margen))
         if isinstance(w, (int, float)) and w > 0:
             return min(deseado, max(280, int(w - margen)))
@@ -170,7 +188,8 @@ class ResponsiveController:
             usuario_actual is None
             and isinstance(w_actual, (int, float))
             and w_actual > 0
-            and (ancho_previo is None or abs(float(w_actual) - float(ancho_previo)) >= 16)
+            and isinstance(ancho_previo, (int, float))
+            and ((float(w_actual) < 768) != (float(ancho_previo) < 768))
         )
         if modo_previo is None or modo_previo != es_movil or cambio_ancho_auth:
             self._host._modo_movil_previo = es_movil

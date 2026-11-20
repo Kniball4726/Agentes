@@ -2,37 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-import inspect
-from pathlib import Path
-import sys
 from typing import Any
 import flet as ft
 
-from ..audio_feedback import emitir_tono_error, emitir_tono_exito
-from ..theme import ROJO
-from ...inventory import StockManager as _DefaultStockManager
 from .ingreso_fabrica_archivo import resolver_stock_manager_fabrica
-
-
-def safe_focus(interfaz: Any, ctrl: Any) -> None:
-    try:
-        res = ctrl.focus()
-        if inspect.iscoroutine(res):
-            if (
-                hasattr(interfaz, "page")
-                and hasattr(interfaz.page, "run_task")
-                and callable(interfaz.page.run_task)
-                and not getattr(interfaz.page, "_is_mock", False)
-                and not hasattr(interfaz.page, "mock_calls")
-            ):
-                async def _f():
-                    await res
-                interfaz.page.run_task(_f)
-            else:
-                res.close()
-    except Exception:
-        pass
+from .picking_plan_shared import (
+    actualizar_banner_resultado_escaneo,
+    construir_banner_escaneo_inicial,
+    construir_fila_picking_guiado,
+    safe_focus,
+)
 
 
 def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> None:
@@ -62,17 +41,9 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
     lbl_progreso_txt = ft.Text("0.0% (0 / 0 un.)", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
     barra_progreso = ft.ProgressBar(value=0.0, color=ft.Colors.GREEN_600, bgcolor=ft.Colors.GREY_300, height=10)
 
-    banner_feedback = ft.Container(
-        content=ft.Row(
-            [
-                ft.Icon(ft.Icons.INFO_OUTLINE, size=18, color=ft.Colors.BLUE_400),
-                ft.Text("Escanee cada bulto o producto recibido para verificarlo contra el remito.", size=12, expand=True),
-            ],
-            spacing=8,
-        ),
-        bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_100,
-        border_radius=6,
-        padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+    banner_feedback = construir_banner_escaneo_inicial(
+        "Escanee cada bulto o producto recibido para verificarlo contra el remito.",
+        es_oscuro,
     )
 
     txt_cantidad = ft.TextField(
@@ -140,7 +111,7 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
 
         # Cierre parcial: habilitado si hay unidades verificadas pendientes de ingresar
         btn_cierre_parcial.disabled = pend_ingreso <= 0
-        btn_cierre_parcial.text = f"📅 Cierre Parcial ({pend_ingreso} un.)" if pend_ingreso > 0 else "📅 Cierre Parcial del Día"
+        btn_cierre_parcial.content = f"📅 Cierre Parcial ({pend_ingreso} un.)" if pend_ingreso > 0 else "📅 Cierre Parcial del Día"
 
         # Cierre definitivo: habilitado si se controló al menos 1 unidad
         btn_confirmar_stock.disabled = ctrl <= 0
@@ -148,41 +119,22 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
         items = interfaz.order_store.obtener_items_plan_ingreso_fabrica(pid)
         lista_items.controls.clear()
         for it in items:
-            cod = it["codigo"]
-            desc = it["descripcion"]
             esp = it["cantidad_esperada"]
             ctrl_it = it["cantidad_controlada"]
             ingr_it = it.get("cantidad_ingresada", 0)
-            comp = bool(it["completado"])
-
-            color_item = ft.Colors.GREEN_400 if comp else (ft.Colors.AMBER_400 if ctrl_it > 0 else interfaz.texto)
-            icono = ft.Icons.CHECK_CIRCLE if comp else (ft.Icons.PENDING_ACTIONS if ctrl_it > 0 else ft.Icons.RADIO_BUTTON_UNCHECKED)
-            icono_color = ft.Colors.GREEN_400 if comp else (ft.Colors.AMBER_400 if ctrl_it > 0 else ft.Colors.GREY_400)
-
             cant_txt = f"{ctrl_it} / {esp} un."
             if ingr_it > 0:
                 cant_txt += f" ({ingr_it} en stock)"
 
             lista_items.controls.append(
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                    border_radius=6,
-                    bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_100,
-                    content=ft.Row(
-                        [
-                            ft.Icon(icono, color=icono_color, size=18),
-                            ft.Text(f"[{cod}]", weight=ft.FontWeight.BOLD, size=11, width=80),
-                            ft.Text(desc, size=11, expand=True, no_wrap=True),
-                            ft.Text(
-                                cant_txt,
-                                weight=ft.FontWeight.BOLD,
-                                size=11,
-                                color=color_item,
-                                text_align=ft.TextAlign.RIGHT,
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
+                construir_fila_picking_guiado(
+                    codigo=it["codigo"],
+                    descripcion=it["descripcion"],
+                    cant_txt=cant_txt,
+                    completado=bool(it["completado"]),
+                    en_progreso=ctrl_it > 0,
+                    color_texto_base=interfaz.texto,
+                    es_oscuro=es_oscuro,
                 )
             )
         interfaz.page.update()
@@ -214,41 +166,21 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
         safe_focus(interfaz, txt_lector)
 
         if res["exito"]:
-            emitir_tono_exito()
-            banner_feedback.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.GREEN_400)
-            banner_feedback.content = ft.Row(
-                [
-                    ft.Icon(ft.Icons.CHECK_CIRCLE, size=18, color=ft.Colors.GREEN_400),
-                    ft.Text(
-                        f"✔ {res['codigo']} ({res['descripcion']}): {res['cantidad_actual']} / {res['cantidad_esperada']} un. controladas.",
-                        size=12,
-                        weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.GREEN_400 if es_oscuro else ft.Colors.GREEN_800,
-                        expand=True,
-                    ),
-                ],
-                spacing=8,
+            actualizar_banner_resultado_escaneo(
+                banner_feedback,
+                True,
+                f"✔ {res['codigo']} ({res['descripcion']}): {res['cantidad_actual']} / {res['cantidad_esperada']} un. controladas.",
+                es_oscuro,
             )
-
-            # Sincronizar en tiempo real con el monitor del administrador
             interfaz.sincronizar_sesiones(
                 aviso_colaborativo=f"📦 Fábrica #{pid}: {picker_nom} verificó {res['codigo']} ({res['porcentaje']}%)"
             )
         else:
-            emitir_tono_error()
-            banner_feedback.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.RED_400)
-            banner_feedback.content = ft.Row(
-                [
-                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=18, color=ft.Colors.RED_400),
-                    ft.Text(
-                        f"⛔ {res.get('mensaje', 'Error en control')}",
-                        size=12,
-                        weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.RED_400 if es_oscuro else ft.Colors.RED_800,
-                        expand=True,
-                    ),
-                ],
-                spacing=8,
+            actualizar_banner_resultado_escaneo(
+                banner_feedback,
+                False,
+                f"⛔ {res.get('mensaje', 'Error en control')}",
+                es_oscuro,
             )
 
         actualizar_vista_plan()
@@ -274,7 +206,7 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
             plan_actual_id[0] = int(selector_planes_fabrica.value)
             actualizar_vista_plan()
 
-    selector_planes_fabrica.on_change = al_cambiar_plan_dropdown
+    selector_planes_fabrica.on_select = al_cambiar_plan_dropdown
 
     async def al_cierre_parcial(_e: ft.Event) -> None:
         pid = plan_actual_id[0]

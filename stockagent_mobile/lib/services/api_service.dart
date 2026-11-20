@@ -8,6 +8,7 @@ import '../models/order_dispatch.dart';
 import '../models/product_item.dart';
 import '../models/server_config.dart';
 import 'storage_service.dart';
+import 'tls_pinning_service.dart';
 
 class ApiException implements Exception {
   final int statusCode;
@@ -35,14 +36,25 @@ class ScanDispatchResult {
 class ApiService {
   final StorageService storageService;
   final HttpClient _client;
+  final void Function()? onUnauthorized;
+
+  /// Interceptor global invocado cuando el servidor rechaza un token con HTTP 401.
+  static void Function()? globalOnUnauthorized;
 
   ApiService({
     required this.storageService,
     HttpClient? client,
+    this.onUnauthorized,
   }) : _client = client ??
-            (HttpClient()
-              ..badCertificateCallback = (cert, host, port) => true
-              ..connectionTimeout = const Duration(seconds: 6));
+            TlsPinningService.createPinnedHttpClient(
+              storageService,
+              allowTofu: true,
+              connectionTimeout: const Duration(seconds: 6),
+            );
+
+  void dispose() {
+    _client.close(force: true);
+  }
 
   ServerConfig get config => storageService.loadConfig();
 
@@ -128,7 +140,22 @@ class ApiService {
         }
       }
 
+      if (response.statusCode == 401 && requiresAuth) {
+        await storageService.logout();
+        final handler = onUnauthorized ?? globalOnUnauthorized;
+        handler?.call();
+        throw ApiException(
+          401,
+          'Sesión expirada o revocada. Inicia sesión nuevamente.',
+        );
+      }
+
       throw ApiException(response.statusCode, errorMsg);
+    } on HandshakeException catch (_) {
+      throw ApiException(
+        495,
+        'Certificado TLS rechazado o modificado en ${config.host}:${config.port}. Verifica la conexión segura.',
+      );
     } on SocketException catch (_) {
       throw ApiException(
         0,

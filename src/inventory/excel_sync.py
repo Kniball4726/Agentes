@@ -12,6 +12,8 @@ from typing import List, Optional, Tuple
 
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+from ..core.sanitize_utils import sanitizar_celda_excel
 from openpyxl.utils import get_column_letter
 
 from ..parsers.remito_parser import ResultadoRemito
@@ -256,9 +258,9 @@ def crear_informe_desde_plantilla(
             origen = hoja_plantilla.cell(fila_estilo, columna_plantilla)
             destino = hoja_salida.cell(fila_salida, columna_salida)
             copiar_estilo(origen, destino)
-        codigo_salida = int(codigo) if codigo.isdigit() else codigo
+        codigo_salida = int(codigo) if codigo.isdigit() else sanitizar_celda_excel(codigo)
         hoja_salida.cell(fila_salida, 1, codigo_salida)
-        hoja_salida.cell(fila_salida, 2, nombre)
+        hoja_salida.cell(fila_salida, 2, sanitizar_celda_excel(nombre))
         if descuento is not None:
             hoja_salida.cell(fila_salida, 3, descuento).number_format = "0"
 
@@ -312,7 +314,7 @@ def crear_informe_desde_plantilla(
             else:
                 tipo = "Canje"
             for columna, valor in enumerate((tipo, documento.cliente, str(documento.numero_remito)), start=1):
-                hoja_salida.cell(fila_actual, columna, valor)
+                hoja_salida.cell(fila_actual, columna, sanitizar_celda_excel(valor))
             _copiar_estilo_fila_helper(
                 hoja_plantilla, hoja_salida, fila_estilo_producto, fila_actual, 4,
                 col_codigo, col_nombre, col_descuento or col_stock, col_stock
@@ -345,10 +347,10 @@ def crear_informe_desde_plantilla(
         aplicar_encabezado(fila_actual, "D9EAF7")
         for codigo, archivo, descripcion, motivo in productos_sin_coincidencia:
             fila_actual += 1
-            hoja_salida.cell(fila_actual, 1, codigo)
-            hoja_salida.cell(fila_actual, 2, archivo)
-            hoja_salida.cell(fila_actual, 3, descripcion)
-            hoja_salida.cell(fila_actual, 4, motivo)
+            hoja_salida.cell(fila_actual, 1, sanitizar_celda_excel(codigo))
+            hoja_salida.cell(fila_actual, 2, sanitizar_celda_excel(archivo))
+            hoja_salida.cell(fila_actual, 3, sanitizar_celda_excel(descripcion))
+            hoja_salida.cell(fila_actual, 4, sanitizar_celda_excel(motivo))
             _copiar_estilo_fila_helper(
                 hoja_plantilla, hoja_salida, fila_estilo_producto, fila_actual, 4,
                 col_codigo, col_nombre, col_descuento or col_stock, col_stock

@@ -10,6 +10,7 @@ import flet as ft
 
 from ...inventory import StockManager as _DefaultStockManager
 from ...orders import LOGISTICA_OPCIONES, Pedido
+from ..design import colores_de, limpiar_errores, marcar_error, tono_legible
 from ..theme import ROJO
 
 
@@ -53,19 +54,32 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
     al_final: Callable[[], None] | None = None,
 ) -> None:
     """Abre el diálogo para anular un pedido registrado restituyendo su stock en tiempo real."""
+    if not interfaz.exigir_roles("operador", "administrador"):
+        return
+
     motivo_input = ft.TextField(
         label="Motivo de la anulación (opcional)",
         hint_text="ej: Cancelado por el cliente, duplicado, error en carga",
         dense=True,
         autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
     )
+    en_curso = [False]
 
     def ejecutar_anulacion(_e: ft.Event) -> None:
+        if en_curso[0]:
+            return
+        if not interfaz.exigir_roles("operador", "administrador"):
+            return
+        en_curso[0] = True
         interfaz.page.pop_dialog()
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
         motivo_txt = (motivo_input.value or "").strip()
         try:
-            unidades_restituidas = _restituir_stock_pedido(interfaz, pedido) if pedido.estado != "anulado" else 0
+            pedido_actual = interfaz.order_store.buscar_pedido_por_nota(pedido.nota_pedido) or pedido
+            if getattr(pedido_actual, "estado", "") == "anulado":
+                interfaz.notificar(f"El pedido {pedido.nota_pedido} ya se encontraba anulado.")
+                return
+            unidades_restituidas = _restituir_stock_pedido(interfaz, pedido_actual)
             interfaz.order_store.anular_pedido(
                 pedido_id=pedido.id,
                 motivo=f"Anulación de pedido: {motivo_txt}".strip() if motivo_txt else "Anulación de pedido",
@@ -84,21 +98,26 @@ def mostrar_dialogo_confirmar_anulacion_pedido(
                 al_final()
             interfaz.actualizar_listas()
             interfaz.sincronizar_sesiones(aviso_colaborativo=f"⚠️ {usr} anuló el Pedido #{pedido.nota_pedido} ({pedido.cliente})")
-            interfaz.sincronizar_sesiones()
         except Exception as err:
             interfaz.notificar(f"Error al anular pedido: {err}")
+        finally:
+            en_curso[0] = False
 
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    c_ambar = tono_legible("AMBER", es_oscuro)
+    ancho_dlg = interfaz.ancho_adaptable(420) if hasattr(interfaz, "ancho_adaptable") else 420
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ROJO), ft.Text("Confirmar Anulación de Pedido")]),
         content=ft.Container(
-            width=420,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     ft.Text(f"¿Estás seguro de anular el pedido '{pedido.nota_pedido}' del cliente '{pedido.cliente}'?"),
                     ft.Text(
                         "⚠️ Al anular este pedido, todas las unidades descontadas se devolverán automáticamente al stock disponible y a la planilla Productos.xlsx en tiempo real.",
                         size=11,
-                        color=ft.Colors.AMBER_800,
+                        color=c_ambar,
                         weight=ft.FontWeight.W_500,
                     ),
                     ft.Text("Esta acción quedará registrada en el log de auditoría del sistema.", size=11, color=interfaz.secundario),
@@ -141,10 +160,12 @@ def _mostrar_dialogo_bloqueo_pedido(
         if hasattr(interfaz, "mostrar_detalle_pedido_modal"):
             interfaz.mostrar_detalle_pedido_modal(pedido)
 
+    ancho_bloq = interfaz.ancho_adaptable(450) if hasattr(interfaz, "ancho_adaptable") else 450
     dialogo_bloqueo = ft.AlertDialog(
-        title=ft.Row([ft.Icon(ft.Icons.LOCK, color=ft.Colors.AMBER_400), ft.Text("Pedido en Edición Simultánea")]),
+        modal=True,
+        title=ft.Row([ft.Icon(ft.Icons.LOCK, color=colores_de(interfaz).advertencia), ft.Text("Pedido en Edición Simultánea")]),
         content=ft.Container(
-            width=450,
+            width=ancho_bloq,
             content=ft.Column(
                 [
                     ft.Text(
@@ -214,8 +235,10 @@ def mostrar_dialogo_editar_pedido(
     error_msg = ft.Text("", color=ft.Colors.RED_400, size=11, visible=False)
 
     def guardar_cambios(_e: ft.Event) -> None:
+        limpiar_errores(cliente_input, bultos_input)
         c_val = (cliente_input.value or "").strip()
         if not c_val:
+            marcar_error(cliente_input, "El cliente no puede estar vacío.")
             error_msg.value = "El cliente no puede estar vacío."
             error_msg.visible = True
             if interfaz.page:
@@ -226,6 +249,7 @@ def mostrar_dialogo_editar_pedido(
             if b_val < 1:
                 raise ValueError
         except Exception:
+            marcar_error(bultos_input, "Debe ser un entero mayor o igual a 1.")
             error_msg.value = "La cantidad de bultos debe ser un número entero mayor o igual a 1."
             error_msg.visible = True
             if interfaz.page:
@@ -267,10 +291,12 @@ def mostrar_dialogo_editar_pedido(
             except Exception:
                 pass
 
+    ancho_edit = interfaz.ancho_adaptable(420) if hasattr(interfaz, "ancho_adaptable") else 420
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row([ft.Icon(ft.Icons.EDIT_NOTE, color=ft.Colors.BLUE_600), ft.Text(f"Modificar Pedido #{pedido.nota_pedido}")], spacing=8),
         content=ft.Container(
-            width=420,
+            width=ancho_edit,
             content=ft.Column(
                 [
                     ft.Text(f"Remito: {pedido.nota_pedido} · Archivo: {pedido.nombre_archivo}", size=11, color=interfaz.secundario),
@@ -363,10 +389,14 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
             if interfaz.page:
                 interfaz.page.update()
 
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    c_ambar = tono_legible("AMBER", es_oscuro)
+    ancho_desarm = interfaz.ancho_adaptable(460) if hasattr(interfaz, "ancho_adaptable") else 460
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row([ft.Icon(ft.Icons.REMOVE_SHOPPING_CART, color=ROJO), ft.Text(f"Desarmar Pedido #{pedido.nota_pedido}")], spacing=8),
         content=ft.Container(
-            width=460,
+            width=ancho_desarm,
             content=ft.Column(
                 [
                     ft.Text(
@@ -379,7 +409,7 @@ def mostrar_dialogo_confirmar_desarmar_pedido(
                             ft.Text(
                                 f"⚠️ Atención: Este pedido ya formó parte del Cierre #{pedido.cierre_id}. Al desarmarlo, las unidades se reincorporarán al stock actual.",
                                 size=11,
-                                color=ft.Colors.AMBER_800,
+                                color=c_ambar,
                                 weight=ft.FontWeight.W_500,
                             )
                         ]

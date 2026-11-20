@@ -148,6 +148,29 @@ def actualizar_estado_dashboard(interfaz: Any, _evento: ft.Event | None = None) 
             f"Consola de Auditoría y Control de Accesos · Usuarios: {len(todos_usr)} · Cuentas activas: {activos_usr} · Backups: {len(bks)}"
         )
         renderizar_auditoria_master(interfaz, eventos_auditoria)
+    elif rol == "despachador":
+        interfaz.banner_alerta_quiebre.visible = False
+        pend_armados = 0
+        despachados_cnt = 0
+        if hasattr(interfaz, "order_store") and interfaz.order_store:
+            try:
+                pend_armados = len(
+                    interfaz.order_store.listar_pedidos_por_estado_despacho(estados=("armado",), limit=300)
+                )
+                despachados_cnt = len(
+                    interfaz.order_store.listar_pedidos_por_estado_despacho(estados=("despachado", "entregado"), limit=300)
+                )
+            except Exception:
+                pass
+        interfaz.pendientes_texto.value = (
+            f"Módulo Despacho · Pendientes (armados): {pend_armados} · Despachados: {despachados_cnt}"
+        )
+        refrescar_fn = getattr(interfaz, "_refrescar_modulo_despacho", None)
+        if callable(refrescar_fn):
+            try:
+                refrescar_fn()
+            except Exception:
+                pass
     elif rol == "picker":
         interfaz.banner_alerta_quiebre.visible = False
         interfaz.pendientes_texto.value = (

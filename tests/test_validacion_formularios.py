@@ -51,8 +51,8 @@ class TestValidacionFormularios(unittest.IsolatedAsyncioTestCase):
             guardar_btn_handler = dialogo_capturado.actions[1].on_click
             await guardar_btn_handler(None)
 
-            # Debe haberse seteado error_text y NO haberse hecho pop_dialog
-            self.assertIn("ya existe", campo_cod.error_text.lower())
+            # Debe haberse seteado error y NO haberse hecho pop_dialog
+            self.assertIn("ya existe", (campo_cod.error or "").lower())
             self.interfaz.page.pop_dialog.assert_not_called()
             self.interfaz.notificar.assert_called_with("El producto con código '2807' ya existe.")
 
@@ -80,7 +80,7 @@ class TestValidacionFormularios(unittest.IsolatedAsyncioTestCase):
             guardar_btn_handler = dialogo.actions[1].on_click
             await guardar_btn_handler(None)
 
-            self.assertIn("No existe", campo_ref.error_text)
+            self.assertIn("No existe", campo_ref.error or "")
             self.interfaz.page.pop_dialog.assert_not_called()
 
     async def test_editar_producto_codigo_duplicado(self):
@@ -110,7 +110,7 @@ class TestValidacionFormularios(unittest.IsolatedAsyncioTestCase):
         guardar_btn_handler = dialogo.actions[1].on_click
         await guardar_btn_handler(None)
 
-        self.assertIn("ya existe", campo_cod.error_text.lower())
+        self.assertIn("ya existe", (campo_cod.error or "").lower())
         self.interfaz.page.pop_dialog.assert_not_called()
 
     async def test_batch_controller_value_error_handling(self):

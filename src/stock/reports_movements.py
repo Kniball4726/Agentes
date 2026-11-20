@@ -11,6 +11,7 @@ from openpyxl.styles import Font
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Spacer
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_celda_excel
 from .report_styles import (
     _autoajustar_columnas_excel,
     compilar_pdf_reporte,
@@ -106,9 +107,9 @@ def generar_reporte_movimientos_estandar(
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Movimientos Consolidados"
-        ws.append([titulo_documento])
+        ws.append([sanitizar_celda_excel(titulo_documento)])
         ws.cell(1, 1).font = Font(name="Calibri", size=14, bold=True, color="1E293B")
-        ws.append([f"{rango_txt}{lote_txt} | Emitido: {fecha_legible} | Generado por: {usuario}"])
+        ws.append([sanitizar_celda_excel(f"{rango_txt}{lote_txt} | Emitido: {fecha_legible} | Generado por: {usuario}")])
 
         if incluir_salidas:
             filas_sal_xl = [
@@ -158,7 +159,10 @@ def generar_reporte_movimientos_estandar(
         return ruta_salida
 
     st = crear_estilos_pdf()
-    subtitulo = f"{rango_txt}{lote_txt} | Emitido: {fecha_legible} | Responsable: <b>{usuario}</b>"
+    subtitulo = (
+        f"{escapar_texto_reportlab(rango_txt)}{escapar_texto_reportlab(lote_txt)} | "
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)} | Responsable: <b>{escapar_texto_reportlab(usuario)}</b>"
+    )
     tarjetas: list[tuple[str, str]] = []
     if incluir_salidas:
         tarjetas.extend([
@@ -190,9 +194,9 @@ def generar_reporte_movimientos_estandar(
         if salidas:
             for item in salidas:
                 filas_sal.append([
-                    Paragraph(str(item["code"]), st["td_center"]),
-                    Paragraph(str(item["name"])[:42], st["td"]),
-                    Paragraph(_etiqueta_origen_salida(item)[:36], st["td"]),
+                    Paragraph(escapar_texto_reportlab(str(item["code"])), st["td_center"]),
+                    Paragraph(escapar_texto_reportlab(str(item["name"])[:42]), st["td"]),
+                    Paragraph(escapar_texto_reportlab(_etiqueta_origen_salida(item)[:36]), st["td"]),
                     Paragraph(str(item["stock_inicial"]), st["td_center"]),
                     Paragraph(f"<b>-{item['cantidad_salida']}</b>", st["td_center"]),
                     Paragraph(f"<b>{item['stock_cierre']}</b>", st["td_center"]),
@@ -236,13 +240,13 @@ def generar_reporte_movimientos_estandar(
         if ingresos:
             for item in ingresos:
                 filas_ing.append([
-                    Paragraph(str(item["code"]), st["td_center"]),
-                    Paragraph(str(item["name"])[:42], st["td"]),
-                    Paragraph(str(item.get("origen_ingreso", "-"))[:36], st["td"]),
+                    Paragraph(escapar_texto_reportlab(str(item["code"])), st["td_center"]),
+                    Paragraph(escapar_texto_reportlab(str(item["name"])[:42]), st["td"]),
+                    Paragraph(escapar_texto_reportlab(str(item.get("origen_ingreso", "-"))[:36]), st["td"]),
                     Paragraph(str(item["stock_inicial"]), st["td_center"]),
                     Paragraph(f"<b>+{item['cantidad_ingreso']}</b>", st["td_center"]),
                     Paragraph(f"<b>{item['stock_cierre']}</b>", st["td_center"]),
-                    Paragraph(str(item.get("responsables", "-"))[:20], st["td_center"]),
+                    Paragraph(escapar_texto_reportlab(str(item.get("responsables", "-"))[:20]), st["td_center"]),
                 ])
             filas_ing.append([
                 Paragraph("<b>TOTAL</b>", st["td_center"]),
@@ -279,9 +283,9 @@ def generar_reporte_movimientos_estandar(
         ]]
         for item in criticos_post:
             filas_al.append([
-                Paragraph(str(item["code"]), st["td_center"]),
-                Paragraph(str(item["name"])[:50], st["td"]),
-                Paragraph(str(item.get("ubicacion") or "-")[:16], st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(item["code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(item["name"])[:50]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(item.get("ubicacion") or "-")[:16]), st["td_center"]),
                 Paragraph(f"<b>{item['stock_cierre']}</b>", st["td_center"]),
                 Paragraph(str(item.get("stock_minimo", 5)), st["td_center"]),
                 _estilo_estado_cell(str(item["estado_inventario"]), st),

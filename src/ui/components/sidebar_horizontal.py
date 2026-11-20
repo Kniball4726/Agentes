@@ -139,7 +139,29 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
     # - Picker: Entrada, Salida y Mercado Libre
     # - Administrador: Solo Entrada y Salida (Ingreso y Egreso)
     # - Operador: Cargar Pedido, Entrada y Salida
-    if rol in ("operador", "administrador", "picker", "master"):
+    if rol == "despachador":
+        btn_desp_h = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.QR_CODE_SCANNER, size=15, color=ft.Colors.WHITE),
+                    ft.Text("Despacho", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                ],
+                spacing=5,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            height=30,
+            padding=ft.Padding.symmetric(horizontal=10),
+            border_radius=6,
+            bgcolor=ROJO,
+            tooltip="⚡ Abrir módulo Despacho (Pistola QR / Manual)",
+            on_click=lambda _: interfaz.mostrar_modulo_despacho(),
+            ink=True,
+        )
+        controls.extend([
+            btn_desp_h,
+            ft.VerticalDivider(width=8, color=interfaz.borde),
+        ])
+    elif rol in ("operador", "administrador", "picker", "master"):
         if rol == "master":
             btn_usr_h = ft.Container(
                 content=ft.Row(

@@ -121,11 +121,15 @@ class ChatAssistantController:
         return self._host.ventana_chat_flotante  # type: ignore[return-value]
 
     def escribir_chat(self, emisor: str, mensaje: str) -> None:
-        color = ROJO if emisor == "Tú" else ft.Colors.RED_300
         modo_oscuro = bool(getattr(self._host, "modo_oscuro", True))
+        from ..design import colores_de
+
+        colores = colores_de(self._host)
         if emisor == "Tú":
+            color = colores.etiqueta_emisor
             bgcolor = ft.Colors.RED_900 if modo_oscuro else ft.Colors.RED_50
         else:
+            color = ft.Colors.CYAN_200 if modo_oscuro else ft.Colors.TEAL_900
             bgcolor = ft.Colors.BLUE_GREY_800 if modo_oscuro else ft.Colors.GREY_100
         self._host.conversacion.controls.append(
             ft.Container(

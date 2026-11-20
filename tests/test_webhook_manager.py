@@ -47,12 +47,15 @@ class TestWebhookManager(unittest.TestCase):
         self.assertTrue(eliminado)
         self.assertEqual(len(webhook_manager.obtener_webhooks()), 0)
 
-    @patch("urllib.request.urlopen")
-    def test_despacho_evento_webhook(self, mock_urlopen):
+    @patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))])
+    @patch("urllib.request.build_opener")
+    def test_despacho_evento_webhook(self, mock_build_opener, _mock_dns):
         """Verifica que el despacho asíncrono invoque la URL con payload correcto."""
         mock_response = MagicMock()
         mock_response.getcode.return_value = 200
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener = MagicMock()
+        mock_opener.open.return_value.__enter__.return_value = mock_response
+        mock_build_opener.return_value = mock_opener
 
         webhook_manager.guardar_webhook(
             url="https://api.test.com/hook",
@@ -73,7 +76,7 @@ class TestWebhookManager(unittest.TestCase):
 
         import time
         time.sleep(0.3)  # Esperar hilo de despacho
-        self.assertTrue(mock_urlopen.called)
+        self.assertGreaterEqual(mock_opener.open.call_count, 2)
 
 
 if __name__ == "__main__":

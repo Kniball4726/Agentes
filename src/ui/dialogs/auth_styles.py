@@ -100,9 +100,11 @@ def _estilizar_campo_espejo(campo: ft.TextField, modo_oscuro: bool) -> None:
 
 
 def limpiar_chrome_auth(interfaz: Any) -> None:
-    """Limpia botones flotantes, drawers y overlays antes de mostrar una pantalla de acceso."""
+    """Limpia botones flotantes, drawers, barra móvil y overlays antes de mostrar una pantalla de acceso."""
     interfaz.chat_visible = False
     interfaz.page.floating_action_button = None
+    if hasattr(interfaz.page, "navigation_bar"):
+        interfaz.page.navigation_bar = None
     if hasattr(interfaz.page, "drawer"):
         interfaz.page.drawer = None
     if hasattr(interfaz.page, "overlay") and interfaz.page.overlay is not None:

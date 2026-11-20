@@ -9,7 +9,9 @@ from ...backup_manager import (
     obtener_config_backup,
     restaurar_backup_sistema,
 )
-from ...paths import application_root
+from ...core.security_utils import es_ruta_unc_o_sistema
+from ...paths import get_data_dir
+from ..design import colores_de, confirmar_accion_destructiva
 from ..theme import ROJO
 
 
@@ -18,6 +20,7 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
     if not interfaz.exigir_roles("administrador", "master"):
         return
 
+    colores = colores_de(interfaz)
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
     cfg_bk = obtener_config_backup()
     input_carpeta_ext = ft.TextField(
@@ -50,6 +53,13 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             if interfaz.page:
                 interfaz.page.update()
             return
+        if es_ruta_unc_o_sistema(val):
+            msg_bk.value = "❌ Ruta bloqueada por seguridad: no se permiten rutas de red UNC ni carpetas del sistema."
+            msg_bk.color = ft.Colors.RED_400
+            interfaz.reproducir_sonido("error")
+            if interfaz.page:
+                interfaz.page.update()
+            return
         try:
             p = Path(val)
             p.mkdir(parents=True, exist_ok=True)
@@ -69,7 +79,14 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
 
     def ejecutar_backup(_ev: ft.Event) -> None:
         if es_master:
-            guardar_config_backup(input_carpeta_ext.value or "")
+            try:
+                guardar_config_backup(input_carpeta_ext.value or "")
+            except ValueError as err_cfg:
+                msg_bk.value = f"❌ {err_cfg}"
+                msg_bk.color = ft.Colors.RED_400
+                if interfaz.page:
+                    interfaz.page.update()
+                return
         interfaz.page.pop_dialog()
         try:
             ruta_zip = crear_backup_sistema(
@@ -91,7 +108,7 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
         if not es_master:
             interfaz.notificar("Solo el rol Master tiene autorización para restaurar copias de seguridad.")
             return
-        carpeta_bks = application_root() / "data" / "backups"
+        carpeta_bks = get_data_dir() / "backups"
         subidos = await interfaz.subir_archivos_desde_pc(
             carpeta_destino=carpeta_bks,
             extensiones=["zip"],
@@ -110,35 +127,49 @@ def mostrar_dialogo_backup(interfaz: Any) -> None:
             return
         if not selector_restore.value:
             msg_bk.value = "Selecciona primero un archivo .ZIP de respaldo."
-            msg_bk.color = ft.Colors.RED_400
+            msg_bk.color = colores.error
             interfaz.page.update()
             return
         ruta_elegida = Path(selector_restore.value)
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin"
-        interfaz.page.pop_dialog()
-        ok, detalle_msg, _ = restaurar_backup_sistema(
-            ruta_zip=ruta_elegida,
-            ruta_excel_base=interfaz.menu.ruta_excel_base,
-            usuario=usr,
-        )
-        if ok:
-            try:
-                interfaz.order_store.registrar_auditoria(
-                    usuario=usr,
-                    accion="BACKUP_RESTAURADO",
-                    detalle=detalle_msg,
-                )
-            except Exception:
-                pass
-            interfaz.actualizar_estado()
-            interfaz.notificar(f"✅ {detalle_msg}")
-        else:
-            interfaz.notificar(f"❌ {detalle_msg}")
 
+        def _ejecutar_restauracion() -> None:
+            interfaz.page.pop_dialog()
+            ok, detalle_msg, _ = restaurar_backup_sistema(
+                ruta_zip=ruta_elegida,
+                ruta_excel_base=interfaz.menu.ruta_excel_base,
+                usuario=usr,
+            )
+            if ok:
+                try:
+                    interfaz.order_store.registrar_auditoria(
+                        usuario=usr,
+                        accion="BACKUP_RESTAURADO",
+                        detalle=detalle_msg,
+                    )
+                except Exception:
+                    pass
+                interfaz.actualizar_estado()
+                interfaz.notificar(f"✅ {detalle_msg}")
+            else:
+                interfaz.notificar(f"❌ {detalle_msg}")
+
+        confirmar_accion_destructiva(
+            interfaz,
+            "Confirmar Restauración del Sistema",
+            f"¿Estás seguro de restaurar el respaldo '{ruta_elegida.name}'?\n\n"
+            "Se sobrescribirán las bases de datos actuales (pedidos, productos y usuarios) y la planilla Productos.xlsx.",
+            _ejecutar_restauracion,
+            texto_confirmar="Sí, Restaurar Sistema",
+            roles_permitidos=("master",),
+        )
+
+    ancho_dlg = interfaz.ancho_adaptable(560) if hasattr(interfaz, "ancho_adaptable") else 560
     dialogo = ft.AlertDialog(
+        modal=True,
         title=ft.Row([ft.Icon(ft.Icons.BACKUP, color=ft.Colors.BLUE_600), ft.Text("Copia de Seguridad y Restauración (.ZIP)" if es_master else "Copia de Seguridad del Sistema")]),
         content=ft.Container(
-            width=560,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     ft.Text("El respaldo completo incluye con verificación de integridad:"),

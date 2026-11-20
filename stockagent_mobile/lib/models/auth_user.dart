@@ -21,6 +21,15 @@ class AuthUser {
   bool get isMaster => role.toLowerCase() == 'master';
   bool get isAdmin => role.toLowerCase() == 'administrador' || isMaster;
   bool get isOperator => role.toLowerCase() == 'operador' || isAdmin;
+  bool get isDespachador => role.toLowerCase() == 'despachador' || isAdmin;
+  bool get isPicker => role.toLowerCase() == 'picker' || isOperator;
+  bool get isConsulta => role.toLowerCase() == 'consulta' || role.toLowerCase() == 'solo_lectura';
+
+  /// Permiso para modificar ubicación o código de barras en catálogo.
+  bool get canEditCatalog => !isConsulta && (isAdmin || isOperator);
+
+  /// Permiso para revertir un pedido despachado o listo nuevamente a ARMADO.
+  bool get canRevertDispatchState => isAdmin || isMaster;
 
   factory AuthUser.fromJson(Map<String, dynamic> json, {String? token}) {
     return AuthUser(
@@ -29,10 +38,11 @@ class AuthUser {
       role: json['role'] as String? ?? 'operador',
       nombre: json['nombre'] as String? ?? json['username'] as String? ?? '',
       email: json['email'] as String?,
-      token: token ?? json['token'] as String?,
+      token: token,
     );
   }
 
+  /// Serializa metadatos públicos del perfil sin duplicar el token de sesión en texto plano.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -40,7 +50,6 @@ class AuthUser {
       'role': role,
       'nombre': nombre,
       if (email != null) 'email': email,
-      if (token != null) 'token': token,
     };
   }
 

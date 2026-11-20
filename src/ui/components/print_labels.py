@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
+from ...core.security_utils import validar_nombre_impresora_seguro
 from ...labels import (
     generar_etiquetas_bultos_pdf,
     generar_etiquetas_lote_pedidos_pdf,
     generar_etiquetas_termicas_pdf,
 )
 from ..user_preferences import obtener_preferencias_usuario
+
+_PS_PRINT_TO_SCRIPT = (
+    "Start-Process -FilePath $env:STOCKAGENT_PRINT_PDF "
+    "-Verb PrintTo "
+    "-ArgumentList ('\"' + $env:STOCKAGENT_PRINT_PRINTER + '\"') "
+    "-PassThru | Out-Null"
+)
 
 
 def listar_impresoras_sistema() -> list[str]:
@@ -42,22 +51,29 @@ def listar_impresoras_sistema() -> list[str]:
 
 
 def imprimir_directo_spooler(ruta_pdf: Path, impresora: str) -> bool:
-    """Envía un archivo PDF a la cola de impresión de Windows de forma desatendida."""
-    if not ruta_pdf.exists() or not impresora:
+    """Envía un archivo PDF a la cola de impresión de Windows sin interpolación en shell."""
+    ruta_obj = Path(ruta_pdf)
+    if not ruta_obj.exists() or not ruta_obj.is_file() or ruta_obj.suffix.lower() != ".pdf":
         return False
     try:
+        impresora_segura = validar_nombre_impresora_seguro(impresora)
+        ruta_resuelta = str(ruta_obj.resolve())
         cmd = [
             "powershell",
             "-NoProfile",
             "-Command",
-            f"Start-Process -FilePath '{ruta_pdf.resolve()}' -Verb PrintTo -ArgumentList '\"{impresora}\"' -PassThru | Out-Null",
+            _PS_PRINT_TO_SCRIPT,
         ]
+        env = dict(os.environ)
+        env["STOCKAGENT_PRINT_PDF"] = ruta_resuelta
+        env["STOCKAGENT_PRINT_PRINTER"] = impresora_segura
         kwargs: dict[str, Any] = {
             "capture_output": True,
             "text": True,
             "encoding": "utf-8",
             "errors": "replace",
             "timeout": 10,
+            "env": env,
         }
         if hasattr(subprocess, "CREATE_NO_WINDOW"):
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW

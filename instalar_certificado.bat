@@ -8,18 +8,25 @@ echo   INSTALADOR DE CERTIFICADO SSL - STOCK AGENT
 echo ==================================================================
 echo.
 
-if not exist "data\certs\stockagent.crt" (
-    echo [ERROR] No se encontr? el archivo "data\certs\stockagent.crt".
-    echo Inicia primero la aplicaci?n para que se genere autom?ticamente.
+set "CERT_A_INSTALAR="
+if exist "data\certs\stockagent_ca.crt" (
+    set "CERT_A_INSTALAR=data\certs\stockagent_ca.crt"
+) else if exist "data\certs\stockagent.crt" (
+    set "CERT_A_INSTALAR=data\certs\stockagent.crt"
+)
+
+if "%CERT_A_INSTALAR%"=="" (
+    echo [ERROR] No se encontro el archivo "data\certs\stockagent_ca.crt" ni "data\certs\stockagent.crt".
+    echo Inicia primero la aplicacion para que se genere automaticamente.
     echo.
     pause
     goto :FIN
 )
 
-echo Instalando certificado en "Entidades de certificaci?n ra?z de confianza"...
+echo Instalando certificado CA local restringida ^("%CERT_A_INSTALAR%"^) en "Entidades de certificacion raiz de confianza"...
 echo.
 
-certutil -addstore -f "ROOT" "data\certs\stockagent.crt"
+certutil -addstore -f "ROOT" "%CERT_A_INSTALAR%"
 
 if errorlevel 1 (
     echo.

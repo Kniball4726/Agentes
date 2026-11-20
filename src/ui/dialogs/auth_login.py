@@ -9,6 +9,7 @@ from typing import Any
 
 import flet as ft
 
+from ..design import colores_de, fijar_ocupado
 from ..theme import ROJO
 from .auth_styles import (
     _borde_espejo,
@@ -169,41 +170,62 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
     _estilizar_campo_espejo(usuario, modo_oscuro)
     _estilizar_campo_espejo(clave, modo_oscuro)
 
-    mensaje = ft.Text(error, color=ft.Colors.RED_400, size=12, visible=bool(error))
+    colores = colores_de(interfaz)
+    mensaje = ft.Text(error, color=colores.error, size=12, visible=bool(error))
+    btn_login_ref: list[ft.Button] = []
+    en_progreso = [False]
 
     def iniciar(_evento: ft.Event) -> None:
-        nom_intento = (usuario.value or "").strip() or "desconocido"
-        res = interfaz.user_store.authenticate_detailed(usuario.value or "", clave.value or "")
-        if res.user is None:
-            mensaje.value = res.error or "Usuario o contraseña incorrectos, o cuenta inactiva."
-            mensaje.visible = True
+        if en_progreso[0]:
+            return
+        en_progreso[0] = True
+        for b in btn_login_ref:
+            fijar_ocupado(b, True, "Ingresando...")
+        try:
+            interfaz.page.update()
+        except Exception:
+            pass
+
+        try:
+            nom_intento = (usuario.value or "").strip() or "desconocido"
+            res = interfaz.user_store.authenticate_detailed(usuario.value or "", clave.value or "")
+            if res.user is None:
+                mensaje.value = res.error or "Usuario o contraseña incorrectos, o cuenta inactiva."
+                mensaje.visible = True
+                try:
+                    interfaz.order_store.registrar_auditoria(
+                        usuario=nom_intento,
+                        accion="CUENTA_BLOQUEADA" if res.locked else "LOGIN_FALLIDO",
+                        detalle=res.error or "Intento de acceso fallido",
+                    )
+                except Exception:
+                    pass
+                logger.warning("Intento de login fallido para '%s': %s", nom_intento, res.error)
+                for b in btn_login_ref:
+                    fijar_ocupado(b, False)
+                interfaz.page.update()
+                return
+
+            interfaz.usuario_actual = res.user
+            interfaz.ultima_actividad = datetime.now()
             try:
                 interfaz.order_store.registrar_auditoria(
-                    usuario=nom_intento,
-                    accion="CUENTA_BLOQUEADA" if res.locked else "LOGIN_FALLIDO",
-                    detalle=res.error or "Intento de acceso fallido",
+                    usuario=res.user.username,
+                    accion="LOGIN_EXITOSO",
+                    detalle=f"Inicio de sesión exitoso (rol: {res.user.role})",
                 )
             except Exception:
                 pass
-            logger.warning("Intento de login fallido para '%s': %s", nom_intento, res.error)
-            interfaz.page.update()
-            return
-
-        interfaz.usuario_actual = res.user
-        interfaz.ultima_actividad = datetime.now()
-        try:
-            interfaz.order_store.registrar_auditoria(
-                usuario=res.user.username,
-                accion="LOGIN_EXITOSO",
-                detalle=f"Inicio de sesión exitoso (rol: {res.user.role})",
-            )
-        except Exception:
-            pass
-        logger.info("Inicio de sesión exitoso: %s (%s)", res.user.username, res.user.role)
-        if getattr(res.user, "must_change_password", False):
-            interfaz.mostrar_cambio_clave_obligatorio()
-        else:
-            interfaz.construir()
+            logger.info("Inicio de sesión exitoso: %s (%s)", res.user.username, res.user.role)
+            if getattr(res.user, "must_change_password", False):
+                interfaz.mostrar_cambio_clave_obligatorio()
+            else:
+                interfaz.construir()
+        finally:
+            en_progreso[0] = False
+            for b in btn_login_ref:
+                if getattr(b, "disabled", False):
+                    fijar_ocupado(b, False)
 
     limpiar_chrome_auth(interfaz)
 
@@ -234,6 +256,8 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
                 expand=True,
             )
         )
+        btn_ingresar_movil = ft.Button("Ingresar", icon=ft.Icons.LOGIN, on_click=iniciar, bgcolor=ROJO, color=ft.Colors.WHITE, width=ancho_boton, height=42)
+        btn_login_ref.append(btn_ingresar_movil)
         tarjeta_contenido = ft.Container(
             width=ancho_tarjeta,
             padding=padding_tarjeta,
@@ -248,7 +272,7 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
                     usuario,
                     clave,
                     mensaje,
-                    ft.Button("Ingresar", icon=ft.Icons.LOGIN, on_click=iniciar, bgcolor=ROJO, color=ft.Colors.WHITE, width=ancho_boton, height=42),
+                    btn_ingresar_movil,
                 ],
                 width=ancho_boton,
                 tight=True,
@@ -274,6 +298,16 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
         usuario.width = ancho_boton
         clave.width = ancho_boton
 
+        btn_ingresar_desk = ft.Button(
+            "Ingresar al sistema",
+            icon=ft.Icons.LOGIN,
+            on_click=iniciar,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+            width=ancho_boton,
+            height=46,
+        )
+        btn_login_ref.append(btn_ingresar_desk)
         panel_izquierdo = _construir_panel_izquierdo_login(interfaz, modo_oscuro, logo_bytes, ancho_panel_izq, alto_tarjeta)
         panel_derecho = ft.Container(
             width=ancho_form,
@@ -299,15 +333,7 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
                     clave,
                     mensaje,
                     ft.Container(height=4),
-                    ft.Button(
-                        "Ingresar al sistema",
-                        icon=ft.Icons.LOGIN,
-                        on_click=iniciar,
-                        bgcolor=ROJO,
-                        color=ft.Colors.WHITE,
-                        width=ancho_boton,
-                        height=46,
-                    ),
+                    btn_ingresar_desk,
                 ],
                 width=ancho_boton,
                 tight=True,

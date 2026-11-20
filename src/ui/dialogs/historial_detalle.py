@@ -37,6 +37,8 @@ def mostrar_detalle_pedido_modal(interfaz: Any, ped: Pedido) -> None:
     if interfaz.usuario_actual and interfaz.usuario_actual.role == "picker":
         interfaz.notificar("El usuario Picker no tiene acceso a la visualización de pedidos operativos.")
         return
+    if not interfaz.exigir_roles("operador", "administrador", "consulta"):
+        return
 
     ruta_comprobante = buscar_archivo_comprobante(ped)
     ruta_descuento = buscar_archivo_descuento(ped)

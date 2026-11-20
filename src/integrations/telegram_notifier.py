@@ -16,14 +16,18 @@ import urllib.parse
 import urllib.request
 
 from .. import secretos
+from ..core.environment import get_data_dir
+from ..core.network_security import crear_contexto_tls_estricto
+from ..core.sanitize_utils import escapar_html_telegram
 from ..paths import application_root
 
 CONFIG_PATH_DEFAULT = "data/config_telegram.json"
 
 
 def _obtener_ruta_config(root_path: Path | None = None) -> Path:
-    root = root_path or application_root()
-    return root / CONFIG_PATH_DEFAULT
+    if root_path is not None:
+        return root_path / CONFIG_PATH_DEFAULT
+    return get_data_dir() / "config_telegram.json"
 
 
 def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
@@ -98,6 +102,8 @@ def enviar_mensaje_telegram(
 
     if not token or not chat_id:
         return False, "Faltan credenciales: se requiere Bot Token y Chat ID de Telegram."
+    if any(ch in token for ch in ("/", "\\", "?", "#", " ", "\r", "\n")):
+        return False, "Formato de Bot Token de Telegram inválido."
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps({
@@ -114,7 +120,7 @@ def enviar_mensaje_telegram(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=6.0) as resp:
+            with urllib.request.urlopen(req, timeout=6.0, context=crear_contexto_tls_estricto()) as resp:
                 if resp.status == 200:
                     return True, "Mensaje enviado exitosamente a Telegram."
                 return False, f"Respuesta inesperada de Telegram (Código: {resp.status})."
@@ -148,13 +154,13 @@ def notificar_quiebre_stock_telegram(
         return False
 
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    estado = "🔴 AGOTADO (0 unidades)" if stock_actual <= 0 else f"🟡 CRÍTICO ({stock_actual} unidades)"
+    estado = "🔴 AGOTADO (0 unidades)" if stock_actual <= 0 else f"🟡 CRÍTICO ({int(stock_actual)} unidades)"
     msg = (
         f"🚨 <b>ALERTA DE QUIEBRE DE STOCK - STOCKAGENT</b>\n\n"
-        f"• <b>Producto:</b> {nombre}\n"
-        f"• <b>Código/SKU:</b> <code>{codigo}</code>\n"
+        f"• <b>Producto:</b> {escapar_html_telegram(nombre)}\n"
+        f"• <b>Código/SKU:</b> <code>{escapar_html_telegram(codigo)}</code>\n"
         f"• <b>Estado:</b> {estado}\n"
-        f"• <b>Stock Mínimo Definido:</b> {stock_minimo} un.\n"
+        f"• <b>Stock Mínimo Definido:</b> {int(stock_minimo)} un.\n"
         f"• <b>Fecha y Hora:</b> {ahora}\n\n"
         f"<i>💡 Sugerencia: Generar pedido de reposición para fábrica.</i>"
     )
@@ -176,10 +182,10 @@ def notificar_seguridad_bloqueo_telegram(
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
     msg = (
         f"🛡️ <b>ALERTA DE SEGURIDAD - CUENTA BLOQUEADA</b>\n\n"
-        f"• <b>Usuario Afectado:</b> <code>{username}</code>\n"
+        f"• <b>Usuario Afectado:</b> <code>{escapar_html_telegram(username)}</code>\n"
         f"• <b>Motivo:</b> 5 intentos fallidos consecutivos de contraseña.\n"
-        f"• <b>Duración del Bloqueo:</b> {retry_after_minutos} minutos.\n"
-        f"• <b>Origen:</b> {ip_origen}\n"
+        f"• <b>Duración del Bloqueo:</b> {int(retry_after_minutos)} minutos.\n"
+        f"• <b>Origen:</b> {escapar_html_telegram(ip_origen)}\n"
         f"• <b>Fecha y Hora:</b> {ahora}\n\n"
         f"<i>⚠️ Un Administrador o Master puede desbloquear la cuenta de inmediato desde 'Gestión de Usuarios'.</i>"
     )
@@ -202,10 +208,10 @@ def notificar_cierre_jornada_telegram(
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
     msg = (
         f"📦 <b>RESUMEN DE CIERRE DE JORNADA - STOCKAGENT</b>\n\n"
-        f"• <b>Responsable:</b> {responsable}\n"
-        f"• <b>Pedidos Consolidados:</b> {pedidos}\n"
-        f"• <b>Total Bultos Despachados:</b> {bultos}\n"
-        f"• <b>Artículos Totales Descontados:</b> {articulos} unidades\n"
+        f"• <b>Responsable:</b> {escapar_html_telegram(responsable)}\n"
+        f"• <b>Pedidos Consolidados:</b> {int(pedidos)}\n"
+        f"• <b>Total Bultos Despachados:</b> {int(bultos)}\n"
+        f"• <b>Artículos Totales Descontados:</b> {int(articulos)} unidades\n"
         f"• <b>Fecha y Hora:</b> {ahora}\n\n"
         f"<i>📄 Hoja de Ruta de Despacho y reportes archivados correctamente.</i>"
     )
@@ -230,10 +236,10 @@ def notificar_anomalia_demanda_telegram(
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
     lineas = [
         "🚨 <b>ALERTA ANALÍTICA · DESVÍO DE DEMANDA</b>\n",
-        f"• <b>Producto:</b> [{codigo}] {nombre}",
-        f"• <b>Tipo de Alerta:</b> {tipo_anomalia}",
-        f"• <b>Consumo Registrado:</b> {consumo_actual} un. (Habitual: {promedio_historico:.1f} un.)",
-        f"• <b>Diagnóstico:</b> {mensaje}",
+        f"• <b>Producto:</b> [{escapar_html_telegram(codigo)}] {escapar_html_telegram(nombre)}",
+        f"• <b>Tipo de Alerta:</b> {escapar_html_telegram(tipo_anomalia)}",
+        f"• <b>Consumo Registrado:</b> {int(consumo_actual)} un. (Habitual: {float(promedio_historico):.1f} un.)",
+        f"• <b>Diagnóstico:</b> {escapar_html_telegram(mensaje)}",
         f"• <b>Fecha y Hora:</b> {ahora}\n",
         "<i>💡 Verifica si se trata de un pedido especial o un error de tipeo en las cantidades.</i>",
     ]

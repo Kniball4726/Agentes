@@ -12,16 +12,29 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..auth import User, UserStore
 from ..auth.store import register_session_revocation_listener
+from ..core.environment import get_db_path, get_descuentos_dir, get_environment
 from ..inventory import StockManager
 from ..orders import OrderStore
 from ..paths import application_root
 from ..products import ProductStore
 
 # Configuración de sesiones
-SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de vigencia por token
+SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de inactividad máxima por token
+SESSION_ABSOLUTE_TTL_SECONDS = 7 * 24 * 3600  # 7 días de vida absoluta máxima por token
 DOC_TOKEN_TTL_SECONDS = 300  # 5 minutos para tokens efímeros de visor/descarga web
 _sesiones_activas: Dict[str, Dict[str, Any]] = {}
 _doc_tokens: Dict[str, Dict[str, Any]] = {}
+
+
+def _sesion_expirada(sesion: Dict[str, Any], ahora: float) -> bool:
+    """Evalúa tanto expiración por inactividad (sliding) como vida absoluta máxima del token."""
+    last_active = float(sesion.get("last_active", 0) or 0)
+    if ahora - last_active > SESSION_TTL_SECONDS:
+        return True
+    created_at = float(sesion.get("created_at", 0) or 0)
+    if created_at > 0 and ahora - created_at > SESSION_ABSOLUTE_TTL_SECONDS:
+        return True
+    return False
 
 
 def _on_user_store_session_revocation(
@@ -45,41 +58,66 @@ register_session_revocation_listener(_on_user_store_session_revocation)
 
 security_bearer = HTTPBearer(auto_error=False)
 
-# Instancias compartidas singleton (Lazy initialization)
+# Instancias compartidas singleton (Lazy initialization, sensibles al ambiente activo)
 _user_store: Optional[UserStore] = None
 _product_store: Optional[ProductStore] = None
 _order_store: Optional[OrderStore] = None
 _stock_manager: Optional[StockManager] = None
+_active_env_name: Optional[str] = None
+
+
+def reset_api_stores(revocar_sesiones_memoria: bool = True) -> None:
+    """Reinicia los almacenes singleton de la API al cambiar de ambiente (Producción/QA)."""
+    global _user_store, _product_store, _order_store, _stock_manager, _active_env_name
+    _user_store = None
+    _product_store = None
+    _order_store = None
+    _stock_manager = None
+    _active_env_name = get_environment()
+    if revocar_sesiones_memoria:
+        _sesiones_activas.clear()
+        _doc_tokens.clear()
+
+
+def _sincronizar_ambiente_api() -> None:
+    """Detecta cambios de ambiente (Producción <-> QA) y recarga almacenes automáticamente."""
+    global _active_env_name
+    env_actual = get_environment()
+    if _active_env_name is None:
+        _active_env_name = env_actual
+    elif _active_env_name != env_actual:
+        reset_api_stores(revocar_sesiones_memoria=True)
 
 
 def get_user_store() -> UserStore:
     global _user_store
+    _sincronizar_ambiente_api()
     if _user_store is None:
-        db_path = application_root() / "data" / "usuarios.sqlite3"
-        _user_store = UserStore(db_path)
+        _user_store = UserStore(get_db_path("usuarios.sqlite3"))
     return _user_store
 
 
 def get_product_store() -> ProductStore:
     global _product_store
+    _sincronizar_ambiente_api()
     if _product_store is None:
-        db_path = application_root() / "data" / "productos.sqlite3"
-        _product_store = ProductStore(db_path)
+        _product_store = ProductStore(get_db_path("productos.sqlite3"))
     return _product_store
 
 
 def get_order_store() -> OrderStore:
     global _order_store
+    _sincronizar_ambiente_api()
     if _order_store is None:
-        db_path = application_root() / "data" / "pedidos.sqlite3"
-        _order_store = OrderStore(db_path)
+        _order_store = OrderStore(get_db_path("pedidos.sqlite3"))
     return _order_store
 
 
 def get_stock_manager() -> StockManager:
     global _stock_manager
+    _sincronizar_ambiente_api()
     if _stock_manager is None:
-        excel_path = application_root() / "Descuentos" / "Productos.xlsx"
+        excel_path = get_descuentos_dir() / "Productos.xlsx"
         _stock_manager = StockManager(excel_path)
     return _stock_manager
 
@@ -188,6 +226,10 @@ def crear_token_documento(
         nombre = str(getattr(usuario, "nombre", "") or username)
         email = str(getattr(usuario, "email", ""))
 
+    recurso_norm_emitido = _normalizar_recurso_doc(recurso)
+    if not recurso_norm_emitido:
+        raise ValueError("Debe especificarse el recurso autorizado para emitir un token de documento.")
+
     raw_token = f"doc_{secrets.token_urlsafe(24)}"
     token_hash = _hash_token(raw_token)
     _doc_tokens[token_hash] = {
@@ -196,7 +238,7 @@ def crear_token_documento(
         "role": role,
         "nombre": nombre,
         "email": email,
-        "recurso": _normalizar_recurso_doc(recurso),
+        "recurso": recurso_norm_emitido,
         "exp": ahora + max(1, int(ttl_seconds)),
         "is_doc_token": True,
     }
@@ -220,10 +262,9 @@ def validar_token_documento(
         return None
 
     recurso_esperado = entry.get("recurso", "")
-    if recurso_esperado:
-        recurso_norm = _normalizar_recurso_doc(recurso_solicitado)
-        if recurso_norm != recurso_esperado:
-            return None
+    recurso_norm = _normalizar_recurso_doc(recurso_solicitado)
+    if not recurso_esperado or recurso_norm != recurso_esperado:
+        return None
 
     uid = int(entry.get("user_id", 0) or 0)
     if user_store is not None and uid > 0:
@@ -324,7 +365,7 @@ async def get_current_user(
     ahora = time.time()
     sesion = _sesiones_activas.get(token_hash)
 
-    if sesion and ahora - float(sesion.get("last_active", 0)) > SESSION_TTL_SECONDS:
+    if sesion and _sesion_expirada(sesion, ahora):
         _sesiones_activas.pop(token_hash, None)
         try:
             user_store.revoke_api_session(token_hash)
@@ -337,7 +378,7 @@ async def get_current_user(
         try:
             db_session = user_store.get_api_session(token_hash)
             if db_session:
-                if ahora - float(db_session.get("last_active", 0)) <= SESSION_TTL_SECONDS:
+                if not _sesion_expirada(db_session, ahora):
                     sesion = db_session
                     _sesiones_activas[token_hash] = sesion
                 else:

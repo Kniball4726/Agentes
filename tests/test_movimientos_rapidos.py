@@ -233,8 +233,20 @@ class TestMovimientosRapidos(unittest.TestCase):
         audit_args = self.order_store.registrar_auditoria.call_args[1] if self.order_store.registrar_auditoria.call_args[1] else self.order_store.registrar_auditoria.call_args[0]
         self.assertIn("INGRESO_RAPIDO", str(audit_args))
 
-        # Validar cierre de diálogo y notificación
+        # Validar cierre de diálogo y SnackBar con acción Deshacer
         self.page.pop_dialog.assert_called_once()
+        self.assertIsInstance(self.dialogo_mostrado, ft.SnackBar)
+        self.assertIsInstance(self.dialogo_mostrado.action, ft.SnackBarAction)
+        self.assertEqual(self.dialogo_mostrado.action.label, "Deshacer")
+
+        # Validar que el botón Deshacer revierte el delta con signo opuesto sin duplicar
+        self.dialogo_mostrado.action.on_click(None)
+        self.dialogo_mostrado.action.on_click(None)  # Segunda pulsación ignorada
+        self.assertEqual(self.stock_manager.registrar_ingreso_fabrica.call_count, 2)
+        self.assertEqual(
+            self.stock_manager.registrar_ingreso_fabrica.call_args_list[1].args,
+            ({"PROD-01": -1},),
+        )
         self.interfaz.notificar.assert_called_once()
 
     def test_flujo_salida_rapida_confirmada(self):

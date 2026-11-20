@@ -8,6 +8,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from ..core.sanitize_utils import sanitizar_celda_excel
 from ..parsers.remito_parser import normalizar_codigo
 
 
@@ -105,7 +106,7 @@ def generar_documento_comparativo_excel(
     con_dif = sum(1 for i in comparativa if i["diferencia"] != 0)
     ws.merge_cells("A2:H2")
     celda_meta = ws["A2"]
-    celda_meta.value = (
+    celda_meta.value = sanitizar_celda_excel(
         f"Fecha: {fecha_str} | Operario: {usuario} | Origen: {nombre_archivo_origen} | "
         f"Relevados: {len(comparativa)} | Con diferencias: {con_dif}"
     )
@@ -141,18 +142,19 @@ def generar_documento_comparativo_excel(
         estado = str(item["estado"])
         dif_str = f"+{dif}" if dif > 0 else str(dif)
 
-        ws.cell(row=fila_actual, column=1, value=cod).alignment = align_center
-        ws.cell(row=fila_actual, column=2, value=nom).alignment = align_left
+        ws.cell(row=fila_actual, column=1, value=sanitizar_celda_excel(cod)).alignment = align_center
+        ws.cell(row=fila_actual, column=2, value=sanitizar_celda_excel(nom)).alignment = align_left
         ws.cell(row=fila_actual, column=3, value=stk_dig).alignment = align_center
         ws.cell(row=fila_actual, column=4, value=stk_fis).alignment = align_center
 
-        c_dif = ws.cell(row=fila_actual, column=5, value=dif_str)
+        c_dif = ws.cell(row=fila_actual, column=5, value=dif)
         c_dif.alignment = align_center
+        c_dif.number_format = "+0;-0;0"
 
-        c_est = ws.cell(row=fila_actual, column=6, value=estado)
+        c_est = ws.cell(row=fila_actual, column=6, value=sanitizar_celda_excel(estado))
         c_est.alignment = align_center
 
-        ws.cell(row=fila_actual, column=7, value=usuario).alignment = align_center
+        ws.cell(row=fila_actual, column=7, value=sanitizar_celda_excel(usuario)).alignment = align_center
         ws.cell(row=fila_actual, column=8, value=fecha_str).alignment = align_center
 
         font_estado = (
@@ -230,8 +232,8 @@ def generar_documento_comparativo_excel(
             else:
                 stk_fis_val = None
 
-            ws_unif.cell(row=r_idx, column=1, value=cod).alignment = align_center
-            ws_unif.cell(row=r_idx, column=2, value=nom).alignment = align_left
+            ws_unif.cell(row=r_idx, column=1, value=sanitizar_celda_excel(cod)).alignment = align_center
+            ws_unif.cell(row=r_idx, column=2, value=sanitizar_celda_excel(nom)).alignment = align_left
             ws_unif.cell(row=r_idx, column=3, value=stk_dig).alignment = align_center
 
             if stk_fis_val is not None:

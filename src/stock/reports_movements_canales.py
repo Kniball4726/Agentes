@@ -11,6 +11,7 @@ from openpyxl.styles import Font
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Spacer
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_celda_excel
 from .report_styles import (
     _autoajustar_columnas_excel,
     compilar_pdf_reporte,
@@ -43,9 +44,9 @@ def _renderizar_canales_excel(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Descuentos por Canal"
-    ws.append([titulo_documento])
+    ws.append([sanitizar_celda_excel(titulo_documento)])
     ws.cell(1, 1).font = Font(name="Calibri", size=14, bold=True, color="1E293B")
-    ws.append([f"Emitido: {fecha_legible}{lote_txt} | Responsable: {usuario} | SKUs descontados: {len(ordenados)}"])
+    ws.append([sanitizar_celda_excel(f"Emitido: {fecha_legible}{lote_txt} | Responsable: {usuario} | SKUs descontados: {len(ordenados)}")])
 
     filas_xl = [
         [
@@ -162,7 +163,10 @@ def generar_reporte_descuento_operario_canales(
 
     # Renderizado PDF A4
     st = crear_estilos_pdf()
-    subtitulo = f"Emitido: {fecha_legible}{lote_txt} | Responsable: <b>{usuario}</b> | Sólo artículos con movimiento"
+    subtitulo = (
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)}{escapar_texto_reportlab(lote_txt)} | "
+        f"Responsable: <b>{escapar_texto_reportlab(usuario)}</b> | Sólo artículos con movimiento"
+    )
     tarjetas = [
         ("SKUs Descontados", str(len(ordenados))),
         ("Mayoristas", str(tot_may)),
@@ -192,12 +196,12 @@ def generar_reporte_descuento_operario_canales(
             if canj > 0:
                 rems = f"[Canje: {canj}] {rems}".strip()
             filas_pdf.append([
-                Paragraph(str(item["codigo"]), st["td_center"]),
-                Paragraph(str(item["descripcion"])[:48], st["td"]),
+                Paragraph(escapar_texto_reportlab(str(item["codigo"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(item["descripcion"])[:48]), st["td"]),
                 Paragraph(f"<b>{_fmt_num(int(item.get('mayoristas', 0)))}</b>", st["td_center"]),
                 Paragraph(f"<b>{_fmt_num(int(item.get('mercado_libre', 0)))}</b>", st["td_center"]),
                 Paragraph(f"<b>{_fmt_num(int(item.get('full', 0)))}</b>", st["td_center"]),
-                Paragraph(rems[:38], st["td"]),
+                Paragraph(escapar_texto_reportlab(rems[:38]), st["td"]),
             ])
         filas_pdf.append([
             Paragraph("<b>TOTAL</b>", st["td_center"]),
@@ -231,9 +235,9 @@ def generar_reporte_descuento_operario_canales(
         ]]
         for item in ingresos:
             filas_ing.append([
-                Paragraph(str(item["code"]), st["td_center"]),
-                Paragraph(str(item["name"])[:50], st["td"]),
-                Paragraph(str(item.get("origen_ingreso", "-"))[:36], st["td"]),
+                Paragraph(escapar_texto_reportlab(str(item["code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(item["name"])[:50]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(item.get("origen_ingreso", "-"))[:36]), st["td"]),
                 Paragraph(f"<b>+{item['cantidad_ingreso']}</b>", st["td_center"]),
                 Paragraph(str(item["stock_cierre"]), st["td_center"]),
             ])
@@ -256,11 +260,11 @@ def generar_reporte_descuento_operario_canales(
             log = getattr(doc, "logistica", "-")
             bul = getattr(doc, "bultos", 1)
             filas_docs.append([
-                Paragraph(str(canal).upper()[:18], st["td_center"]),
-                Paragraph(str(cli)[:40], st["td"]),
-                Paragraph(str(rem)[:24], st["td_center"]),
-                Paragraph(str(log)[:22], st["td_center"]),
-                Paragraph(str(bul), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(canal).upper()[:18]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(cli)[:40]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(rem)[:24]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(log)[:22]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(bul)), st["td_center"]),
             ])
         cuerpo.append(construir_tabla_zebra(filas_docs, [2.8 * cm, 6.0 * cm, 4.0 * cm, 4.0 * cm, 1.8 * cm]))
 
@@ -275,10 +279,10 @@ def generar_reporte_descuento_operario_canales(
         ]]
         for cod_i, arch_i, desc_i, mot_i in sin_coincidencia:
             filas_inc.append([
-                Paragraph(str(cod_i or "-"), st["td_center"]),
-                Paragraph(str(arch_i or "-")[:28], st["td"]),
-                Paragraph(str(desc_i or "-")[:42], st["td"]),
-                Paragraph(str(mot_i or "-")[:34], st["td"]),
+                Paragraph(escapar_texto_reportlab(str(cod_i or "-")), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(arch_i or "-")[:28]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(desc_i or "-")[:42]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(mot_i or "-")[:34]), st["td"]),
             ])
         cuerpo.append(construir_tabla_zebra(filas_inc, [2.4 * cm, 4.2 * cm, 6.5 * cm, 5.5 * cm]))
 

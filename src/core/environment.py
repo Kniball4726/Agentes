@@ -44,6 +44,23 @@ def is_qa_environment() -> bool:
     return get_environment() in ("qa", "test", "testing", "sandbox")
 
 
+def resolver_data_dir_para_raiz(raiz: Path) -> Path:
+    """Resuelve `data/` o `data_qa/` relativo a `raiz` respetando STOCKAGENT_ENV y `raiz/.env_active`."""
+    env_explicito = os.environ.get("STOCKAGENT_ENV", "").strip().lower()
+    if env_explicito:
+        es_qa = env_explicito in ("qa", "test", "testing", "sandbox")
+    else:
+        env_file = Path(raiz) / ".env_active"
+        if env_file.exists():
+            try:
+                es_qa = env_file.read_text(encoding="utf-8").strip().lower() in ("qa", "test", "testing", "sandbox")
+            except Exception:
+                es_qa = False
+        else:
+            es_qa = False
+    return Path(raiz) / ("data_qa" if es_qa else "data")
+
+
 def get_data_dir() -> Path:
     """Devuelve la ruta absoluta del directorio de datos según el ambiente activo."""
     if is_qa_environment():

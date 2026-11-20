@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 from pypdf import PdfReader
+from .safe_loader import MAX_PDF_PAGES, validar_pdf_seguro
 
 
 @dataclass
@@ -52,8 +53,13 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
     full_text = ""
 
     if path.exists():
+        validar_pdf_seguro(path)
         with open(path, "rb") as _f_pdf:
             reader = PdfReader(_f_pdf)
+            if len(reader.pages) > MAX_PDF_PAGES:
+                raise ValueError(
+                    f"El PDF '{path.name}' excede el límite seguro de {MAX_PDF_PAGES} páginas."
+                )
             for page in reader.pages:
                 full_text += (page.extract_text() or "") + "\n"
             if hasattr(reader, "close"):
@@ -63,7 +69,7 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
                     pass
     else:
         reader = PdfReader(None)
-        for page in reader.pages:
+        for page in reader.pages[:MAX_PDF_PAGES]:
             full_text += (page.extract_text() or "") + "\n"
         if hasattr(reader, "close"):
             try:

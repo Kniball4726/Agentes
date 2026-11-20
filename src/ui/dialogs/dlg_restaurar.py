@@ -63,6 +63,13 @@ async def restaurar_documentos(interfaz: Any, _evento: ft.Event | None = None) -
         interfaz.notificar("Selecciona una fecha de descuento.")
         return
     interfaz.page.pop_dialog()
+    try:
+        order_store = getattr(interfaz, "order_store", None)
+        if order_store and hasattr(order_store, "registrar_auditoria"):
+            usr = getattr(getattr(interfaz, "usuario_actual", None), "username", "Master")
+            order_store.registrar_auditoria(usr, "RESTAURAR_DOCUMENTOS", f"Restauración de documentos de fecha {fecha}")
+    except Exception:
+        pass
     await interfaz.ejecutar_tarea(
         "Restauración de documentos",
         lambda: interfaz.menu.restaurar_para_pruebas(fecha),

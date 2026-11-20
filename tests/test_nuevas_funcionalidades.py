@@ -403,16 +403,19 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(len(store.listar_clientes()), 2)
 
     def test_modal_gestion_clientes_flet_gui(self):
-        from src.auth import User
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             page = FakePage()
+            u_store = UserStore(tmp_path / "usuarios.sqlite3")
+            u_store.create_user("operario1", "ClaveSegura123!", role="operador")
+            op_user = u_store.get_user_by_username("operario1")
             o_store = OrderStore(tmp_path / "pedidos.sqlite3")
             o_store.crear_cliente("Cliente Inicial")
 
             interfaz = InterfazFlet(cast(ft.Page, cast(object, page)))
+            interfaz.user_store = u_store
             interfaz.order_store = o_store
-            interfaz.usuario_actual = User(1, "operario1", "operador", True)
+            interfaz.usuario_actual = op_user
 
             interfaz.mostrar_gestion_clientes()
             self.assertEqual(len(page.dialogos), 1)
@@ -422,12 +425,15 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             self.assertEqual(len(page.dialogos), 0)
 
     def test_adaptacion_responsive_mobile_deteccion_y_layout(self):
-        from src.auth import User
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             page = FakePage()
+            u_store = UserStore(tmp_path / "usuarios.sqlite3")
+            u_store.create_user("admin", "ClaveSegura123!", role="administrador")
+            admin_user = u_store.get_user_by_username("admin")
             interfaz = InterfazFlet(cast(ft.Page, cast(object, page)))
-            interfaz.usuario_actual = User(1, "admin", "administrador", True)
+            interfaz.user_store = u_store
+            interfaz.usuario_actual = admin_user
 
             # Por defecto (sin width numérico o desktop)
             self.assertFalse(interfaz.es_pantalla_movil)

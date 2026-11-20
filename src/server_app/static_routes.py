@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -11,6 +12,23 @@ from starlette.responses import FileResponse, JSONResponse
 from ..paths import application_root
 
 logger = logging.getLogger("stockagent.server")
+_APK_HASH_CACHE: dict[str, tuple[float, int, str]] = {}
+
+
+def _calcular_sha256_apk(apk_path: Path) -> str:
+    """Calcula y cachea el hash SHA-256 de un archivo APK según su mtime y tamaño."""
+    st = apk_path.stat()
+    key = str(apk_path.resolve())
+    cached = _APK_HASH_CACHE.get(key)
+    if cached and cached[0] == st.st_mtime and cached[1] == st.st_size:
+        return cached[2]
+    h = hashlib.sha256()
+    with apk_path.open("rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    digest = h.hexdigest().lower()
+    _APK_HASH_CACHE[key] = (st.st_mtime, st.st_size, digest)
+    return digest
 
 
 def _registrar_recurso_estatico(
@@ -100,6 +118,7 @@ def registrar_rutas_ota(app) -> None:
         if apk_file_path.exists():
             st = apk_file_path.stat()
             info["file_size"] = st.st_size
+            info["sha256"] = _calcular_sha256_apk(apk_file_path)
             if not info.get("updated_at"):
                 info["updated_at"] = datetime.fromtimestamp(st.st_mtime).strftime(
                     "%d/%m/%Y %H:%M"

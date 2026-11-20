@@ -38,7 +38,7 @@ async def buscar_productos(
     q: str = Query("", description="Término de búsqueda (nombre, código interno o código de barras)"),
     limit: int = Query(50, ge=1, le=200, description="Cantidad máxima de resultados"),
     product_store: ProductStore = Depends(get_product_store),
-    _user: Dict[str, Any] = Depends(get_current_user),
+    _user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "picker", "consulta")),
 ):
     """Busca productos en el catálogo por coincidencia de texto, SKU o código de barras."""
     termino = q.strip()
@@ -55,7 +55,7 @@ async def buscar_productos(
 async def obtener_producto(
     codigo_o_barcode: str,
     product_store: ProductStore = Depends(get_product_store),
-    _user: Dict[str, Any] = Depends(get_current_user),
+    _user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "picker", "consulta")),
 ):
     """Localiza un producto de forma inmediata por su código de barras escaneado o su SKU."""
     prod = product_store.find_product_by_code_or_barcode(codigo_o_barcode)
@@ -117,7 +117,7 @@ async def asociar_codigo_barras(
 async def obtener_stock_producto(
     codigo: str,
     product_store: ProductStore = Depends(get_product_store),
-    _user: Dict[str, Any] = Depends(get_current_user),
+    _user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "picker", "consulta")),
 ):
     """Retorna el saldo de inventario disponible para un SKU específico."""
     prod = product_store.find_product_by_code_or_barcode(codigo)

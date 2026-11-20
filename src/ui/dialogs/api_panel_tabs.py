@@ -16,6 +16,7 @@ import flet as ft
 from ...server_app import PUERTO_WEB_DEFAULT as _DEFAULT_PUERTO
 from ...server_app import obtener_ip_local as _default_ip_local
 from ...server_app import obtener_ip_tailscale as _default_ip_tailscale
+from ..design import colores_de, confirmar_accion_destructiva, tono_legible
 from ..theme import ROJO, SECUNDARIO
 
 
@@ -33,11 +34,17 @@ def formatear_timestamp_api(ts: float | str | None) -> str:
         return str(ts)[:16]
 
 
-def construir_estado_vacio_api(icono: str, titulo: str, subtitulo: str = "") -> ft.Container:
+def construir_estado_vacio_api(
+    icono: str,
+    titulo: str,
+    subtitulo: str = "",
+    color_sec: Any | None = None,
+) -> ft.Container:
     """Construye un estado vacío estándar para listas de claves o sesiones API."""
-    controles = [ft.Icon(icono, size=36, color=SECUNDARIO), ft.Text(titulo, size=13, color=SECUNDARIO)]
+    c_sec = color_sec or SECUNDARIO
+    controles = [ft.Icon(icono, size=36, color=c_sec), ft.Text(titulo, size=13, color=c_sec)]
     if subtitulo:
-        controles.append(ft.Text(subtitulo, size=11, color=SECUNDARIO))
+        controles.append(ft.Text(subtitulo, size=11, color=c_sec))
     return ft.Container(
         content=ft.Column(controles, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
         alignment=ft.Alignment.CENTER,
@@ -86,11 +93,13 @@ def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:
             except Exception as exc:
                 interfaz.notificar(f"No se pudo abrir el navegador: {exc}")
 
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    colores = colores_de(interfaz)
     res_salud_txt = ft.Text("", size=11)
 
     def probar_salud(_e: ft.Event) -> None:
         res_salud_txt.value = "Consultando endpoint /api/v1/sistema/ping..."
-        res_salud_txt.color = ft.Colors.BLUE_400
+        res_salud_txt.color = colores.info
         interfaz.page.update()
         try:
             req = urllib.request.Request(f"{url_local}/api/v1/sistema/ping", headers={"User-Agent": "StockAgent-UI"})
@@ -99,23 +108,23 @@ def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:
                 status_code = resp.getcode()
                 body = json.loads(resp.read().decode("utf-8"))
             res_salud_txt.value = f"✅ HTTP {status_code} OK: {body}"
-            res_salud_txt.color = ft.Colors.GREEN_400
+            res_salud_txt.color = colores.exito
         except Exception as exc:
             res_salud_txt.value = f"⚠️ Falló consulta directa ({exc}). Verifique que el servidor web esté en ejecución."
-            res_salud_txt.color = ft.Colors.AMBER_400
+            res_salud_txt.color = colores.advertencia
         interfaz.page.update()
 
     tarjeta_red = ft.Container(
         content=ft.Column(
             [
-                ft.Row([ft.Icon(ft.Icons.ROUTER, color=ft.Colors.BLUE_400, size=20), ft.Text("Direcciones del Servidor REST", weight=ft.FontWeight.BOLD)], spacing=6),
-                ft.Text(f"• Localhost: {url_local}", size=12, font_family="monospace"),
-                ft.Text(f"• Red Local (LAN): {url_lan}", size=12, font_family="monospace"),
-                *([ft.Text(f"• Tailscale VPN: {esquema_actual}://{ip_tailscale}:{puerto}", size=12, font_family="monospace")] if ip_tailscale else []),
+                ft.Row([ft.Icon(ft.Icons.ROUTER, color=colores.info, size=20), ft.Text("Direcciones del Servidor REST", weight=ft.FontWeight.BOLD, color=texto_color)], spacing=6),
+                ft.Text(f"• Localhost: {url_local}", size=12, font_family="monospace", color=texto_color),
+                ft.Text(f"• Red Local (LAN): {url_lan}", size=12, font_family="monospace", color=texto_color),
+                *([ft.Text(f"• Tailscale VPN: {esquema_actual}://{ip_tailscale}:{puerto}", size=12, font_family="monospace", color=texto_color)] if ip_tailscale else []),
                 ft.Text(
                     "• Documentación Swagger/ReDoc: " + ("Habilitada (STOCKAGENT_ENABLE_API_DOCS=1)" if docs_habilitados else "Deshabilitada por seguridad en red"),
                     size=11,
-                    color=ft.Colors.GREEN_400 if docs_habilitados else ft.Colors.AMBER_400,
+                    color=colores.exito if docs_habilitados else colores.advertencia,
                 ),
                 ft.Row(
                     [
@@ -138,17 +147,17 @@ def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:
     tarjeta_endpoints = ft.Container(
         content=ft.Column(
             [
-                ft.Row([ft.Icon(ft.Icons.DATA_OBJECT, color=ft.Colors.AMBER_400, size=20), ft.Text("Endpoints Principales Disponibles (v1)", weight=ft.FontWeight.BOLD)], spacing=6),
-                ft.Text("• GET  /api/v1/sistema/health — Estado operativo y de base de datos.", size=12),
-                ft.Text("• POST /api/v1/auth/login — Autenticación para obtener token Bearer.", size=12),
-                ft.Text("• GET  /api/v1/auth/me — Perfil y permisos del usuario o API Key.", size=12),
-                ft.Text("• GET  /api/v1/productos — Catálogo maestro con filtros y paginado.", size=12),
-                ft.Text("• GET  /api/v1/productos/{codigo}/stock — Consulta de existencia específica.", size=12),
-                ft.Text("• GET  /api/v1/inventario/stock — Balance global de inventario.", size=12),
-                ft.Text("• POST /api/v1/despacho/pedidos — Carga y registro de remitos / bultos.", size=12),
+                ft.Row([ft.Icon(ft.Icons.DATA_OBJECT, color=colores.advertencia, size=20), ft.Text("Endpoints Principales Disponibles (v1)", weight=ft.FontWeight.BOLD, color=texto_color)], spacing=6),
+                ft.Text("• GET  /api/v1/sistema/ping y /api/v1/sistema/estado — Conectividad y estado del servidor.", size=12, color=texto_color),
+                ft.Text("• POST /api/v1/auth/login y /api/v1/auth/logout — Autenticación y cierre de sesión Bearer.", size=12, color=texto_color),
+                ft.Text("• GET  /api/v1/auth/me — Perfil y permisos del usuario o API Key autenticada.", size=12, color=texto_color),
+                ft.Text("• GET  /api/v1/productos/buscar y /api/v1/productos/{codigo_o_barcode} — Búsqueda y ficha por SKU o código de barras.", size=12, color=texto_color),
+                ft.Text("• GET  /api/v1/productos/{codigo}/stock — Consulta rápida de existencia de inventario (B2B / ERP).", size=12, color=texto_color),
+                ft.Text("• POST /api/v1/inventario/comparar-preliminar y /api/v1/inventario/finalizar — Relevamiento de inventario físico.", size=12, color=texto_color),
+                ft.Text("• GET  /api/v1/despacho/pedidos y POST /api/v1/despacho/escanear — Listado de pedidos y escaneo QR/remito.", size=12, color=texto_color),
                 ft.Divider(),
-                ft.Text("Ejemplo de encabezados HTTP requeridos:", weight=ft.FontWeight.BOLD, size=11),
-                ft.Text("X-API-Key: sk_live_...\no\nAuthorization: Bearer <token_de_sesion>", font_family="monospace", size=11, color=ft.Colors.LIGHT_BLUE_300),
+                ft.Text("Ejemplo de encabezados HTTP requeridos:", weight=ft.FontWeight.BOLD, size=11, color=texto_color),
+                ft.Text("X-API-Key: sk_live_...\no\nAuthorization: Bearer <token_de_sesion>", font_family="monospace", size=11, color=tono_legible("LIGHT_BLUE", es_oscuro)),
             ],
             spacing=6,
         ),
@@ -167,13 +176,20 @@ def construir_tab_sesiones(
     texto_color: str,
 ) -> tuple[ft.Column, Callable[[], None]]:
     """Construye la pestaña de Sesiones Activas de API/Web y devuelve (vista, refrescar_fn)."""
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    colores = colores_de(interfaz)
+    sec_color = getattr(interfaz, "secundario", colores.secundario)
     lista_sesiones = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=260)
-    total_sesiones_txt = ft.Text("0 sesiones activas", size=12, color=SECUNDARIO)
+    total_sesiones_txt = ft.Text("0 sesiones activas", size=12, color=sec_color)
 
-    def ejecutar_revocar_sesion(th: str) -> None:
+    def ejecutar_revocar_sesion(th: str, u_nom: str = "") -> None:
         try:
             ok = user_store.revoke_api_session(th)
             if ok:
+                order_store = getattr(interfaz, "order_store", None)
+                if order_store and hasattr(order_store, "registrar_auditoria"):
+                    usr_act = getattr(getattr(interfaz, "usuario_actual", None), "username", "Master")
+                    order_store.registrar_auditoria(usr_act, "REVOCAR_SESION_API", f"Usuario: {u_nom or th[:12]}")
                 interfaz.notificar("🔒 Sesión revocada con éxito.")
                 refrescar_lista_sesiones()
             else:
@@ -185,14 +201,14 @@ def construir_tab_sesiones(
         try:
             sesiones = user_store.list_api_sessions(max_records=100)
         except Exception as exc:
-            lista_sesiones.controls = [ft.Text(f"Error al cargar sesiones: {exc}", color=ft.Colors.RED_400)]
+            lista_sesiones.controls = [ft.Text(f"Error al cargar sesiones: {exc}", color=colores.error)]
             interfaz.page.update()
             return
 
         total_sesiones_txt.value = f"{len(sesiones)} sesión(es) persistida(s)"
         if not sesiones:
             lista_sesiones.controls = [
-                construir_estado_vacio_api(ft.Icons.DEVICES_OTHER, "No hay sesiones de API activas registradas.")
+                construir_estado_vacio_api(ft.Icons.DEVICES_OTHER, "No hay sesiones de API activas registradas.", color_sec=sec_color)
             ]
             interfaz.page.update()
             return
@@ -210,11 +226,11 @@ def construir_tab_sesiones(
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Icon(ft.Icons.LAPTOP_CHROMEBOOK, color=ft.Colors.CYAN_400, size=22),
+                            ft.Icon(ft.Icons.LAPTOP_CHROMEBOOK, color=tono_legible("CYAN", es_oscuro), size=22),
                             ft.Column(
                                 [
-                                    ft.Row([ft.Text(f"{nom} (@{u_nom})", weight=ft.FontWeight.BOLD, size=13), ft.Text(f"[{rol_s.upper()}]", size=11, color=ft.Colors.BLUE_200)], spacing=6),
-                                    ft.Text(f"Token: {th[:12]}... | Creada: {c_at} | Última actividad: {l_act}", size=11, color=SECUNDARIO),
+                                    ft.Row([ft.Text(f"{nom} (@{u_nom})", weight=ft.FontWeight.BOLD, size=13, color=texto_color), ft.Text(f"[{rol_s.upper()}]", size=11, color=colores.info)], spacing=6),
+                                    ft.Text(f"Token: {th[:12]}... | Creada: {c_at} | Última actividad: {l_act}", size=11, color=sec_color),
                                 ],
                                 expand=True,
                                 spacing=2,
@@ -222,8 +238,8 @@ def construir_tab_sesiones(
                             ft.Button(
                                 "Cerrar sesión",
                                 icon=ft.Icons.LOGOUT,
-                                style=ft.ButtonStyle(color=ft.Colors.RED_400),
-                                on_click=lambda _e, h=th: ejecutar_revocar_sesion(h),
+                                style=ft.ButtonStyle(color=colores.error),
+                                on_click=lambda _e, h=th, u=u_nom: ejecutar_revocar_sesion(h, u),
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -246,25 +262,33 @@ def construir_tab_sesiones(
             interfaz.notificar(f"❌ Error al limpiar sesiones: {exc}")
 
     def ejecutar_cerrar_todas(_e: ft.Event) -> None:
-        try:
+        def _do_cerrar_todas() -> None:
             cant = user_store.revoke_all_sessions()
-            interfaz.notificar(f"⚠️ Se cerraron todas las {cant} sesiones activas.")
             refrescar_lista_sesiones()
-        except Exception as exc:
-            interfaz.notificar(f"❌ Error: {exc}")
+            interfaz.notificar(f"⚠️ Se cerraron todas las {cant} sesiones activas.")
+
+        confirmar_accion_destructiva(
+            interfaz,
+            "Cerrar Todas las Sesiones API",
+            "¿Confirmas revocar todas las sesiones activas de dispositivos móviles y clientes API? Todos los usuarios deberán volver a iniciar sesión.",
+            _do_cerrar_todas,
+            texto_confirmar="Sí, Cerrar Todas",
+            roles_permitidos=("master",),
+            auditoria=("REVOCAR_TODAS_SESIONES_API", "Revocación masiva de sesiones API/Móvil"),
+        )
 
     vista_sesiones = ft.Column(
         [
             ft.Row(
                 [
-                    ft.Text("Sesiones de usuarios y terminales autenticados mediante API / Web móvil.", size=12, color=SECUNDARIO, expand=True),
+                    ft.Text("Sesiones de usuarios y terminales autenticados mediante API / Web móvil.", size=12, color=sec_color, expand=True),
                     ft.Button("Limpiar Expiradas", icon=ft.Icons.CLEANING_SERVICES, on_click=ejecutar_limpiar_expiradas),
-                    ft.Button("Cerrar Todas", icon=ft.Icons.LOGOUT, style=ft.ButtonStyle(color=ft.Colors.RED_400), on_click=ejecutar_cerrar_todas),
+                    ft.Button("Cerrar Todas", icon=ft.Icons.LOGOUT, style=ft.ButtonStyle(color=colores.error), on_click=ejecutar_cerrar_todas),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
             ft.Divider(),
-            ft.Row([ft.Text("Sesiones Activas", weight=ft.FontWeight.BOLD, size=13), total_sesiones_txt], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([ft.Text("Sesiones Activas", weight=ft.FontWeight.BOLD, size=13, color=texto_color), total_sesiones_txt], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             lista_sesiones,
         ],
         spacing=8,

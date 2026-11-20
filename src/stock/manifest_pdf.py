@@ -244,8 +244,13 @@ def generar_hoja_ruta_pdf(
     dt = fecha_hora or datetime.now()
     fecha_formateada = dt.strftime("%d/%m/%Y %H:%M")
     timestamp_archivo = dt.strftime("%Y%m%d_%H%M%S")
-    sufijo_log = f"_{filtro_logistica.replace(' ', '_')}" if filtro_logistica else ""
-    ruta_pdf = carpeta_destino / f"Hoja_Ruta_Cierre_{cierre_id}{sufijo_log}_{timestamp_archivo}.pdf"
+    from ..core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
+
+    sufijo_log = f"_{sanitizar_componente_archivo(filtro_logistica, fallback='logistica')}" if filtro_logistica else ""
+    cierre_seguro = sanitizar_componente_archivo(str(cierre_id), fallback="0")
+    ruta_pdf = resolver_ruta_confinada(
+        carpeta_destino, f"Hoja_Ruta_Cierre_{cierre_seguro}{sufijo_log}_{timestamp_archivo}.pdf"
+    )
 
     ancho_util = A4[0] - 2.4 * cm
     st = _crear_estilos_manifiesto()

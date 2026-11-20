@@ -15,6 +15,8 @@ let track = null;
 /** @type {BarcodeDetector | null} */
 let barcodeDetector = null;
 let scanning = true;
+/** @type {number | null} */
+let rafId = null;
 let lastScannedText = "";
 let lastScanTime = 0;
 
@@ -90,9 +92,23 @@ function sincronizarColaOffline() {
   if (!q || q.length === 0) return;
   console.log(`[PWA] Sincronizando ${q.length} escaneos acumulados en offline...`);
 
+  /** @type {ScannedBarcodePayload[]} */
+  const loteExistente = (() => {
+    try {
+      const raw = localStorage.getItem("stockagent_scanned_batch");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+      return [];
+    }
+  })();
+
+  const targetOrigin = window.location.origin;
   for (const item of q) {
     /** @type {ScannedBarcodePayload} */
     const payload = { code: item.code, timestamp: item.timestamp, offline: true };
+    loteExistente.push(payload);
     localStorage.setItem(
       "stockagent_scanned_barcode",
       JSON.stringify(payload)
@@ -100,9 +116,13 @@ function sincronizarColaOffline() {
     if (window.opener && !window.opener.closed) {
       /** @type {BarcodeScannedMessage} */
       const msg = { type: "BARCODE_SCANNED", code: item.code, offline: true };
-      window.opener.postMessage(msg, "*");
+      window.opener.postMessage(msg, targetOrigin);
     }
   }
+
+  try {
+    localStorage.setItem("stockagent_scanned_batch", JSON.stringify(loteExistente));
+  } catch (_e) {}
 
   localStorage.removeItem("stockagent_offline_scan_queue");
   const detectionInfo = document.getElementById("detectionInfo");
@@ -147,6 +167,10 @@ function actualizarIndicadorRed() {
  * Inicializa el flujo de video de la cámara trasera o frontal.
  */
 async function initCamera() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
   if (currentStream) {
     currentStream.getTracks().forEach((t) => t.stop());
   }
@@ -182,6 +206,11 @@ async function initCamera() {
  * Inicia el bucle de detección de códigos de barra.
  */
 async function startDetection() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  barcodeDetector = null;
   if ("BarcodeDetector" in window && window.BarcodeDetector) {
     try {
       barcodeDetector = new window.BarcodeDetector({
@@ -192,10 +221,23 @@ async function startDetection() {
     }
   }
 
+  if (!barcodeDetector) {
+    const detectionInfo = document.getElementById("detectionInfo");
+    if (detectionInfo) {
+      detectionInfo.textContent =
+        "Este navegador no soporta lectura automática por cámara (ej. Safari/Firefox). Usa el ingreso manual abajo o abre en Chrome/Android.";
+      detectionInfo.style.color = "#f59e0b";
+    }
+    return;
+  }
+
   const video = document.getElementById("video");
   if (!(video instanceof HTMLVideoElement)) return;
   const detectLoop = async () => {
-    if (!scanning) return;
+    if (!scanning) {
+      rafId = null;
+      return;
+    }
     if (barcodeDetector && video.readyState === video.HAVE_ENOUGH_DATA) {
       try {
         const barcodes = await barcodeDetector.detect(video);
@@ -212,9 +254,9 @@ async function startDetection() {
         // Error temporal de cuadro
       }
     }
-    requestAnimationFrame(detectLoop);
+    rafId = requestAnimationFrame(detectLoop);
   };
-  requestAnimationFrame(detectLoop);
+  rafId = requestAnimationFrame(detectLoop);
 }
 
 /**
@@ -259,11 +301,11 @@ function onCodeDetected(code) {
     JSON.stringify(scannedPayload)
   );
 
-  // 2. Si se abrió como ventana secundaria / popup, emitir postMessage directo
+  // 2. Si se abrió como ventana secundaria / popup, emitir postMessage directo al mismo origen
   if (window.opener && !window.opener.closed) {
     /** @type {BarcodeScannedMessage} */
     const postMsg = { type: "BARCODE_SCANNED", code: code };
-    window.opener.postMessage(postMsg, "*");
+    window.opener.postMessage(postMsg, window.location.origin);
   }
 
   actualizarIndicadorRed();

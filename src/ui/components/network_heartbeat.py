@@ -6,8 +6,29 @@ from contextlib import closing
 import sqlite3
 import threading
 import time
+import weakref
 from typing import Any
 import flet as ft
+
+
+def _referencia_segura_interfaz(interfaz: Any):
+    """Devuelve una referencia débil al host si es soportado para evitar fugas de memoria."""
+    try:
+        return weakref.ref(interfaz)
+    except TypeError:
+        return lambda: interfaz
+
+
+def detener_heartbeat_red(interfaz: Any) -> None:
+    """Detiene inmediatamente el hilo de heartbeat asociado a la sesión."""
+    interfaz._heartbeat_activo = False
+    interfaz._heartbeat_iniciado = False
+    stop_event = getattr(interfaz, "_heartbeat_stop_event", None)
+    if stop_event is not None and hasattr(stop_event, "set"):
+        try:
+            stop_event.set()
+        except Exception:
+            pass
 
 
 def actualizar_estado_conexion_ui(
@@ -53,7 +74,7 @@ def actualizar_estado_conexion_ui(
     for sem in [getattr(interfaz, "semaforo_conexion", None), getattr(interfaz, "semaforo_conexion_movil", None)]:
         if sem is not None and isinstance(sem.content, ft.Row) and len(sem.content.controls) >= 2:
             try:
-                sem.content.controls[0].name = icono
+                sem.content.controls[0].icon = icono
                 sem.content.controls[0].color = color_icono
                 sem.content.controls[1].value = texto_label
                 sem.content.controls[1].color = color_texto
@@ -63,11 +84,15 @@ def actualizar_estado_conexion_ui(
             except Exception:
                 pass
 
-    try:
-        if getattr(interfaz, "page", None):
-            interfaz.page.update()
-    except Exception:
-        pass
+    primer_ping = getattr(interfaz, "_heartbeat_primer_ping", True)
+    interfaz._heartbeat_primer_ping = False
+    debe_actualizar_pagina = estado_previo != estado or primer_ping
+    if debe_actualizar_pagina:
+        try:
+            if getattr(interfaz, "page", None):
+                interfaz.page.update()
+        except Exception:
+            pass
 
     if estado_previo != estado:
         if estado == "offline":
@@ -117,43 +142,50 @@ def iniciar_heartbeat_red_daemon(interfaz: Any) -> None:
         return
     interfaz._heartbeat_iniciado = True
     interfaz._heartbeat_activo = True
+    interfaz._heartbeat_primer_ping = True
+    stop_event = threading.Event()
+    interfaz._heartbeat_stop_event = stop_event
+    ref_interfaz = _referencia_segura_interfaz(interfaz)
+    thread_id = id(interfaz)
 
     def _loop() -> None:
         _iter_count = 0
-        while getattr(interfaz, "_heartbeat_activo", True):
-            time.sleep(12)
-            _iter_count += 1
-            if not getattr(interfaz, "_heartbeat_activo", True) or not getattr(interfaz, "page", None):
+        while not stop_event.wait(12):
+            host = ref_interfaz()
+            if host is None or not getattr(host, "_heartbeat_activo", True) or not getattr(host, "page", None):
                 break
+            _iter_count += 1
             try:
                 t0 = time.monotonic()
-                order_store = getattr(interfaz, "order_store", None)
+                order_store = getattr(host, "order_store", None)
                 if not order_store:
                     break
                 with closing(sqlite3.connect(order_store.database_path, timeout=3)) as conn:
                     conn.execute("SELECT 1").fetchone()
                 lat_ms = (time.monotonic() - t0) * 1000.0
                 nuevo_estado = "online" if lat_ms < 900.0 else "degraded"
-                actualizar_estado_conexion_ui(interfaz, nuevo_estado, latencia_ms=lat_ms)
+                actualizar_estado_conexion_ui(host, nuevo_estado, latencia_ms=lat_ms)
 
-                if getattr(interfaz, "usuario_actual", None) is not None and hasattr(
-                    interfaz, "actualizar_badge_chat"
+                if getattr(host, "usuario_actual", None) is not None and hasattr(
+                    host, "actualizar_badge_chat"
                 ):
                     try:
-                        interfaz.actualizar_badge_chat(sonar_si_aumenta=True)
+                        host.actualizar_badge_chat(sonar_si_aumenta=True)
                     except Exception:
                         pass
 
                 # Limpieza periódica de sesiones API expiradas cada ~5 minutos (25 iteraciones)
                 if _iter_count % 25 == 0:
-                    user_store = getattr(interfaz, "user_store", None)
+                    user_store = getattr(host, "user_store", None)
                     if user_store and hasattr(user_store, "cleanup_expired_api_sessions"):
                         try:
                             user_store.cleanup_expired_api_sessions(24 * 3600)
                         except Exception:
                             pass
             except Exception as ex_ping:
-                actualizar_estado_conexion_ui(interfaz, "offline", mensaje=f"Error de enlace: {ex_ping}")
+                actualizar_estado_conexion_ui(host, "offline", mensaje=f"Error de enlace: {ex_ping}")
+            finally:
+                host = None
 
-    t = threading.Thread(target=_loop, name=f"HeartbeatRed_{id(interfaz)}", daemon=True)
+    t = threading.Thread(target=_loop, name=f"HeartbeatRed_{thread_id}", daemon=True)
     t.start()

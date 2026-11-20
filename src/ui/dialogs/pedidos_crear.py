@@ -1,4 +1,4 @@
-"""Diálogo de creación y armado de pedidos en tiempo real con detección preventiva de quiebre."""
+"""Diálogo modular de creación y armado de pedidos en tiempo real con detección preventiva de quiebre."""
 
 from __future__ import annotations
 
@@ -9,14 +9,16 @@ import flet as ft
 
 from ...agent import AgenteRemitosStock
 from ...orders import LOGISTICA_OPCIONES, calcular_hash_archivo
-from ...paths import application_root
 from ..theme import ROJO
+from .pedidos_crear_componentes import (
+    SelectorClientePedido,
+    SelectorComprobantePedido,
+    SelectorFechaRetiroPedido,
+)
 from .pedidos_crear_modales import (
     _mostrar_alerta_preventiva_quiebre,
-    _mostrar_dialogo_exito_pedido,
     _resolver_sm_cls,
     ejecutar_descuento_y_registro_pedido,
-    parsear_comprobante_pedido,
 )
 
 
@@ -26,93 +28,52 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         interfaz.notificar("La carga de pedidos en tiempo real es una función exclusiva del rol operador.")
         return
 
-    remito_factura_input = ft.TextField(
-        label="Remito / Factura *",
-        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
-        expand=True,
-    )
     if hasattr(interfaz, "cerrar_drawer_si_movil"):
         interfaz.cerrar_drawer_si_movil()
     if hasattr(interfaz, "_asegurar_file_picker"):
         interfaz._asegurar_file_picker()
 
-    clientes_lista_obj = interfaz.order_store.listar_clientes()
-    clientes_actuales = [c.nombre for c in clientes_lista_obj]
-
-    cliente_input = ft.TextField(
-        label="Cliente (buscar o escribir nuevo) *",
-        hint_text="Escribe para buscar o ingresar cliente nuevo",
+    remito_factura_input = ft.TextField(
+        label="Remito / Factura *",
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
         expand=True,
     )
-    estado_cliente_txt = ft.Text("", size=11, color=ft.Colors.GREEN_400)
-    sugerencias_lista = ft.ListView(spacing=2, height=110, visible=False)
 
-    def seleccionar_cliente_sugerido(nombre: str) -> None:
-        cliente_input.value = nombre
-        sugerencias_lista.visible = False
-        estado_cliente_txt.value = f"✓ Cliente existente seleccionado: {nombre}"
-        estado_cliente_txt.color = ft.Colors.GREEN_400
+    selector_cliente = SelectorClientePedido(interfaz)
+    selector_fecha = SelectorFechaRetiroPedido(interfaz)
+
+    mensaje_error = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+    def on_error(err_msg: str) -> None:
+        mensaje_error.value = err_msg
         interfaz.page.update()
 
-    def on_cliente_cambio(_e: ft.Event | None = None) -> None:
-        q = (cliente_input.value or "").strip().lower()
-        if not q:
-            sugerencias_lista.visible = False
-            estado_cliente_txt.value = ""
-            interfaz.page.update()
-            return
+    def on_datos_extraidos(datos_doc: Any, _arch_candidato: Path, _hash_candidato: str) -> None:
+        if getattr(datos_doc, "numero_remito", None):
+            remito_factura_input.value = str(datos_doc.numero_remito).strip()
+        if getattr(datos_doc, "cliente", None):
+            selector_cliente.value = str(datos_doc.cliente).strip()
 
-        coincidencias = [
-            c
-            for c in clientes_lista_obj
-            if q in c.nombre.lower() or (c.codigo and q in c.codigo.lower()) or (c.direccion and q in c.direccion.lower())
-        ]
-        if coincidencias:
-            sugerencias_lista.controls.clear()
-            for c in coincidencias[:6]:
-                sub_info = []
-                if c.codigo:
-                    sub_info.append(f"Cód: {c.codigo}")
-                if c.direccion:
-                    sub_info.append(f"📍 {c.direccion}")
-                det_txt = " | ".join(sub_info)
+        fecha_val = getattr(datos_doc, "fecha_despacho", None) or getattr(datos_doc, "fecha", None)
+        if fecha_val and str(fecha_val).strip() and str(fecha_val).strip() != "Sin fecha":
+            selector_fecha.value = str(fecha_val).strip()
 
-                sugerencias_lista.controls.append(
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                ft.Icon(ft.Icons.PERSON, size=16, color=ft.Colors.BLUE_400),
-                                ft.Column(
-                                    [
-                                        ft.Text(c.nombre, size=13, weight=ft.FontWeight.W_500),
-                                        *([ft.Text(det_txt, size=10, color=interfaz.secundario)] if det_txt else []),
-                                    ],
-                                    spacing=1,
-                                    expand=True,
-                                ),
-                            ],
-                            spacing=6,
-                        ),
-                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                        border_radius=4,
-                        ink=True,
-                        on_click=lambda _ev, nom=c.nombre: seleccionar_cliente_sugerido(nom),
-                    )
-                )
-            sugerencias_lista.visible = True
-            if any(c.nombre.lower() == q for c in coincidencias):
-                estado_cliente_txt.value = "✓ Cliente registrado"
-                estado_cliente_txt.color = ft.Colors.GREEN_400
-            else:
-                estado_cliente_txt.value = f"{len(coincidencias)} coincidencia(s). Si es nuevo, se creará al confirmar."
-                estado_cliente_txt.color = ft.Colors.AMBER_400
-        else:
-            sugerencias_lista.visible = False
-            estado_cliente_txt.value = "✨ Cliente nuevo: se dará de alta automáticamente al guardar."
-            estado_cliente_txt.color = ft.Colors.AMBER_400
-        interfaz.page.update()
+        cli_cod = getattr(datos_doc, "codigo_cliente", "") or ""
+        cli_dir = getattr(datos_doc, "direccion", "") or ""
+        cli_nom = str(getattr(datos_doc, "cliente", "")).strip()
+        if cli_nom and (cli_cod or cli_dir):
+            try:
+                armador_nom = interfaz.usuario_actual.nombre_identificador if interfaz.usuario_actual else "Operario"
+                interfaz.order_store.obtener_o_crear_cliente(nombre=cli_nom, codigo=cli_cod, direccion=cli_dir, usuario=armador_nom)
+                selector_cliente.recargar_clientes()
+            except Exception:
+                pass
 
-    cliente_input.on_change = on_cliente_cambio
+    selector_comprobante = SelectorComprobantePedido(
+        interfaz,
+        on_datos_extraidos=on_datos_extraidos,
+        on_error=on_error,
+    )
 
     numero_pedido_input = ft.TextField(
         label="Número de Pedido (opcional)",
@@ -160,144 +121,18 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         expand=True,
     )
 
-    def fecha_seleccionada(_e: ft.Event) -> None:
-        val = date_picker.value
-        if val:
-            fecha_retiro_input.value = val.strftime("%d/%m/%Y") if hasattr(val, "strftime") else str(val)[:10]
-        interfaz.page.update()
-
-    date_picker = ft.DatePicker(on_change=fecha_seleccionada, help_text="Seleccionar fecha de retiro", confirm_text="Aceptar", cancel_text="Cancelar")
-
-    def abrir_calendario(_e: ft.Event) -> None:
-        interfaz.page.show_dialog(date_picker)
-
-    def limpiar_fecha(_e: ft.Event) -> None:
-        fecha_retiro_input.value = ""
-        interfaz.page.update()
-
-    fecha_retiro_input = ft.TextField(label="Fecha de retiro (opcional)", hint_text="Sin fecha asignada", read_only=True, expand=True, on_click=abrir_calendario)
-    fila_fecha_retiro = ft.Row(
-        [
-            fecha_retiro_input,
-            ft.IconButton(icon=ft.Icons.CALENDAR_MONTH, tooltip="Seleccionar fecha de retiro en calendario", on_click=abrir_calendario),
-            ft.IconButton(icon=ft.Icons.BACKSPACE_OUTLINED, tooltip="Quitar fecha de retiro", on_click=limpiar_fecha),
-        ],
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        spacing=4,
-    )
-
     armador_nom = interfaz.usuario_actual.nombre_identificador if interfaz.usuario_actual else "Operario"
     armador_input = ft.TextField(label="Armador responsable", value=armador_nom, read_only=True, disabled=True, expand=True)
     agregado_check = ft.Checkbox(label="Agregado", value=False)
 
-    ruta_comprobante: list[Path] = []
-    datos_doc_ref: list[Any] = []
-    texto_archivo = ft.Text("Ningún comprobante seleccionado (.pdf, .xlsx/.xls o .docx)", size=12, color=interfaz.secundario)
-    mensaje_error = ft.Text("", color=ft.Colors.RED_400, size=12)
-
-    async def seleccionar_comprobante(_e: ft.Event) -> None:
-        try:
-            archivos = await interfaz.subir_archivos_desde_pc(
-                carpeta_destino=application_root() / "data" / "pedidos_archivos",
-                extensiones=["pdf", "xlsx", "xls", "docx"],
-                titulo="Seleccionar Comprobante de Pedido (.pdf, .xlsx, .docx)",
-            )
-            if not archivos:
-                return
-            arch_candidato = archivos[0]
-            if len(archivos) > 1:
-                interfaz.notificar(
-                    f"Se seleccionaron {len(archivos)} comprobantes. Se preparó '{arch_candidato.name}'; una vez confirmado este pedido podrás cargar los restantes."
-                )
-            hash_candidato = calcular_hash_archivo(arch_candidato)
-            if hash_candidato:
-                duplicado = interfaz.order_store.buscar_pedido_por_hash(hash_candidato)
-                if duplicado:
-                    ruta_comprobante.clear()
-                    datos_doc_ref.clear()
-                    texto_archivo.value = f"⛔ DUPLICADO: {arch_candidato.name}"
-                    texto_archivo.color = ft.Colors.RED_400
-                    mensaje_error.value = (
-                        f"⛔ ATENCIÓN: El contenido de este archivo ya fue procesado el {duplicado.created_at[:16]} "
-                        f"(Comprobante: {duplicado.nota_pedido}, Cliente: {duplicado.cliente})."
-                    )
-                    interfaz.page.update()
-                    return
-
-            ruta_comprobante.clear()
-            ruta_comprobante.append(arch_candidato)
-            texto_archivo.value = f"Comprobante: {arch_candidato.name}"
-            texto_archivo.color = ft.Colors.GREEN_400
-            mensaje_error.value = ""
-
-            try:
-                datos_doc = parsear_comprobante_pedido(arch_candidato, interfaz.menu.ruta_excel_base)
-
-                if datos_doc:
-                    datos_doc_ref.clear()
-                    datos_doc_ref.append(datos_doc)
-                    if getattr(datos_doc, "numero_remito", None):
-                        remito_factura_input.value = str(datos_doc.numero_remito).strip()
-                    if getattr(datos_doc, "cliente", None):
-                        cliente_input.value = str(datos_doc.cliente).strip()
-                        on_cliente_cambio(None)
-                    if getattr(datos_doc, "fecha_despacho", None) and str(datos_doc.fecha_despacho).strip() and str(datos_doc.fecha_despacho).strip() != "Sin fecha":
-                        fecha_retiro_input.value = str(datos_doc.fecha_despacho).strip()
-                    elif getattr(datos_doc, "fecha", None) and str(datos_doc.fecha).strip() and str(datos_doc.fecha).strip() != "Sin fecha" and not fecha_retiro_input.value:
-                        fecha_retiro_input.value = str(datos_doc.fecha).strip()
-
-                    cli_cod = getattr(datos_doc, "codigo_cliente", "") or ""
-                    cli_dir = getattr(datos_doc, "direccion", "") or ""
-                    cli_nom = str(getattr(datos_doc, "cliente", "")).strip()
-                    if cli_nom and (cli_cod or cli_dir):
-                        try:
-                            interfaz.order_store.obtener_o_crear_cliente(nombre=cli_nom, codigo=cli_cod, direccion=cli_dir, usuario=armador_nom)
-                            clientes_lista_obj.clear()
-                            clientes_lista_obj.extend(interfaz.order_store.listar_clientes())
-                            clientes_actuales.clear()
-                            clientes_actuales.extend([c.nombre for c in clientes_lista_obj])
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            interfaz.page.update()
-        except Exception as err:
-            mensaje_error.value = f"Error al seleccionar comprobante: {err}"
-            interfaz.page.update()
-
-    boton_archivo = ft.Button(
-        "Adjuntar Comprobante",
-        icon=ft.Icons.ATTACH_FILE,
-        bgcolor=ft.Colors.BLUE_GREY_800 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100,
-        color=interfaz.texto,
-        on_click=seleccionar_comprobante,
-    )
-    contenedor_comprobante = ft.Container(
-        bgcolor=ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.GREY_100,
-        border=ft.Border.all(1, interfaz.borde),
-        border_radius=10,
-        padding=12,
-        content=ft.Column(
-            [
-                ft.Text("Comprobante adjunto (.pdf, .xlsx/.xls o .docx)", size=12, color=interfaz.secundario, weight=ft.FontWeight.W_500),
-                ft.Row(
-                    [boton_archivo, texto_archivo] if getattr(interfaz, "es_pantalla_movil", False) else [boton_archivo, ft.Container(content=texto_archivo, expand=True)],
-                    wrap=bool(getattr(interfaz, "es_pantalla_movil", False)),
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=12,
-                ),
-            ],
-            spacing=8,
-        ),
-    )
-
     async def confirmar_pedido(_e: ft.Event) -> None:
         remito = (remito_factura_input.value or "").strip()
-        cli = (cliente_input.value or "").strip()
+        cli = selector_cliente.value
         num_ped = (numero_pedido_input.value or "").strip()
         log = selector_logistica.value or ""
-        f_retiro = (fecha_retiro_input.value or "").strip()
+        f_retiro = selector_fecha.value
         es_agregado = bool(agregado_check.value)
+
         try:
             bultos_val = max(1, int(bultos_input.value or "1"))
         except ValueError:
@@ -319,19 +154,20 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             mensaje_error.value = "Debes seleccionar un tipo de logística."
             interfaz.page.update()
             return
-        if not ruta_comprobante:
+        if not selector_comprobante.ruta_comprobante:
             mensaje_error.value = "Debes adjuntar el comprobante (.pdf o .xlsx/.xls)."
             interfaz.page.update()
             return
 
         try:
+            datos_doc_ref = selector_comprobante.datos_doc_ref
             cli_cod = getattr(datos_doc_ref[0], "codigo_cliente", "") if datos_doc_ref and datos_doc_ref[0] else ""
             cli_dir = getattr(datos_doc_ref[0], "direccion", "") if datos_doc_ref and datos_doc_ref[0] else ""
             interfaz.order_store.obtener_o_crear_cliente(nombre=cli, codigo=cli_cod, direccion=cli_dir, usuario=armador_nom)
         except Exception:
             pass
 
-        archivo_path = ruta_comprobante[0]
+        archivo_path = selector_comprobante.ruta_comprobante[0]
         hash_comprobante = calcular_hash_archivo(archivo_path)
         if hash_comprobante:
             duplicado = interfaz.order_store.buscar_pedido_por_hash(hash_comprobante)
@@ -391,15 +227,15 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             width=interfaz.ancho_adaptable(500) if hasattr(interfaz, "ancho_adaptable") else 500,
             content=ft.Column(
                 [
-                    contenedor_comprobante,
+                    selector_comprobante.contenedor,
                     remito_factura_input,
-                    cliente_input,
-                    sugerencias_lista,
-                    estado_cliente_txt,
+                    selector_cliente.input_cliente,
+                    selector_cliente.sugerencias_lista,
+                    selector_cliente.estado_cliente_txt,
                     numero_pedido_input,
                     fila_bultos,
                     selector_logistica,
-                    fila_fecha_retiro,
+                    selector_fecha.fila_control,
                     armador_input,
                     agregado_check,
                     mensaje_error,

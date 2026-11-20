@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 import flet as ft
 
+from ..design import confirmar_accion_destructiva, tono_legible
 from ..theme import ROJO
 from ...core.environment import (
     get_environment,
@@ -27,7 +28,7 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
 
     # Indicador de estado actual
     es_qa = is_qa_environment()
-    color_banner = ft.Colors.AMBER_400 if es_qa else ft.Colors.GREEN_400
+    color_banner = tono_legible("AMBER" if es_qa else "GREEN", es_oscuro)
     texto_banner = "AMBIENTE QA / PRUEBAS ACTIVO" if es_qa else "AMBIENTE DE PRODUCCIÓN ACTIVO"
     desc_banner = (
         "Trabajando en modo aislado con base de datos 'data_qa/' y planillas 'Descuentos_QA/'. Las operaciones no afectan stock real."
@@ -122,12 +123,7 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
         tooltip="Restaura los usuarios, productos y planillas de prueba originales en data_qa/",
     )
 
-    async def al_aplicar_cambio(_e: ft.Event) -> None:
-        nuevo_env = seleccion[0]
-        if nuevo_env == env_actual:
-            interfaz.page.pop_dialog()
-            return
-
+    async def _ejecutar_cambio_ambiente(nuevo_env: str) -> None:
         interfaz.page.pop_dialog()
 
         def ejecutar() -> None:
@@ -139,6 +135,14 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
             if hasattr(interfaz, "recargar_ambiente"):
                 interfaz.recargar_ambiente()
 
+            try:
+                order_store = getattr(interfaz, "order_store", None)
+                if order_store and hasattr(order_store, "registrar_auditoria"):
+                    usr = getattr(getattr(interfaz, "usuario_actual", None), "username", "Master")
+                    order_store.registrar_auditoria(usr, "CAMBIO_AMBIENTE", f"Cambio de ambiente: {env_actual} -> {nuevo_env}")
+            except Exception:
+                pass
+
             interfaz.sincronizar_sesiones(
                 aviso_colaborativo=f"🔄 El usuario Master cambió el entorno a {nuevo_env.upper()}."
             )
@@ -146,19 +150,74 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
         await interfaz.ejecutar_tarea(f"Cambiando a entorno {nuevo_env.upper()}", ejecutar)
         interfaz.notificar(f"Ambiente cambiado exitosamente a: {nuevo_env.upper()}.")
 
+    def al_aplicar_cambio(_e: ft.Event) -> None:
+        nuevo_env = seleccion[0]
+        if nuevo_env == env_actual:
+            interfaz.page.pop_dialog()
+            return
+
+        def _confirmado() -> None:
+            run_task_fn = getattr(interfaz.page, "run_task", None)
+            if callable(run_task_fn) and not getattr(interfaz.page, "_is_mock", False):
+                run_task_fn(_ejecutar_cambio_ambiente, nuevo_env)
+            else:
+                import asyncio
+
+                asyncio.run(_ejecutar_cambio_ambiente(nuevo_env))
+
+        confirmar_accion_destructiva(
+            interfaz,
+            f"Confirmar Cambio a {nuevo_env.upper()}",
+            f"¿Confirmas cambiar el ambiente de ejecución activo de '{env_actual.upper()}' a '{nuevo_env.upper()}'?\n"
+            "Se cerrarán las sesiones API en memoria y se reconectarán los almacenes de datos.",
+            _confirmado,
+            texto_confirmar=f"Sí, Cambiar a {nuevo_env.upper()}",
+            roles_permitidos=("master",),
+        )
+
     btn_aplicar.on_click = al_aplicar_cambio
 
-    async def al_reseed_qa(_e: ft.Event) -> None:
+    async def _ejecutar_reseed_qa() -> None:
         def ejecutar() -> None:
             inicializar_ambiente_qa(forzar_reinicio=True)
             if hasattr(interfaz, "recargar_ambiente"):
                 interfaz.recargar_ambiente()
+            else:
+                from ...api.deps import reset_api_stores
+
+                reset_api_stores(revocar_sesiones_memoria=True)
+            try:
+                order_store = getattr(interfaz, "order_store", None)
+                if order_store and hasattr(order_store, "registrar_auditoria"):
+                    usr = getattr(getattr(interfaz, "usuario_actual", None), "username", "Master")
+                    order_store.registrar_auditoria(usr, "RESEED_QA", "Reinicialización completa de bases y planillas QA")
+            except Exception:
+                pass
             interfaz.sincronizar_sesiones(
                 aviso_colaborativo="🔄 El usuario Master reinicializó los datos semilla del ambiente QA."
             )
 
         await interfaz.ejecutar_tarea("Reinicializando datos QA", ejecutar)
         interfaz.notificar("Datos de prueba de QA reinicializados con éxito.")
+
+    def al_reseed_qa(_e: ft.Event) -> None:
+        def _confirmado_reseed() -> None:
+            run_task_fn = getattr(interfaz.page, "run_task", None)
+            if callable(run_task_fn) and not getattr(interfaz.page, "_is_mock", False):
+                run_task_fn(_ejecutar_reseed_qa)
+            else:
+                import asyncio
+
+                asyncio.run(_ejecutar_reseed_qa())
+
+        confirmar_accion_destructiva(
+            interfaz,
+            "Confirmar Reinicialización de QA",
+            "¿Confirmas restaurar las bases de datos y planillas de 'data_qa/' y 'Descuentos_QA/' a sus valores semilla originales?",
+            _confirmado_reseed,
+            texto_confirmar="Sí, Reinicializar QA",
+            roles_permitidos=("master",),
+        )
 
     btn_reseed.on_click = al_reseed_qa
 

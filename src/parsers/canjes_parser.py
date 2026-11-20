@@ -6,8 +6,8 @@ Lee planillas de canje de productos, extrae los ítems solicitados
 
 from pathlib import Path
 from typing import List, Optional
-import openpyxl
 from .remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
+from .safe_loader import MAX_EXCEL_ROWS, cargar_workbook_seguro
 
 
 def parsear_canje_excel(ruta_excel: str | Path) -> ResultadoRemito:
@@ -16,7 +16,7 @@ def parsear_canje_excel(ruta_excel: str | Path) -> ResultadoRemito:
     y extrae los productos con cantidad mayor a cero.
     """
     path = Path(ruta_excel)
-    wb = openpyxl.load_workbook(str(path), data_only=True)
+    wb = cargar_workbook_seguro(path, data_only=True)
     try:
         # Se utiliza la primera hoja activa
         sheet = wb.active
@@ -51,7 +51,8 @@ def parsear_canje_excel(ruta_excel: str | Path) -> ResultadoRemito:
 
         # 3. Extraer productos pedidos (Columna PEDIDO > 0)
         items: List[ItemRemito] = []
-        for r in range(header_row + 1, sheet.max_row + 1):
+        max_fila = min(sheet.max_row or 0, MAX_EXCEL_ROWS)
+        for r in range(header_row + 1, max_fila + 1):
             v_ped = sheet.cell(row=r, column=col_pedido).value
             v_cod = sheet.cell(row=r, column=col_codigo).value
             v_desc = sheet.cell(row=r, column=col_desc).value

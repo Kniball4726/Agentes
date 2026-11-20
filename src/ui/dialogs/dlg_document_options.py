@@ -9,13 +9,50 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import urllib.parse
 
 import flet as ft
 
+from ...auth import USER_ROLES
+from ...core.environment import get_data_dir, get_descuentos_dir
+from ...core.security_utils import ruta_en_directorios_permitidos
+from ...paths import application_root
 from ..theme import ROJO
 from ..components.print_labels import imprimir_directo_spooler, listar_impresoras_sistema
 
 logger = logging.getLogger("stockagent.ui.dialogs")
+
+_PARTES_BLOQUEADAS_DOC = {
+    ".git",
+    ".env",
+    ".venv",
+    "certs",
+    "backups",
+    "logs",
+    ".clave_secretos",
+    "usuarios.sqlite3",
+}
+
+
+def _validar_ruta_documento_opciones(ruta: Path, es_web: bool) -> bool:
+    try:
+        res = ruta.resolve()
+    except OSError:
+        return False
+    if _PARTES_BLOQUEADAS_DOC.intersection({p.lower() for p in res.parts}):
+        return False
+    raiz = Path(application_root()).resolve()
+    if es_web:
+        carpetas_web = [
+            get_data_dir() / "pedidos_archivos",
+            get_data_dir() / "informes",
+            get_descuentos_dir(),
+            raiz / "Documentacion",
+            raiz / "Fabrica",
+            raiz / "StockFisico",
+        ]
+        return ruta_en_directorios_permitidos(res, carpetas_web)
+    return res.is_relative_to(raiz)
 
 
 def _formatear_tamano(bytes_cant: int) -> str:
@@ -28,9 +65,20 @@ def _formatear_tamano(bytes_cant: int) -> str:
 
 def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) -> None:
     """Muestra el diálogo de opciones de Windows (Descargar o Imprimir) para cualquier documento."""
+    if hasattr(interfaz, "exigir_roles") and not interfaz.exigir_roles(*USER_ROLES):
+        return
+
     ruta = Path(ruta_archivo)
     if not ruta.exists() or not ruta.is_file():
         interfaz.notificar(f"El documento '{ruta.name}' no se encuentra disponible en disco.")
+        return
+
+    es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    es_web = bool(getattr(interfaz.page, "web", False))
+
+    if not _validar_ruta_documento_opciones(ruta, es_web=es_web):
+        interfaz.notificar("Acceso denegado: el documento no pertenece a una carpeta autorizada.")
         return
 
     st = ruta.stat()
@@ -56,12 +104,8 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
         color_tipo = ft.Colors.BLUE_400
         tipo_badge = sufijo.replace(".", "").upper()
 
-    es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
-    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
-    es_web = bool(getattr(interfaz.page, "web", False))
-
-    # Detección de impresoras de Windows instaladas
-    impresoras_disponibles = listar_impresoras_sistema() if sys.platform == "win32" else []
+    # Detección de impresoras de Windows instaladas (solo en modo escritorio local)
+    impresoras_disponibles = listar_impresoras_sistema() if (not es_web and sys.platform == "win32") else []
 
     dropdown_impresoras: ft.Dropdown | None = None
     if impresoras_disponibles:
@@ -78,6 +122,9 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
 
     # Handlers de acción
     def _accion_imprimir_windows(_e: Any) -> None:
+        if es_web:
+            _accion_vista_previa_impresion(_e)
+            return
         impresora_sel = dropdown_impresoras.value if dropdown_impresoras else ""
         try:
             if impresora_sel:
@@ -103,13 +150,23 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
         if es_web:
             import time
             ts = int(time.time())
-            url_visor = f"/descargas/informes/{ruta.name}?v={ts}&print=1"
+            nombre_enc = urllib.parse.quote(ruta.name)
+            url_visor = f"/descargas/informes/{nombre_enc}?v={ts}&print=1"
+            usr_actual = getattr(interfaz, "usuario_actual", None)
+            if usr_actual is not None:
+                from ...api.deps import crear_token_documento
+                dt = crear_token_documento(usr_actual, recurso=ruta.name)
+                url_visor = f"{url_visor}&dt={urllib.parse.quote(dt)}"
             try:
-                if hasattr(interfaz.page, "launch_url"):
+                if hasattr(interfaz, "abrir_url_en_navegador"):
+                    interfaz.abrir_url_en_navegador(url_visor)
+                elif hasattr(interfaz.page, "launch_url"):
                     interfaz.page.launch_url(url_visor, web_window_name="_blank")
                 return
             except Exception as exc:
                 logger.warning("Fallo al abrir vista de impresión web: %s", exc)
+                interfaz.notificar("No se pudo abrir la vista previa en el navegador.")
+                return
         try:
             if sys.platform == "win32":
                 os.startfile(str(ruta.resolve()))  # type: ignore[attr-defined]
@@ -128,6 +185,9 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
 
     def _accion_abrir_windows(_e: Any) -> None:
         interfaz.page.pop_dialog()
+        if es_web:
+            _accion_descargar(_e)
+            return
         try:
             if sys.platform == "win32":
                 os.startfile(str(ruta.resolve()))  # type: ignore[attr-defined]
@@ -140,6 +200,9 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
 
     def _accion_abrir_carpeta(_e: Any) -> None:
         interfaz.page.pop_dialog()
+        if es_web:
+            interfaz.notificar("La exploración de carpetas locales solo está disponible en modo escritorio.")
+            return
         try:
             if hasattr(interfaz, "abrir_carpeta_informe"):
                 interfaz.abrir_carpeta_informe(ruta)
@@ -211,46 +274,50 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
         filas_contenido.append(dropdown_impresoras)
 
     # Botones principales de acción
-    botones_acciones = [
-        # Botón 1: Imprimir en Windows
-        ft.Button(
-            "Imprimir en Windows",
-            icon=ft.Icons.PRINT,
-            style=ft.ButtonStyle(
-                bgcolor=ROJO,
-                color=ft.Colors.WHITE,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+    botones_acciones: list[ft.Control] = []
+    if not es_web and sys.platform == "win32":
+        botones_acciones.append(
+            ft.Button(
+                "Imprimir en Windows",
+                icon=ft.Icons.PRINT,
+                style=ft.ButtonStyle(
+                    bgcolor=ROJO,
+                    color=ft.Colors.WHITE,
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+                ),
+                on_click=_accion_imprimir_windows,
+            )
+        )
+    botones_acciones.extend(
+        [
+            ft.Button(
+                "Vista previa de impresión (Ctrl+P)",
+                icon=ft.Icons.PREVIEW,
+                style=ft.ButtonStyle(
+                    bgcolor=ROJO if es_web else None,
+                    color=ft.Colors.WHITE if es_web else interfaz.texto,
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+                ),
+                on_click=_accion_vista_previa_impresion,
             ),
-            on_click=_accion_imprimir_windows,
-        ),
-        # Botón 2: Vista previa e impresión
-        ft.Button(
-            "Vista previa de impresión (Ctrl+P)",
-            icon=ft.Icons.PREVIEW,
-            style=ft.ButtonStyle(
-                color=interfaz.texto,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+            ft.Button(
+                "Descargar / Guardar archivo",
+                icon=ft.Icons.DOWNLOAD,
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.BLUE_GREY_700,
+                    color=ft.Colors.WHITE,
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+                ),
+                on_click=_accion_descargar,
             ),
-            on_click=_accion_vista_previa_impresion,
-        ),
-        # Botón 3: Descargar / Guardar
-        ft.Button(
-            "Descargar / Guardar archivo",
-            icon=ft.Icons.DOWNLOAD,
-            style=ft.ButtonStyle(
-                bgcolor=ft.Colors.BLUE_GREY_700,
-                color=ft.Colors.WHITE,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-            ),
-            on_click=_accion_descargar,
-        ),
-    ]
+        ]
+    )
 
-    # Botón 4: Abrir con programa asociado en Windows si no es exclusivamente web remoto
-    if sys.platform == "win32":
+    # Botón 4: Abrir con programa asociado solo en escritorio Windows (nunca en web remoto)
+    if not es_web and sys.platform == "win32":
         botones_acciones.append(
             ft.Button(
                 "Abrir con programa de Windows (Excel / Acrobat)",
@@ -267,6 +334,22 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
     for btn in botones_acciones:
         filas_contenido.append(btn)
 
+    acciones_pie: list[ft.Control] = []
+    if not es_web:
+        acciones_pie.append(
+            ft.IconButton(
+                icon=ft.Icons.FOLDER_OPEN,
+                tooltip="Mostrar archivo en el Explorador de Windows",
+                on_click=_accion_abrir_carpeta,
+            )
+        )
+    acciones_pie.append(
+        ft.TextButton(
+            "Cancelar",
+            on_click=lambda _e: interfaz.page.pop_dialog(),
+        )
+    )
+
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
@@ -280,18 +363,8 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
             width=540 if not es_movil else 340,
             content=ft.Column(filas_contenido, tight=True, spacing=10),
         ),
-        actions=[
-            ft.IconButton(
-                icon=ft.Icons.FOLDER_OPEN,
-                tooltip="Mostrar archivo en el Explorador de Windows",
-                on_click=_accion_abrir_carpeta,
-            ),
-            ft.Button(
-                "Cancelar",
-                on_click=lambda _e: interfaz.page.pop_dialog(),
-            ),
-        ],
-        actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        actions=acciones_pie,
+        actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if not es_web else ft.MainAxisAlignment.END,
     )
 
     interfaz.page.show_dialog(dialogo)

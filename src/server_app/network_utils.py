@@ -105,13 +105,15 @@ def resolver_instancia_unica(
 
     if forzar_reinicio:
         try:
-            salida = subprocess.check_output("netstat -ano", shell=True, text=True)
+            salida = subprocess.check_output(["netstat", "-ano"], text=True)
             for line in salida.splitlines():
                 if f":{port}" in line and "LISTENING" in line:
                     pid_str = line.strip().split()[-1]
-                    subprocess.run(
-                        f"taskkill /F /PID {pid_str}", shell=True, capture_output=True
-                    )
+                    if pid_str.isdigit() and int(pid_str) > 0:
+                        subprocess.run(
+                            ["taskkill", "/F", "/PID", pid_str],
+                            capture_output=True,
+                        )
             time.sleep(0.6)
         except Exception:
             pass

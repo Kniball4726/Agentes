@@ -182,13 +182,13 @@
     <p>No se pudo conectar con el servidor local del depósito. Si estás en otra ubicación o fuera del depósito, conéctate por la red remota segura (Tailscale).</p>
     
     <button class="btn btn-primary" onclick="reintentar()">🔄 Reintentar Conexión Local</button>
-    <a href="https://100.121.31.38:8550" class="btn btn-tailscale">🌐 Conectar vía Remota (Tailscale)</a>
+    <a id="btn-remote-saved" href="#" class="btn btn-tailscale" style="display: none;">🌐 Conectar vía Remota Guardada</a>
     <a href="/scanner.html" class="btn btn-secondary">📷 Abrir Escáner de Códigos</a>
 
     <div class="ip-box">
-      <label for="server-address">Conectar a otra dirección / IP:</label>
+      <label for="server-address">Conectar a servidor HTTPS configurado:</label>
       <div class="ip-input-group">
-        <input type="text" id="server-address" class="ip-input" placeholder="100.121.31.38:8550" value="100.121.31.38:8550">
+        <input type="text" id="server-address" class="ip-input" placeholder="https://servidor-deposito:8550" value="">
         <button class="ip-btn" onclick="conectarManual()">Ir</button>
       </div>
     </div>
@@ -200,6 +200,45 @@
   </div>
 
   <script>
+    const REMOTE_URL_KEY = 'stockagent_remote_url';
+
+    function validarUrlServidor(rawInput) {
+      let texto = (rawInput || '').trim();
+      if (!texto || /\s/.test(texto)) return null;
+      if (!/^https?:\/\//i.test(texto)) {
+        texto = 'https://' + texto;
+      }
+      try {
+        const parsed = new URL(texto);
+        const esLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+        if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && esLocal)) {
+          return null;
+        }
+        if (!parsed.hostname) return null;
+        return parsed.origin + (parsed.pathname === '/' ? '' : parsed.pathname);
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    (function cargarServidorRemotoGuardado() {
+      try {
+        const guardado = localStorage.getItem(REMOTE_URL_KEY);
+        const validado = validarUrlServidor(guardado);
+        if (validado) {
+          const btnRemoto = document.getElementById('btn-remote-saved');
+          const inp = document.getElementById('server-address');
+          if (btnRemoto) {
+            btnRemoto.setAttribute('href', validado);
+            btnRemoto.style.display = 'block';
+          }
+          if (inp && !inp.value) {
+            inp.value = validado;
+          }
+        }
+      } catch (_e) {}
+    })();
+
     function reintentar() {
       document.getElementById('txt-status').textContent = 'Comprobando conexión...';
       if (window.location.protocol === 'http:') {
@@ -210,12 +249,19 @@
     }
 
     function conectarManual() {
-      let addr = document.getElementById('server-address').value.trim();
-      if (!addr) return;
-      if (!addr.startsWith('http://') && !addr.startsWith('https://')) {
-        addr = 'https://' + addr;
+      const statusEl = document.getElementById('txt-status');
+      const addr = document.getElementById('server-address').value.trim();
+      const validado = validarUrlServidor(addr);
+      if (!validado) {
+        if (statusEl) {
+          statusEl.textContent = 'Dirección inválida. Usa un servidor HTTPS válido (ej: https://host:8550).';
+        }
+        return;
       }
-      window.location.href = addr;
+      try {
+        localStorage.setItem(REMOTE_URL_KEY, validado);
+      } catch (_e) {}
+      window.location.href = validado;
     }
 
     // Auto-recarga al volver la señal

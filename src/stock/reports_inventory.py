@@ -9,6 +9,7 @@ from typing import Any
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, Spacer
 
+from ..core.sanitize_utils import escapar_texto_reportlab, sanitizar_fila_excel
 from .report_styles import (
     _autoajustar_columnas_excel,
     compilar_pdf_reporte,
@@ -68,9 +69,9 @@ def generar_reporte_planilla_conteo_fisico(
             ubic = (p["ubicacion"] if "ubicacion" in p.keys() else "") or "-"
             cod_b = (p["cod_barras"] if "cod_barras" in p.keys() else "") or "-"
             if conteo_ciego:
-                ws.append([ubic, p["code"], p["name"], cod_b, "", ""])
+                ws.append(sanitizar_fila_excel([ubic, p["code"], p["name"], cod_b, "", ""]))
             else:
-                ws.append([ubic, p["code"], p["name"], cod_b, int(p["stock"]), "", ""])
+                ws.append(sanitizar_fila_excel([ubic, p["code"], p["name"], cod_b, int(p["stock"]), "", ""]))
             estilizar_fila_excel(ws, ws.max_row, len(headers), idx % 2 == 1)
         _autoajustar_columnas_excel(ws)
         wb.save(ruta_salida)
@@ -78,7 +79,10 @@ def generar_reporte_planilla_conteo_fisico(
         return ruta_salida
 
     st = crear_estilos_pdf()
-    subtitulo = f"Emitido: {fecha_legible} | <b>{modo_txt}</b> | Total SKUs: {len(productos)} | Resp: <b>{usuario}</b>"
+    subtitulo = (
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)} | <b>{escapar_texto_reportlab(modo_txt)}</b> | "
+        f"Total SKUs: {len(productos)} | Resp: <b>{escapar_texto_reportlab(usuario)}</b>"
+    )
 
     if conteo_ciego:
         headers_pdf = ["Ubic.", "Código", "Descripción", "Cód. Barras", "Conteo", "Obs."]
@@ -93,19 +97,19 @@ def generar_reporte_planilla_conteo_fisico(
         cod_b = (p["cod_barras"] if "cod_barras" in p.keys() else "") or "-"
         if conteo_ciego:
             filas.append([
-                Paragraph(str(ubic)[:12], st["td_center"]),
-                Paragraph(str(p["code"]), st["td_center"]),
-                Paragraph(str(p["name"])[:52], st["td"]),
-                Paragraph(str(cod_b)[:16], st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(ubic)[:12]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(p["code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(p["name"])[:52]), st["td"]),
+                Paragraph(escapar_texto_reportlab(str(cod_b)[:16]), st["td_center"]),
                 Paragraph("_______", st["td_center"]),
                 Paragraph("", st["td"]),
             ])
         else:
             filas.append([
-                Paragraph(str(ubic)[:12], st["td_center"]),
-                Paragraph(str(p["code"]), st["td_center"]),
-                Paragraph(str(p["name"])[:56], st["td"]),
-                Paragraph(str(p["stock"]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(ubic)[:12]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(p["code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(p["name"])[:56]), st["td"]),
+                Paragraph(str(int(p["stock"])), st["td_center"]),
                 Paragraph("_______", st["td_center"]),
                 Paragraph("_____", st["td_center"]),
             ])
@@ -156,14 +160,14 @@ def generar_reporte_auditoria_inventario_fisico(
             headers,
         )
         for idx, d in enumerate(filas_det):
-            ws.append([
+            ws.append(sanitizar_fila_excel([
                 d["product_code"],
                 d["product_name"],
                 int(d["stock_digital"]),
                 int(d["stock_fisico"]),
                 int(d["diferencia"]),
                 d["estado"],
-            ])
+            ]))
             estilizar_fila_excel(ws, ws.max_row, len(headers), idx % 2 == 1)
         if not filas_det:
             ws.append(["—", "No existen detalles de conteo físico registrados.", 0, 0, 0, "-"])
@@ -173,7 +177,10 @@ def generar_reporte_auditoria_inventario_fisico(
         return ruta_salida
 
     st = crear_estilos_pdf()
-    subtitulo = f"Emitido: {fecha_legible} | {meta_txt} | Resp: <b>{usuario}</b>"
+    subtitulo = (
+        f"Emitido: {escapar_texto_reportlab(fecha_legible)} | {escapar_texto_reportlab(meta_txt)} | "
+        f"Resp: <b>{escapar_texto_reportlab(usuario)}</b>"
+    )
     filas_pdf: list[list[Any]] = [[
         Paragraph("Código", st["th"]),
         Paragraph("Producto", st["th"]),
@@ -187,14 +194,14 @@ def generar_reporte_auditoria_inventario_fisico(
             dif = int(d["diferencia"] or 0)
             dif_txt = f"+{dif}" if dif > 0 else str(dif)
             est_cell = Paragraph(
-                f"<b>{d['estado']}</b>",
+                f"<b>{escapar_texto_reportlab(d['estado'])}</b>",
                 st["agotado"] if dif < 0 else (st["critico"] if dif > 0 else st["td_center"]),
             )
             filas_pdf.append([
-                Paragraph(str(d["product_code"]), st["td_center"]),
-                Paragraph(str(d["product_name"])[:50], st["td"]),
-                Paragraph(str(d["stock_digital"]), st["td_center"]),
-                Paragraph(str(d["stock_fisico"]), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(d["product_code"])), st["td_center"]),
+                Paragraph(escapar_texto_reportlab(str(d["product_name"])[:50]), st["td"]),
+                Paragraph(str(int(d["stock_digital"])), st["td_center"]),
+                Paragraph(str(int(d["stock_fisico"])), st["td_center"]),
                 Paragraph(f"<b>{dif_txt}</b>", st["td_center"]),
                 est_cell,
             ])

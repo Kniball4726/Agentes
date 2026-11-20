@@ -103,7 +103,7 @@ def agregar_portada_iso_upel(
         ("v2.0.0", "18/08/2026", "Dev Team", "Servidor LAN HTTPS Multi-equipo, PWA offline-first y cliente móvil Flutter nativo.", "Dirección TI"),
         ("v2.1.0", "10/10/2026", "Gregory Rodriguez", "Manuales botón por botón, rol Picker, auditoría descendente de Cierres y hojas de ruta.", "Calidad QA"),
         ("v2.2.0", "01/11/2026", "Gregory Rodriguez", "Arquitectura modular en paquetes, HTTPS por defecto, Firewall Privado, tokens ?dt=, Swagger apagado y secretos cifrados DPAPI/Fernet.", "Calidad QA"),
-        (f"v{version.lstrip('v')}", hoy, "Gregory Rodriguez", "Cierre en 3 canales (Mayoristas, Mercado Libre, Full), Consolidado Admin, persistencia SQLite-first con closing(), composición pura en GUI/OrderStore y refactorización modular completa de src/.", ""),
+        (f"v{version.lstrip('v')}", hoy, "Gregory Rodriguez", "Auditoría Fases 1-4: endurecimiento TLS/PKI/CSP/SSRF, Sistema de Diseño Unificado (src/ui/design/), app móvil con TLS Pinning + AndroidKeyStore + OTA SHA-256 + colas FIFO offline, rol Despachador y delegación por descriptores.", ""),
     ]
     t_rev_data = crear_filas_tabla_apa(
         ["Versión", "Fecha", "Responsable", "Descripción Detallada del Cambio / Actualización", "Aprobador"],

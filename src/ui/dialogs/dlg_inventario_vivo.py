@@ -243,7 +243,6 @@ def mostrar_dialogo_inventario_vivo(
         refrescar_vista_contados()
 
     def abrir_escaner_camara(_e: ft.Event | None = None) -> None:
-        abrir_url_en_navegador(interfaz.page, "/scanner.html")
         interfaz.notificar(
             "Se abrió el escáner de cámara. Apunta al código de barras en tu celular "
             "y los códigos leídos se reflejarán en tu sesión."
@@ -257,17 +256,20 @@ def mostrar_dialogo_inventario_vivo(
         interfaz.page.pop_dialog()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         nombre_arch = f"Inventario_Escaner_{timestamp}.xlsx"
+        snapshot_conteo = dict(conteo_fisico)
+        resultado_ref: list[Any] = []
 
-        async def tarea_procesar():
-            return sm.procesar_stock_fisico(
-                conteo_fisico=conteo_fisico,
+        def tarea_procesar() -> None:
+            res = sm.procesar_stock_fisico(
+                conteo_fisico=snapshot_conteo,
                 usuario=usuario_operario,
                 nombre_archivo=nombre_arch,
             )
+            resultado_ref.append(res)
 
-        resultado = await interfaz.ejecutar_tarea("Generación de Comparativa de Inventario Físico", tarea_procesar)
-        if resultado:
-            ruta_doc, comparativa = resultado
+        exito = await interfaz.ejecutar_tarea("Generación de Comparativa de Inventario Físico", tarea_procesar)
+        if exito and resultado_ref and resultado_ref[0]:
+            ruta_doc, comparativa = resultado_ref[0]
             mostrar_resumen_inventario_finalizado(interfaz, usuario_operario, page_w, ruta_doc, comparativa)
 
     btn_sumar.on_click = procesar_escaneo
