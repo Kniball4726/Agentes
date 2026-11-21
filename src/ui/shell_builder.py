@@ -14,7 +14,7 @@ from .components import (
     construir_sidebar_controls,
     registrar_servicio_audio_web,
 )
-from .theme import ROJO
+from .theme import FUENTE_PRINCIPAL, ROJO
 
 
 def _crear_punto_notificacion(
@@ -146,8 +146,8 @@ def configurar_ventana_shell(interfaz: Any, icon_path: Path) -> None:
     page.padding = 0
     page.bgcolor = interfaz.fondo
     page.theme_mode = ft.ThemeMode.DARK
-    page.theme = ft.Theme(color_scheme_seed=ROJO)
-    page.dark_theme = ft.Theme(color_scheme_seed=ROJO)
+    page.theme = ft.Theme(color_scheme_seed=ROJO, font_family=FUENTE_PRINCIPAL)
+    page.dark_theme = ft.Theme(color_scheme_seed=ROJO, font_family=FUENTE_PRINCIPAL)
     if hasattr(page, "on_resize"):
         page.on_resize = interfaz._al_redimensionar
     if hasattr(page, "on_disconnect") and hasattr(interfaz, "_al_desconectar"):

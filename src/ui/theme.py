@@ -1,6 +1,9 @@
 """Constantes y configuración de estilos visuales para la interfaz Flet."""
 import flet as ft
 
+# Tipografía principal con soporte completo UTF-8 (tildes y eñes)
+FUENTE_PRINCIPAL = "Roboto"
+
 # Colores primarios de marca
 ROJO = ft.Colors.RED_700
 ACENTO_ROJO = ft.Colors.RED_700
