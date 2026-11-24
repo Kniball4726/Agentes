@@ -12,6 +12,17 @@ build/
 *.aab
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.cer
+*.pem
+*.key
+*.mobileprovision
+.env
+.env.*
+!.env.example
+google-services.json
+GoogleService-Info.plist
 android/local.properties
 android/key.properties
 android/.gradle/
