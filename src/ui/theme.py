@@ -3,6 +3,9 @@ from typing import Any
 
 import flet as ft
 
+# Tipografía principal con soporte completo UTF-8 (tildes y eñes)
+FUENTE_PRINCIPAL = "Roboto"
+
 # Colores primarios de marca
 ROJO = ft.Colors.RED_700
 ACENTO_ROJO = ft.Colors.RED_700
@@ -61,6 +64,7 @@ def crear_tema_menus(color_seed: Any = ROJO) -> ft.Theme:
     """Crea el tema base conservando la tipografía global y aplicando Inter a los menús nativos."""
     return ft.Theme(
         color_scheme_seed=color_seed,
+        font_family=FUENTE_PRINCIPAL,
         popup_menu_theme=ft.PopupMenuTheme(
             label_text_style=estilo_texto_menu("regular"),
         ),

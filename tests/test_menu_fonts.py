@@ -20,6 +20,7 @@ from src.ui.components.sidebar_horizontal import construir_sidebar_horizontal_co
 from src.ui.components.window_manager import mostrar_menu_movil_fallback
 from src.ui.dialogs.dlg_command_palette import mostrar_command_palette
 from src.ui.theme import (
+    FUENTE_PRINCIPAL,
     FUENTE_MENU,
     FUENTE_MENU_BOLD,
     FUENTE_MENU_MEDIUM,
@@ -84,11 +85,11 @@ class TestMenuFonts(unittest.TestCase):
             self.assertTrue(ruta.is_file(), f"Falta archivo de fuente: {ruta}")
             self.assertGreater(ruta.stat().st_size, 0)
 
-    def test_tema_shell_registra_fuentes_solo_en_menus_y_no_global(self) -> None:
-        """El tema registra Inter en page.fonts y subtemas de menú sin alterar font_family global."""
+    def test_tema_shell_registra_roboto_global_e_inter_en_menus(self) -> None:
+        """El tema registra Roboto globalmente e Inter en los subtemas de menú."""
         self.assertEqual(self.page.fonts, FUENTES_APP)
         for tema in (self.page.theme, self.page.dark_theme):
-            self.assertIsNone(tema.font_family)
+            self.assertEqual(tema.font_family, FUENTE_PRINCIPAL)
             self.assertEqual(tema.popup_menu_theme.label_text_style.font_family, FUENTE_MENU)
             self.assertEqual(tema.navigation_bar_theme.label_text_style.font_family, FUENTE_MENU_MEDIUM)
             self.assertEqual(tema.navigation_drawer_theme.label_text_style.font_family, FUENTE_MENU_MEDIUM)
