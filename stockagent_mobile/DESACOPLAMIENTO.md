@@ -19,10 +19,10 @@ El cliente móvil está diseñado para operar de forma 100% independiente:
 
 ## 🚀 2. Exportación Automática
 
-Para extraer la aplicación a una carpeta independiente, ejecuta el script ubicado en la raíz del servidor:
+Para extraer la aplicación a una carpeta independiente, ejecuta el script ubicado en `scripts\build\`:
 
 ```cmd
-exportar_stockagent_mobile.bat
+scripts\build\exportar_stockagent_mobile.bat
 ```
 
 Por defecto, esto copiará todo el código a `..\StockAgent_Mobile`, excluyendo carpetas pesadas de compilación (`build/`, `.dart_tool/`, `.gradle/`).

@@ -3,7 +3,10 @@
 import sys
 from pathlib import Path
 
-# Inyectar argumento --qa
+# Inyectar raíz del repositorio y argumento --qa
+_ROOT_DIR = str(Path(__file__).resolve().parent.parent)
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
 if "--qa" not in sys.argv:
     sys.argv.append("--qa")
 

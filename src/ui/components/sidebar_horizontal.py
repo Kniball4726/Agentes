@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable
 import flet as ft
 
-from ..theme import ROJO
+from ..theme import FUENTE_MENU, FUENTE_MENU_BOLD, FUENTE_MENU_SEMIBOLD, ROJO, estilo_texto_menu
 from .sidebar_sections import (
     SeccionMenu,
     obtener_secciones_rol,
@@ -15,6 +15,48 @@ from ..dialogs.dlg_movimientos_rapidos import (
     mostrar_dialogo_ingreso_rapido,
     mostrar_dialogo_salida_rapida,
 )
+
+def _crear_pildora_horizontal(
+    *,
+    texto: str,
+    icono: ft.IconData,
+    color_icono: str,
+    color_texto: str,
+    bgcolor: str,
+    tooltip: str,
+    on_click: Callable[[Any], Any],
+    border_color: str | None = None,
+    height: int = 30,
+    icon_size: int = 14,
+    padding_h: int = 8,
+    spacing: int = 4,
+) -> ft.Container:
+    """Construye un acceso rápido compacto en la barra horizontal usando la tipografía de menú."""
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(icono, size=icon_size, color=color_icono),
+                ft.Text(
+                    texto,
+                    size=11,
+                    weight=ft.FontWeight.BOLD,
+                    color=color_texto,
+                    font_family=FUENTE_MENU_BOLD,
+                ),
+            ],
+            spacing=spacing,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        height=height,
+        padding=ft.Padding.symmetric(horizontal=padding_h),
+        border_radius=6,
+        bgcolor=bgcolor,
+        border=ft.Border.all(1, border_color) if border_color else None,
+        tooltip=tooltip,
+        on_click=on_click,
+        ink=True,
+    )
+
 
 def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
     """Genera la lista de controles para el panel de navegación horizontal con menús desplegables (MenuBar)."""
@@ -36,22 +78,22 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
 
     menu_bar_controls: list[ft.Control] = []
 
+    estilo_item_menu = ft.ButtonStyle(text_style=estilo_texto_menu())
+    estilo_submenu = ft.ButtonStyle(text_style=estilo_texto_menu("semibold"))
+
     for sec in secciones:
         menu_items: list[ft.Control] = []
         for texto, icono, accion in sec.items:
-            if sec.es_control_cierre and texto == "Cierre de Jornada":
-                btn_item = ft.MenuItemButton(
-                    content=ft.Text(f"Cierre de Jornada ({conteo_cierre})" if conteo_cierre > 0 else "Cierre de Jornada"),
+            etiqueta_item = (
+                f"Cierre de Jornada ({conteo_cierre})" if conteo_cierre > 0 else "Cierre de Jornada"
+            ) if (sec.es_control_cierre and texto == "Cierre de Jornada") else texto
+            menu_items.append(
+                ft.MenuItemButton(
+                    content=ft.Text(etiqueta_item, font_family=FUENTE_MENU),
+                    style=estilo_item_menu,
                     on_click=accion,
                 )
-                menu_items.append(btn_item)
-            else:
-                menu_items.append(
-                    ft.MenuItemButton(
-                        content=ft.Text(texto),
-                        on_click=accion,
-                    )
-                )
+            )
 
         # Encabezado con punto rojo indicador si hay pendientes
         tiene_pendientes_h, tooltip_h = verificar_pendientes_categoria(interfaz, sec.titulo)
@@ -73,7 +115,12 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
 
         header_content = ft.Row(
             [
-                ft.Text(sec.titulo, size=12, weight=ft.FontWeight.W_600),
+                ft.Text(
+                    sec.titulo,
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    font_family=FUENTE_MENU_SEMIBOLD,
+                ),
                 punto_rojo_h,
             ],
             spacing=6,
@@ -84,6 +131,7 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
         submenu = ft.SubmenuButton(
             content=header_content,
             leading=ft.Icon(sec.icono, size=16, color=ROJO),
+            style=estilo_submenu,
             controls=menu_items,
         )
         menu_bar_controls.append(submenu)
@@ -112,9 +160,21 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
                     alignment=ft.Alignment.CENTER,
                     content=ft.Image(src=logo_bytes, width=28, height=28, fit=ft.BoxFit.CONTAIN),
                 ),
-                ft.Text("StockAgent", size=14, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                ft.Text(
+                    "StockAgent",
+                    size=14,
+                    weight=ft.FontWeight.BOLD,
+                    color=interfaz.texto,
+                    font_family=FUENTE_MENU_BOLD,
+                ),
                 ft.Container(
-                    content=ft.Text(f"{rol}".upper(), size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    content=ft.Text(
+                        f"{rol}".upper(),
+                        size=9,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.WHITE,
+                        font_family=FUENTE_MENU_BOLD,
+                    ),
                     bgcolor=ROJO,
                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                     border_radius=4,
@@ -140,22 +200,17 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
     # - Administrador: Solo Entrada y Salida (Ingreso y Egreso)
     # - Operador: Cargar Pedido, Entrada y Salida
     if rol == "despachador":
-        btn_desp_h = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.QR_CODE_SCANNER, size=15, color=ft.Colors.WHITE),
-                    ft.Text("Despacho", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                ],
-                spacing=5,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            height=30,
-            padding=ft.Padding.symmetric(horizontal=10),
-            border_radius=6,
+        btn_desp_h = _crear_pildora_horizontal(
+            texto="Despacho",
+            icono=ft.Icons.QR_CODE_SCANNER,
+            color_icono=ft.Colors.WHITE,
+            color_texto=ft.Colors.WHITE,
             bgcolor=ROJO,
+            padding_h=10,
+            spacing=5,
+            icon_size=15,
             tooltip="⚡ Abrir módulo Despacho (Pistola QR / Manual)",
             on_click=lambda _: interfaz.mostrar_modulo_despacho(),
-            ink=True,
         )
         controls.extend([
             btn_desp_h,
@@ -163,41 +218,25 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
         ])
     elif rol in ("operador", "administrador", "picker", "master"):
         if rol == "master":
-            btn_usr_h = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.MANAGE_ACCOUNTS, size=14, color=ft.Colors.BLUE_500),
-                        ft.Text("Usuarios", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                height=30,
-                padding=ft.Padding.symmetric(horizontal=8),
-                border_radius=6,
+            btn_usr_h = _crear_pildora_horizontal(
+                texto="Usuarios",
+                icono=ft.Icons.MANAGE_ACCOUNTS,
+                color_icono=ft.Colors.BLUE_500,
+                color_texto=interfaz.texto,
                 bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.BLUE_500),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500)),
+                border_color=ft.Colors.with_opacity(0.35, ft.Colors.BLUE_500),
                 tooltip="⚡ Gestión y control de cuentas IAM",
                 on_click=lambda _: interfaz.mostrar_gestion_usuarios(),
-                ink=True,
             )
-            btn_aud_h = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.SECURITY, size=14, color=ROJO),
-                        ft.Text("Auditoría", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                height=30,
-                padding=ft.Padding.symmetric(horizontal=8),
-                border_radius=6,
+            btn_aud_h = _crear_pildora_horizontal(
+                texto="Auditoría",
+                icono=ft.Icons.SECURITY,
+                color_icono=ROJO,
+                color_texto=interfaz.texto,
                 bgcolor=ft.Colors.with_opacity(0.08, ROJO),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ROJO)),
+                border_color=ft.Colors.with_opacity(0.35, ROJO),
                 tooltip="⚡ Registro de eventos y trazabilidad forense",
                 on_click=lambda _: interfaz.mostrar_registro_auditoria(),
-                ink=True,
             )
             controls.extend([
                 btn_usr_h,
@@ -205,215 +244,82 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
                 ft.VerticalDivider(width=8, color=interfaz.borde),
             ])
         else:
-            btn_ent_h = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, size=14, color=ft.Colors.GREEN_600),
-                        ft.Text("Entrada", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                height=30,
-                padding=ft.Padding.symmetric(horizontal=8),
-                border_radius=6,
+            btn_ent_h = _crear_pildora_horizontal(
+                texto="Entrada",
+                icono=ft.Icons.ADD_CIRCLE_OUTLINE,
+                color_icono=ft.Colors.GREEN_600,
+                color_texto=interfaz.texto,
                 bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.GREEN_600),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.GREEN_600)),
+                border_color=ft.Colors.with_opacity(0.35, ft.Colors.GREEN_600),
                 tooltip="⚡ Entrada Rápida express (Devolución, Mov. Interno...)",
                 on_click=lambda _: mostrar_dialogo_ingreso_rapido(interfaz),
-                ink=True,
             )
-            btn_sal_h = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.REMOVE_CIRCLE_OUTLINE, size=14, color=ft.Colors.AMBER_700),
-                        ft.Text("Salida", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                    ],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                height=30,
-                padding=ft.Padding.symmetric(horizontal=8),
-                border_radius=6,
+            btn_sal_h = _crear_pildora_horizontal(
+                texto="Salida",
+                icono=ft.Icons.REMOVE_CIRCLE_OUTLINE,
+                color_icono=ft.Colors.AMBER_700,
+                color_texto=interfaz.texto,
                 bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_700),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_700)),
+                border_color=ft.Colors.with_opacity(0.35, ft.Colors.AMBER_700),
                 tooltip="⚡ Salida Rápida express (Rotura, Merma, Bajas...)",
                 on_click=lambda _: mostrar_dialogo_salida_rapida(interfaz),
-                ink=True,
             )
 
             botones_h = [btn_ent_h, btn_sal_h]
 
             if rol == "operador":
-                btn_ped_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.POST_ADD, size=16, color=ft.Colors.WHITE),
-                            ft.Text("Cargar Pedido", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=6,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=32,
-                    padding=ft.Padding.symmetric(horizontal=10),
-                    border_radius=6,
+                btn_ped_h = _crear_pildora_horizontal(
+                    texto="Cargar Pedido",
+                    icono=ft.Icons.POST_ADD,
+                    color_icono=ft.Colors.WHITE,
+                    color_texto=ft.Colors.WHITE,
                     bgcolor=ROJO,
+                    height=32,
+                    icon_size=16,
+                    padding_h=10,
+                    spacing=6,
                     tooltip="⚡ Cargar / Armar Pedido (Proceso Principal)",
                     on_click=lambda _: interfaz.mostrar_crear_pedido(),
-                    ink=True,
                 )
                 botones_h = [btn_ped_h, btn_ent_h, btn_sal_h]
             elif rol == "picker":
-                btn_meli_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.STOREFRONT, size=14, color=ft.Colors.AMBER_500),
-                            ft.Text("Mercado Libre", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
+                btn_meli_h = _crear_pildora_horizontal(
+                    texto="Mercado Libre",
+                    icono=ft.Icons.STOREFRONT,
+                    color_icono=ft.Colors.AMBER_500,
+                    color_texto=interfaz.texto,
                     bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.AMBER_500),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500)),
+                    border_color=ft.Colors.with_opacity(0.35, ft.Colors.AMBER_500),
                     tooltip="⚡ Descontar Mercado Libre",
                     on_click=lambda _: interfaz.mostrar_descuento_mercado_libre(),
-                    ink=True,
                 )
                 botones_h.append(btn_meli_h)
             elif rol == "administrador":
-                btn_gestionar_inv_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.INVENTORY, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Gestionar inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Consulta de existencias e inventario en tiempo real",
-                    on_click=lambda _: interfaz.mostrar_ver_stock() if hasattr(interfaz, "mostrar_ver_stock") else None,
-                    ink=True,
-                )
-                btn_plan_fab_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.ADD_TASK, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Planificar ingreso de fábrica", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Planificar ingreso de fábrica",
-                    on_click=lambda _: interfaz.mostrar_planificar_ingreso_fabrica() if hasattr(interfaz, "mostrar_planificar_ingreso_fabrica") else None,
-                    ink=True,
-                )
-                btn_plan_full_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.LOCAL_SHIPPING, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Planificar mercado full", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Planificar mercado full",
-                    on_click=lambda _: interfaz.mostrar_planificar_full() if hasattr(interfaz, "mostrar_planificar_full") else None,
-                    ink=True,
-                )
-                btn_prod_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.INVENTORY_2, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Gestionar productos", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Gestionar Productos",
-                    on_click=lambda _: interfaz.mostrar_gestion_productos() if hasattr(interfaz, "mostrar_gestion_productos") else None,
-                    ink=True,
-                )
-                btn_ajuste_inv_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.TUNE, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Ajuste de inventario", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Escanear mercadería o registrar ajuste de stock",
-                    on_click=lambda _: interfaz.mostrar_ingreso_fabrica() if hasattr(interfaz, "mostrar_ingreso_fabrica") else None,
-                    ink=True,
-                )
-                btn_generar_pedido_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.FACT_CHECK, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Generar Pedido", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Calcular y generar planilla de pedido a fábrica",
-                    on_click=lambda _: interfaz.generar_pedido_fabrica() if hasattr(interfaz, "generar_pedido_fabrica") else None,
-                    ink=True,
-                )
-                btn_sincronizar_h = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.SYNC, size=14, color=ft.Colors.WHITE),
-                            ft.Text("Sincronizar", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        ],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    height=30,
-                    padding=ft.Padding.symmetric(horizontal=8),
-                    border_radius=6,
-                    bgcolor=ROJO,
-                    tooltip="⚡ Sincronizar catálogo SQLite con Productos.xlsx",
-                    on_click=lambda _: interfaz.sincronizar_catalogo_excel() if hasattr(interfaz, "sincronizar_catalogo_excel") else None,
-                    ink=True,
-                )
-                botones_h = [
-                    btn_gestionar_inv_h,
-                    btn_plan_fab_h,
-                    btn_plan_full_h,
-                    btn_prod_h,
-                    btn_ajuste_inv_h,
-                    btn_generar_pedido_h,
-                    btn_sincronizar_h,
-                    btn_ent_h,
-                    btn_sal_h,
+                def _opt(nombre_metodo: str) -> Callable[[Any], None]:
+                    return lambda _: getattr(interfaz, nombre_metodo)() if hasattr(interfaz, nombre_metodo) else None
+
+                acciones_admin_h = [
+                    ("Gestionar inventario", ft.Icons.INVENTORY, "⚡ Consulta de existencias e inventario en tiempo real", "mostrar_ver_stock"),
+                    ("Planificar ingreso de fábrica", ft.Icons.ADD_TASK, "⚡ Planificar ingreso de fábrica", "mostrar_planificar_ingreso_fabrica"),
+                    ("Planificar mercado full", ft.Icons.LOCAL_SHIPPING, "⚡ Planificar mercado full", "mostrar_planificar_full"),
+                    ("Gestionar productos", ft.Icons.INVENTORY_2, "⚡ Gestionar Productos", "mostrar_gestion_productos"),
+                    ("Ajuste de inventario", ft.Icons.TUNE, "⚡ Escanear mercadería o registrar ajuste de stock", "mostrar_ingreso_fabrica"),
+                    ("Generar Pedido", ft.Icons.FACT_CHECK, "⚡ Calcular y generar planilla de pedido a fábrica", "generar_pedido_fabrica"),
+                    ("Sincronizar", ft.Icons.SYNC, "⚡ Sincronizar catálogo SQLite con Productos.xlsx", "sincronizar_catalogo_excel"),
                 ]
+                botones_h = [
+                    _crear_pildora_horizontal(
+                        texto=txt,
+                        icono=ico,
+                        color_icono=ft.Colors.WHITE,
+                        color_texto=ft.Colors.WHITE,
+                        bgcolor=ROJO,
+                        tooltip=tip,
+                        on_click=_opt(metodo),
+                    )
+                    for txt, ico, tip, metodo in acciones_admin_h
+                ]
+                botones_h.extend([btn_ent_h, btn_sal_h])
 
             botones_h.append(ft.VerticalDivider(width=8, color=interfaz.borde))
             controls.extend(botones_h)

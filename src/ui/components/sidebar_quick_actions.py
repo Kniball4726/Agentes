@@ -9,7 +9,7 @@ from ..dialogs.dlg_movimientos_rapidos import (
     mostrar_dialogo_ingreso_rapido,
     mostrar_dialogo_salida_rapida,
 )
-from ..theme import ROJO
+from ..theme import FUENTE_MENU_BOLD, ROJO
 
 
 def _crear_boton_rapido_sidebar(
@@ -33,7 +33,13 @@ def _crear_boton_rapido_sidebar(
         content=ft.Row(
             [
                 ft.Icon(icono, size=icon_size, color=color_icono),
-                ft.Text(texto, size=text_size, weight=ft.FontWeight.BOLD, color=color_texto),
+                ft.Text(
+                    texto,
+                    size=text_size,
+                    weight=ft.FontWeight.BOLD,
+                    color=color_texto,
+                    font_family=FUENTE_MENU_BOLD,
+                ),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=spacing,

@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ..theme import estilo_texto_menu
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,7 +149,11 @@ class ResponsiveController:
                 ),
             ),
             actions=[
-                ft.TextButton("Cerrar menú", on_click=lambda _e: page.pop_dialog()),
+                ft.TextButton(
+                    "Cerrar menú",
+                    style=ft.ButtonStyle(text_style=estilo_texto_menu("medium")),
+                    on_click=lambda _e: page.pop_dialog(),
+                ),
             ],
         )
         try:

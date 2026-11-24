@@ -8,7 +8,7 @@ import flet as ft
 
 from ..components.debounce import Debouncer
 from ..design import colores_de, tono_legible
-from ..theme import ROJO
+from ..theme import FUENTE_MENU, FUENTE_MENU_BOLD, ROJO, estilo_texto_menu
 from ..commands import (
     buscar_clientes_palette,
     buscar_comandos,
@@ -33,7 +33,12 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
     primer_accion: list[Any] = [None]
 
     resultados_lista = ft.ListView(expand=True, spacing=6, height=360)
-    indicador_estado = ft.Text("Escribe para buscar productos, clientes, pedidos o comandos...", size=11, color=interfaz.secundario)
+    indicador_estado = ft.Text(
+        "Escribe para buscar productos, clientes, pedidos o comandos...",
+        size=11,
+        color=interfaz.secundario,
+        font_family=FUENTE_MENU,
+    )
 
     def _cerrar_palette() -> None:
         interfaz._command_palette_abierto = False
@@ -60,8 +65,8 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     ft.Icon(icono, color=col, size=18),
                     ft.Column(
                         [
-                            ft.Text(titulo, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                            ft.Text(desc, size=10, color=interfaz.secundario),
+                            ft.Text(titulo, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto, font_family=FUENTE_MENU_BOLD),
+                            ft.Text(desc, size=10, color=interfaz.secundario, font_family=FUENTE_MENU),
                         ],
                         spacing=2,
                         expand=True,
@@ -101,14 +106,14 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     ft.Icon(ft.Icons.INVENTORY_2, size=18, color=ft.Colors.BLUE_400),
                     ft.Column(
                         [
-                            ft.Text(f"[{p_code}] {p_name}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                            ft.Text(f"Stock: {p_stock} un.{loc_txt}", size=10, color=stk_color),
+                            ft.Text(f"[{p_code}] {p_name}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto, font_family=FUENTE_MENU_BOLD),
+                            ft.Text(f"Stock: {p_stock} un.{loc_txt}", size=10, color=stk_color, font_family=FUENTE_MENU),
                         ],
                         spacing=2,
                         expand=True,
                     ),
                     ft.Container(
-                        content=ft.Text(f"{p_stock} un.", size=10, weight=ft.FontWeight.BOLD, color=stk_color),
+                        content=ft.Text(f"{p_stock} un.", size=10, weight=ft.FontWeight.BOLD, color=stk_color, font_family=FUENTE_MENU_BOLD),
                         bgcolor=ft.Colors.with_opacity(0.12, stk_color),
                         padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                         border_radius=4,
@@ -133,8 +138,8 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     ft.Icon(ft.Icons.PEOPLE_ALT, size=18, color=ft.Colors.TEAL_400),
                     ft.Column(
                         [
-                            ft.Text(f"{cod_txt}{cli.nombre}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                            ft.Text(f"Cliente activo{dir_txt}", size=10, color=interfaz.secundario),
+                            ft.Text(f"{cod_txt}{cli.nombre}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto, font_family=FUENTE_MENU_BOLD),
+                            ft.Text(f"Cliente activo{dir_txt}", size=10, color=interfaz.secundario, font_family=FUENTE_MENU),
                         ],
                         spacing=2,
                         expand=True,
@@ -171,14 +176,14 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     ft.Icon(ft.Icons.RECEIPT_LONG, size=18, color=ft.Colors.AMBER_400),
                     ft.Column(
                         [
-                            ft.Text(f"{n_ped_txt}Remito: {p.nota_pedido} ({p.cliente})", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                            ft.Text(f"{p.bultos} bulto(s) · {p.logistica}{guia_str}", size=10, color=interfaz.secundario),
+                            ft.Text(f"{n_ped_txt}Remito: {p.nota_pedido} ({p.cliente})", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto, font_family=FUENTE_MENU_BOLD),
+                            ft.Text(f"{p.bultos} bulto(s) · {p.logistica}{guia_str}", size=10, color=interfaz.secundario, font_family=FUENTE_MENU),
                         ],
                         spacing=2,
                         expand=True,
                     ),
                     ft.Container(
-                        content=ft.Text(p.estado_despacho.upper(), size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        content=ft.Text(p.estado_despacho.upper(), size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, font_family=FUENTE_MENU_BOLD),
                         bgcolor=est_color,
                         padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                         border_radius=4,
@@ -212,14 +217,14 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                                 ft.Icon(icono, color=col, size=20),
                                 ft.Column(
                                     [
-                                        ft.Text(titulo, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                        ft.Text(desc, size=10, color=interfaz.secundario),
+                                        ft.Text(titulo, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto, font_family=FUENTE_MENU_BOLD),
+                                        ft.Text(desc, size=10, color=interfaz.secundario, font_family=FUENTE_MENU),
                                     ],
                                     spacing=2,
                                     expand=True,
                                 ),
                                 ft.Container(
-                                    content=ft.Text("Módulo", size=9, weight=ft.FontWeight.BOLD, color=col),
+                                    content=ft.Text("Módulo", size=9, weight=ft.FontWeight.BOLD, color=col, font_family=FUENTE_MENU_BOLD),
                                     bgcolor=ft.Colors.with_opacity(0.12, col),
                                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                                     border_radius=4,
@@ -239,7 +244,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         comandos_match = buscar_comandos(q, accesos_rapidos)
         if comandos_match:
             resultados_lista.controls.append(
-                ft.Text("ACCIONES Y MÓDULOS", size=10, weight=ft.FontWeight.BOLD, color=interfaz.secundario)
+                ft.Text("ACCIONES Y MÓDULOS", size=10, weight=ft.FontWeight.BOLD, color=interfaz.secundario, font_family=FUENTE_MENU_BOLD)
             )
             for titulo, desc, icono, col, cb in comandos_match:
                 if primer_accion[0] is None:
@@ -252,7 +257,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             prods = buscar_productos_palette(q, getattr(interfaz, "product_store", None))
             if prods:
                 resultados_lista.controls.append(
-                    ft.Text("PRODUCTOS EN STOCK", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("BLUE", es_oscuro))
+                    ft.Text("PRODUCTOS EN STOCK", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("BLUE", es_oscuro), font_family=FUENTE_MENU_BOLD)
                 )
                 for prod in prods:
                     total_encontrados += 1
@@ -263,7 +268,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             clis = buscar_clientes_palette(q, getattr(interfaz, "order_store", None))
             if clis:
                 resultados_lista.controls.append(
-                    ft.Text("CLIENTES", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("TEAL", es_oscuro))
+                    ft.Text("CLIENTES", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("TEAL", es_oscuro), font_family=FUENTE_MENU_BOLD)
                 )
                 for cli in clis:
                     if primer_accion[0] is None:
@@ -276,7 +281,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             peds = buscar_pedidos_palette(q, getattr(interfaz, "order_store", None))
             if peds:
                 resultados_lista.controls.append(
-                    ft.Text("PEDIDOS Y REMITOS", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("AMBER", es_oscuro))
+                    ft.Text("PEDIDOS Y REMITOS", size=10, weight=ft.FontWeight.BOLD, color=tono_legible("AMBER", es_oscuro), font_family=FUENTE_MENU_BOLD)
                 )
                 for p in peds:
                     total_encontrados += 1
@@ -290,7 +295,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
                     content=ft.Column(
                         [
                             ft.Icon(ft.Icons.SEARCH_OFF, size=32, color=interfaz.secundario),
-                            ft.Text(f"No se encontraron resultados para '{query}'.", size=12, color=interfaz.secundario),
+                            ft.Text(f"No se encontraron resultados para '{query}'.", size=12, color=interfaz.secundario, font_family=FUENTE_MENU),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=6,
@@ -318,9 +323,17 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         prefix_icon=ft.Icons.SEARCH,
         autofocus=True,
         dense=True,
+        text_style=estilo_texto_menu(),
+        hint_style=estilo_texto_menu(),
         on_change=lambda e: debouncer_cmd.debounce(lambda val=e.control.value: renderizar_resultados(val)),
         on_submit=_on_submit_busqueda,
     )
+
+    btn_cerrar_palette = interfaz.boton_dialogo("Cerrar (Esc)", lambda _e: _cerrar_palette())
+    if isinstance(getattr(btn_cerrar_palette, "style", None), ft.ButtonStyle):
+        btn_cerrar_palette.style = btn_cerrar_palette.style.copy(
+            text_style=estilo_texto_menu("medium")
+        )
 
     w_calc = interfaz.ancho_adaptable(580) if hasattr(interfaz, "ancho_adaptable") else 580
     ancho_dlg = int(w_calc) if isinstance(w_calc, (int, float)) else 580
@@ -330,9 +343,20 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.TERMINAL, color=ROJO, size=20),
-                ft.Text("Menú Rápido y Buscador Global", weight=ft.FontWeight.BOLD, size=15),
+                ft.Text(
+                    "Menú Rápido y Buscador Global",
+                    weight=ft.FontWeight.BOLD,
+                    size=15,
+                    font_family=FUENTE_MENU_BOLD,
+                ),
                 ft.Container(
-                    content=ft.Text("F2 / Ctrl+K", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    content=ft.Text(
+                        "F2 / Ctrl+K",
+                        size=10,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.WHITE,
+                        font_family=FUENTE_MENU_BOLD,
+                    ),
                     bgcolor=ROJO,
                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                     border_radius=4,
@@ -355,7 +379,7 @@ def mostrar_command_palette(interfaz: Any, _evento: ft.Event | None = None) -> N
             ),
         ),
         actions=[
-            interfaz.boton_dialogo("Cerrar (Esc)", lambda _e: _cerrar_palette()),
+            btn_cerrar_palette,
         ],
     )
 

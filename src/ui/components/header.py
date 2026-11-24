@@ -5,7 +5,7 @@ from typing import Any
 
 import flet as ft
 
-from ..theme import ROJO
+from ..theme import FUENTE_MENU, FUENTE_MENU_BOLD, ROJO, estilo_texto_menu
 from ...paths import is_qa_environment
 
 
@@ -43,21 +43,25 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
     )
     interfaz._actualizar_icono_notificaciones()
 
+    estilo_item_menu_usuario = estilo_texto_menu()
     opciones_menu_usuario = [
         ft.PopupMenuItem(
             icon=ft.Icons.BADGE_OUTLINED,
             content="Mi Perfil (Nombre y Email)",
+            label_text_style=estilo_item_menu_usuario,
             on_click=interfaz.mostrar_mi_perfil,
         ),
         ft.PopupMenuItem(
             icon=ft.Icons.KEY,
             content="Cambiar mi contraseña",
+            label_text_style=estilo_item_menu_usuario,
             on_click=interfaz.mostrar_cambiar_mi_clave,
         ),
         ft.PopupMenuItem(),
         ft.PopupMenuItem(
             icon=ft.Icons.LOGOUT,
             content="Cerrar sesión",
+            label_text_style=estilo_item_menu_usuario,
             on_click=interfaz.cerrar_sesion,
         ),
     ]
@@ -96,6 +100,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                                 size=11,
                                 weight=ft.FontWeight.BOLD,
                                 color=ft.Colors.WHITE,
+                                font_family=FUENTE_MENU_BOLD,
                             ),
                             radius=12,
                             bgcolor=ROJO,
@@ -109,6 +114,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                                     color=interfaz.texto,
                                     no_wrap=True,
                                     overflow=ft.TextOverflow.ELLIPSIS,
+                                    font_family=FUENTE_MENU_BOLD,
                                 ),
                                 ft.Text(
                                     f"@{interfaz.usuario_actual.username} · {rol_etiqueta}",
@@ -116,6 +122,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                                     color=interfaz.secundario,
                                     no_wrap=True,
                                     overflow=ft.TextOverflow.ELLIPSIS,
+                                    font_family=FUENTE_MENU,
                                 ),
                             ],
                             spacing=0,
@@ -219,6 +226,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                         size=12,
                         weight=ft.FontWeight.BOLD,
                         color=ft.Colors.WHITE,
+                        font_family=FUENTE_MENU_BOLD,
                     ),
                     radius=14,
                     bgcolor=ROJO,
@@ -228,6 +236,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                     size=12,
                     weight=ft.FontWeight.BOLD,
                     color=interfaz.texto,
+                    font_family=FUENTE_MENU_BOLD,
                 ),
                 ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=interfaz.secundario),
             ],
@@ -266,9 +275,15 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
 
     def _item_dock(label: str, pos_key: str, icon_data: ft.IconData) -> ft.PopupMenuItem:
         activo = (pos_actual == pos_key)
+        peso_item = "bold" if activo else "regular"
         return ft.PopupMenuItem(
             icon=ft.Icons.CHECK if activo else icon_data,
-            content=ft.Text(f"{label} (Activo)" if activo else label, weight=ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL),
+            content=ft.Text(
+                f"{label} (Activo)" if activo else label,
+                weight=ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL,
+                font_family=FUENTE_MENU_BOLD if activo else FUENTE_MENU,
+            ),
+            label_text_style=estilo_texto_menu(peso_item),
             on_click=lambda _e, k=pos_key: interfaz.cambiar_posicion_sidebar(k),
         )
 

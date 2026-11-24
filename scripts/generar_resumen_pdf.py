@@ -368,6 +368,7 @@ def generar_pdf_resumen_mejoras(ruta_salida: Path) -> Path:
 
 
 if __name__ == "__main__":
-    destino = Path("Resumen_Mejoras_Implementadas.pdf").resolve()
+    destino = (Path(__file__).resolve().parent.parent / "Documentacion" / "Resumen_Mejoras_Implementadas.pdf").resolve()
+    destino.parent.mkdir(parents=True, exist_ok=True)
     generar_pdf_resumen_mejoras(destino)
     print(f"PDF generado exitosamente en: {destino}")

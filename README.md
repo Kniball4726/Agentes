@@ -79,8 +79,8 @@ StockAgent opera sobre una arquitectura híbrida de alto rendimiento:
    * Doble clic en `iniciar_en_segundo_plano.vbs`: arranca el servidor sin abrir ventana de comandos ni consola en pantalla. El control queda disponible en el icono del System Tray.
 
 3. **Inicio Automático con Windows:**
-   * `configurar_inicio_automatico.bat`: registra StockAgent para que el servidor inicie automáticamente en segundo plano cada vez que se enciende o reinicia la PC.
-   * `desactivar_inicio_automatico.bat`: remueve el inicio automático cuando ya no se requiera.
+   * `scripts/operacion/configurar_inicio_automatico.bat`: registra StockAgent para que el servidor inicie automáticamente en segundo plano cada vez que se enciende o reinicia la PC.
+   * `scripts/operacion/desactivar_inicio_automatico.bat`: remueve el inicio automático cuando ya no se requiera.
 
 4. **Detención Rápida y Limpieza de Procesos:**
    * Doble clic en `detener_servidor.bat`: libera el puerto 8550 y finaliza de inmediato tanto ejecutables nativos `StockAgent.exe` como procesos Python ejecutando `main.py`, filtrando PIDs de sistema para un apagado limpio en segundos.
@@ -878,8 +878,8 @@ Para garantizar una experiencia ágil, robusta y sin inconsistencias en entornos
 * **Barra de Navegación "Thumb Zone" Móvil (`mobile_nav.py`):** En resoluciones móviles (< 768px), la interfaz conmuta automáticamente a una barra inferior `ft.NavigationBar` situada en la zona ergonómica del pulgar, dando acceso con 1 toque a los 5 destinos críticos: Pedidos, Escanear ML, Fábrica, Cierre y Chat.
 * **Buffer de Escaneo Offline y Despacho en Lote (`colaOffline`):** En el cliente móvil Flutter (`stockagent_mobile`), los escaneos en zonas muertas de Wi-Fi de depósito se almacenan en un buffer local seguro con vibración háptica; al restablecerse la conectividad, el banner de advertencia ofrece sincronizar el lote completo mediante el endpoint batch `/api/v1/despacho/escanear-lote`.
 * **Herramientas de Despliegue Rápido de PWA y Móvil:**
-  * `crear_acceso_directo_cliente.bat`: Genera un acceso directo en el escritorio de Windows para lanzar la interfaz web en modo aplicación nativa sin barra de direcciones (`--app=https://<IP>:8550` por defecto, o `--http` para redes privadas aisladas sin TLS).
-  * `exportar_stockagent_mobile.bat`: Script de desacoplamiento automático para extraer el proyecto Flutter móvil como repositorio independiente listo para compilar APKs de producción.
+  * `scripts/operacion/crear_acceso_directo_cliente.bat`: Genera un acceso directo en el escritorio de Windows para lanzar la interfaz web en modo aplicación nativa sin barra de direcciones (`--app=https://<IP>:8550` por defecto, o `--http` para redes privadas aisladas sin TLS).
+  * `scripts/build/exportar_stockagent_mobile.bat`: Script de desacoplamiento automático para extraer el proyecto Flutter móvil como repositorio independiente listo para compilar APKs de producción.
 
 ---
 
@@ -969,16 +969,24 @@ StockAgent/
 │   ├── DESACOPLAMIENTO.md             # Documentación de arquitectura móvil desacoplada
 │   ├── pubspec.yaml                   # Dependencias oficiales de Flutter
 │   └── README_MOVIL.md                # Manual operativo del cliente móvil
-├── crear_exe.bat                      # Script de compilación a .exe independiente (Flet pack / spec opcional)
+├── scripts/                           # Scripts de operación, compilación y utilidades
+│   ├── operacion/                     # Red, certificados SSL, inicio automático y cliente LAN
+│   │   ├── Actualizar.bat
+│   │   ├── configurar_firewall_red.bat
+│   │   ├── configurar_inicio_automatico.bat
+│   │   ├── desactivar_inicio_automatico.bat
+│   │   ├── crear_acceso_directo_cliente.bat
+│   │   └── instalar_certificado.bat
+│   ├── build/                         # Compilación a .exe y exportación de app móvil
+│   │   ├── crear_exe.bat
+│   │   └── exportar_stockagent_mobile.bat
+│   ├── iniciar_qa.py
+│   ├── generar_resumen_pdf.py
+│   └── import_barcodes.py
 ├── iniciar_servidor_web.bat           # Lanzador del servidor web HTTPS en LAN
-├── crear_acceso_directo_cliente.bat   # Generador de acceso directo cliente (HTTPS por defecto, --http opcional)
-├── exportar_stockagent_mobile.bat     # Extractor limpio del cliente móvil nativo Flutter
 ├── iniciar_en_segundo_plano.vbs       # Ejecución silenciosa sin ventana de consola
 ├── detener_servidor.bat               # Detención rápida del servidor y liberación de puerto
-├── configurar_inicio_automatico.bat   # Alta de inicio automático con Windows
-├── desactivar_inicio_automatico.bat   # Baja de inicio automático con Windows
-├── instalar_certificado.bat           # Instalador con 1 clic del certificado SSL en Windows
-├── configurar_firewall_red.bat        # Apertura de puerto 8550 en Firewall de Windows (Perfil Privado)
+├── iniciar_qa.bat                     # Lanzador rápido del ambiente aislado QA
 ├── main.py                            # Punto de entrada de la aplicación (--https, --http, --port, --host, --desktop)
 ├── .env.example                       # Plantilla documentada de variables de entorno
 ├── requirements.txt                   # Dependencias de producción
@@ -1288,7 +1296,7 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
    ```
 2. Ejecuta el script de compilación:
    ```powershell
-   .\crear_exe.bat
+   .\scripts\build\crear_exe.bat
    ```
    *(Si existe `StockAgent.spec` compila vía PyInstaller; en su ausencia utiliza automáticamente `flet pack main.py` incluyendo `flet_web`, `uvicorn`, `fastapi`, `starlette`, `websockets` y `reportlab`.)*
 3. El resultado se generará en `dist\StockAgent.exe`, acompañado automáticamente de `Descuentos\Productos.xlsx`, la carpeta `assets\`, los manuales `Documentacion\*.pdf` y los scripts de red/cliente (`iniciar_servidor_web.bat`, `crear_acceso_directo_cliente.bat`, `instalar_certificado.bat`, `configurar_firewall_red.bat`, entre otros).
@@ -1300,7 +1308,7 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
 #### Paso 1: Habilitar el puerto en el Firewall de Windows (en la PC Servidor)
 1. En la máquina principal (servidor), ejecuta por única vez como **Administrador**:
    ```powershell
-   .\configurar_firewall_red.bat
+   .\scripts\operacion\configurar_firewall_red.bat
    ```
    Esto crea la regla `"StockAgent Web (Puerto 8550)"` acotada estrictamente al perfil **`Private` (Red Privada)** para tráfico TCP entrante en el puerto `8550` y elimina reglas amplias heredadas (`"StockAgent Python"`).
 
@@ -1317,11 +1325,11 @@ Para empaquetar la aplicación en un `.exe` independiente para Windows:
 Para evitar que los operarios deban recordar la IP o escribirla manualmente en el navegador:
 1. En la PC cliente de la misma LAN (o generando el acceso y copiándolo), ejecuta:
    ```powershell
-   .\crear_acceso_directo_cliente.bat 192.168.X.X 8550
+   .\scripts\operacion\crear_acceso_directo_cliente.bat 192.168.X.X 8550
    ```
    *(Si se ejecuta sin argumentos utiliza `192.168.1.100:8550`. Por defecto apunta a `https://`; para entornos locales aislados sin TLS admite `--http`.)*
 2. El script crea en el Escritorio el enlace `StockAgent.url` y, si detecta Chrome o Edge instalados, el acceso directo tipo aplicación `StockAgent - Deposito.lnk` (`--app=URL`).
-3. Para evitar la advertencia inicial del certificado autofirmado en navegadores Chrome/Edge, ejecuta también `instalar_certificado.bat` como Administrador en el equipo cliente.
+3. Para evitar la advertencia inicial del certificado autofirmado en navegadores Chrome/Edge, ejecuta también `scripts\operacion\instalar_certificado.bat` como Administrador en el equipo cliente.
 
 #### Paso 3: Primer ingreso desde los navegadores (Certificado Autofirmado)
 Dado que el certificado es generado localmente por la propia empresa (sin depender de un dominio público en internet), la primera vez que ingreses desde un navegador verás el aviso estándar *"La conexión no es privada"* (`NET::ERR_CERT_AUTHORITY_INVALID`):
@@ -1347,7 +1355,7 @@ Para que Google Chrome, Microsoft Edge y Mozilla Firefox muestren el **candado d
 #### Opción 1: Instalación Automática con 1 Clic (Recomendado en Windows)
 1. En la máquina (servidor o cliente donde se acceda), haz clic derecho sobre el archivo:
    ```text
-   instalar_certificado.bat
+   scripts\operacion\instalar_certificado.bat
    ```
 2. Selecciona **"Ejecutar como administrador"**.
 3. El script importará automáticamente `data\certs\stockagent.crt` al almacén de **Entidades de certificación raíz de confianza** de Windows mediante `certutil`.
@@ -1674,7 +1682,7 @@ A diferencia de empaquetar un intérprete de Python completo dentro del teléfon
 El lanzador optimizado `stockagent_mobile/iniciar_servidor_movil.bat` (y su visor silencioso `iniciar_servidor_movil_en_segundo_plano.vbs`) coordina el arranque limpio en la PC servidor:
 
 * **Ejecución Silenciosa / Segundo Plano:** Sin argumentos, se lanza de forma invisible en segundo plano mediante `iniciar_servidor_movil_en_segundo_plano.vbs` alojándose en la bandeja del sistema. Con `--consola` muestra el estado y los registros en pantalla.
-* **HTTPS Cifrado por Defecto (`STOCKAGENT_HTTPS=1`):** Inicia el servidor web seguro en `https://0.0.0.0:8550` reutilizando `data/certs/stockagent.crt`. Para estaciones Windows de la LAN se recomienda instalar el certificado con `instalar_certificado.bat` o generar el acceso directo con `crear_acceso_directo_cliente.bat`.
+* **HTTPS Cifrado por Defecto (`STOCKAGENT_HTTPS=1`):** Inicia el servidor web seguro en `https://0.0.0.0:8550` reutilizando `data/certs/stockagent.crt`. Para estaciones Windows de la LAN se recomienda instalar el certificado con `scripts/operacion/instalar_certificado.bat` o generar el acceso directo con `scripts/operacion/crear_acceso_directo_cliente.bat`.
 * **Opción HTTP Legacy (`--http`):** En redes LAN estrictamente privadas donde un dispositivo móvil o WebView rechace el certificado autofirmado local, puede ejecutarse explícitamente con `iniciar_servidor_movil.bat --consola --http` (muestra un aviso de seguridad indicando tráfico sin cifrar).
 * **Puerto Listo al Instante:** Libera procesos previos escuchando en el puerto `8550` antes de levantar la instancia (`src/server_app/`).
 

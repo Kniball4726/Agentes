@@ -92,11 +92,11 @@ class TestFase1SecurityUtilsAndInjection(unittest.TestCase):
 
     def test_scripts_windows_sin_interpolacion_insegura(self):
         root = application_root()
-        fw = (root / "configurar_firewall_red.bat").read_text(encoding="utf-8", errors="ignore")
+        fw = (root / "scripts" / "operacion" / "configurar_firewall_red.bat").read_text(encoding="utf-8", errors="ignore")
         self.assertIn("STOCKAGENT_FW_SCRIPT", fw)
         self.assertNotIn("FilePath '%~f0'", fw)
 
-        autostart = (root / "configurar_inicio_automatico.bat").read_text(encoding="utf-8", errors="ignore")
+        autostart = (root / "scripts" / "operacion" / "configurar_inicio_automatico.bat").read_text(encoding="utf-8", errors="ignore")
         self.assertIn("STOCKAGENT_ACCESO_DIRECTO", autostart)
         self.assertIn("STOCKAGENT_SCRIPT_VBS", autostart)
 

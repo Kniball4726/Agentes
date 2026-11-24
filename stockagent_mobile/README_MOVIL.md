@@ -47,7 +47,7 @@ La aplicación móvil es **100% nativa en Flutter** e implementa controles de se
 
 ## 🚀 1. En la PC del Servidor
 
-1. Asegúrate de haber habilitado el puerto `8550` en perfil de red privada ejecutando `configurar_firewall_red.bat` como Administrador (una sola vez).
+1. Asegúrate de haber habilitado el puerto `8550` en perfil de red privada ejecutando `scripts\operacion\configurar_firewall_red.bat` como Administrador (una sola vez).
 2. Haz doble clic en:
    ```bat
    stockagent_mobile\iniciar_servidor_movil.bat

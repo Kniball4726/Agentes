@@ -1,15 +1,21 @@
 @echo off
 chcp 65001 > nul
 setlocal
-cd /d "%~dp0"
+set "STOCKAGENT_ROOT=%~dp0"
+if not exist "%STOCKAGENT_ROOT%iniciar_en_segundo_plano.vbs" (
+    if exist "%~dp0..\..\iniciar_en_segundo_plano.vbs" (
+        for %%I in ("%~dp0..\..") do set "STOCKAGENT_ROOT=%%~fI\"
+    )
+)
+cd /d "%STOCKAGENT_ROOT%"
 
 echo ==================================================================
 echo   CONFIGURAR INICIO AUTOMATICO - STOCK AGENT
 echo ==================================================================
 echo.
 
-set "STOCKAGENT_SCRIPT_VBS=%~dp0iniciar_en_segundo_plano.vbs"
-set "STOCKAGENT_CARPETA_TRABAJO=%~dp0"
+set "STOCKAGENT_SCRIPT_VBS=%STOCKAGENT_ROOT%iniciar_en_segundo_plano.vbs"
+set "STOCKAGENT_CARPETA_TRABAJO=%STOCKAGENT_ROOT%"
 set "STOCKAGENT_ACCESO_DIRECTO=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\StockAgent.lnk"
 
 echo Creando acceso directo en la carpeta de Inicio de Windows...

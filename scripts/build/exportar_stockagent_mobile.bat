@@ -2,6 +2,7 @@
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
 title StockAgent - Desacoplador de Proyecto Móvil Flutter
+for %%I in ("%~dp0..\..") do cd /d "%%~fI"
 
 echo =====================================================================
 echo         STOCKAGENT - DESACOPLAMIENTO DE LA APP MOVIL FLUTTER

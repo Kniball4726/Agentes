@@ -1,7 +1,13 @@
 @echo off
 chcp 65001 > nul
 setlocal
-cd /d "%~dp0"
+set "STOCKAGENT_ROOT=%~dp0"
+if not exist "%STOCKAGENT_ROOT%StockAgent.exe" if not exist "%STOCKAGENT_ROOT%main.py" (
+    if exist "%~dp0..\..\main.py" (
+        for %%I in ("%~dp0..\..") do set "STOCKAGENT_ROOT=%%~fI\"
+    )
+)
+cd /d "%STOCKAGENT_ROOT%"
 
 echo ==================================================================
 echo   INSTALADOR DE CERTIFICADO SSL - STOCK AGENT

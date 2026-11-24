@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 import flet as ft
 
-from ..theme import ROJO
+from ..theme import ROJO, estilo_boton_menu_sidebar
 from ..user_preferences import (
     guardar_preferencia_usuario,
     obtener_preferencias_usuario,
@@ -26,12 +26,7 @@ def _crear_boton_cierre_jornada(interfaz: Any, ancho: int | None = 218) -> ft.Bu
     btn.color = interfaz.texto
     btn.elevation = 0
     btn.height = 44 if getattr(interfaz, "es_pantalla_movil", False) else 36
-    btn.style = ft.ButtonStyle(
-        shape=ft.RoundedRectangleBorder(radius=6),
-        overlay_color=ft.Colors.with_opacity(0.08, interfaz.texto),
-        alignment=ft.Alignment.CENTER_LEFT,
-        padding=ft.Padding.only(left=16, right=8),
-    )
+    btn.style = estilo_boton_menu_sidebar(interfaz.texto)
     interfaz.btn_cierre_jornada = btn
     if not hasattr(interfaz, "botones_cierre_jornada") or interfaz.botones_cierre_jornada is None:
         interfaz.botones_cierre_jornada = []

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 import flet as ft
 
-from ..theme import ROJO
+from ..theme import FUENTE_MENU, FUENTE_MENU_BOLD, ROJO, estilo_boton_menu_sidebar
 from ..user_preferences import (
     guardar_preferencia_usuario,
     obtener_preferencias_usuario,
@@ -51,8 +51,19 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 ),
                 ft.Column(
                     [
-                        ft.Text("StockAgent", size=18, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                        ft.Text("Panel de control", size=11, color=interfaz.secundario),
+                        ft.Text(
+                            "StockAgent",
+                            size=18,
+                            weight=ft.FontWeight.BOLD,
+                            color=interfaz.texto,
+                            font_family=FUENTE_MENU_BOLD,
+                        ),
+                        ft.Text(
+                            "Panel de control",
+                            size=11,
+                            color=interfaz.secundario,
+                            font_family=FUENTE_MENU,
+                        ),
                     ],
                     spacing=2,
                 ),
@@ -63,15 +74,28 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
             f"{interfaz.usuario_actual.nombre_identificador} · {interfaz.usuario_actual.role}",
             size=11,
             color=interfaz.secundario,
+            font_family=FUENTE_MENU,
         ),
         ft.Divider(height=16, color=interfaz.borde),
         ft.Container(
             content=ft.Row(
                 [
                     ft.Icon(ft.Icons.SEARCH, size=15, color=ROJO),
-                    ft.Text("Buscar módulo...", size=11, color=interfaz.secundario, expand=True),
+                    ft.Text(
+                        "Buscar módulo...",
+                        size=11,
+                        color=interfaz.secundario,
+                        expand=True,
+                        font_family=FUENTE_MENU,
+                    ),
                     ft.Container(
-                        content=ft.Text("F2", size=9, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
+                        content=ft.Text(
+                            "F2",
+                            size=9,
+                            weight=ft.FontWeight.BOLD,
+                            color=interfaz.secundario,
+                            font_family=FUENTE_MENU_BOLD,
+                        ),
                         padding=ft.Padding.symmetric(horizontal=4, vertical=1),
                         border=ft.Border.all(1, ft.Colors.with_opacity(0.25, interfaz.borde)),
                         border_radius=4,
@@ -149,12 +173,7 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
                 btn.color = interfaz.texto
                 btn.elevation = 0
                 btn.height = 44 if getattr(interfaz, "es_pantalla_movil", False) else 36
-                btn.style = ft.ButtonStyle(
-                    shape=ft.RoundedRectangleBorder(radius=6),
-                    overlay_color=ft.Colors.with_opacity(0.08, interfaz.texto),
-                    alignment=ft.Alignment.CENTER_LEFT,
-                    padding=ft.Padding.only(left=16, right=8),
-                )
+                btn.style = estilo_boton_menu_sidebar(interfaz.texto)
                 sec_buttons.append(btn)
 
         # Encabezado del título con punto rojo indicador si hay pendientes
@@ -177,7 +196,13 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
 
         titulo_tile = ft.Row(
             [
-                ft.Text(sec.titulo, size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                ft.Text(
+                    sec.titulo,
+                    size=11,
+                    weight=ft.FontWeight.BOLD,
+                    color=interfaz.texto,
+                    font_family=FUENTE_MENU_BOLD,
+                ),
                 punto_rojo,
             ],
             spacing=6,
@@ -207,7 +232,12 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
             ft.Row(
                 [
                     ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN_600, size=10),
-                    ft.Text("Agente local activo", size=12, color=interfaz.secundario),
+                    ft.Text(
+                        "Agente local activo",
+                        size=12,
+                        color=interfaz.secundario,
+                        font_family=FUENTE_MENU,
+                    ),
                 ],
                 spacing=8,
             ),

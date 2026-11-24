@@ -19,13 +19,17 @@ const STATIC_ASSETS = [
   '/scanner.html',
   '/css/scanner.css',
   '/js/scanner.js',
+  '/fonts/Inter-Regular.ttf',
+  '/fonts/Inter-Medium.ttf',
+  '/fonts/Inter-SemiBold.ttf',
+  '/fonts/Inter-Bold.ttf',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-192.png',
   '/icons/icon-maskable-512.png',
 ];
 
-const STATIC_PREFIXES = ['/css/', '/js/', '/icons/'];
+const STATIC_PREFIXES = ['/css/', '/js/', '/icons/', '/fonts/'];
 const SENSITIVE_PREFIXES = [
   '/api/',
   '/documentos/',

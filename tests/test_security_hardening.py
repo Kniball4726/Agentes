@@ -435,7 +435,7 @@ class TestSecretsBackupAndWebhookHardening(unittest.TestCase):
         env_example = (root / ".env.example").read_text(encoding="utf-8")
         self.assertIn("STOCKAGENT_ENABLE_API_DOCS=0", env_example)
 
-        fw_bat = (root / "configurar_firewall_red.bat").read_text(encoding="utf-8")
+        fw_bat = (root / "scripts" / "operacion" / "configurar_firewall_red.bat").read_text(encoding="utf-8")
         self.assertIn("profile=private", fw_bat)
         self.assertIn("-Profile Private", fw_bat)
         self.assertNotIn("profile=any", fw_bat)
@@ -447,7 +447,7 @@ class TestSecretsBackupAndWebhookHardening(unittest.TestCase):
         self.assertNotIn("main.py --http", movil_bat)
         self.assertNotIn("StockAgent.exe\" --http", movil_bat)
 
-        cliente_bat = (root / "crear_acceso_directo_cliente.bat").read_text(
+        cliente_bat = (root / "scripts" / "operacion" / "crear_acceso_directo_cliente.bat").read_text(
             encoding="utf-8"
         )
         self.assertIn('set "ESQUEMA=https"', cliente_bat)

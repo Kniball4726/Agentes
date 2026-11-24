@@ -1,7 +1,8 @@
 @echo off
 chcp 65001 > nul
 setlocal
-cd /d "%~dp0"
+for %%I in ("%~dp0..\..") do set "ROOT_DIR=%%~fI"
+cd /d "%ROOT_DIR%"
 
 powershell -NoProfile -Command "Get-Process -Name StockAgent -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
@@ -13,18 +14,18 @@ if not exist "Descuentos\Productos.xlsx" (
 
 set "PYINSTALLER_EXE="
 if exist "ttech\Scripts\pyinstaller.exe" (
-    set "PYINSTALLER_EXE=%~dp0ttech\Scripts\pyinstaller.exe"
+    set "PYINSTALLER_EXE=%ROOT_DIR%\ttech\Scripts\pyinstaller.exe"
 ) else if exist ".venv\Scripts\pyinstaller.exe" (
-    set "PYINSTALLER_EXE=%~dp0.venv\Scripts\pyinstaller.exe"
+    set "PYINSTALLER_EXE=%ROOT_DIR%\.venv\Scripts\pyinstaller.exe"
 ) else (
     for /f "delims=" %%P in ('where pyinstaller 2^>nul') do if not defined PYINSTALLER_EXE set "PYINSTALLER_EXE=%%P"
 )
 
 set "FLET_EXE="
 if exist "ttech\Scripts\python.exe" (
-    set "FLET_EXE=%~dp0ttech\Scripts\flet.exe"
+    set "FLET_EXE=%ROOT_DIR%\ttech\Scripts\flet.exe"
 ) else if exist ".venv\Scripts\python.exe" (
-    set "FLET_EXE=%~dp0.venv\Scripts\flet.exe"
+    set "FLET_EXE=%ROOT_DIR%\.venv\Scripts\flet.exe"
 ) else (
     for /f "delims=" %%P in ('where flet 2^>nul') do if not defined FLET_EXE set "FLET_EXE=%%P"
 )
@@ -69,11 +70,11 @@ if exist "assets" (
 if exist "iniciar_servidor_web.bat" copy /Y "iniciar_servidor_web.bat" "dist\iniciar_servidor_web.bat" > nul
 if exist "detener_servidor.bat" copy /Y "detener_servidor.bat" "dist\detener_servidor.bat" > nul
 if exist "iniciar_en_segundo_plano.vbs" copy /Y "iniciar_en_segundo_plano.vbs" "dist\iniciar_en_segundo_plano.vbs" > nul
-if exist "instalar_certificado.bat" copy /Y "instalar_certificado.bat" "dist\instalar_certificado.bat" > nul
-if exist "configurar_firewall_red.bat" copy /Y "configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
-if exist "crear_acceso_directo_cliente.bat" copy /Y "crear_acceso_directo_cliente.bat" "dist\crear_acceso_directo_cliente.bat" > nul
-if exist "configurar_inicio_automatico.bat" copy /Y "configurar_inicio_automatico.bat" "dist\configurar_inicio_automatico.bat" > nul
-if exist "desactivar_inicio_automatico.bat" copy /Y "desactivar_inicio_automatico.bat" "dist\desactivar_inicio_automatico.bat" > nul
+if exist "scripts\operacion\instalar_certificado.bat" copy /Y "scripts\operacion\instalar_certificado.bat" "dist\instalar_certificado.bat" > nul
+if exist "scripts\operacion\configurar_firewall_red.bat" copy /Y "scripts\operacion\configurar_firewall_red.bat" "dist\configurar_firewall_red.bat" > nul
+if exist "scripts\operacion\crear_acceso_directo_cliente.bat" copy /Y "scripts\operacion\crear_acceso_directo_cliente.bat" "dist\crear_acceso_directo_cliente.bat" > nul
+if exist "scripts\operacion\configurar_inicio_automatico.bat" copy /Y "scripts\operacion\configurar_inicio_automatico.bat" "dist\configurar_inicio_automatico.bat" > nul
+if exist "scripts\operacion\desactivar_inicio_automatico.bat" copy /Y "scripts\operacion\desactivar_inicio_automatico.bat" "dist\desactivar_inicio_automatico.bat" > nul
 if exist "Documentacion\*.pdf" (
     if not exist "dist\Documentacion" mkdir "dist\Documentacion"
     copy /Y "Documentacion\*.pdf" "dist\Documentacion\" > nul

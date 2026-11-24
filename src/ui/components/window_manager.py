@@ -4,6 +4,8 @@ import asyncio
 from typing import Any
 import flet as ft
 
+from ..theme import estilo_texto_menu
+
 ANCHO_MAXIMO_MOVIL = 768
 
 
@@ -99,7 +101,11 @@ def mostrar_menu_movil_fallback(interfaz: Any) -> None:
             ),
         ),
         actions=[
-            ft.TextButton("Cerrar menú", on_click=lambda _e: interfaz.page.pop_dialog()),
+            ft.TextButton(
+                "Cerrar menú",
+                style=ft.ButtonStyle(text_style=estilo_texto_menu("medium")),
+                on_click=lambda _e: interfaz.page.pop_dialog(),
+            ),
         ],
     )
     try:
