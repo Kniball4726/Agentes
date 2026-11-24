@@ -60,19 +60,23 @@ def estilo_boton_menu_sidebar(texto_color: Any, peso: str = "medium") -> ft.Butt
     )
 
 
-def crear_tema_menus(color_seed: Any = ROJO) -> ft.Theme:
+def crear_tema_menus(color_seed: Any = ROJO, modo_oscuro: bool | None = None) -> ft.Theme:
     """Crea el tema base conservando la tipografía global y aplicando Inter a los menús nativos."""
+    if modo_oscuro is None:
+        color_texto_menu: Any = ft.Colors.ON_SURFACE
+    else:
+        color_texto_menu = TEXTO_OSCURO if modo_oscuro else TEXTO_CLARO
     return ft.Theme(
         color_scheme_seed=color_seed,
         font_family=FUENTE_PRINCIPAL,
         popup_menu_theme=ft.PopupMenuTheme(
-            label_text_style=estilo_texto_menu("regular"),
+            label_text_style=estilo_texto_menu("regular", color=color_texto_menu),
         ),
         navigation_bar_theme=ft.NavigationBarTheme(
-            label_text_style=estilo_texto_menu("medium"),
+            label_text_style=estilo_texto_menu("medium", color=color_texto_menu),
         ),
         navigation_drawer_theme=ft.NavigationDrawerTheme(
-            label_text_style=estilo_texto_menu("medium"),
+            label_text_style=estilo_texto_menu("medium", color=color_texto_menu),
         ),
     )
 

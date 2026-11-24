@@ -147,9 +147,8 @@ def configurar_ventana_shell(interfaz: Any, icon_path: Path) -> None:
     page.bgcolor = interfaz.fondo
     page.fonts = dict(FUENTES_APP)
     page.theme_mode = ft.ThemeMode.DARK
-    tema_menus = crear_tema_menus(ROJO)
-    page.theme = tema_menus
-    page.dark_theme = tema_menus
+    page.theme = crear_tema_menus(ROJO, modo_oscuro=False)
+    page.dark_theme = crear_tema_menus(ROJO, modo_oscuro=True)
     if hasattr(page, "on_resize"):
         page.on_resize = interfaz._al_redimensionar
     if hasattr(page, "on_disconnect") and hasattr(interfaz, "_al_desconectar"):

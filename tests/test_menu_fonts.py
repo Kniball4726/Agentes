@@ -26,6 +26,10 @@ from src.ui.theme import (
     FUENTE_MENU_MEDIUM,
     FUENTE_MENU_SEMIBOLD,
     FUENTES_APP,
+    ROJO,
+    TEXTO_CLARO,
+    TEXTO_OSCURO,
+    crear_tema_menus,
 )
 from tests.test_flet_gui import FakeMenu, FakePage
 
@@ -86,13 +90,25 @@ class TestMenuFonts(unittest.TestCase):
             self.assertGreater(ruta.stat().st_size, 0)
 
     def test_tema_shell_registra_roboto_global_e_inter_en_menus(self) -> None:
-        """El tema registra Roboto globalmente e Inter en los subtemas de menú."""
+        """El tema registra Roboto globalmente e Inter con color legible en los subtemas de menú."""
         self.assertEqual(self.page.fonts, FUENTES_APP)
-        for tema in (self.page.theme, self.page.dark_theme):
+        esperados = (
+            (self.page.theme, TEXTO_CLARO),
+            (self.page.dark_theme, TEXTO_OSCURO),
+        )
+        for tema, color_esperado in esperados:
             self.assertEqual(tema.font_family, FUENTE_PRINCIPAL)
             self.assertEqual(tema.popup_menu_theme.label_text_style.font_family, FUENTE_MENU)
+            self.assertEqual(tema.popup_menu_theme.label_text_style.color, color_esperado)
             self.assertEqual(tema.navigation_bar_theme.label_text_style.font_family, FUENTE_MENU_MEDIUM)
+            self.assertEqual(tema.navigation_bar_theme.label_text_style.color, color_esperado)
             self.assertEqual(tema.navigation_drawer_theme.label_text_style.font_family, FUENTE_MENU_MEDIUM)
+            self.assertEqual(tema.navigation_drawer_theme.label_text_style.color, color_esperado)
+
+        tema_auto = crear_tema_menus(ROJO)
+        self.assertEqual(tema_auto.popup_menu_theme.label_text_style.color, ft.Colors.ON_SURFACE)
+        self.assertEqual(tema_auto.navigation_bar_theme.label_text_style.color, ft.Colors.ON_SURFACE)
+        self.assertEqual(tema_auto.navigation_drawer_theme.label_text_style.color, ft.Colors.ON_SURFACE)
 
     def test_sidebar_vertical_aplica_inter_en_todos_los_textos_y_botones(self) -> None:
         """Todos los roles del sidebar vertical usan Inter en encabezados, ítems y accesos rápidos."""
@@ -143,25 +159,29 @@ class TestMenuFonts(unittest.TestCase):
                 for sub in submenus:
                     self.assertIn(sub.style.text_style.font_family, FAMILIAS_INTER)
 
-    def test_header_menus_usuario_y_dock_usan_inter_desktop_y_movil(self) -> None:
-        """Los menús desplegables de usuario y posición de barra usan Inter en desktop y móvil."""
-        for ancho in (1280, 390):
-            with self.subTest(ancho=ancho):
-                self.page.width = ancho
-                enc = construir_encabezado(self.interfaz)
-                popups = [n for n in _recorrer_controles(enc) if isinstance(n, ft.PopupMenuButton)]
-                self.assertGreater(len(popups), 0)
-                for popup in popups:
-                    for item in popup.items:
-                        if item.content is None and item.icon is None:
-                            continue
-                        self.assertIsNotNone(item.label_text_style)
-                        self.assertIn(item.label_text_style.font_family, FAMILIAS_INTER)
-                        if isinstance(item.content, ft.Text):
-                            self.assertIn(item.content.font_family, FAMILIAS_INTER)
-                    if popup.content is not None:
-                        for txt in [n for n in _recorrer_controles(popup.content) if isinstance(n, ft.Text)]:
-                            self.assertIn(txt.font_family, FAMILIAS_INTER)
+    def test_header_menus_usuario_y_dock_usan_inter_y_color_legible_en_claro_y_oscuro(self) -> None:
+        """Los menús desplegables de usuario y dock usan Inter y color contrastante en modo claro y oscuro."""
+        for modo_oscuro, color_esperado in ((True, TEXTO_OSCURO), (False, TEXTO_CLARO)):
+            self.interfaz.theme_ctrl.aplicar_paleta(modo_oscuro=modo_oscuro)
+            for ancho in (1280, 390):
+                with self.subTest(modo_oscuro=modo_oscuro, ancho=ancho):
+                    self.page.width = ancho
+                    enc = construir_encabezado(self.interfaz)
+                    popups = [n for n in _recorrer_controles(enc) if isinstance(n, ft.PopupMenuButton)]
+                    self.assertGreater(len(popups), 0)
+                    for popup in popups:
+                        for item in popup.items:
+                            if item.content is None and item.icon is None:
+                                continue
+                            self.assertIsNotNone(item.label_text_style)
+                            self.assertIn(item.label_text_style.font_family, FAMILIAS_INTER)
+                            self.assertEqual(item.label_text_style.color, color_esperado)
+                            if isinstance(item.content, ft.Text):
+                                self.assertIn(item.content.font_family, FAMILIAS_INTER)
+                                self.assertEqual(item.content.color, color_esperado)
+                        if popup.content is not None:
+                            for txt in [n for n in _recorrer_controles(popup.content) if isinstance(n, ft.Text)]:
+                                self.assertIn(txt.font_family, FAMILIAS_INTER)
 
     def test_menu_movil_fallback_usa_inter(self) -> None:
         """El menú modal alternativo en móvil aplica Inter tanto en botones como en cierre."""

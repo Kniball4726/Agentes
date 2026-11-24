@@ -43,7 +43,7 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
     )
     interfaz._actualizar_icono_notificaciones()
 
-    estilo_item_menu_usuario = estilo_texto_menu()
+    estilo_item_menu_usuario = estilo_texto_menu(color=interfaz.texto)
     opciones_menu_usuario = [
         ft.PopupMenuItem(
             icon=ft.Icons.BADGE_OUTLINED,
@@ -282,8 +282,9 @@ def construir_encabezado(interfaz: Any) -> ft.Control:
                 f"{label} (Activo)" if activo else label,
                 weight=ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL,
                 font_family=FUENTE_MENU_BOLD if activo else FUENTE_MENU,
+                color=interfaz.texto,
             ),
-            label_text_style=estilo_texto_menu(peso_item),
+            label_text_style=estilo_texto_menu(peso_item, color=interfaz.texto),
             on_click=lambda _e, k=pos_key: interfaz.cambiar_posicion_sidebar(k),
         )
 

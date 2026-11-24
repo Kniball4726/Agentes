@@ -78,11 +78,25 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
     return ft.Row(tarjetas, spacing=12)
 
 
+def altura_tarjetas_actividad_desktop(interfaz: Any) -> int:
+    """Calcula una altura uniforme para las tarjetas inferiores en escritorio."""
+    page = getattr(interfaz, "page", None)
+    alto = getattr(page, "height", None)
+    if isinstance(alto, (int, float)) and not isinstance(alto, bool) and alto > 0:
+        pos_sidebar = getattr(interfaz, "posicion_sidebar", "izquierda")
+        descuento_barra = 56 if pos_sidebar in ("arriba", "abajo") else 0
+        rol = str(getattr(getattr(interfaz, "usuario_actual", None), "role", "")).lower()
+        descuento_rapido = 0 if rol in ("consulta", "despachador", "") else 104
+        return max(340, int(alto) - 306 - descuento_rapido - descuento_barra)
+    return 420
+
+
 def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     """Genera el panel principal: 
     - Lado izquierdo: Pedidos preparados en vivo del turno con contador de bultos acumulados y fecha.
     - Lado derecho: Pedidos armados por fecha (para Operador), eventos de auditoría (para Master) o Informes generados.
     """
+    interfaz._panel_tarjetas_row = None
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")
     es_picker = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "picker")
     es_operador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "operador")
@@ -207,14 +221,18 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
             spacing=12,
             tight=True,
         )
-    return ft.Row(
+    fila_tarjetas = ft.Row(
         [
             tarjeta_izq,
             tarjeta_der,
         ],
         spacing=12,
         expand=True,
+        height=altura_tarjetas_actividad_desktop(interfaz),
+        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
     )
+    interfaz._panel_tarjetas_row = fila_tarjetas
+    return fila_tarjetas
 
 
 

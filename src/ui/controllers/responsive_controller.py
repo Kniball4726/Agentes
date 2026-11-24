@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ..components.panels import altura_tarjetas_actividad_desktop
 from ..theme import estilo_texto_menu
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,13 @@ class ResponsiveController:
         else:
             if isinstance(w_actual, (int, float)) and w_actual > 0:
                 self._host._ancho_previo = float(w_actual)
+            debe_actualizar = False
+            panel_row = getattr(self._host, "_panel_tarjetas_row", None)
+            if not es_movil and isinstance(panel_row, ft.Row):
+                nuevo_alto = altura_tarjetas_actividad_desktop(self._host)
+                if panel_row.height != nuevo_alto:
+                    panel_row.height = nuevo_alto
+                    debe_actualizar = True
             ventana = getattr(self._host, "ventana_chat_flotante", None)
             if ventana is not None and getattr(ventana, "visible", False):
                 if es_movil:
@@ -226,4 +234,6 @@ class ResponsiveController:
                     ventana.width = 420
                     ventana.left = None
                     ventana.right = 24
+                debe_actualizar = True
+            if debe_actualizar and page is not None:
                 page.update()

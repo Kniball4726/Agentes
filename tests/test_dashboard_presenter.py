@@ -238,6 +238,43 @@ class TestDashboardPresenter(unittest.TestCase):
             self.assertEqual(resumen[1]["cantidad_pedidos"], 1)
             self.assertEqual(resumen[1]["total_bultos"], 3)
 
+    def test_tarjetas_operador_alineadas_misma_altura_y_redimensionables_en_desktop(self):
+        """La tarjeta de pedidos en carga y la de pedidos armados comparten altura y alineación stretch en escritorio."""
+        from src.ui.components.panels import (
+            altura_tarjetas_actividad_desktop,
+            construir_panel_informes_actividad,
+        )
+        from src.ui.controllers.responsive_controller import ResponsiveController
+
+        self.interfaz.es_pantalla_movil = False
+        self.interfaz.posicion_sidebar = "izquierda"
+        self.interfaz.page = MagicMock(width=1280, height=900, client_user_agent="", platform="windows")
+        self.interfaz.tarjeta = lambda contenido, expand=True: ft.Container(content=contenido, expand=expand)
+        self.interfaz._modo_movil_previo = False
+
+        panel = construir_panel_informes_actividad(self.interfaz)
+        self.assertIsInstance(panel, ft.Row)
+        self.assertEqual(panel.vertical_alignment, ft.CrossAxisAlignment.STRETCH)
+        self.assertEqual(panel.height, altura_tarjetas_actividad_desktop(self.interfaz))
+        self.assertEqual(panel.height, 490)
+        self.assertEqual(len(panel.controls), 2)
+        self.assertTrue(panel.controls[0].expand)
+        self.assertTrue(panel.controls[1].expand)
+        self.assertIs(self.interfaz._panel_tarjetas_row, panel)
+
+        # Al redimensionar en desktop, recalcula la altura para mantener ambas tarjetas alineadas
+        ctrl = ResponsiveController(self.interfaz)
+        self.interfaz.page.height = 1000
+        ctrl.al_redimensionar()
+        self.assertEqual(panel.height, 590)
+        self.interfaz.page.update.assert_called()
+
+        # En móvil apila en Column y limpia la referencia desktop
+        self.interfaz.es_pantalla_movil = True
+        panel_movil = construir_panel_informes_actividad(self.interfaz)
+        self.assertIsInstance(panel_movil, ft.Column)
+        self.assertIsNone(self.interfaz._panel_tarjetas_row)
+
 
 if __name__ == "__main__":
     unittest.main()
