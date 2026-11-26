@@ -1,16 +1,139 @@
 """Diálogo para procesamiento de comprobantes y descuentos de Mercado Libre Full."""
+
+from __future__ import annotations
+
+from datetime import datetime
 from pathlib import Path
+import shutil
 from typing import Any
+
 import flet as ft
 
-from ..theme import ROJO
 from ...orders import calcular_hash_archivo
 from ...parsers.mercado_full_parser import parsear_archivo_mercado_full
-from ._shared import resolve_stock_manager, safe_focus
+from ..theme import ROJO
+from ._shared import resolve_stock_manager
 
 
 def _get_stock_manager():
     return resolve_stock_manager()
+
+
+def _construir_fila_preview_full(
+    interfaz: Any,
+    codigo: str,
+    cant: int,
+    catalogo: dict[str, Any],
+) -> ft.Container:
+    nom = catalogo.get(codigo, ("", "Producto no encontrado en catálogo", 0))[1]
+    stk_actual = catalogo.get(codigo, ("", "", 0))[2]
+    stk_nuevo = stk_actual - cant
+
+    color_alerta = None
+    alerta_txt = ""
+    if codigo not in catalogo:
+        color_alerta = ft.Colors.RED_400
+        alerta_txt = " [NO EXISTE]"
+    elif stk_nuevo < 0:
+        color_alerta = ft.Colors.RED_400
+        alerta_txt = f" [NEGATIVO: {stk_nuevo}]"
+    elif stk_nuevo <= 5:
+        color_alerta = ft.Colors.AMBER_400
+        alerta_txt = " [QUIEBRE]"
+
+    return ft.Container(
+        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+        border_radius=6,
+        bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
+        content=ft.Row(
+            [
+                ft.Text(f"[{codigo}]", weight=ft.FontWeight.BOLD, size=11, width=80),
+                ft.Text(nom, size=11, expand=True, no_wrap=True),
+                ft.Text(f"-{cant} un.", weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400, size=11, width=65),
+                ft.Text(
+                    f"Stock: {stk_actual} -> {stk_nuevo}{alerta_txt}",
+                    size=11,
+                    color=color_alerta or interfaz.secundario,
+                    width=150,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        ),
+    )
+
+
+def _archivar_y_registrar_full(
+    interfaz: Any,
+    arch: Path,
+    items_a_descontar: dict[str, int],
+    stock_manager_factory: Any = _get_stock_manager,
+) -> None:
+    """Ejecuta el descuento de Mercado Full, archiva el Excel y registra el pedido."""
+    sm = stock_manager_factory()(interfaz.menu.ruta_excel_base)
+    res = sm.descontar_mercado_full(
+        items_a_descontar,
+        nombre_archivo=arch.name,
+        sincronizar_excel=True,
+    )
+    print(f"[OK] Mercado Full: {len(res)} productos descontados desde {arch.name}.")
+
+    dest = interfaz.menu.carpeta_descontados / "MercadoFull"
+    dest.mkdir(parents=True, exist_ok=True)
+    ruta_archivada = dest / arch.name
+    shutil.move(str(arch), str(ruta_archivada))
+    print(f"[OK] Archivo movido a: {ruta_archivada}")
+
+    if not (hasattr(interfaz, "order_store") and interfaz.order_store):
+        return
+
+    armador_nom = (
+        interfaz.usuario_actual.nombre_identificador
+        if getattr(interfaz, "usuario_actual", None)
+        else "Picker"
+    )
+    total_unidades = sum(items_a_descontar.values())
+    nota_full = f"FULL-{arch.stem}"
+    if interfaz.order_store.existe_nota_pedido(nota_full):
+        nota_full = f"{nota_full}_{datetime.now().strftime('%H%M%S')}"
+
+    catalogo = getattr(sm, "catalogo", {})
+    items_pedido = [
+        (cod, catalogo[cod][1] if cod in catalogo else f"Producto {cod}", cant)
+        for cod, cant in items_a_descontar.items()
+    ]
+    hash_full = calcular_hash_archivo(ruta_archivada) if ruta_archivada.exists() else ""
+    resumen_it = f"{len(items_a_descontar)} productos ({total_unidades} un.)"
+    try:
+        interfaz.order_store.registrar_pedido(
+            nota_pedido=nota_full,
+            numero_pedido=arch.stem,
+            cliente="Mercado Envíos Full",
+            bultos=1,
+            logistica="Transporte",
+            armador=armador_nom,
+            tipo_archivo="excel",
+            nombre_archivo=arch.name,
+            agregado=False,
+            articulos_descontados=total_unidades,
+            resumen_items=resumen_it,
+            fecha_retiro=datetime.now().strftime("%Y-%m-%d"),
+            archivo_descuento="",
+            items=items_pedido,
+            archivo_hash=hash_full,
+        )
+    except Exception as exc_order:
+        print(f"[WARN] No se pudo registrar pedido en store para Mercado Full: {exc_order}")
+
+
+def _listar_planillas_full(interfaz: Any, carpeta_full: Path) -> list[Path]:
+    if hasattr(interfaz.menu, "_obtener_pendientes_mercado_full"):
+        return interfaz.menu._obtener_pendientes_mercado_full()
+    archivos: list[Path] = []
+    for ext in ("*.xlsx", "*.xls"):
+        archivos.extend(carpeta_full.glob(ext))
+    archivos.sort()
+    return archivos
+
 
 def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = None) -> None:
     """Ventana para procesar comprobantes de Mercado Envíos Full (.xlsx / .xls)."""
@@ -21,20 +144,9 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         getattr(interfaz.menu, "base_dir", Path(".")) / "Descuentos" / "MercadoFull"
     )
     carpeta_full.mkdir(parents=True, exist_ok=True)
-    archivos_pendientes: list[Path] = []
-    if hasattr(interfaz.menu, "_obtener_pendientes_mercado_full"):
-        archivos_pendientes = interfaz.menu._obtener_pendientes_mercado_full()
-    else:
-        for ext in ("*.xlsx", "*.xls"):
-            archivos_pendientes.extend(carpeta_full.glob(ext))
-        archivos_pendientes.sort()
+    archivos_pendientes = _listar_planillas_full(interfaz, carpeta_full)
 
-    lista_previsualizacion = ft.ListView(
-        expand=True,
-        spacing=4,
-        height=260,
-    )
-
+    lista_previsualizacion = ft.ListView(expand=True, spacing=4, height=260)
     resumen_texto = ft.Text(
         "Selecciona un archivo para previsualizar los productos a descontar."
         if archivos_pendientes
@@ -72,46 +184,14 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         resumen_texto.color = interfaz.texto
 
         for cod, cant in totales.items():
-            nom = sm.catalogo.get(cod, ("", "Producto no encontrado en catálogo", 0))[1]
-            stk_actual = sm.catalogo.get(cod, ("", "", 0))[2]
-            stk_nuevo = stk_actual - cant
-
-            color_alerta = None
-            alerta_txt = ""
-            if cod not in sm.catalogo:
-                color_alerta = ft.Colors.RED_400
-                alerta_txt = " [NO EXISTE]"
-            elif stk_nuevo < 0:
-                color_alerta = ft.Colors.RED_400
-                alerta_txt = f" [NEGATIVO: {stk_nuevo}]"
-            elif stk_nuevo <= 5:
-                color_alerta = ft.Colors.AMBER_400
-                alerta_txt = " [QUIEBRE]"
-
             lista_previsualizacion.controls.append(
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                    border_radius=6,
-                    bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
-                    content=ft.Row(
-                        [
-                            ft.Text(f"[{cod}]", weight=ft.FontWeight.BOLD, size=11, width=80),
-                            ft.Text(nom, size=11, expand=True, no_wrap=True),
-                            ft.Text(f"-{cant} un.", weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400, size=11, width=65),
-                            ft.Text(f"Stock: {stk_actual} -> {stk_nuevo}{alerta_txt}", size=11, color=color_alerta or interfaz.secundario, width=150),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                )
+                _construir_fila_preview_full(interfaz, cod, cant, sm.catalogo)
             )
         interfaz.page.update()
 
-    opciones_dropdown = [
-        ft.dropdown.Option(arch.name) for arch in archivos_pendientes
-    ]
     selector_archivo = ft.Dropdown(
         label="Planilla Mercado Full (.xlsx / .xls)",
-        options=opciones_dropdown,
+        options=[ft.dropdown.Option(arch.name) for arch in archivos_pendientes],
         value=archivos_pendientes[0].name if archivos_pendientes else None,
         expand=True,
         dense=True,
@@ -127,25 +207,16 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
 
     selector_archivo.on_change = cambiar_archivo_dropdown
     selector_archivo.on_select = cambiar_archivo_dropdown
-
     if archivo_seleccionado[0] is not None:
         cargar_previsualizacion_archivo(archivo_seleccionado[0])
 
     def al_subir_mercado_full(guardados: list[Path]) -> None:
         nonlocal archivos_pendientes
-        if hasattr(interfaz.menu, "_obtener_pendientes_mercado_full"):
-            archivos_pendientes = interfaz.menu._obtener_pendientes_mercado_full()
-        else:
-            archivos_pendientes = []
-            for ext in ("*.xlsx", "*.xls"):
-                archivos_pendientes.extend(carpeta_full.glob(ext))
-            archivos_pendientes.sort()
+        archivos_pendientes = _listar_planillas_full(interfaz, carpeta_full)
         for g in guardados:
             if g not in archivos_pendientes:
                 archivos_pendientes.append(g)
-        selector_archivo.options = [
-            ft.dropdown.Option(arch.name) for arch in archivos_pendientes
-        ]
+        selector_archivo.options = [ft.dropdown.Option(arch.name) for arch in archivos_pendientes]
         ultimo = guardados[-1]
         archivo_seleccionado[0] = ultimo
         selector_archivo.value = ultimo.name
@@ -168,61 +239,10 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
 
         arch = archivo_seleccionado[0]
         interfaz.page.pop_dialog()
-
-        def ejecutar() -> None:
-            sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
-            res = sm.descontar_mercado_full(
-                items_a_descontar,
-                nombre_archivo=arch.name,
-                sincronizar_excel=True,
-            )
-            print(f"[OK] Mercado Full: {len(res)} productos descontados desde {arch.name}.")
-            dest = interfaz.menu.carpeta_descontados / "MercadoFull"
-            dest.mkdir(parents=True, exist_ok=True)
-            ruta_archivada = dest / arch.name
-            shutil.move(str(arch), str(ruta_archivada))
-            print(f"[OK] Archivo movido a: {ruta_archivada}")
-
-            if hasattr(interfaz, "order_store") and interfaz.order_store:
-                armador_nom = (
-                    interfaz.usuario_actual.nombre_identificador
-                    if getattr(interfaz, "usuario_actual", None)
-                    else "Picker"
-                )
-                total_unidades = sum(items_a_descontar.values())
-                nota_full = f"FULL-{arch.stem}"
-                if interfaz.order_store.existe_nota_pedido(nota_full):
-                    nota_full = f"{nota_full}_{datetime.now().strftime('%H%M%S')}"
-                items_pedido: list[tuple[str, str, int]] = []
-                for cod, cant in items_a_descontar.items():
-                    nombre_p = f"Producto {cod}"
-                    if hasattr(sm, "catalogo") and cod in sm.catalogo:
-                        nombre_p = sm.catalogo[cod][1]
-                    items_pedido.append((cod, nombre_p, cant))
-                hash_full = calcular_hash_archivo(ruta_archivada) if ruta_archivada.exists() else ""
-                resumen_it = f"{len(items_a_descontar)} productos ({total_unidades} un.)"
-                try:
-                    interfaz.order_store.registrar_pedido(
-                        nota_pedido=nota_full,
-                        numero_pedido=arch.stem,
-                        cliente="Mercado Envíos Full",
-                        bultos=1,
-                        logistica="Transporte",
-                        armador=armador_nom,
-                        tipo_archivo="excel",
-                        nombre_archivo=arch.name,
-                        agregado=False,
-                        articulos_descontados=total_unidades,
-                        resumen_items=resumen_it,
-                        fecha_retiro=datetime.now().strftime("%Y-%m-%d"),
-                        archivo_descuento="",
-                        items=items_pedido,
-                        archivo_hash=hash_full,
-                    )
-                except Exception as exc_order:
-                    print(f"[WARN] No se pudo registrar pedido en store para Mercado Full: {exc_order}")
-
-        await interfaz.ejecutar_tarea(f"Descuento Mercado Full ({arch.name})", ejecutar)
+        await interfaz.ejecutar_tarea(
+            f"Descuento Mercado Full ({arch.name})",
+            lambda: _archivar_y_registrar_full(interfaz, arch, items_a_descontar, _get_stock_manager),
+        )
         interfaz.actualizar_estado()
         interfaz.notificar(f"Se descontaron exitosamente los productos de {arch.name} para Mercado Full.")
 
@@ -278,5 +298,3 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         ],
     )
     interfaz.page.show_dialog(dialogo)
-
-

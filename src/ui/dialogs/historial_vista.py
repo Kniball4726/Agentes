@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 import flet as ft
 
@@ -11,11 +11,93 @@ from ...orders import Pedido
 from ..components.debounce import Debouncer
 from ..design import colores_de, es_viewport_estrecho, fila_cabecera_responsiva
 from .historial_cards import (
-    _coincide_pedido,
     _construir_encabezado_fecha,
     _construir_fila_pedido,
     construir_cabecera_columnas_historial,
 )
+from .historial_filtros import (
+    agrupar_pedidos_por_fecha,
+    filtrar_y_ordenar_pedidos,
+    paginar_pedidos,
+)
+
+
+def _construir_placeholder_vacio(interfaz: Any, total_pedidos: int, termino: str) -> ft.Container:
+    if not total_pedidos:
+        contenido: ft.Control = ft.Text(
+            "Aún no se han registrado pedidos en el sistema.",
+            color=interfaz.secundario,
+            size=13,
+        )
+    else:
+        contenido = ft.Column(
+            [
+                ft.Icon(ft.Icons.SEARCH_OFF, size=34, color=interfaz.secundario),
+                ft.Text(f"No se encontraron pedidos para '{termino}'.", color=interfaz.secundario, size=13),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=6,
+        )
+    return ft.Container(padding=30, alignment=ft.Alignment.CENTER, content=contenido)
+
+
+def _construir_fila_superior_busqueda(
+    interfaz: Any,
+    colores: Any,
+    campo_busqueda: ft.TextField,
+    on_limpiar: Callable[[ft.Event], None],
+    on_rotulos_lote: Callable[[ft.Event], None],
+    on_escaner_qr: Callable[[ft.Event], None],
+) -> ft.Control:
+    estrecho = es_viewport_estrecho(interfaz, umbral=820.0)
+    estilo_btn_accion = ft.ButtonStyle(
+        color=colores.texto,
+        bgcolor=colores.superficie_suave,
+        side=ft.BorderSide(1, colores.borde),
+    )
+    fila_campo = ft.Row(
+        [
+            campo_busqueda,
+            ft.IconButton(
+                icon=ft.Icons.CLEAR,
+                icon_size=18,
+                icon_color=colores.secundario,
+                tooltip="Borrar búsqueda",
+                on_click=on_limpiar,
+            ),
+        ],
+        spacing=4,
+        expand=not estrecho,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    botones = ft.Row(
+        [
+            ft.Button(
+                "Rótulos A4 (Lote)",
+                icon=ft.Icons.PRINT,
+                tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
+                style=estilo_btn_accion,
+                on_click=on_rotulos_lote,
+            ),
+            ft.Button(
+                "Escanear QR / Cambiar Estado",
+                icon=ft.Icons.QR_CODE_SCANNER,
+                style=estilo_btn_accion,
+                on_click=on_escaner_qr,
+            ),
+        ],
+        spacing=6,
+        wrap=True,
+        run_spacing=6,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    if estrecho:
+        return ft.Column([fila_campo, botones], spacing=6, tight=True)
+    return ft.Row(
+        [fila_campo, botones],
+        spacing=6,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
 
 
 def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) -> None:
@@ -26,7 +108,6 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     pedidos = interfaz.order_store.listar_pedidos(limit=400)
     items_lista = ft.ListView(expand=True, spacing=1)
-
     texto_contador = ft.Text(f"Total: {len(pedidos)} pedidos" if pedidos else "", size=11, color=interfaz.secundario)
     pedidos_visibles: list[Pedido] = []
     pedidos_seleccionados: set[int] = set()
@@ -92,8 +173,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     def _on_row_hover(e: ft.HoverEvent) -> None:
         try:
             pal = colores_de(interfaz)
-            bg_hover = ft.Colors.with_opacity(0.08, pal.texto) if e.data == "true" else pal.superficie_suave
-            e.control.bgcolor = bg_hover
+            e.control.bgcolor = ft.Colors.with_opacity(0.08, pal.texto) if e.data == "true" else pal.superficie_suave
             e.control.update()
         except Exception:
             pass
@@ -127,66 +207,37 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     def actualizar_vista(termino: str = "") -> None:
         nonlocal pedidos_visibles, total_paginas_global, pagina_actual
         hoy_str = datetime.now().strftime("%Y-%m-%d")
-
-        candidatos = []
-        for p in pedidos:
-            if filtro_rapido_activo == "hoy" and not (p.created_at and p.created_at.startswith(hoy_str)):
-                continue
-            if filtro_rapido_activo == "pendientes" and (getattr(p, "cierre_id", None) is not None or getattr(p, "estado", "") == "anulado"):
-                continue
-            if filtro_rapido_activo == "despachados" and getattr(p, "estado_despacho", "") != "despachado":
-                continue
-            candidatos.append(p)
-
-        filtrados = [p for p in candidatos if _coincide_pedido(p, termino)]
-        filtrados.sort(key=lambda x: (x.created_at or "", x.id), reverse=True)
-        total_items = len(filtrados)
-        total_paginas_global = max(1, (total_items + tamano_pagina - 1) // tamano_pagina)
-        pagina_actual = max(1, min(pagina_actual, total_paginas_global))
+        filtrados = filtrar_y_ordenar_pedidos(
+            pedidos,
+            filtro_rapido=filtro_rapido_activo,
+            termino=termino,
+            hoy_str=hoy_str,
+        )
+        pedidos_pagina, pagina_actual, total_paginas_global, inicio_idx, fin_idx = paginar_pedidos(
+            filtrados,
+            pagina_actual,
+            tamano_pagina,
+        )
 
         btn_pag_primera.disabled = pagina_actual <= 1
         btn_pag_anterior.disabled = pagina_actual <= 1
         btn_pag_siguiente.disabled = pagina_actual >= total_paginas_global
         btn_pag_ultima.disabled = pagina_actual >= total_paginas_global
         texto_pagina_info.value = f"Pág. {pagina_actual} de {total_paginas_global}"
-        pedidos_visibles = filtrados
         items_lista.controls.clear()
 
         if not filtrados:
+            pedidos_visibles = []
             barra_paginacion.visible = False
-            if not pedidos:
-                items_lista.controls.append(
-                    ft.Container(
-                        padding=30,
-                        alignment=ft.Alignment.CENTER,
-                        content=ft.Text("Aún no se han registrado pedidos en el sistema.", color=interfaz.secundario, size=13),
-                    )
-                )
-            else:
-                items_lista.controls.append(
-                    ft.Container(
-                        padding=30,
-                        alignment=ft.Alignment.CENTER,
-                        content=ft.Column(
-                            [
-                                ft.Icon(ft.Icons.SEARCH_OFF, size=34, color=interfaz.secundario),
-                                ft.Text(f"No se encontraron pedidos para '{termino}'.", color=interfaz.secundario, size=13),
-                            ],
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            spacing=6,
-                        ),
-                    )
-                )
+            items_lista.controls.append(_construir_placeholder_vacio(interfaz, len(pedidos), termino))
             texto_contador.value = f"0 de {len(pedidos)} pedidos"
             if interfaz.page:
                 interfaz.page.update()
             return
 
         barra_paginacion.visible = True
-        inicio_idx = (pagina_actual - 1) * tamano_pagina
-        fin_idx = min(inicio_idx + tamano_pagina, total_items)
-        pedidos_pagina = filtrados[inicio_idx:fin_idx]
         pedidos_visibles = pedidos_pagina
+        total_items = len(filtrados)
         texto_rango_info.value = f"Mostrando {inicio_idx + 1}–{fin_idx} de {total_items} pedidos"
         texto_contador.value = (
             f"Pág. {pagina_actual}/{total_paginas_global} ({inicio_idx + 1}–{fin_idx} de {total_items})"
@@ -194,12 +245,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             else f"Total: {total_items} pedidos · Pág. {pagina_actual}/{total_paginas_global}"
         )
 
-        pedidos_por_fecha: dict[str, list[Pedido]] = {}
-        for p in pedidos_pagina:
-            pedidos_por_fecha.setdefault(p.created_at[:10] if p.created_at else "Sin fecha", []).append(p)
-
-        for f_clave in sorted(pedidos_por_fecha.keys(), key=lambda d: ("0000-00-00" if d == "Sin fecha" else d), reverse=True):
-            pedidos_grupo = sorted(pedidos_por_fecha[f_clave], key=lambda x: (x.created_at or "", x.id), reverse=True)
+        for f_clave, pedidos_grupo in agrupar_pedidos_por_fecha(pedidos_pagina):
             items_lista.controls.append(_construir_encabezado_fecha(f_clave, hoy_str, len(pedidos_grupo), interfaz))
             for p in pedidos_grupo:
                 items_lista.controls.append(
@@ -234,9 +280,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         _actualizar_barra_lote()
 
     def _despachar_lote(st_nuevo: str) -> None:
-        if not interfaz.exigir_roles("operador", "administrador"):
-            return
-        if not pedidos_seleccionados:
+        if not interfaz.exigir_roles("operador", "administrador") or not pedidos_seleccionados:
             return
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
         puede_retroceder = bool(
@@ -325,8 +369,8 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
     def actualizar_botones_filtro() -> None:
         pal = colores_de(interfaz)
         bg_activo = ft.Colors.with_opacity(0.14, ft.Colors.BLUE_500)
-        for b, tag in [(btn_f_todos, "todos"), (btn_f_hoy, "hoy"), (btn_f_pend, "pendientes"), (btn_f_desp, "despachados")]:
-            b.style = (
+        for btn, tag in ((btn_f_todos, "todos"), (btn_f_hoy, "hoy"), (btn_f_pend, "pendientes"), (btn_f_desp, "despachados")):
+            btn.style = (
                 ft.ButtonStyle(bgcolor=bg_activo, color=pal.texto, side=ft.BorderSide(1, ft.Colors.BLUE_500))
                 if filtro_rapido_activo == tag
                 else ft.ButtonStyle(bgcolor=ft.Colors.TRANSPARENT, color=pal.secundario, side=ft.BorderSide(1, pal.borde))
@@ -341,55 +385,16 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
 
     actualizar_botones_filtro()
 
-    estilo_btn_accion = ft.ButtonStyle(
-        color=colores.texto,
-        bgcolor=colores.superficie_suave,
-        side=ft.BorderSide(1, colores.borde),
-    )
-
-    fila_busqueda_campo = ft.Row(
-        [
-            campo_busqueda,
-            ft.IconButton(icon=ft.Icons.CLEAR, icon_size=18, icon_color=colores.secundario, tooltip="Borrar búsqueda", on_click=limpiar_busqueda),
-        ],
-        spacing=4,
-        expand=not es_viewport_estrecho(interfaz, umbral=820.0),
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-    botones_busqueda = ft.Row(
-        [
-            ft.Button(
-                "Rótulos A4 (Lote)",
-                icon=ft.Icons.PRINT,
-                tooltip="Generar rótulos optimizados llenando hojas A4 (10 por página)",
-                style=estilo_btn_accion,
-                on_click=imprimir_lote_rotulos_a4,
-            ),
-            ft.Button(
-                "Escanear QR / Cambiar Estado",
-                icon=ft.Icons.QR_CODE_SCANNER,
-                style=estilo_btn_accion,
-                on_click=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
-            ),
-        ],
-        spacing=6,
-        wrap=True,
-        run_spacing=6,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-    fila_superior_busqueda = (
-        ft.Column([fila_busqueda_campo, botones_busqueda], spacing=6, tight=True)
-        if es_viewport_estrecho(interfaz, umbral=820.0)
-        else ft.Row(
-            [fila_busqueda_campo, botones_busqueda],
-            spacing=6,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-    )
-
     barra_busqueda = ft.Column(
         [
-            fila_superior_busqueda,
+            _construir_fila_superior_busqueda(
+                interfaz,
+                colores,
+                campo_busqueda,
+                on_limpiar=limpiar_busqueda,
+                on_rotulos_lote=imprimir_lote_rotulos_a4,
+                on_escaner_qr=lambda _e: interfaz.mostrar_escaner_qr_despacho(al_actualizar=recargar_y_actualizar),
+            ),
             ft.Row(
                 [
                     ft.Row(
@@ -398,7 +403,13 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
                         wrap=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.TextButton("Seleccionar Visibles", icon=ft.Icons.CHECK_BOX_OUTLINED, icon_color=colores.secundario, style=ft.ButtonStyle(color=colores.secundario), on_click=_sel_todos_visibles),
+                    ft.TextButton(
+                        "Seleccionar Visibles",
+                        icon=ft.Icons.CHECK_BOX_OUTLINED,
+                        icon_color=colores.secundario,
+                        style=ft.ButtonStyle(color=colores.secundario),
+                        on_click=_sel_todos_visibles,
+                    ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -408,8 +419,6 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         ],
         spacing=6,
     )
-
-    cabecera_columnas = construir_cabecera_columnas_historial(interfaz)
 
     actualizar_vista("")
 
@@ -423,8 +432,18 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
         modal=True,
         bgcolor=bg_dlg,
         title=fila_cabecera_responsiva(
-            ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, color=colores.secundario, size=22), ft.Text("Ver pedidos mayoristas", weight=ft.FontWeight.BOLD, color=colores.texto, size=18)], spacing=8, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ft.Row([texto_contador, ft.IconButton(icon=ft.Icons.CHECK_BOX_OUTLINED, icon_size=20, icon_color=colores.secundario, tooltip="Seleccionar todos los pedidos visibles", on_click=_sel_todos_visibles)], spacing=8, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Row(
+                [ft.Icon(ft.Icons.RECEIPT_LONG, color=colores.secundario, size=22), ft.Text("Ver pedidos mayoristas", weight=ft.FontWeight.BOLD, color=colores.texto, size=18)],
+                spacing=8,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            ft.Row(
+                [texto_contador, ft.IconButton(icon=ft.Icons.CHECK_BOX_OUTLINED, icon_size=20, icon_color=colores.secundario, tooltip="Seleccionar todos los pedidos visibles", on_click=_sel_todos_visibles)],
+                spacing=8,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             spacing=8,
             run_spacing=4,
         ),
@@ -432,7 +451,7 @@ def mostrar_historial_pedidos(interfaz: Any, _evento: ft.Event | None = None) ->
             width=ancho_dlg,
             height=alto_dlg,
             bgcolor=bg_dlg,
-            content=ft.Column([barra_busqueda, cabecera_columnas, items_lista, barra_paginacion], expand=True, spacing=4),
+            content=ft.Column([barra_busqueda, construir_cabecera_columnas_historial(interfaz), items_lista, barra_paginacion], expand=True, spacing=4),
         ),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 from pathlib import Path
 from typing import Any
@@ -10,150 +10,99 @@ from typing import Any
 import flet as ft
 
 from ...paths import application_root
-from ...stock.reportes_service import (
-    generar_reporte_auditoria_inventario_fisico,
-    generar_reporte_catalogo_stock,
-    generar_reporte_cierres_historicos,
-    generar_reporte_descuento_operario_canales,
-    generar_reporte_kardex_producto,
-    generar_reporte_movimientos_estandar,
-    generar_reporte_pedidos_despacho,
-    generar_reporte_planilla_conteo_fisico,
-    generar_reporte_rotacion_consumo,
-    generar_reporte_stock_critico,
-)
 from ..theme import ROJO
+from .reportes_config import (
+    DESCRIPCIONES_REPORTE as _DESCRIPCIONES_REPORTE,
+    OPCIONES_REPORTE,
+    REPORTES_CON_PERIODO,
+    VISIBILIDAD_CAMPOS_REPORTE,
+    ejecutar_generacion_reporte,
+    opciones_dropdown,
+    resolver_rango_fechas as _resolver_rango_fechas,
+)
 
 logger = logging.getLogger(__name__)
 
-_DESCRIPCIONES_REPORTE: dict[str, str] = {
-    "stock_critico": "Detalla los artículos agotados o por debajo del punto de reposición con cantidad sugerida para compras.",
-    "catalogo_stock": "Listado completo del catálogo activo con existencias reales, códigos de barras y ubicaciones.",
-    "pedidos_despacho": "Consolidado de pedidos preparados y despachados con cliente, bultos, armador y logística asignada.",
-    "cierres_historicos": "Registro histórico de jornadas operativas cerradas, métricas de bultos y auditoría de responsables.",
-    "movimientos_periodo": "Reporte estándar de Salidas, Ingresos o Consolidado Administrador (solo productos con movimiento).",
-    "descuentos_canales": "Descuentos discriminados en 3 columnas (Mayoristas, Mercado Libre y Full), solo productos descontados.",
-    "planilla_conteo": "Planilla imprimible ordenada por ubicación para recuento físico en depósito.",
-    "auditoria_fisica": "Comparativa Digital vs. Físico del último inventario relevado con diferencias por artículo.",
-    "kardex_sku": "Historial cronológico completo (entradas, salidas y saldos móviles) para un SKU puntual.",
-    "rotacion_consumo": "Ranking de productos con mayor salida en el período, promedio diario y días estimados de cobertura.",
-}
+
+def _cargar_opciones_transporte() -> list[ft.DropdownOption]:
+    opciones = [ft.DropdownOption("TODOS", "Todos los transportes")]
+    try:
+        from ...orders import LOGISTICA_OPCIONES
+
+        for log in LOGISTICA_OPCIONES:
+            opciones.append(ft.DropdownOption(log, log))
+    except Exception:
+        pass
+    return opciones
 
 
-def _resolver_rango_fechas(preset: str, f_desde: str, f_hasta: str) -> tuple[str, str]:
-    ahora = datetime.now()
-    if preset == "ayer":
-        ayer = (ahora - timedelta(days=1)).strftime("%Y-%m-%d")
-        return ayer, ayer
-    if preset == "7d":
-        return (ahora - timedelta(days=6)).strftime("%Y-%m-%d"), ahora.strftime("%Y-%m-%d")
-    if preset == "30d":
-        return (ahora - timedelta(days=29)).strftime("%Y-%m-%d"), ahora.strftime("%Y-%m-%d")
-    if preset == "personalizado":
-        d1 = (f_desde or "").strip() or ahora.strftime("%Y-%m-%d")
-        d2 = (f_hasta or "").strip() or d1
-        return d1, d2
-    hoy = ahora.strftime("%Y-%m-%d")
-    return hoy, hoy
-
-
-def mostrar_centro_reportes(interfaz: Any) -> None:
-    """Abre la ventana modal del Centro Unificado de Reportes."""
-    if not interfaz.usuario_actual:
-        interfaz.notificar("Debes iniciar sesión para acceder a los reportes.")
-        return
-
-    usuario_nombre = (
-        getattr(interfaz.usuario_actual, "display_name", None)
-        or getattr(interfaz.usuario_actual, "username", "Operador")
-    )
-    carpeta_informes = Path(application_root()) / "data" / "informes"
-    carpeta_informes.mkdir(parents=True, exist_ok=True)
-    hoy_str = datetime.now().strftime("%Y-%m-%d")
-
+def _crear_controles_parametros(interfaz: Any, hoy_str: str) -> dict[str, Any]:
+    """Construye los controles de entrada parametrizables para los distintos tipos de reporte."""
     tipo_reporte = ft.Dropdown(
         label="Seleccionar Tipo de Reporte",
         value="stock_critico",
-        options=[
-            ft.DropdownOption("stock_critico", "📦 Stock Crítico y Reposición (Quiebres y Compras)"),
-            ft.DropdownOption("catalogo_stock", "📋 Inventario y Catálogo General"),
-            ft.DropdownOption("movimientos_periodo", "📊 Movimientos Estándar (Salidas / Ingresos / Suma Total)"),
-            ft.DropdownOption("descuentos_canales", "🏷️ Descuentos por Canal (Mayoristas / Mercado Libre / Full)"),
-            ft.DropdownOption("planilla_conteo", "📝 Planilla de Toma de Inventario Físico"),
-            ft.DropdownOption("auditoria_fisica", "🔍 Auditoría de Inventario Físico vs. Digital"),
-            ft.DropdownOption("kardex_sku", "📒 Kardex Histórico por Producto (SKU)"),
-            ft.DropdownOption("rotacion_consumo", "🔥 Ranking de Rotación y Cobertura"),
-            ft.DropdownOption("pedidos_despacho", "🚚 Despacho y Pedidos por Logística"),
-            ft.DropdownOption("cierres_historicos", "🔒 Historial de Cierres de Jornada"),
-        ],
+        options=opciones_dropdown(OPCIONES_REPORTE),
         dense=True,
         expand=True,
     )
-
     descripcion_reporte = ft.Text(
         _DESCRIPCIONES_REPORTE["stock_critico"],
         size=12,
         color=interfaz.secundario,
     )
-
     transporte_filtro = ft.Dropdown(
         label="Filtrar por Transporte / Logística (Opcional)",
         value="TODOS",
-        options=[ft.DropdownOption("TODOS", "Todos los transportes")],
+        options=_cargar_opciones_transporte(),
         dense=True,
         visible=False,
     )
-    try:
-        from ...orders import LOGISTICA_OPCIONES
-        for log in LOGISTICA_OPCIONES:
-            transporte_filtro.options.append(ft.DropdownOption(log, log))
-    except Exception:
-        pass
-
     modo_movimiento = ft.Dropdown(
         label="Vista / Contenido del Reporte",
         value="ambos",
-        options=[
-            ft.DropdownOption("ambos", "Consolidado (Salidas + Ingresos)"),
-            ft.DropdownOption("cierre_admin", "Consolidado Administrador (Suma Total)"),
-            ft.DropdownOption("salidas", "Sólo Salidas de Stock"),
-            ft.DropdownOption("ingresos", "Sólo Ingresos de Stock"),
-        ],
+        options=opciones_dropdown(
+            (
+                ("ambos", "Consolidado (Salidas + Ingresos)"),
+                ("cierre_admin", "Consolidado Administrador (Suma Total)"),
+                ("salidas", "Sólo Salidas de Stock"),
+                ("ingresos", "Sólo Ingresos de Stock"),
+            )
+        ),
         dense=True,
         visible=False,
     )
-
     orden_movimientos = ft.Dropdown(
         label="Ordenamiento",
         value="catalog",
-        options=[
-            ft.DropdownOption("catalog", "Orden de Catálogo"),
-            ft.DropdownOption("ubicacion", "Por Ubicación"),
-            ft.DropdownOption("volume", "Por Mayor Volumen"),
-            ft.DropdownOption("alpha", "Alfabético"),
-        ],
+        options=opciones_dropdown(
+            (
+                ("catalog", "Orden de Catálogo"),
+                ("ubicacion", "Por Ubicación"),
+                ("volume", "Por Mayor Volumen"),
+                ("alpha", "Alfabético"),
+            )
+        ),
         dense=True,
         visible=False,
     )
-
     preset_periodo = ft.Dropdown(
         label="Período",
         value="hoy",
-        options=[
-            ft.DropdownOption("hoy", "Jornada de Hoy"),
-            ft.DropdownOption("ayer", "Ayer"),
-            ft.DropdownOption("7d", "Últimos 7 días"),
-            ft.DropdownOption("30d", "Últimos 30 días"),
-            ft.DropdownOption("personalizado", "Rango personalizado (AAAA-MM-DD)"),
-        ],
+        options=opciones_dropdown(
+            (
+                ("hoy", "Jornada de Hoy"),
+                ("ayer", "Ayer"),
+                ("7d", "Últimos 7 días"),
+                ("30d", "Últimos 30 días"),
+                ("personalizado", "Rango personalizado (AAAA-MM-DD)"),
+            )
+        ),
         dense=True,
         visible=False,
     )
-
     fecha_desde_input = ft.TextField(label="Desde (AAAA-MM-DD)", value=hoy_str, dense=True, expand=True)
     fecha_hasta_input = ft.TextField(label="Hasta (AAAA-MM-DD)", value=hoy_str, dense=True, expand=True)
     fila_fechas_custom = ft.Row([fecha_desde_input, fecha_hasta_input], spacing=8, visible=False)
-
     sku_kardex_input = ft.TextField(
         label="Código SKU o nombre del producto",
         hint_text="ej: UT-2156 o Taladro",
@@ -174,20 +123,77 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
     ventana_rotacion = ft.Dropdown(
         label="Ventana de análisis",
         value="30",
-        options=[
-            ft.DropdownOption("7", "Últimos 7 días"),
-            ft.DropdownOption("15", "Últimos 15 días"),
-            ft.DropdownOption("30", "Últimos 30 días"),
-            ft.DropdownOption("60", "Últimos 60 días"),
-            ft.DropdownOption("90", "Últimos 90 días"),
-        ],
+        options=opciones_dropdown(
+            (
+                ("7", "Últimos 7 días"),
+                ("15", "Últimos 15 días"),
+                ("30", "Últimos 30 días"),
+                ("60", "Últimos 60 días"),
+                ("90", "Últimos 90 días"),
+            )
+        ),
         dense=True,
         visible=False,
     )
+    return {
+        "tipo_reporte": tipo_reporte,
+        "descripcion_reporte": descripcion_reporte,
+        "transporte_filtro": transporte_filtro,
+        "modo_movimiento": modo_movimiento,
+        "orden_movimientos": orden_movimientos,
+        "preset_periodo": preset_periodo,
+        "fecha_desde_input": fecha_desde_input,
+        "fecha_hasta_input": fecha_hasta_input,
+        "fila_fechas_custom": fila_fechas_custom,
+        "sku_kardex_input": sku_kardex_input,
+        "chk_conteo_ciego": chk_conteo_ciego,
+        "filtro_ubicacion_input": filtro_ubicacion_input,
+        "ventana_rotacion": ventana_rotacion,
+    }
+
+
+def _construir_encabezado_reportes(interfaz: Any) -> ft.Row:
+    return ft.Row(
+        [
+            ft.Icon(ft.Icons.ASSESSMENT, size=28, color=ROJO),
+            ft.Column(
+                [
+                    ft.Text("Centro Unificado de Reportes", size=18, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Text(
+                        "Genera informes operativos, de stock, movimientos y auditoría para imprimir o exportar.",
+                        size=11,
+                        color=interfaz.secundario,
+                    ),
+                ],
+                spacing=2,
+                expand=True,
+            ),
+        ],
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+
+def mostrar_centro_reportes(interfaz: Any) -> None:
+    """Abre la ventana modal del Centro Unificado de Reportes."""
+    if not interfaz.usuario_actual:
+        interfaz.notificar("Debes iniciar sesión para acceder a los reportes.")
+        return
+
+    usuario_nombre = (
+        getattr(interfaz.usuario_actual, "display_name", None)
+        or getattr(interfaz.usuario_actual, "username", "Operador")
+    )
+    carpeta_informes = Path(application_root()) / "data" / "informes"
+    carpeta_informes.mkdir(parents=True, exist_ok=True)
+    hoy_str = datetime.now().strftime("%Y-%m-%d")
+
+    ctrls = _crear_controles_parametros(interfaz, hoy_str)
+    tipo_reporte = ctrls["tipo_reporte"]
+    preset_periodo = ctrls["preset_periodo"]
+    fila_fechas_custom = ctrls["fila_fechas_custom"]
 
     def _actualizar_visibilidad_fechas(_e: ft.Event | None = None) -> None:
-        sel = tipo_reporte.value
-        usa_fechas = sel in ("movimientos_periodo", "descuentos_canales", "kardex_sku")
+        usa_fechas = tipo_reporte.value in REPORTES_CON_PERIODO
         preset_periodo.visible = usa_fechas
         fila_fechas_custom.visible = usa_fechas and preset_periodo.value == "personalizado"
         if interfaz.page:
@@ -195,14 +201,18 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
 
     def al_cambiar_tipo(_e: ft.Event | None = None) -> None:
         sel = str(tipo_reporte.value or "stock_critico")
-        descripcion_reporte.value = _DESCRIPCIONES_REPORTE.get(sel, "")
-        transporte_filtro.visible = sel == "pedidos_despacho"
-        modo_movimiento.visible = sel == "movimientos_periodo"
-        orden_movimientos.visible = sel == "movimientos_periodo"
-        sku_kardex_input.visible = sel == "kardex_sku"
-        chk_conteo_ciego.visible = sel == "planilla_conteo"
-        filtro_ubicacion_input.visible = sel == "planilla_conteo"
-        ventana_rotacion.visible = sel == "rotacion_consumo"
+        ctrls["descripcion_reporte"].value = _DESCRIPCIONES_REPORTE.get(sel, "")
+        visibles = set(VISIBILIDAD_CAMPOS_REPORTE.get(sel, ()))
+        for clave in (
+            "transporte_filtro",
+            "modo_movimiento",
+            "orden_movimientos",
+            "sku_kardex_input",
+            "chk_conteo_ciego",
+            "filtro_ubicacion_input",
+            "ventana_rotacion",
+        ):
+            ctrls[clave].visible = clave in visibles
         _actualizar_visibilidad_fechas()
 
     tipo_reporte.on_select = al_cambiar_tipo
@@ -220,119 +230,32 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
             interfaz.page.update()
 
         try:
-            sel = tipo_reporte.value
-            ruta_generada: Path | None = None
+            preset_val = str(preset_periodo.value or "hoy")
             f_desde, f_hasta = _resolver_rango_fechas(
-                str(preset_periodo.value or "hoy"),
-                str(fecha_desde_input.value or ""),
-                str(fecha_hasta_input.value or ""),
+                preset_val,
+                str(ctrls["fecha_desde_input"].value or ""),
+                str(ctrls["fecha_hasta_input"].value or ""),
             )
-
-            if sel == "stock_critico":
-                ruta_generada = generar_reporte_stock_critico(
-                    product_store=interfaz.product_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                )
-            elif sel == "catalogo_stock":
-                ruta_generada = generar_reporte_catalogo_stock(
-                    product_store=interfaz.product_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                )
-            elif sel == "movimientos_periodo":
-                resumen = interfaz.product_store.get_period_movements_summary(
-                    date_from=f_desde,
-                    date_to=f_hasta,
-                    order_by=str(orden_movimientos.value or "catalog"),
-                )
-                canales_sku = {}
-                if hasattr(interfaz.order_store, "obtener_descuentos_operario_por_canal"):
-                    for ch in interfaz.order_store.obtener_descuentos_operario_por_canal(
-                        fecha_desde=f_desde,
-                        fecha_hasta=f_hasta,
-                    ):
-                        canales_sku[ch["codigo"]] = ch
-                ruta_generada = generar_reporte_movimientos_estandar(
-                    resumen_periodo=resumen,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    modo=str(modo_movimiento.value or "ambos"),
-                    fecha_desde=f_desde,
-                    fecha_hasta=f_hasta,
-                    canales_por_sku=canales_sku,
-                )
-            elif sel == "descuentos_canales":
-                items_ch = interfaz.order_store.obtener_descuentos_operario_por_canal(
-                    fecha_desde=f_desde,
-                    fecha_hasta=f_hasta,
-                )
-                mapa_orden: dict[str, int] = {}
-                if hasattr(interfaz.product_store, "list_products"):
-                    for idx, p in enumerate(interfaz.product_store.list_products(solo_activos=True) or []):
-                        mapa_orden[str(p["code"])] = idx
-                ruta_generada = generar_reporte_descuento_operario_canales(
-                    items_canal=items_ch,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    mapa_orden_catalogo=mapa_orden,
-                    prefijo_archivo="Descuentos_Canales",
-                    titulo_documento=f"DESCUENTOS POR CANAL ({f_desde} AL {f_hasta})",
-                )
-            elif sel == "planilla_conteo":
-                ruta_generada = generar_reporte_planilla_conteo_fisico(
-                    product_store=interfaz.product_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    conteo_ciego=bool(chk_conteo_ciego.value),
-                    filtro_ubicacion=str(filtro_ubicacion_input.value or ""),
-                )
-            elif sel == "auditoria_fisica":
-                ruta_generada = generar_reporte_auditoria_inventario_fisico(
-                    product_store=interfaz.product_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                )
-            elif sel == "kardex_sku":
-                ruta_generada = generar_reporte_kardex_producto(
-                    product_store=interfaz.product_store,
-                    product_query=str(sku_kardex_input.value or ""),
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    fecha_desde=f_desde if preset_periodo.value == "personalizado" else "",
-                    fecha_hasta=f_hasta if preset_periodo.value == "personalizado" else "",
-                )
-            elif sel == "rotacion_consumo":
-                ruta_generada = generar_reporte_rotacion_consumo(
-                    product_store=interfaz.product_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    dias=int(ventana_rotacion.value or 30),
-                )
-            elif sel == "pedidos_despacho":
-                f_trans = None if transporte_filtro.value == "TODOS" else transporte_filtro.value
-                ruta_generada = generar_reporte_pedidos_despacho(
-                    order_store=interfaz.order_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                    filtro_transporte=f_trans,
-                )
-            elif sel == "cierres_historicos":
-                ruta_generada = generar_reporte_cierres_historicos(
-                    order_store=interfaz.order_store,
-                    carpeta_destino=carpeta_informes,
-                    formato=formato,
-                    usuario=usuario_nombre,
-                )
+            params = {
+                "f_desde": f_desde,
+                "f_hasta": f_hasta,
+                "preset": preset_val,
+                "orden": str(ctrls["orden_movimientos"].value or "catalog"),
+                "modo": str(ctrls["modo_movimiento"].value or "ambos"),
+                "conteo_ciego": bool(ctrls["chk_conteo_ciego"].value),
+                "filtro_ubicacion": str(ctrls["filtro_ubicacion_input"].value or ""),
+                "sku_kardex": str(ctrls["sku_kardex_input"].value or ""),
+                "dias_rotacion": int(ctrls["ventana_rotacion"].value or 30),
+                "transporte": ctrls["transporte_filtro"].value,
+            }
+            ruta_generada = ejecutar_generacion_reporte(
+                str(tipo_reporte.value or ""),
+                interfaz=interfaz,
+                carpeta=carpeta_informes,
+                formato=formato,
+                usuario=usuario_nombre,
+                params=params,
+            )
 
             progreso.visible = False
             if ruta_generada and ruta_generada.exists():
@@ -363,7 +286,6 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
         on_click=lambda _: ejecutar_generacion("pdf"),
         tooltip="Abre el informe en el visor web para visualizar o imprimir directamente",
     )
-
     btn_excel = ft.Button(
         "Exportar Excel (.xlsx)",
         icon=ft.Icons.TABLE_CHART,
@@ -379,46 +301,26 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
         padding=16,
         content=ft.Column(
             [
-                ft.Row(
-                    [
-                        ft.Icon(ft.Icons.ASSESSMENT, size=28, color=ROJO),
-                        ft.Column(
-                            [
-                                ft.Text("Centro Unificado de Reportes", size=18, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                                ft.Text("Genera informes operativos, de stock, movimientos y auditoría para imprimir o exportar.", size=11, color=interfaz.secundario),
-                            ],
-                            spacing=2,
-                            expand=True,
-                        ),
-                    ],
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
+                _construir_encabezado_reportes(interfaz),
                 ft.Divider(color=interfaz.borde),
                 ft.Text("Parámetros del Reporte", weight=ft.FontWeight.BOLD, size=13, color=interfaz.texto),
                 tipo_reporte,
-                ft.Container(
-                    content=descripcion_reporte,
-                    padding=ft.Padding.only(left=4, bottom=6),
-                ),
-                transporte_filtro,
-                modo_movimiento,
-                orden_movimientos,
+                ft.Container(content=ctrls["descripcion_reporte"], padding=ft.Padding.only(left=4, bottom=6)),
+                ctrls["transporte_filtro"],
+                ctrls["modo_movimiento"],
+                ctrls["orden_movimientos"],
                 preset_periodo,
                 fila_fechas_custom,
-                sku_kardex_input,
-                chk_conteo_ciego,
-                filtro_ubicacion_input,
-                ventana_rotacion,
+                ctrls["sku_kardex_input"],
+                ctrls["chk_conteo_ciego"],
+                ctrls["filtro_ubicacion_input"],
+                ctrls["ventana_rotacion"],
                 ft.Container(height=6),
                 progreso,
                 estado_indicador,
                 ft.Container(height=10),
                 ft.Text("Selecciona el formato de salida:", size=12, weight=ft.FontWeight.W_500, color=interfaz.texto),
-                ft.Row(
-                    [btn_pdf, btn_excel],
-                    spacing=12,
-                    alignment=ft.MainAxisAlignment.START,
-                ),
+                ft.Row([btn_pdf, btn_excel], spacing=12, alignment=ft.MainAxisAlignment.START),
             ],
             spacing=10,
             tight=True,
@@ -428,10 +330,7 @@ def mostrar_centro_reportes(interfaz: Any) -> None:
 
     dialogo = ft.AlertDialog(
         content=contenido,
-        actions=[
-            interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog()),
-        ],
+        actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
         actions_alignment=ft.MainAxisAlignment.END,
     )
-
     interfaz.page.show_dialog(dialogo)

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import flet as ft
 
+from ...app_config import guardar_correo_cierre, obtener_correo_cierre_guardado
 from ...design import par_accion_tarjeta
 from ...theme import ROJO
 from .cierre_operario_exec import (
@@ -22,8 +24,8 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         return
 
     mod_gui = sys.modules.get("src.flet_gui")
-    obtener_correo_fn = getattr(mod_gui, "obtener_correo_cierre_guardado", lambda: "")
-    guardar_correo_fn = getattr(mod_gui, "guardar_correo_cierre", lambda _c: None)
+    obtener_correo_fn = getattr(mod_gui, "obtener_correo_cierre_guardado", obtener_correo_cierre_guardado)
+    guardar_correo_fn = getattr(mod_gui, "guardar_correo_cierre", guardar_correo_cierre)
 
     pedidos_pendientes = interfaz.order_store.listar_pedidos_pendientes_cierre()
     cierres_anteriores = interfaz.order_store.listar_cierres(limit=25)
@@ -201,14 +203,5 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
 
 
 __all__ = [
-    "_get_stock_manager_cls",
-    "application_root",
-    "crear_backup_sistema",
-    "generar_hoja_ruta_pdf",
-    "gestionar_hoja_ruta_cierre",
     "mostrar_dialogo_cierre_jornada",
-    "parsear_canje_excel",
-    "parsear_pedido_mercado_libre",
-    "parsear_remito",
-    "resolver_archivos_cierre",
 ]

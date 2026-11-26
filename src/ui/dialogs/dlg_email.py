@@ -1,19 +1,27 @@
-"""Diálogos y utilidades para envío y compartición de informes por correo electrónico y WhatsApp."""
+"""Diálogo de composición de correo electrónico y fachada de compartición."""
+
+from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-import webbrowser
+from typing import Any, Callable
 
 import flet as ft
 
-from ..theme import ROJO
 from ...auth import USER_ROLES
 from ...integrations.email_sender import despachar_correo, guardar_config_email, obtener_config_email
 from ...paths import application_root
+from ..app_config import guardar_correo_cierre, obtener_correo_cierre_guardado
+from ..theme import ROJO
+from .email_cierre import enviar_correo_cierre, mostrar_dialogo_compartir_cierre
+from .whatsapp_share import compartir_whatsapp, compartir_whatsapp_pedido
 
 
-def compartir_correo(interfaz: Any, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
+def compartir_correo(
+    interfaz: Any,
+    _evento: ft.Event | None = None,
+    ruta_especifica: Path | None = None,
+) -> None:
     """Abre el diálogo de envío de correo para un archivo específico o el seleccionado."""
     if not interfaz.exigir_roles(*USER_ROLES):
         return
@@ -21,152 +29,110 @@ def compartir_correo(interfaz: Any, _evento: ft.Event | None = None, ruta_especi
     mostrar_dialogo_enviar_correo(interfaz, archivos_iniciales=archivos_init)
 
 
-def _abrir_url_whatsapp(interfaz: Any, url: str) -> None:
-    es_web = bool(getattr(getattr(interfaz, "page", None), "web", False))
-    if es_web and hasattr(interfaz, "abrir_url_en_navegador"):
-        interfaz.abrir_url_en_navegador(url)
-        return
-    if not webbrowser.open(url):
-        raise RuntimeError("No se pudo abrir WhatsApp Web.")
+def _recopilar_adjuntos_iniciales(interfaz: Any, archivos_iniciales: list[Path] | None) -> list[Path]:
+    adjuntos: list[Path] = []
+    if archivos_iniciales:
+        for p in archivos_iniciales:
+            if p and p.exists() and p not in adjuntos:
+                adjuntos.append(p)
+    elif interfaz.informe_seleccionado and interfaz.informe_seleccionado.exists():
+        adjuntos.append(interfaz.informe_seleccionado)
+    elif interfaz.informes:
+        adjuntos.append(interfaz.informes[0])
+    return adjuntos
 
 
-def compartir_whatsapp(interfaz: Any, _evento: ft.Event | None = None, ruta_especifica: Path | None = None) -> None:
-    """Abre la carpeta del informe y redirige a WhatsApp Web."""
-    if not interfaz.exigir_roles(*USER_ROLES):
-        return
-    ruta = ruta_especifica or interfaz.ruta_informe()
-    if ruta is None:
-        return
-    try:
-        if not bool(getattr(getattr(interfaz, "page", None), "web", False)):
-            interfaz.abrir_carpeta_informe(ruta)
-        _abrir_url_whatsapp(interfaz, "https://web.whatsapp.com/")
-    except (OSError, RuntimeError) as error:
-        interfaz.notificar(f"No se pudo abrir WhatsApp o el archivo:\n{error}")
+def _asunto_por_defecto(adjuntos: list[Path]) -> str:
+    if adjuntos:
+        primero = adjuntos[0].name
+        return (
+            f"Pedido a Fábrica: {primero}"
+            if primero.startswith("Pedido_Fabrica")
+            else f"Informe de Depósito: {primero}"
+        )
+    return f"Informe de Depósito - {datetime.now().strftime('%d/%m/%Y')}"
 
 
-def compartir_whatsapp_pedido(interfaz: Any, pedido: Any, telefono: str = "") -> None:
-    """Abre WhatsApp Web con un mensaje preformateado con el estado del remito y bultos."""
-    if not interfaz.exigir_roles(*USER_ROLES):
-        return
-    import urllib.parse
-    cliente = getattr(pedido, "cliente", "Cliente") or "Cliente"
-    remito = getattr(pedido, "nota_pedido", "") or ""
-    bultos = getattr(pedido, "bultos", 1) or 1
-    logistica = getattr(pedido, "logistica", "") or "A convenir"
-    guia = getattr(pedido, "numero_guia", "") or ""
-
-    lineas = [
-        f"Hola *{cliente}*, te informamos el estado de tu pedido:",
-        f"📋 *Remito:* {remito}",
-        f"📦 *Bultos preparados:* {bultos}",
-        f"🚚 *Logística / Transporte:* {logistica}",
-    ]
-    if guia:
-        lineas.append(f"🔖 *N° de Guía:* {guia}")
-    lineas.append("\n_StockAgent - Control de Inventario y Despachos_")
-
-    texto_encoded = urllib.parse.quote("\n".join(lineas))
-    tel_clean = "".join(c for c in str(telefono) if c.isdigit())
-    if tel_clean:
-        url = f"https://web.whatsapp.com/send?phone={tel_clean}&text={texto_encoded}"
-    else:
-        url = f"https://web.whatsapp.com/send?text={texto_encoded}"
-
-    try:
-        _abrir_url_whatsapp(interfaz, url)
-    except Exception as error:
-        interfaz.notificar(f"No se pudo abrir WhatsApp:\n{error}")
-
-
-def enviar_correo_cierre(
-    interfaz: Any,
-    destinatarios: str,
-    cierre_id: int,
-    archivo_pdf: Path | None,
-    archivo_excel: Path | None,
-    resumen_pedidos: str,
-    usuario: str,
-    archivo_hoja_ruta: Path | None = None,
-    alerta_stock: str = "",
-) -> None:
-    """Envía automáticamente el informe y hoja de ruta tras registrar un cierre de jornada."""
-    dest_limpio = destinatarios.strip()
-    if not dest_limpio:
-        return
-    from ..app_config import guardar_correo_cierre
-    guardar_correo_cierre(dest_limpio)
-    fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-    asunto_txt = f"Cierre de Jornada #{cierre_id} - {fecha_str} ({resumen_pedidos})"
-    lineas_cuerpo = [
-        "Estimados,",
-        "",
-        f"Se ha completado el Cierre de Jornada #{cierre_id} en el sistema de depósito.",
-        f"• Fecha y Hora: {fecha_str}",
-        f"• Responsable: {usuario}",
-        f"• Resumen consolidado: {resumen_pedidos}",
-        "",
-        "Archivos oficiales adjuntos generados:",
-    ]
-    adjuntos_validos: list[Path] = []
-    for arch, desc in [
-        (archivo_pdf, "PDF Cierre de Descuentos"),
-        (archivo_excel, "Excel Descuentos"),
-        (archivo_hoja_ruta, "Manifiesto / Hoja de Ruta de Despacho"),
-    ]:
-        if arch and arch.exists():
-            lineas_cuerpo.append(f"• {desc}: {arch.name}")
-            adjuntos_validos.append(arch)
-
-    if alerta_stock:
-        lineas_cuerpo.append("\n⚠️ ALERTAS DE INVENTARIO POST-CIERRE:")
-        lineas_cuerpo.append(alerta_stock)
-    lineas_cuerpo.append("\nLos archivos se encuentran guardados y respaldados en el servidor.")
-
-    cuerpo_txt = "\n".join(lineas_cuerpo)
-    dest_lista = [d.strip() for d in dest_limpio.replace(";", ",").split(",") if d.strip()]
-
-    ok, msg = despachar_correo(
-        destinatarios=dest_lista,
-        asunto=asunto_txt,
-        cuerpo=cuerpo_txt,
-        adjuntos=adjuntos_validos,
+def _cuerpo_por_defecto(interfaz: Any) -> str:
+    usuario_str = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
+    return "\n".join(
+        [
+            "Estimados,",
+            "",
+            "Adjunto los documentos e informes solicitados del sistema de depósito.",
+            "",
+            f"Saludos cordiales,\n{usuario_str}",
+        ]
     )
-    if ok:
-        interfaz.notificar(f"✅ {msg}")
-    else:
-        interfaz.notificar(f"⚠️ {msg}")
 
 
-def mostrar_dialogo_compartir_cierre(
+def _construir_tarjeta_adjunto(
     interfaz: Any,
-    cierre_id: int,
-    archivo_pdf: Path | None,
-    archivo_excel: Path | None,
-    resumen_pedidos: str,
-    usuario: str,
-    archivo_hoja_ruta: Path | None = None,
-) -> None:
-    """Prepara el diálogo de correo con los archivos del cierre de jornada precargados."""
-    fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-    asunto = f"Cierre de Jornada #{cierre_id} - {fecha_str} ({resumen_pedidos})"
-    lineas_cuerpo = [
-        "Estimados,",
-        "",
-        f"Se ha completado el Cierre de Jornada #{cierre_id} en el sistema de depósito.",
-        f"• Fecha y Hora: {fecha_str}",
-        f"• Responsable: {usuario}",
-        f"• Resumen consolidado: {resumen_pedidos}",
-        "",
-        "Archivos adjuntos para control y archivo contable.",
-    ]
-    archivos = [p for p in [archivo_pdf, archivo_excel, archivo_hoja_ruta] if p and p.exists()]
-    mostrar_dialogo_enviar_correo(
-        interfaz,
-        archivos_iniciales=archivos,
-        asunto_inicial=asunto,
-        cuerpo_inicial="\n".join(lineas_cuerpo),
-        titulo_dialogo=f"Enviar Cierre #{cierre_id} por Correo",
+    archivo: Path,
+    on_quitar: Callable[[Path], None],
+) -> ft.Container:
+    ext = archivo.suffix.lower()
+    icono = (
+        ft.Icons.PICTURE_AS_PDF
+        if ext == ".pdf"
+        else (ft.Icons.TABLE_CHART if ext in (".xlsx", ".xls") else ft.Icons.ATTACH_FILE)
+    )
+    color_ico = (
+        ft.Colors.RED_600
+        if ext == ".pdf"
+        else (ft.Colors.GREEN_700 if ext in (".xlsx", ".xls") else ft.Colors.BLUE_GREY_600)
+    )
+    try:
+        tamano_txt = f"{round(archivo.stat().st_size / 1024, 1)} KB"
+    except Exception:
+        tamano_txt = ""
+
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(icono, color=color_ico, size=18),
+                ft.Text(
+                    archivo.name,
+                    size=12,
+                    weight=ft.FontWeight.BOLD,
+                    color=interfaz.texto,
+                    expand=True,
+                    no_wrap=True,
+                ),
+                ft.Text(tamano_txt, size=11, color=interfaz.secundario),
+                ft.IconButton(
+                    icon=ft.Icons.CLOSE,
+                    icon_size=16,
+                    icon_color=ft.Colors.RED_400,
+                    tooltip="Quitar archivo adjunto",
+                    on_click=lambda _e, arch=archivo: on_quitar(arch),
+                ),
+            ],
+            spacing=6,
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        ),
+        bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.WHITE) if interfaz.modo_oscuro else ft.Colors.GREY_100,
+        padding=ft.Padding.symmetric(horizontal=8, vertical=2),
+        border_radius=6,
+    )
+
+
+def _construir_placeholder_sin_adjuntos(interfaz: Any) -> ft.Container:
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.ATTACH_FILE, color=ft.Colors.AMBER_700, size=18),
+                ft.Text(
+                    "No hay archivos adjuntos. Selecciona uno abajo o examina tu PC.",
+                    size=12,
+                    color=ft.Colors.AMBER_300 if interfaz.modo_oscuro else ft.Colors.AMBER_900,
+                ),
+            ],
+            spacing=6,
+        ),
+        bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.AMBER_500) if interfaz.modo_oscuro else ft.Colors.AMBER_50,
+        padding=ft.Padding.symmetric(vertical=6, horizontal=8),
+        border_radius=6,
     )
 
 
@@ -182,18 +148,7 @@ def mostrar_dialogo_enviar_correo(
     if not interfaz.exigir_roles(*USER_ROLES):
         return
 
-    from ..app_config import guardar_correo_cierre, obtener_correo_cierre_guardado
-
-    adjuntos_lista: list[Path] = []
-    if archivos_iniciales:
-        for p in archivos_iniciales:
-            if p and p.exists() and p not in adjuntos_lista:
-                adjuntos_lista.append(p)
-    elif interfaz.informe_seleccionado and interfaz.informe_seleccionado.exists():
-        adjuntos_lista.append(interfaz.informe_seleccionado)
-    elif interfaz.informes:
-        adjuntos_lista.append(interfaz.informes[0])
-
+    adjuntos_lista = _recopilar_adjuntos_iniciales(interfaz, archivos_iniciales)
     cfg_email = obtener_config_email()
     correo_guardado = (
         destinatarios_iniciales
@@ -209,156 +164,65 @@ def mostrar_dialogo_enviar_correo(
         expand=True,
         dense=True,
     )
-
-    if not asunto_inicial:
-        if adjuntos_lista:
-            primero = adjuntos_lista[0].name
-            asunto_inicial = (
-                f"Pedido a Fábrica: {primero}"
-                if primero.startswith("Pedido_Fabrica")
-                else f"Informe de Depósito: {primero}"
-            )
-        else:
-            asunto_inicial = f"Informe de Depósito - {datetime.now().strftime('%d/%m/%Y')}"
-
     asunto_input = ft.TextField(
         label="Asunto",
-        value=asunto_inicial,
+        value=asunto_inicial or _asunto_por_defecto(adjuntos_lista),
         prefix_icon=ft.Icons.SUBJECT,
         expand=True,
         dense=True,
     )
-
-    if not cuerpo_inicial:
-        lineas = [
-            "Estimados,",
-            "",
-            "Adjunto los documentos e informes solicitados del sistema de depósito.",
-        ]
-        usuario_str = interfaz.usuario_actual.username if interfaz.usuario_actual else "Operador"
-        lineas.extend(["", f"Saludos cordiales,\n{usuario_str}"])
-        cuerpo_inicial = "\n".join(lineas)
-
     cuerpo_input = ft.TextField(
         label="Mensaje",
-        value=cuerpo_inicial,
+        value=cuerpo_inicial or _cuerpo_por_defecto(interfaz),
         multiline=True,
         min_lines=3,
         max_lines=6,
         dense=True,
     )
-
     msg_error = ft.Text("", size=11, color=ft.Colors.RED_400)
     contenedor_adjuntos = ft.Column(spacing=4)
-    dropdown_informes = ft.Dropdown(
-        label="Informes recientes del sistema",
-        options=[],
-        expand=True,
-        dense=True,
-    )
 
     try:
         interfaz.actualizar_listas()
     except Exception:
         pass
-    opciones_inf = []
-    for inf in interfaz.informes[:25]:
-        if inf.exists():
-            opciones_inf.append(ft.dropdown.Option(key=str(inf), text=inf.name))
-    dropdown_informes.options = opciones_inf
-    if opciones_inf:
-        dropdown_informes.value = opciones_inf[0].key
+    opciones_inf = [
+        ft.dropdown.Option(key=str(inf), text=inf.name)
+        for inf in interfaz.informes[:25]
+        if inf.exists()
+    ]
+    dropdown_informes = ft.Dropdown(
+        label="Informes recientes del sistema",
+        options=opciones_inf,
+        value=opciones_inf[0].key if opciones_inf else None,
+        expand=True,
+        dense=True,
+    )
+
+    def _quitar_adjunto(arch_quitar: Path) -> None:
+        if arch_quitar in adjuntos_lista:
+            adjuntos_lista.remove(arch_quitar)
+            render_adjuntos()
+            interfaz.page.update()
 
     def render_adjuntos() -> None:
         contenedor_adjuntos.controls.clear()
         if not adjuntos_lista:
-            contenedor_adjuntos.controls.append(
-                ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.ATTACH_FILE, color=ft.Colors.AMBER_700, size=18),
-                            ft.Text(
-                                "No hay archivos adjuntos. Selecciona uno abajo o examina tu PC.",
-                                size=12,
-                                color=ft.Colors.AMBER_300 if interfaz.modo_oscuro else ft.Colors.AMBER_900,
-                            ),
-                        ],
-                        spacing=6,
-                    ),
-                    bgcolor=(
-                        ft.Colors.with_opacity(0.14, ft.Colors.AMBER_500)
-                        if interfaz.modo_oscuro
-                        else ft.Colors.AMBER_50
-                    ),
-                    padding=ft.Padding.symmetric(vertical=6, horizontal=8),
-                    border_radius=6,
-                )
-            )
-        else:
-            for p in adjuntos_lista:
-                ext = p.suffix.lower()
-                icono = ft.Icons.PICTURE_AS_PDF if ext == ".pdf" else (
-                    ft.Icons.TABLE_CHART if ext in (".xlsx", ".xls") else ft.Icons.ATTACH_FILE
-                )
-                color_ico = ft.Colors.RED_600 if ext == ".pdf" else (
-                    ft.Colors.GREEN_700 if ext in (".xlsx", ".xls") else ft.Colors.BLUE_GREY_600
-                )
-                try:
-                    tamano_kb = round(p.stat().st_size / 1024, 1)
-                    tamano_txt = f"{tamano_kb} KB"
-                except Exception:
-                    tamano_txt = ""
-
-                def quitar_archivo(_e: ft.Event, arch_quitar=p) -> None:
-                    if arch_quitar in adjuntos_lista:
-                        adjuntos_lista.remove(arch_quitar)
-                        render_adjuntos()
-                        interfaz.page.update()
-
-                contenedor_adjuntos.controls.append(
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                ft.Icon(icono, color=color_ico, size=18),
-                                ft.Text(
-                                    p.name,
-                                    size=12,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=interfaz.texto,
-                                    expand=True,
-                                    no_wrap=True,
-                                ),
-                                ft.Text(tamano_txt, size=11, color=interfaz.secundario),
-                                ft.IconButton(
-                                    icon=ft.Icons.CLOSE,
-                                    icon_size=16,
-                                    icon_color=ft.Colors.RED_400,
-                                    tooltip="Quitar archivo adjunto",
-                                    on_click=quitar_archivo,
-                                ),
-                            ],
-                            spacing=6,
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        bgcolor=(
-                            ft.Colors.with_opacity(0.06, ft.Colors.WHITE)
-                            if interfaz.modo_oscuro
-                            else ft.Colors.GREY_100
-                        ),
-                        padding=ft.Padding.symmetric(horizontal=8, vertical=2),
-                        border_radius=6,
-                    )
-                )
+            contenedor_adjuntos.controls.append(_construir_placeholder_sin_adjuntos(interfaz))
+            return
+        for arch in adjuntos_lista:
+            contenedor_adjuntos.controls.append(_construir_tarjeta_adjunto(interfaz, arch, _quitar_adjunto))
 
     render_adjuntos()
 
     def agregar_desde_dropdown(_e: ft.Event) -> None:
-        if dropdown_informes.value:
-            ruta_elegida = Path(dropdown_informes.value)
-            if ruta_elegida.exists() and ruta_elegida not in adjuntos_lista:
-                adjuntos_lista.append(ruta_elegida)
-                render_adjuntos()
-                interfaz.page.update()
+        if not dropdown_informes.value:
+            return
+        ruta_elegida = Path(dropdown_informes.value)
+        if ruta_elegida.exists() and ruta_elegida not in adjuntos_lista:
+            adjuntos_lista.append(ruta_elegida)
+            render_adjuntos()
+            interfaz.page.update()
 
     async def examinar_pc(_e: ft.Event) -> None:
         try:
@@ -369,9 +233,9 @@ def mostrar_dialogo_enviar_correo(
                 titulo="Seleccionar archivo(s) para adjuntar al correo",
             )
             if subidos:
-                for s in subidos:
-                    if s not in adjuntos_lista:
-                        adjuntos_lista.append(s)
+                for subido in subidos:
+                    if subido not in adjuntos_lista:
+                        adjuntos_lista.append(subido)
                 render_adjuntos()
                 interfaz.page.update()
         except Exception as err:
@@ -391,28 +255,22 @@ def mostrar_dialogo_enviar_correo(
 
         rol_actual = getattr(getattr(interfaz, "usuario_actual", None), "role", "")
         if rol_actual in ("operador", "administrador", "master"):
-            from ..app_config import guardar_correo_cierre
             guardar_correo_cierre(dest_raw)
             cfg = obtener_config_email()
             cfg["destinatarios_guardados"] = dest_raw
             guardar_config_email(cfg)
 
         interfaz.page.pop_dialog()
-
         ok, mensaje = despachar_correo(
             destinatarios=dest_limpios,
             asunto=asunto_final,
             cuerpo=cuerpo_final,
             adjuntos=adjuntos_lista,
         )
-        if ok:
-            interfaz.notificar(f"✅ {mensaje}")
-        else:
-            interfaz.notificar(f"⚠️ {mensaje}")
+        interfaz.notificar(f"✅ {mensaje}" if ok else f"⚠️ {mensaje}")
 
-    es_master_email = getattr(getattr(interfaz, "usuario_actual", None), "role", "") == "master"
     acciones_correo: list[ft.Control] = []
-    if es_master_email:
+    if getattr(getattr(interfaz, "usuario_actual", None), "role", "") == "master":
         acciones_correo.append(
             ft.IconButton(
                 icon=ft.Icons.SETTINGS,
@@ -445,20 +303,11 @@ def mostrar_dialogo_enviar_correo(
                     ft.Divider(height=10),
                     ft.Text("Agregar más archivos:", size=11, weight=ft.FontWeight.BOLD, color=interfaz.secundario),
                     ft.Row(
-                        [
-                            dropdown_informes,
-                            ft.Button("Adjuntar", icon=ft.Icons.ADD, on_click=agregar_desde_dropdown),
-                        ],
+                        [dropdown_informes, ft.Button("Adjuntar", icon=ft.Icons.ADD, on_click=agregar_desde_dropdown)],
                         spacing=6,
                     ),
                     ft.Row(
-                        [
-                            ft.Button(
-                                "Examinar en mi PC...",
-                                icon=ft.Icons.FOLDER_OPEN,
-                                on_click=examinar_pc,
-                            ),
-                        ],
+                        [ft.Button("Examinar en mi PC...", icon=ft.Icons.FOLDER_OPEN, on_click=examinar_pc)],
                         alignment=ft.MainAxisAlignment.END,
                     ),
                     ft.Divider(height=10),
@@ -475,3 +324,13 @@ def mostrar_dialogo_enviar_correo(
         actions=acciones_correo,
     )
     interfaz.page.show_dialog(dialogo)
+
+
+__all__ = [
+    "compartir_correo",
+    "compartir_whatsapp",
+    "compartir_whatsapp_pedido",
+    "enviar_correo_cierre",
+    "mostrar_dialogo_compartir_cierre",
+    "mostrar_dialogo_enviar_correo",
+]

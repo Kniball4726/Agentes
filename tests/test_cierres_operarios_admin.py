@@ -7,6 +7,7 @@ import flet as ft
 from src.auth import User, UserStore
 from src.orders import OrderStore, Pedido
 from src.ui.dialogs.dlg_cierre import (
+    mostrar_dialogo_cierre_jornada,
     mostrar_dialogo_cierres_operarios,
     mostrar_detalle_pedidos_cierre,
 )
@@ -292,6 +293,39 @@ class TestCierresOperariosAdmin(unittest.TestCase):
         textos = extraer_textos(lista_cierres.controls[0])
         self.assertTrue(any("lucas" in t.lower() for t in textos))
         self.assertFalse(any("esteban" in t.lower() for t in textos))
+
+    def test_abrir_dialogo_cierre_jornada_operador_no_falla_sin_sys(self):
+        """Verifica que el diálogo de Cierre de Jornada de operador abra correctamente sin NameError de sys."""
+        from unittest.mock import patch
+
+        store = self.interfaz.order_store
+        store.crear_cliente("Cliente Cierre")
+        store.registrar_pedido(
+            nota_pedido="REM-500",
+            numero_pedido="PED-500",
+            cliente="Cliente Cierre",
+            bultos=1,
+            logistica="Transporte",
+            armador="operador1",
+            tipo_archivo="pdf",
+            nombre_archivo="remito_500.pdf",
+            agregado=False,
+            articulos_descontados=4,
+            resumen_items="4x Producto Test",
+        )
+        self.interfaz.usuario_actual = User(id=2, username="operador1", role="operador", active=True)
+
+        with patch(
+            "src.ui.dialogs.cierre.dlg_cierre_operario.obtener_correo_cierre_guardado",
+            return_value="cierre@empresa.com",
+        ):
+            mostrar_dialogo_cierre_jornada(self.interfaz)
+
+        self.assertEqual(len(self.interfaz.page.dialogos), 1)
+        dlg = self.interfaz.page.dialogos[0]
+        self.assertIsInstance(dlg, ft.AlertDialog)
+        textos = extraer_textos(dlg.content)
+        self.assertTrue(any("1 Pedidos Acumulados" in t for t in textos))
 
 
 if __name__ == "__main__":

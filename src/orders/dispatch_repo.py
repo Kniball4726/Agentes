@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from ..core.exceptions import OrderStoreError
+from .dispatch_qr import (
+    construir_respuesta_escaneo,
+    extraer_datos_qr_despacho as _extraer_datos_qr_despacho,
+    extraer_remito_de_codigo as _extraer_remito_de_codigo,
+)
 from .models import ESTADOS_DESPACHO, _COLUMNAS_DESPACHO, Pedido
 from .protocols import AuditLogFn, MapPedidoFn, OrderConnectFn
 
@@ -15,6 +19,8 @@ _COLUMNAS_SELECT_PEDIDO = (
     "resumen_items, created_at, estado, fecha_retiro, archivo_descuento, "
     f"cierre_id, cierre_mercado_id, archivo_hash, canal, {_COLUMNAS_DESPACHO}"
 )
+
+_AHORA_SQL = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
 
 
 class DispatchRepository:
@@ -33,30 +39,31 @@ class DispatchRepository:
     @staticmethod
     def extraer_remito_de_codigo(texto: str) -> str:
         """Extrae el número de remito de un payload QR o texto escaneado."""
-        limpio = (texto or "").strip()
-        coincidencia = re.search(r"REMITO:\s*([^|]+)", limpio, re.IGNORECASE)
-        return coincidencia.group(1).strip() if coincidencia else limpio
+        return _extraer_remito_de_codigo(texto)
 
     @staticmethod
     def extraer_datos_qr_despacho(texto: str) -> dict[str, Any]:
         """Extrae remito, índice de bulto y total de bultos de un código QR de rótulo o texto plano."""
-        limpio = (texto or "").strip()
-        remito = DispatchRepository.extraer_remito_de_codigo(limpio)
-        bulto_num: int | None = None
-        total_bultos: int | None = None
-        coinc_bulto = re.search(r"BULTOS?:\s*(\d+)\s*/\s*(\d+)", limpio, re.IGNORECASE)
-        if coinc_bulto:
-            try:
-                bulto_num = int(coinc_bulto.group(1))
-                total_bultos = int(coinc_bulto.group(2))
-            except ValueError:
-                bulto_num = None
-                total_bultos = None
-        return {
-            "remito": remito,
-            "bulto_num": bulto_num,
-            "total_bultos": total_bultos,
-        }
+        return _extraer_datos_qr_despacho(texto)
+
+    @staticmethod
+    def _respuesta_escaneo(**kwargs: Any) -> dict[str, Any]:
+        return construir_respuesta_escaneo(**kwargs)
+
+    def _obtener_pedido_por_id_en_conn(self, connection: Any, pedido_id: int) -> Pedido:
+        fila = connection.execute(
+            f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
+            (pedido_id,),
+        ).fetchone()
+        return self._map_pedido(fila)
+
+    def _marcar_despachado_en_tx(self, connection: Any, pedido_id: int, usuario: str) -> Pedido:
+        connection.execute(
+            f"UPDATE pedidos SET estado_despacho = 'despachado', despachado_at = {_AHORA_SQL}, "
+            "despachado_por = ?, entregado_at = '', entregado_por = '' WHERE id = ?",
+            (usuario, pedido_id),
+        )
+        return self._obtener_pedido_por_id_en_conn(connection, pedido_id)
 
     def listar_pedidos_por_estado_despacho(
         self,
@@ -162,16 +169,11 @@ class DispatchRepository:
                     f"Primero debe marcarse como '{ESTADOS_DESPACHO[idx_actual + 1]}'."
                 )
 
-            ahora = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
             if nuevo_estado == "despachado":
-                connection.execute(
-                    f"UPDATE pedidos SET estado_despacho = ?, despachado_at = {ahora}, despachado_por = ?, "
-                    "entregado_at = '', entregado_por = '' WHERE id = ?",
-                    (nuevo_estado, usuario, pedido_id),
-                )
+                self._marcar_despachado_en_tx(connection, pedido_id, usuario)
             elif nuevo_estado == "entregado":
                 connection.execute(
-                    f"UPDATE pedidos SET estado_despacho = ?, entregado_at = {ahora}, entregado_por = ? WHERE id = ?",
+                    f"UPDATE pedidos SET estado_despacho = ?, entregado_at = {_AHORA_SQL}, entregado_por = ? WHERE id = ?",
                     (nuevo_estado, usuario, pedido_id),
                 )
             else:
@@ -192,11 +194,7 @@ class DispatchRepository:
             detalle=f"Remito {remito}: {actual} → {nuevo_estado}",
         )
         with self._connect() as connection:
-            fila = connection.execute(
-                f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
-                (pedido_id,),
-            ).fetchone()
-        return self._map_pedido(fila)
+            return self._obtener_pedido_por_id_en_conn(connection, pedido_id)
 
     def avanzar_estado_lote(
         self,
@@ -258,30 +256,6 @@ class DispatchRepository:
         except Exception as e:
             return False, str(e), pedido
 
-    @staticmethod
-    def _respuesta_escaneo(
-        *,
-        ok: bool,
-        mensaje: str,
-        pedido: Pedido | None = None,
-        bultos_escaneados: list[int] | None = None,
-        bultos_esperados: int = 0,
-        completado: bool = False,
-        duplicado: bool = False,
-        requiere_confirmacion_bultos: bool = False,
-    ) -> dict[str, Any]:
-        """Construye el payload estándar de respuesta para un escaneo QR de despacho."""
-        return {
-            "ok": ok,
-            "completado": completado,
-            "duplicado": duplicado,
-            "requiere_confirmacion_bultos": requiere_confirmacion_bultos,
-            "mensaje": mensaje,
-            "pedido": pedido,
-            "bultos_escaneados": bultos_escaneados if bultos_escaneados is not None else [],
-            "bultos_esperados": bultos_esperados,
-        }
-
     def _validar_escaneo_en_tx(
         self,
         connection: Any,
@@ -295,14 +269,14 @@ class DispatchRepository:
             (remito,),
         ).fetchone()
         if row is None:
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 mensaje=f"No se encontró ningún pedido con el remito '{remito}'.",
             )
 
         pedido = self._map_pedido(row)
         if pedido.estado == "anulado":
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 pedido=pedido,
                 bultos_esperados=pedido.bultos,
@@ -310,7 +284,7 @@ class DispatchRepository:
             )
 
         if pedido.estado_despacho != "armado":
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 duplicado=True,
                 pedido=pedido,
@@ -330,7 +304,7 @@ class DispatchRepository:
 
         if bulto_num is None:
             if esperados > 1:
-                return None, None, 0, [], self._respuesta_escaneo(
+                return None, None, 0, [], construir_respuesta_escaneo(
                     ok=True,
                     requiere_confirmacion_bultos=True,
                     pedido=pedido,
@@ -344,7 +318,7 @@ class DispatchRepository:
             bulto_num = 1
 
         if total_qr is not None and total_qr != esperados:
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 pedido=pedido,
                 bultos_escaneados=escaneados,
@@ -356,7 +330,7 @@ class DispatchRepository:
             )
 
         if bulto_num < 1 or bulto_num > esperados:
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 pedido=pedido,
                 bultos_escaneados=escaneados,
@@ -368,7 +342,7 @@ class DispatchRepository:
             )
 
         if bulto_num in escaneados:
-            return None, None, 0, [], self._respuesta_escaneo(
+            return None, None, 0, [], construir_respuesta_escaneo(
                 ok=False,
                 duplicado=True,
                 pedido=pedido,
@@ -391,14 +365,12 @@ class DispatchRepository:
         datos = self.extraer_datos_qr_despacho(codigo_qr_o_remito)
         remito = str(datos["remito"] or "").strip()
         if not remito:
-            return self._respuesta_escaneo(
+            return construir_respuesta_escaneo(
                 ok=False,
                 mensaje="Código vacío. Escanee el QR del rótulo o ingrese un número de remito.",
             )
 
-        ahora_sql = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
         auditoria_detalle = ""
-
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             pedido, bulto_num, esperados, escaneados, error_resp = self._validar_escaneo_en_tx(
@@ -411,7 +383,7 @@ class DispatchRepository:
             connection.execute(
                 f"""
                 INSERT INTO despacho_bultos_escaneados (pedido_id, bulto_num, total_bultos, escaneado_por, escaneado_at)
-                VALUES (?, ?, ?, ?, {ahora_sql})
+                VALUES (?, ?, ?, ?, {_AHORA_SQL})
                 """,
                 (pedido.id, bulto_num, esperados, usuario),
             )
@@ -419,16 +391,7 @@ class DispatchRepository:
             escaneados.sort()
 
             if len(escaneados) >= esperados:
-                connection.execute(
-                    f"UPDATE pedidos SET estado_despacho = 'despachado', despachado_at = {ahora_sql}, "
-                    "despachado_por = ?, entregado_at = '', entregado_por = '' WHERE id = ?",
-                    (usuario, pedido.id),
-                )
-                fila_upd = connection.execute(
-                    f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
-                    (pedido.id,),
-                ).fetchone()
-                pedido_upd = self._map_pedido(fila_upd)
+                pedido_upd = self._marcar_despachado_en_tx(connection, pedido.id, usuario)
                 auditoria_detalle = (
                     f"Remito {pedido.nota_pedido}: armado → despachado "
                     f"(QR verificado: {len(escaneados)}/{esperados} bulto(s))"
@@ -438,7 +401,7 @@ class DispatchRepository:
 
         if auditoria_detalle:
             self._audit(usuario=usuario, accion="ESTADO_DESPACHO", detalle=auditoria_detalle)
-            return self._respuesta_escaneo(
+            return construir_respuesta_escaneo(
                 ok=True,
                 completado=True,
                 pedido=pedido_upd,
@@ -451,7 +414,7 @@ class DispatchRepository:
             )
 
         faltantes = esperados - len(escaneados)
-        return self._respuesta_escaneo(
+        return construir_respuesta_escaneo(
             ok=True,
             pedido=pedido_upd,
             bultos_escaneados=escaneados,
@@ -476,7 +439,6 @@ class DispatchRepository:
         if cant < 1:
             return False, "La cantidad de bultos debe ser al menos 1.", None
 
-        ahora_sql = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -510,20 +472,11 @@ class DispatchRepository:
                     f"""
                     INSERT OR IGNORE INTO despacho_bultos_escaneados
                         (pedido_id, bulto_num, total_bultos, escaneado_por, escaneado_at)
-                    VALUES (?, ?, ?, ?, {ahora_sql})
+                    VALUES (?, ?, ?, ?, {_AHORA_SQL})
                     """,
                     (pedido.id, b_idx, esperados, usuario),
                 )
-            connection.execute(
-                f"UPDATE pedidos SET estado_despacho = 'despachado', despachado_at = {ahora_sql}, "
-                "despachado_por = ?, entregado_at = '', entregado_por = '' WHERE id = ?",
-                (usuario, pedido.id),
-            )
-            fila_upd = connection.execute(
-                f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE id = ?",
-                (pedido.id,),
-            ).fetchone()
-            pedido_upd = self._map_pedido(fila_upd)
+            pedido_upd = self._marcar_despachado_en_tx(connection, pedido.id, usuario)
 
         self._audit(
             usuario=usuario,
