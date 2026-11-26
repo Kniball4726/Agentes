@@ -188,7 +188,10 @@ class DocumentViewerService:
             return
 
         try:
-            os.startfile(ruta_pdf)  # type: ignore[attr-defined]
+            if hasattr(os, "startfile"):
+                os.startfile(ruta_pdf)  # type: ignore[attr-defined]
+            else:
+                webbrowser.open(ruta_pdf.resolve().as_uri())
         except OSError as error:
             self._notificar(f"No se pudo abrir el manual:\n{error}")
 

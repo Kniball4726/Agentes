@@ -2,14 +2,33 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+import posixpath
 import re
+import sys
 from typing import Iterable
 import urllib.parse
 
 _RE_COMPONENTE_INVALIDO = re.compile(r"[^A-Za-z0-9._-]+")
 _RE_IMPRESORA_INSEGURA = re.compile(r"[\x00-\x1f\x7f\"'`$;|&<>{}]")
+_RUTAS_SISTEMA_POSIX = (
+    "/etc",
+    "/bin",
+    "/sbin",
+    "/usr",
+    "/boot",
+    "/sys",
+    "/proc",
+    "/dev",
+    "/lib",
+    "/lib64",
+    "/root",
+    "/var/log",
+    "/var/lib",
+    "/var/run",
+)
 _NOMBRES_RESERVADOS_WIN = frozenset(
     {
         "con",
@@ -42,7 +61,11 @@ def resolver_ruta_confinada(base_dir: Path, nombre_relativo: str) -> Path:
     rel = str(nombre_relativo or "").strip()
     if not rel:
         raise ValueError("Ruta relativa vacía.")
-    destino = (base_res / rel).resolve()
+    rel_norm = rel.replace("\\", "/")
+    win_rel = PureWindowsPath(rel)
+    if rel_norm.startswith("/") or win_rel.is_absolute() or bool(win_rel.drive):
+        raise ValueError("La ruta solicitada escapa del directorio permitido.")
+    destino = (base_res / rel_norm).resolve()
     if not destino.is_relative_to(base_res):
         raise ValueError("La ruta solicitada escapa del directorio permitido.")
     return destino
@@ -63,34 +86,77 @@ def ruta_en_directorios_permitidos(ruta: Path, directorios: Iterable[Path]) -> b
     return False
 
 
+def _normalizar_ruta_windows(ruta_str: str) -> str:
+    """Normaliza una ruta estilo Windows de forma independiente del sistema anfitrión."""
+    return ntpath.normpath(ruta_str.replace("/", "\\")).lower()
+
+
+def _es_ruta_sistema_windows(ruta_str: str) -> bool:
+    """Evalúa si una ruta con formato Windows apunta a directorios críticos del SO."""
+    normalizada = _normalizar_ruta_windows(ruta_str)
+    rutas_win = (
+        r"C:\Windows",
+        r"C:\Program Files",
+        r"C:\Program Files (x86)",
+        os.environ.get("SystemRoot", ""),
+        os.environ.get("ProgramFiles", ""),
+        os.environ.get("ProgramFiles(x86)", ""),
+    )
+    for dir_sis in rutas_win:
+        if not dir_sis:
+            continue
+        sis_norm = _normalizar_ruta_windows(dir_sis)
+        if not ntpath.splitdrive(sis_norm)[0]:
+            continue
+        prefijo = sis_norm if sis_norm.endswith("\\") else f"{sis_norm}\\"
+        if normalizada == sis_norm or normalizada.startswith(prefijo):
+            return True
+    return False
+
+
+def _es_ruta_sistema_posix(ruta_posix: str) -> bool:
+    """Evalúa si una ruta POSIX apunta a directorios críticos del sistema Linux/Unix."""
+    norm = posixpath.normpath(ruta_posix)
+    if not norm.startswith("/"):
+        return False
+    return any(norm == dir_sis or norm.startswith(f"{dir_sis}/") for dir_sis in _RUTAS_SISTEMA_POSIX)
+
+
+def _es_host_windows() -> bool:
+    return sys.platform == "win32" and os.name == "nt"
+
+
 def es_ruta_unc_o_sistema(ruta_str: str) -> bool:
-    """Detecta rutas de red UNC (`\\\\host\\recurso`) o directorios críticos del sistema operativo."""
+    """Detecta rutas de red UNC (`\\\\host\\recurso`) o directorios críticos Windows/POSIX."""
     texto = str(ruta_str or "").strip()
     if not texto:
         return False
     if texto.startswith("\\\\") or texto.startswith("//"):
         return True
-    normalizada = texto.replace("/", "\\").lower()
-    if normalizada.startswith("\\\\?\\unc\\"):
+    normalizada_win = texto.replace("/", "\\").lower()
+    if normalizada_win.startswith("\\\\?\\unc\\"):
         return True
-    rutas_sistema = (
-        os.environ.get("SystemRoot", r"C:\Windows"),
-        os.environ.get("ProgramFiles", r"C:\Program Files"),
-        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
-    )
+
+    host_windows = _es_host_windows()
+    unidad_win, _ = ntpath.splitdrive(normalizada_win)
+    if unidad_win:
+        if _es_ruta_sistema_windows(texto):
+            return True
+        # En POSIX una cadena con unidad Windows (`D:\Backups`) no existe localmente.
+        if not host_windows:
+            return False
+
+    if texto.startswith("/") and _es_ruta_sistema_posix(texto):
+        return True
+
     try:
         resuelta = Path(texto).resolve()
     except OSError:
         return True
-    for dir_sis in rutas_sistema:
-        if not dir_sis:
-            continue
-        try:
-            if resuelta.is_relative_to(Path(dir_sis).resolve()):
-                return True
-        except (OSError, ValueError):
-            continue
-    return False
+
+    if host_windows:
+        return _es_ruta_sistema_windows(str(resuelta))
+    return _es_ruta_sistema_posix(resuelta.as_posix())
 
 
 def validar_nombre_impresora_seguro(impresora: str) -> str:

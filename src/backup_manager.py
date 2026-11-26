@@ -16,7 +16,7 @@ import tempfile
 import zipfile
 from contextlib import closing
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import stat
 from typing import Any
 
@@ -215,15 +215,22 @@ def _validar_entradas_zip_backup(zf: zipfile.ZipFile, tmp_dir: Path) -> str | No
         return "El archivo .zip supera la cantidad máxima de entradas permitidas."
     total_bytes = 0
     for info in entradas:
-        miembro = Path(info.filename)
-        if ".." in miembro.parts:
+        nombre_norm = info.filename.replace("\\", "/")
+        miembro_posix = PurePosixPath(nombre_norm)
+        miembro_win = PureWindowsPath(info.filename)
+        if ".." in miembro_posix.parts or ".." in miembro_win.parts:
             return "El archivo .zip contiene rutas inválidas."
-        if miembro.is_absolute() or info.filename.startswith(("/", "\\")):
+        if (
+            miembro_posix.is_absolute()
+            or miembro_win.is_absolute()
+            or bool(miembro_win.drive)
+            or info.filename.startswith(("/", "\\"))
+        ):
             return "El archivo .zip contiene rutas fuera del destino."
         modo = info.external_attr >> 16
         if stat.S_ISLNK(modo):
             return "El archivo .zip contiene enlaces simbólicos no permitidos."
-        destino_miembro = (tmp_dir / info.filename).resolve()
+        destino_miembro = (tmp_dir / nombre_norm).resolve()
         if not destino_miembro.is_relative_to(tmp_resolved):
             return "El archivo .zip contiene rutas fuera del destino."
         total_bytes += max(0, int(info.file_size))

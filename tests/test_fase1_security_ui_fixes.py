@@ -54,6 +54,22 @@ class TestFase1SecurityUtilsAndInjection(unittest.TestCase):
             self.assertEqual(ok_path.parent, base.resolve())
             with self.assertRaises(ValueError):
                 resolver_ruta_confinada(base, "../../escape.pdf")
+            with self.assertRaises(ValueError):
+                resolver_ruta_confinada(base, r"..\..\escape_win.pdf")
+            with self.assertRaises(ValueError):
+                resolver_ruta_confinada(base, r"C:\Windows\win.ini")
+
+    def test_security_utils_cross_platform_ubuntu_y_posix(self):
+        with patch("src.core.security_utils._es_host_windows", return_value=False):
+            self.assertTrue(es_ruta_unc_o_sistema(r"C:\Windows\System32"))
+            self.assertTrue(es_ruta_unc_o_sistema(r"C:\Windows\Temp"))
+            self.assertTrue(es_ruta_unc_o_sistema("C:/Program Files/App"))
+            self.assertFalse(es_ruta_unc_o_sistema(r"D:\Backups_Deposito"))
+            self.assertFalse(es_ruta_unc_o_sistema(r"C:\WindowsBackups"))
+            self.assertTrue(es_ruta_unc_o_sistema("/etc/passwd"))
+            self.assertTrue(es_ruta_unc_o_sistema("/usr/bin"))
+            self.assertFalse(es_ruta_unc_o_sistema("/tmp/stockagent_backups"))
+            self.assertFalse(es_ruta_unc_o_sistema("/home/runner/backups"))
 
     def test_validacion_impresora_y_url_segura(self):
         self.assertEqual(validar_nombre_impresora_seguro("Zebra ZD220 (USB001)"), "Zebra ZD220 (USB001)")
@@ -157,6 +173,20 @@ class TestFase1IsolationBackupAndRBAC(unittest.TestCase):
                 ok, msg, _ = restaurar_backup_sistema(evil_zip)
                 self.assertFalse(ok)
                 self.assertIn("rutas inválidas", msg)
+
+                evil_win_zip = root / "evil_win.zip"
+                with zipfile.ZipFile(evil_win_zip, "w") as zf:
+                    zf.writestr(r"..\escape_win.sqlite3", b"bad")
+                ok_w, msg_w, _ = restaurar_backup_sistema(evil_win_zip)
+                self.assertFalse(ok_w)
+                self.assertIn("rutas inválidas", msg_w)
+
+                evil_drive_zip = root / "evil_drive.zip"
+                with zipfile.ZipFile(evil_drive_zip, "w") as zf:
+                    zf.writestr(r"C:\Windows\evil.sqlite3", b"bad")
+                ok_d, msg_d, _ = restaurar_backup_sistema(evil_drive_zip)
+                self.assertFalse(ok_d)
+                self.assertIn("fuera del destino", msg_d)
 
     def test_token_documento_rechaza_recurso_vacio(self):
         from src.api.deps import crear_token_documento, validar_token_documento
@@ -436,6 +466,32 @@ class TestFase1UIRegressionsAndDialogs(unittest.TestCase):
         offline_html = (assets / "offline.html").read_text(encoding="utf-8")
         self.assertNotIn("100.121.31.38", offline_html)
         self.assertIn("validarUrlServidor", offline_html)
+
+    def test_mostrar_manual_usuario_fallback_webbrowser_sin_os_startfile(self):
+        from src.ui.controllers.document_viewer_service import DocumentViewerService
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            doc_dir = root / "Documentacion"
+            doc_dir.mkdir(parents=True)
+            manual = doc_dir / "Manual_Operador.pdf"
+            manual.write_bytes(b"%PDF-1.4")
+
+            host = SimpleNamespace(
+                usuario_actual=User(1, "op1", "operador", True),
+                page=SimpleNamespace(web=False),
+                notificar=MagicMock(),
+            )
+            svc = DocumentViewerService(host)
+            with patch("src.ui.controllers.document_viewer_service.application_root", return_value=root), patch(
+                "src.ui.controllers.document_viewer_service.os.startfile", None, create=True
+            ), patch("src.ui.controllers.document_viewer_service.hasattr", create=True) as mock_hasattr, patch(
+                "src.ui.controllers.document_viewer_service.webbrowser.open"
+            ) as mock_open:
+                mock_hasattr.side_effect = lambda obj, name: False if name == "startfile" else hasattr(obj, name)
+                svc.mostrar_manual_usuario("operador")
+                mock_open.assert_called_once()
+                self.assertIn("Manual_Operador.pdf", mock_open.call_args[0][0])
 
 
 if __name__ == "__main__":
