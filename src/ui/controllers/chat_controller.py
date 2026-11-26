@@ -11,7 +11,6 @@ import flet as ft
 from ...auth import USER_ROLES
 from ...chat import obtener_mensaje_bienvenida
 from ..components import crear_ventana_chat_flotante, procesar_mensaje_chat_agente
-from ..theme import ROJO
 
 
 class ChatAssistantController:

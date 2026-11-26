@@ -243,7 +243,7 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
     filas_err = [
         ("NC-OPE-01: Hash Duplicado", "Reingreso involuntario de comprobante.", "El sistema rechaza la carga informando fecha previa.", "Revisar Historial. Renombrar archivos no evade SHA-256."),
         ("NC-OPE-02: Quiebre de Stock", "Demanda superior al saldo en SQLite.", "El sistema abre advertencia previa de confirmación.", "Autorizar solo si hay ingreso pendiente o solicitar a Compras."),
-        ("NC-OPE-03: Desarme por Rechazo", "Cancelación de pedido por cliente.", "Presionar botón ámbar 'Desarmar pedido'.", "El stock retorna al instante a SQLite y Productos.xlsx."),
+        ("NC-OPE-03: Desarme o Eliminación", "Cancelación de cliente o carga errónea.", "Botón naranja 'Desarmar pedido' (lógico) o rojo 'Eliminar' (físico).", "El stock retorna a SQLite sin duplicar; Eliminar habilita recargar remito."),
         ("NC-OPE-04: Falla de Red Wi-Fi", "Microcorte o zona ciega en depósito.", "Continuar escaneando en 'Inventario en Vivo'.", "El búfer local transmite las lecturas al reconectar."),
     ]
     agregar_tabla_apa_completa(

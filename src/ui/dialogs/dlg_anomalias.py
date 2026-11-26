@@ -1,6 +1,5 @@
 """Diálogo modal para el Radar de Consumo Anómalo y Detección de Desvíos de Demanda."""
 
-from datetime import datetime
 from typing import Any
 import flet as ft
 
@@ -9,6 +8,7 @@ from ...anomaly_detector import (
     ejecutar_diagnostico_integral_anomalias,
     notificar_anomalias_detectadas,
 )
+from ..design import grilla_tarjetas_responsiva
 from ..theme import ROJO
 
 
@@ -49,7 +49,7 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
                             ft.Row(
                                 [
                                     ft.Text(f"[{alerta.codigo}]", weight=ft.FontWeight.BOLD, size=12),
-                                    ft.Text(alerta.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, no_wrap=True),
+                                    ft.Text(alerta.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                                 expand=True,
                                 spacing=6,
@@ -79,6 +79,8 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        wrap=True,
+                        run_spacing=4,
                     ),
                 ],
                 spacing=4,
@@ -171,23 +173,28 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
                     ft.Icon(icon_name, color=color_ico, size=24),
                     ft.Column(
                         [
-                            ft.Text(titulo, size=11, color=interfaz.secundario),
+                            ft.Text(titulo, size=11, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                             control_val,
                         ],
                         spacing=1,
+                        expand=True,
                     ),
                 ],
                 spacing=8,
             ),
         )
 
-    fila_kpis = ft.Row(
+    fila_kpis = grilla_tarjetas_responsiva(
         [
             crear_caja_kpi("Picos de Demanda", kpi_picos, ft.Icons.BOLT, ft.Colors.AMBER_400),
             crear_caja_kpi("Descuentos > 50%", kpi_masivos, ft.Icons.WARNING_ROUNDED, ft.Colors.RED_400),
             crear_caja_kpi("Agotamiento < 3d", kpi_agotamiento, ft.Icons.HOURGLASS_BOTTOM, ft.Colors.ORANGE_400),
         ],
+        interfaz=interfaz,
+        compacto=True,
         spacing=8,
+        run_spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
 
     tabs = ft.Tabs(
@@ -211,12 +218,14 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
         ),
     )
 
+    ancho_dlg = interfaz.ancho_adaptable(680) if hasattr(interfaz, "ancho_adaptable") else 680
+    alto_dlg = interfaz.alto_adaptable(480) if hasattr(interfaz, "alto_adaptable") else 480
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.AUTO_GRAPH, color=ROJO),
-                ft.Text("Radar de Consumo Anómalo y Desvíos de Demanda", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("Radar de Consumo Anómalo y Desvíos de Demanda", size=16, weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=8,
         ),
@@ -230,8 +239,8 @@ def mostrar_dialogo_anomalias(interfaz: Any, _e: ft.Event | None = None) -> None
                 spacing=6,
                 expand=True,
             ),
-            width=680,
-            height=480,
+            width=ancho_dlg,
+            height=alto_dlg,
         ),
         actions=[
             ft.OutlinedButton(

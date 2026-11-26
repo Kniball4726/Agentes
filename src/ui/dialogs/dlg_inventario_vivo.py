@@ -18,7 +18,6 @@ from ...inventory import StockManager as _DefaultStockManager
 from ..theme import ROJO
 from ._shared import safe_focus
 from .inventario_vivo_views import (
-    abrir_url_en_navegador,
     construir_estado_vacio_inventario,
     construir_tarjeta_producto_contado,
     mostrar_dialogo_asociar_codigo_barras,

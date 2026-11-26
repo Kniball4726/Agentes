@@ -2,27 +2,16 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import flet as ft
 
-from ....backup_manager import crear_backup_sistema
-from ....parsers.canjes_parser import parsear_canje_excel
-from ....parsers.mercado_libre_parser import parsear_pedido_mercado_libre
-from ....parsers.remito_parser import parsear_remito
-from ....paths import application_root
-from ....stock.manifest_pdf import generar_hoja_ruta_pdf
+from ...design import par_accion_tarjeta
 from ...theme import ROJO
 from .cierre_operario_exec import (
     ejecutar_tarea_cierre_operario,
     poblar_historial_cierres,
     poblar_items_pendientes,
-)
-from .hoja_ruta import (
-    _get_stock_manager_cls,
-    gestionar_hoja_ruta_cierre,
-    resolver_archivos_cierre,
 )
 
 
@@ -117,6 +106,34 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         interfaz.sincronizar_sesiones(aviso_colaborativo=f"✅ {usr_nom} realizó el Cierre de Jornada #{cierre_id} ({resumen_p})")
         interfaz.notificar(mensaje_exito)
 
+    col_resumen_cierre = ft.Column(
+        [
+            ft.Text(
+                f"{len(pedidos_pendientes)} Pedidos Acumulados" if pedidos_pendientes else "Sin pedidos acumulados",
+                weight=ft.FontWeight.BOLD,
+                size=13,
+                color=ft.Colors.WHITE if pedidos_pendientes else interfaz.texto,
+            ),
+            ft.Text(
+                f"Total de {total_articulos_pendientes} unidades descontadas listas para cerrar jornada."
+                if pedidos_pendientes
+                else "Todos los pedidos anteriores están cerrados.",
+                size=11,
+                color=ft.Colors.WHITE_70 if pedidos_pendientes else interfaz.secundario,
+            ),
+        ],
+        spacing=2,
+        expand=True,
+    )
+    btn_cierre_jornada = ft.Button(
+        "Cerrar Jornada e Imprimir",
+        icon=ft.Icons.LOCK,
+        bgcolor=ft.Colors.WHITE,
+        color=ROJO,
+        disabled=not bool(pedidos_pendientes),
+        on_click=ejecutar_cierre,
+    )
+
     vista_pendientes = ft.Container(
         content=ft.Column(
             [
@@ -124,39 +141,7 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
                     bgcolor=ROJO if pedidos_pendientes else (ft.Colors.BLUE_GREY_900 if interfaz.modo_oscuro else ft.Colors.BLUE_GREY_100),
                     border_radius=8,
                     padding=10,
-                    content=ft.Row(
-                        [
-                            ft.Column(
-                                [
-                                    ft.Text(
-                                        f"{len(pedidos_pendientes)} Pedidos Acumulados" if pedidos_pendientes else "Sin pedidos acumulados",
-                                        weight=ft.FontWeight.BOLD,
-                                        size=13,
-                                        color=ft.Colors.WHITE if pedidos_pendientes else interfaz.texto,
-                                    ),
-                                    ft.Text(
-                                        f"Total de {total_articulos_pendientes} unidades descontadas listas para cerrar jornada."
-                                        if pedidos_pendientes
-                                        else "Todos los pedidos anteriores están cerrados.",
-                                        size=11,
-                                        color=ft.Colors.WHITE_70 if pedidos_pendientes else interfaz.secundario,
-                                    ),
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                            ft.Button(
-                                "Cerrar Jornada e Imprimir",
-                                icon=ft.Icons.LOCK,
-                                bgcolor=ft.Colors.WHITE,
-                                color=ROJO,
-                                disabled=not bool(pedidos_pendientes),
-                                on_click=ejecutar_cierre,
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    content=par_accion_tarjeta(interfaz, col_resumen_cierre, btn_cierre_jornada, umbral=560.0, spacing=10),
                 ),
                 correo_cierre_input,
                 ft.Text("Pedidos incluidos en este cierre:", size=12, weight=ft.FontWeight.BOLD, color=interfaz.texto),

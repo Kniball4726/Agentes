@@ -10,7 +10,6 @@ import shutil
 from typing import Any
 
 from .core.environment import get_data_dir
-from .paths import application_root
 
 
 def _resolver_data_dir(root_path: Path | None = None) -> Path:

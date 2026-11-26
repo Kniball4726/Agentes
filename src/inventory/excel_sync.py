@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import shutil
-import tempfile
 import unicodedata
 from copy import copy
 from pathlib import Path
@@ -17,7 +14,7 @@ from ..core.sanitize_utils import sanitizar_celda_excel
 from openpyxl.utils import get_column_letter
 
 from ..parsers.remito_parser import ResultadoRemito
-from ..stock.reports import copiar_estilo_fila, guardar_informe_pdf, guardar_informe_xls
+from ..stock.reports import copiar_estilo_fila
 
 
 def normalizar_encabezado(valor: object) -> str:

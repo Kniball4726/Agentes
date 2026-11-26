@@ -16,7 +16,6 @@ import ctypes
 import os
 import sys
 from ctypes import wintypes
-from pathlib import Path
 
 from .paths import application_root
 

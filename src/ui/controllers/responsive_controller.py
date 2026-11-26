@@ -184,23 +184,37 @@ class ResponsiveController:
         self.mostrar_menu_movil_fallback()
 
     def al_redimensionar(self, _evento: ft.Event | None = None) -> None:
-        """Manejador de redimensionamiento de pantalla para alternar layouts desktop/mobile."""
+        """Manejador de redimensionamiento de pantalla para alternar layouts desktop/tablet/mobile."""
         page = self._host.page
         usuario_actual = getattr(self._host, "usuario_actual", None)
         es_movil = self.es_pantalla_movil
         modo_previo = getattr(self._host, "_modo_movil_previo", None)
         w_actual = getattr(page, "width", None)
         ancho_previo = getattr(self._host, "_ancho_previo", None)
-        cambio_ancho_auth = (
-            usuario_actual is None
-            and isinstance(w_actual, (int, float))
+        tiene_anchos = (
+            isinstance(w_actual, (int, float))
+            and not isinstance(w_actual, bool)
             and w_actual > 0
             and isinstance(ancho_previo, (int, float))
-            and ((float(w_actual) < 768) != (float(ancho_previo) < 768))
+            and not isinstance(ancho_previo, bool)
+            and ancho_previo > 0
         )
-        if modo_previo is None or modo_previo != es_movil or cambio_ancho_auth:
+        cambio_ancho_auth = bool(
+            usuario_actual is None
+            and tiene_anchos
+            and (
+                ((float(w_actual) < 768) != (float(ancho_previo) < 768))
+                or ((float(w_actual) < 928) != (float(ancho_previo) < 928))
+            )
+        )
+        cambio_umbral_tablet = bool(
+            usuario_actual is not None
+            and tiene_anchos
+            and ((float(w_actual) < 900) != (float(ancho_previo) < 900))
+        )
+        if modo_previo is None or modo_previo != es_movil or cambio_ancho_auth or cambio_umbral_tablet:
             self._host._modo_movil_previo = es_movil
-            if isinstance(w_actual, (int, float)) and w_actual > 0:
+            if isinstance(w_actual, (int, float)) and not isinstance(w_actual, bool) and w_actual > 0:
                 self._host._ancho_previo = float(w_actual)
             if usuario_actual is not None:
                 rebuild = self._on_rebuild or getattr(self._host, "construir", None)
@@ -215,7 +229,7 @@ class ResponsiveController:
                 if callable(login):
                     login()
         else:
-            if isinstance(w_actual, (int, float)) and w_actual > 0:
+            if isinstance(w_actual, (int, float)) and not isinstance(w_actual, bool) and w_actual > 0:
                 self._host._ancho_previo = float(w_actual)
             debe_actualizar = False
             panel_row = getattr(self._host, "_panel_tarjetas_row", None)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side

@@ -4,44 +4,17 @@
 
 from __future__ import annotations
 
-import inspect
-import sys
 from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito
+from ._shared import resolve_stock_manager, safe_focus
 
 
 def resolver_stock_manager_ui() -> type:
     """Obtiene la clase StockManager activa (respetando dobles de prueba inyectados en flet_gui)."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
-
-
-def safe_focus(interfaz: Any, ctrl: Any) -> None:
-    """Solicita foco en un control Flet soportando tanto métodos síncronos como corrutinas (Flet 1.0.x)."""
-    try:
-        res = ctrl.focus()
-        if inspect.iscoroutine(res):
-            if (
-                hasattr(interfaz, "page")
-                and hasattr(interfaz.page, "run_task")
-                and callable(interfaz.page.run_task)
-                and not getattr(interfaz.page, "_is_mock", False)
-                and not hasattr(interfaz.page, "mock_calls")
-            ):
-                async def _f() -> None:
-                    await res
-
-                interfaz.page.run_task(_f)
-            else:
-                res.close()
-    except Exception:
-        pass
+    return resolve_stock_manager()
 
 
 def construir_banner_escaneo_inicial(mensaje: str, es_oscuro: bool) -> ft.Container:

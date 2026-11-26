@@ -6,8 +6,6 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from docx import Document
-
 from .remito_parser import ItemRemito, ResultadoRemito
 from .safe_loader import cargar_docx_seguro
 

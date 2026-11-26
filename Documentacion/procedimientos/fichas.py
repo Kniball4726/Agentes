@@ -39,7 +39,7 @@ from Documentacion.pdf_engine.forms_sgc import (
     agregar_tarjeta_referencia_rapida,
 )
 
-VERSION_PROC_ACTUAL = "3.2.0"
+VERSION_PROC_ACTUAL = "3.3.0"
 
 
 def agregar_ficha_boton(

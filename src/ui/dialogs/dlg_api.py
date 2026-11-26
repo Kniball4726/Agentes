@@ -7,8 +7,8 @@ from typing import Any
 import flet as ft
 
 from ...server_app import PUERTO_WEB_DEFAULT, obtener_ip_local, obtener_ip_tailscale
-from ..design import colores_de, confirmar_accion_destructiva, fijar_ocupado, marcar_error, tono_legible
-from ..theme import ROJO, SECUNDARIO
+from ..design import colores_de, confirmar_accion_destructiva, es_viewport_estrecho, fijar_ocupado, marcar_error, par_accion_tarjeta, tono_legible
+from ..theme import ROJO
 from .api_panel_tabs import (
     construir_estado_vacio_api,
     construir_tab_docs_estado,
@@ -121,23 +121,24 @@ def mostrar_dialogo_api_master(interfaz: Any, tab_inicial: int = 0) -> None:
                     ),
                 )
 
+            info_key = ft.Row(
+                [
+                    ft.Icon(ft.Icons.KEY if activo else ft.Icons.KEY_OFF, color=colores.advertencia if activo else sec_color, size=24),
+                    ft.Column(
+                        [
+                            ft.Row([ft.Text(c_name, weight=ft.FontWeight.BOLD, size=13, color=texto_color), badge_rol, badge_estado], spacing=8, wrap=True, run_spacing=4),
+                            ft.Text(f"Hash: {k_hash[:14]}... | Creada: {creado} | Último uso: {ultimo}", size=11, color=sec_color, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ],
+                        expand=True,
+                        spacing=2,
+                    ),
+                ],
+                spacing=8,
+                expand=not es_viewport_estrecho(interfaz, umbral=560.0),
+            )
             items.append(
                 ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Icon(ft.Icons.KEY if activo else ft.Icons.KEY_OFF, color=colores.advertencia if activo else sec_color, size=24),
-                            ft.Column(
-                                [
-                                    ft.Row([ft.Text(c_name, weight=ft.FontWeight.BOLD, size=13, color=texto_color), badge_rol, badge_estado], spacing=8),
-                                    ft.Text(f"Hash: {k_hash[:14]}... | Creada: {creado} | Último uso: {ultimo}", size=11, color=sec_color),
-                                ],
-                                expand=True,
-                                spacing=2,
-                            ),
-                            ft.Row(acciones, spacing=4),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
+                    content=par_accion_tarjeta(interfaz, info_key, ft.Row(acciones, spacing=4, wrap=True), umbral=560.0, spacing=8),
                     padding=ft.Padding.all(10),
                     border=ft.Border.all(1, ft.Colors.with_opacity(0.12, texto_color)),
                     border_radius=8,
@@ -247,6 +248,16 @@ def mostrar_dialogo_api_master(interfaz: Any, tab_inicial: int = 0) -> None:
             mensaje_exito="🗑️ Clave eliminada del registro.",
         )
 
+    es_estrecho_api = es_viewport_estrecho(interfaz, umbral=600.0)
+    fila_crear_key = (
+        ft.Column(
+            [input_cliente, ft.Row([dd_rol, btn_generar], spacing=8, wrap=True)],
+            spacing=8,
+            tight=True,
+        )
+        if es_estrecho_api
+        else ft.Row([input_cliente, dd_rol, btn_generar], spacing=8, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    )
     vista_keys = ft.Column(
         [
             ft.Text(
@@ -254,7 +265,7 @@ def mostrar_dialogo_api_master(interfaz: Any, tab_inicial: int = 0) -> None:
                 size=12,
                 color=sec_color,
             ),
-            ft.Row([input_cliente, dd_rol, btn_generar], spacing=8, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            fila_crear_key,
             banner_nueva_clave,
             ft.Divider(),
             ft.Row([ft.Text("Claves Registradas", weight=ft.FontWeight.BOLD, size=13, color=texto_color), total_keys_txt], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -292,7 +303,7 @@ def mostrar_dialogo_api_master(interfaz: Any, tab_inicial: int = 0) -> None:
         content=ft.Container(
             width=ancho_dlg,
             content=ft.Column(
-                [ft.Row([btn_tab_keys, btn_tab_docs, btn_tab_sesiones], spacing=8), ft.Divider(), vista_keys, vista_docs, vista_sesiones],
+                [ft.Row([btn_tab_keys, btn_tab_docs, btn_tab_sesiones], spacing=8, wrap=True, run_spacing=6), ft.Divider(), vista_keys, vista_docs, vista_sesiones],
                 tight=True,
                 spacing=8,
             ),

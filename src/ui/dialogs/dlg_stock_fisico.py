@@ -12,7 +12,6 @@ import flet as ft
 from ...inventory import StockManager as _DefaultStockManager
 from ...parsers.physical_stock_parser import parsear_excel_stock_fisico
 from ..theme import ROJO
-from ._shared import safe_focus
 from .stock_fisico_views import (
     construir_fila_comparativa_sf,
     mostrar_comparativa_stock_fisico_admin,

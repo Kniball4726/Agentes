@@ -4,6 +4,7 @@ from typing import Any
 
 import flet as ft
 
+from ..design import es_viewport_estrecho, fila_cabecera_responsiva, grilla_tarjetas_responsiva
 from ..theme import ROJO
 from .admin_operations_bar import construir_panel_seguimiento_admin
 
@@ -35,47 +36,61 @@ def construir_panel_metricas(interfaz: Any) -> ft.Control:
             ("Informes", "informes", ft.Icons.INSERT_CHART),
         ]
 
+    estrecho = es_viewport_estrecho(interfaz)
     tarjetas = []
     for titulo, clave, icono in metricas:
-        valor = ft.Text("0", size=25, weight=ft.FontWeight.BOLD, color=interfaz.texto)
+        valor = ft.Text(
+            "0",
+            size=22 if estrecho else 25,
+            weight=ft.FontWeight.BOLD,
+            color=interfaz.texto,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
         interfaz.contadores[clave] = valor
         tarjetas.append(
             ft.Container(
-                expand=True,
                 bgcolor=interfaz.superficie,
                 border=ft.Border.all(1, interfaz.borde),
                 border_radius=12,
-                padding=16,
+                padding=10 if estrecho else 14,
                 content=ft.Row(
                     [
                         ft.Container(
-                            width=40,
-                            height=40,
+                            width=36 if estrecho else 40,
+                            height=36 if estrecho else 40,
                             border_radius=10,
                             bgcolor=ft.Colors.with_opacity(0.16, ROJO) if interfaz.modo_oscuro else ft.Colors.RED_50,
                             alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(icono, color=ROJO, size=20),
+                            content=ft.Icon(icono, color=ROJO, size=18 if estrecho else 20),
                         ),
                         ft.Column(
                             [
-                                ft.Text(titulo, size=11, color=interfaz.secundario),
+                                ft.Text(
+                                    titulo,
+                                    size=11,
+                                    color=interfaz.secundario,
+                                    max_lines=2,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                ),
                                 valor,
                             ],
                             spacing=3,
                             expand=True,
                         ),
                     ],
-                    spacing=12,
+                    spacing=10 if estrecho else 12,
                 ),
             )
         )
-    if interfaz.es_pantalla_movil:
-        for t in tarjetas:
-            t.expand = False
-            t.col = 6
-            t.padding = 10
-        return ft.ResponsiveRow(tarjetas, spacing=8, run_spacing=8)
-    return ft.Row(tarjetas, spacing=12)
+    return grilla_tarjetas_responsiva(
+        tarjetas,
+        interfaz=interfaz,
+        compacto=True,
+        spacing=8 if estrecho else 10,
+        run_spacing=8 if estrecho else 10,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
 
 def altura_tarjetas_actividad_desktop(interfaz: Any) -> int:
@@ -102,6 +117,7 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     es_operador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "operador")
     es_despachador = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "despachador")
     es_movil = bool(interfaz.es_pantalla_movil)
+    apilar_vertical = es_movil or es_viewport_estrecho(interfaz, umbral=900.0)
     if es_despachador:
         from ..dialogs.dlg_modulo_despacho import construir_vista_modulo_despacho
         vista_despacho, refrescar_despacho = construir_vista_modulo_despacho(
@@ -120,13 +136,13 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
         titulo_derecha = "Informes generados"
         icono_derecha = ft.Icons.DESCRIPTION
 
-    # En pantallas móviles el dashboard padre usa scroll=AUTO (altura vertical no acotada).
-    # Por ello en móvil desactivamos expand=True vertical y asignamos alturas acotadas
+    # En pantallas móviles o apiladas el dashboard usa scroll=AUTO (altura vertical no acotada).
+    # Por ello desactivamos expand=True vertical y asignamos alturas acotadas
     # a los ListView para evitar excepciones RenderFlex / RenderViewport en Flutter.
-    interfaz.lista_informes.expand = not es_movil
-    interfaz.lista_informes.height = 240 if es_movil else None
-    interfaz.lista_pedidos_preparados.expand = not es_movil
-    interfaz.lista_pedidos_preparados.height = 260 if es_movil else None
+    interfaz.lista_informes.expand = not apilar_vertical
+    interfaz.lista_informes.height = 240 if apilar_vertical else None
+    interfaz.lista_pedidos_preparados.expand = not apilar_vertical
+    interfaz.lista_pedidos_preparados.height = 260 if apilar_vertical else None
 
     # Panel LADO DERECHO: Informes generados
     acciones_derecha: list[ft.Control] = [ft.Icon(icono_derecha, color=ROJO, size=18)]
@@ -135,7 +151,15 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
         [
             ft.Row(
                 [
-                    ft.Text(titulo_derecha, size=15, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Text(
+                        titulo_derecha,
+                        size=15,
+                        weight=ft.FontWeight.BOLD,
+                        color=interfaz.texto,
+                        expand=True,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                     ft.Row(acciones_derecha, spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -143,8 +167,8 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
             ),
             interfaz.lista_informes,
         ],
-        expand=not es_movil,
-        tight=es_movil,
+        expand=not apilar_vertical,
+        tight=apilar_vertical,
         spacing=8,
     )
 
@@ -157,45 +181,42 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ROJO)),
                 border_radius=8,
                 padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-                content=ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Row(
-                                    [
-                                        ft.Icon(
-                                            ft.Icons.CALENDAR_TODAY,
-                                            size=14,
-                                            color=ft.Colors.RED_300 if interfaz.modo_oscuro else ROJO,
-                                        ),
-                                        interfaz.header_pedidos_fecha,
-                                    ],
-                                    spacing=6,
-                                ),
-                                interfaz.header_pedidos_subtitulo,
-                            ],
-                            spacing=2,
-                            expand=True,
-                        ),
-                        ft.Container(
-                            content=interfaz.header_pedidos_bultos,
-                            bgcolor=ROJO,
-                            padding=ft.Padding.symmetric(horizontal=10, vertical=4),
-                            border_radius=12,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                content=fila_cabecera_responsiva(
+                    ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Icon(
+                                        ft.Icons.CALENDAR_TODAY,
+                                        size=14,
+                                        color=ft.Colors.RED_300 if interfaz.modo_oscuro else ROJO,
+                                    ),
+                                    interfaz.header_pedidos_fecha,
+                                ],
+                                spacing=6,
+                                tight=True,
+                            ),
+                            interfaz.header_pedidos_subtitulo,
+                        ],
+                        spacing=2,
+                        tight=True,
+                    ),
+                    ft.Container(
+                        content=interfaz.header_pedidos_bultos,
+                        bgcolor=ROJO,
+                        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                        border_radius=12,
+                    ),
                 ),
             ),
             interfaz.lista_pedidos_preparados,
         ],
-        expand=not es_movil,
-        tight=es_movil,
+        expand=not apilar_vertical,
+        tight=apilar_vertical,
         spacing=8,
     )
 
-    tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=not es_movil)
+    tarjeta_der = interfaz.tarjeta(contenido_derecha, expand=not apilar_vertical)
 
     # El Administrador dispone del panel ejecutivo de estadísticas y flujo de stock en tiempo real
     es_admin = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "administrador")
@@ -210,9 +231,9 @@ def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
     if es_master or es_picker:
         return tarjeta_der
 
-    tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=not es_movil)
+    tarjeta_izq = interfaz.tarjeta(contenido_izq, expand=not apilar_vertical)
 
-    if es_movil:
+    if apilar_vertical:
         return ft.Column(
             [
                 tarjeta_izq,
@@ -249,52 +270,32 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
         return ft.Container(height=0, visible=False)
 
     es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
+    es_estrecho = es_viewport_estrecho(interfaz, umbral=900.0)
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
 
     # El Administrador no tiene tarjetas de accesos rápidos; en su lugar muestra el seguimiento operativo en vivo
     if rol == "administrador":
         panel_seg = construir_panel_seguimiento_admin(interfaz, es_movil=es_movil)
         if panel_seg:
+            titulo_seg = ft.Row(
+                [
+                    ft.Icon(ft.Icons.TIMELAPSE, size=16, color=ROJO),
+                    ft.Text(
+                        "Seguimiento Operativo en Vivo",
+                        size=13,
+                        weight=ft.FontWeight.BOLD,
+                        color=interfaz.texto,
+                    ),
+                ],
+                spacing=6,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
             return ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Row(
-                            [
-                                ft.Icon(ft.Icons.TIMELAPSE, size=16, color=ROJO),
-                                ft.Text(
-                                    "Seguimiento Operativo en Vivo",
-                                    size=13,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=interfaz.texto,
-                                ),
-                            ],
-                            spacing=6,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                        panel_seg,
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                )
-                if not es_movil
-                else ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                ft.Icon(ft.Icons.TIMELAPSE, size=16, color=ROJO),
-                                ft.Text(
-                                    "Seguimiento Operativo en Vivo",
-                                    size=13,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=interfaz.texto,
-                                ),
-                            ],
-                            spacing=6,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                        panel_seg,
-                    ],
-                    spacing=6,
+                content=(
+                    ft.Column([titulo_seg, panel_seg], spacing=6)
+                    if es_estrecho
+                    else fila_cabecera_responsiva(titulo_seg, panel_seg)
                 ),
                 padding=ft.Padding.only(bottom=4),
             )
@@ -378,7 +379,6 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
             else ft.Colors.with_opacity(0.12, color_icono)
         )
         card = ft.Container(
-            expand=not es_movil,
             bgcolor=interfaz.superficie,
             border=ft.Border.all(1, ft.Colors.with_opacity(0.15, interfaz.texto)),
             border_radius=12,
@@ -397,8 +397,21 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
                     ),
                     ft.Column(
                         [
-                            ft.Text(titulo, size=13, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                            ft.Text(subtitulo, size=11, color=interfaz.secundario),
+                            ft.Text(
+                                titulo,
+                                size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=interfaz.texto,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                            ft.Text(
+                                subtitulo,
+                                size=11,
+                                color=interfaz.secundario,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
                         ],
                         spacing=2,
                         expand=True,
@@ -411,13 +424,14 @@ def construir_panel_acceso_rapido(interfaz: Any) -> ft.Control:
         )
         tarjetas.append(card)
 
-    if es_movil:
-        for t in tarjetas:
-            t.expand = False
-            t.col = 12 if len(tarjetas) <= 2 else 6
-        contenedor_tarjetas = ft.ResponsiveRow(tarjetas, spacing=8, run_spacing=8)
-    else:
-        contenedor_tarjetas = ft.Row(tarjetas, spacing=12)
+    contenedor_tarjetas = grilla_tarjetas_responsiva(
+        tarjetas,
+        interfaz=interfaz,
+        compacto=False,
+        spacing=8 if es_movil else 10,
+        run_spacing=8 if es_movil else 10,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
     titulo_rapido = "Accesos Rápidos de Seguridad y Control" if rol == "master" else "Accesos Rápidos de Operación"
     icono_rapido = ft.Icons.SECURITY if rol == "master" else ft.Icons.FLASH_ON

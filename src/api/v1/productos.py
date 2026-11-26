@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..deps import get_current_user, get_product_store, require_roles
+from ..deps import get_product_store, require_roles
 from ..schemas import (
     ActualizarUbicacionRequest,
     AsociarBarcodeRequest,

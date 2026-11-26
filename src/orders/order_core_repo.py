@@ -235,11 +235,18 @@ class OrderCoreRepository:
             if r["fecha"]
         ]
 
+    def obtener_pedido_por_id(self, pedido_id: int) -> Pedido | None:
+        """Retorna un pedido por su ID primario o None si no existe."""
+        with self._connect() as connection:
+            row = self.obtener_fila_pedido(connection, pedido_id)
+        return self.map_pedido(row) if row is not None else None
+
     def anular_pedido(self, pedido_id: int, motivo: str = "", usuario: str = "Sistema") -> None:
-        """Marca un pedido como anulado y registra el motivo en auditoría."""
+        """Marca un pedido como anulado (borrado lógico) y registra el motivo en auditoría."""
         with self._connect() as connection, connection:
             row = connection.execute("SELECT nota_pedido FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
             remito = row["nota_pedido"] if row else f"ID {pedido_id}"
+            connection.execute("DELETE FROM pedidos_bloqueos WHERE pedido_id = ?", (pedido_id,))
             connection.execute(
                 "UPDATE pedidos SET estado = 'anulado' WHERE id = ?",
                 (pedido_id,),
@@ -249,6 +256,42 @@ class OrderCoreRepository:
             accion="ANULAR_PEDIDO",
             detalle=f"Remito {remito} anulado. Motivo: {motivo.strip() or 'Sin especificar'}",
         )
+
+    def eliminar_pedido(
+        self,
+        pedido_id: int,
+        motivo: str = "",
+        usuario: str = "Sistema",
+        registrar_auditoria: bool = True,
+    ) -> Pedido:
+        """Elimina físicamente un pedido y sus registros asociados, permitiendo recargar su remito."""
+        with self._connect() as connection, connection:
+            row = self.obtener_fila_pedido(connection, pedido_id)
+            if row is None:
+                raise OrderStoreError(f"No se encontró el pedido con ID {pedido_id}.")
+            pedido_eliminado = self.map_pedido(row)
+            connection.execute("DELETE FROM pedidos_bloqueos WHERE pedido_id = ?", (pedido_id,))
+            connection.execute(
+                "DELETE FROM despacho_bultos_escaneados WHERE pedido_id = ?",
+                (pedido_id,),
+            )
+            connection.execute("DELETE FROM pedido_items WHERE pedido_id = ?", (pedido_id,))
+            tx_prefijo = f"PED_{pedido_eliminado.nota_pedido}_%"
+            connection.execute(
+                "DELETE FROM transacciones_procesadas WHERE accion = 'CREAR_PEDIDO' AND (detalle = ? OR tx_id LIKE ?)",
+                (pedido_eliminado.nota_pedido, tx_prefijo),
+            )
+            connection.execute("DELETE FROM pedidos WHERE id = ?", (pedido_id,))
+        if registrar_auditoria:
+            self._audit(
+                usuario=usuario,
+                accion="ELIMINAR_PEDIDO",
+                detalle=(
+                    f"Pedido #{pedido_eliminado.nota_pedido} ({pedido_eliminado.cliente}) eliminado definitivamente. "
+                    f"Motivo: {motivo.strip() or 'Sin especificar'}"
+                ),
+            )
+        return pedido_eliminado
 
     def obtener_items_sin_coincidencia(self, pedido_id: int) -> list[tuple[str, str]]:
         """Devuelve la lista JSON de ítems sin coincidencia guardada para un pedido."""

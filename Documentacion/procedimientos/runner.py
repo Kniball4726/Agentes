@@ -19,7 +19,7 @@ from .rol_picker import construir_manual_picker
 
 
 def construir_manual_general(ruta_destino: Path) -> Path:
-    """Genera el manual general consolidado con los 5 roles y compendio ISO/BPMN."""
+    """Genera el manual general consolidado con los 6 roles y compendio ISO/BPMN."""
     return _construir_compendio_maestro(ruta_destino)
 
 

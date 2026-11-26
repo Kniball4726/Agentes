@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
-from ..core.exceptions import OrderStoreError
-
 LOGISTICA_OPCIONES: tuple[str, ...] = (
     "Domicilio",
     "Centro de distribución",

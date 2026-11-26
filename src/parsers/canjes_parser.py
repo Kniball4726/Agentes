@@ -5,7 +5,7 @@ Lee planillas de canje de productos, extrae los ítems solicitados
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from .remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
 from .safe_loader import MAX_EXCEL_ROWS, cargar_workbook_seguro
 

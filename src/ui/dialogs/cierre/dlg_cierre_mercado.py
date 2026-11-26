@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import flet as ft
@@ -284,17 +283,22 @@ def mostrar_dialogo_cierre_mercado(interfaz: Any, tab_inicial: int = 0) -> None:
     )
     tabs.on_change = on_tab_change
 
+    ancho_dlg = (
+        interfaz.ancho_adaptable(650)
+        if hasattr(interfaz, "ancho_adaptable")
+        else (340 if es_movil else 650)
+    )
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.FACT_CHECK, color=ROJO, size=24),
-                ft.Text("Cierre de Mercado · Descuento Individual", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("Cierre de Mercado · Descuento Individual", size=16, weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=8,
         ),
         content=ft.Container(
-            width=650 if not es_movil else 340,
+            width=ancho_dlg,
             content=tabs,
         ),
         actions=[

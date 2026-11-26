@@ -19,7 +19,6 @@ from .. import secretos
 from ..core.environment import get_data_dir
 from ..core.network_security import crear_contexto_tls_estricto
 from ..core.sanitize_utils import escapar_html_telegram
-from ..paths import application_root
 
 CONFIG_PATH_DEFAULT = "data/config_telegram.json"
 

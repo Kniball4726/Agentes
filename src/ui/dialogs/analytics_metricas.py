@@ -7,6 +7,7 @@ from typing import Any
 
 import flet as ft
 
+from ..design import es_viewport_estrecho, grilla_tarjetas_responsiva
 from ..theme import ROJO
 from .analytics_rotacion import mostrar_estadisticas
 from .analytics_widgets import (
@@ -30,12 +31,12 @@ __all__ = [
 ]
 
 
-def _construir_filas_metricas_dashboard(interfaz: Any, m: dict) -> tuple[ft.Row, ft.Row, ft.Container]:
+def _construir_filas_metricas_dashboard(interfaz: Any, m: dict) -> tuple[ft.ResponsiveRow, ft.ResponsiveRow, ft.Container]:
     """Construye los bloques visuales principales (KPIs, tablas y evolución diaria) del dashboard."""
     promedio_bultos = (m["total_bultos"] / m["total_pedidos"]) if m["total_pedidos"] > 0 else 0
     est_desp = m.get("estados_despacho", {})
 
-    kpis = ft.Row(
+    kpis = grilla_tarjetas_responsiva(
         [
             _tarjeta_kpi(interfaz, "Total Pedidos", str(m["total_pedidos"]), ft.Icons.INVENTORY, ft.Colors.BLUE_500),
             _tarjeta_kpi(interfaz, "Total Bultos", str(m["total_bultos"]), ft.Icons.LOCAL_SHIPPING, ft.Colors.AMBER_600),
@@ -44,7 +45,11 @@ def _construir_filas_metricas_dashboard(interfaz: Any, m: dict) -> tuple[ft.Row,
             _tarjeta_kpi(interfaz, "🚚 Despachados", str(est_desp.get("despachado", 0)), ft.Icons.LOCAL_SHIPPING, ft.Colors.AMBER_500),
             _tarjeta_kpi(interfaz, "✔ Entregados", str(est_desp.get("entregado", 0)), ft.Icons.VERIFIED, ft.Colors.GREEN_500),
         ],
+        interfaz=interfaz,
+        compacto=True,
         spacing=8,
+        run_spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
 
     filas_logistica = ft.Column(spacing=6)
@@ -77,28 +82,39 @@ def _construir_filas_metricas_dashboard(interfaz: Any, m: dict) -> tuple[ft.Row,
     filas_dias = ft.Column(spacing=4)
     por_dia = m.get("pedidos_por_dia", [])
     max_ped_dia = max((c for _, c, _ in por_dia), default=1) or 1
+    max_ancho_dia = 80 if es_viewport_estrecho(interfaz, umbral=640.0) else 160
     for dia_str, cant_d, bultos_d in por_dia[:10]:
-        ancho = max(10, int((cant_d / max_ped_dia) * 160))
+        ancho = max(10, int((cant_d / max_ped_dia) * max_ancho_dia))
         filas_dias.controls.append(
             ft.Row(
                 [
-                    ft.Text(dia_str, size=11, width=85, color=interfaz.texto),
+                    ft.Text(dia_str, size=11, width=78, color=interfaz.texto),
                     ft.Container(width=ancho, height=14, bgcolor=ROJO, border_radius=4),
-                    ft.Text(f"{cant_d} ped. ({bultos_d} bultos)", size=11, color=interfaz.secundario),
+                    ft.Text(
+                        f"{cant_d} ped. ({bultos_d} bultos)",
+                        size=11,
+                        color=interfaz.secundario,
+                        expand=True,
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         )
 
-    seccion_tablas = ft.Row(
+    seccion_tablas = grilla_tarjetas_responsiva(
         [
             _tarjeta_tabla_metrica(interfaz, "Despacho por Logística", filas_logistica),
             _tarjeta_tabla_metrica(interfaz, "Rendimiento de Armadores", filas_armadores),
             _tarjeta_tabla_metrica(interfaz, "Top 10 Productos Rotados", filas_top),
         ],
+        interfaz=interfaz,
+        compacto=False,
         spacing=8,
-        alignment=ft.MainAxisAlignment.START,
+        run_spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
     bloque_dias = _tarjeta_tabla_metrica(
         interfaz,
@@ -143,18 +159,27 @@ def mostrar_dashboard_metricas(interfaz: Any, _e: ft.Event | None = None) -> Non
             input_hasta,
             ft.Button("Filtrar rango", icon=ft.Icons.FILTER_ALT, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=lambda _ev: render_dashboard(usar_rango=True)),
             ft.TextButton("Ver histórico completo", icon=ft.Icons.ALL_INCLUSIVE, on_click=lambda _ev: render_dashboard(usar_rango=False)),
-            ft.Container(expand=True),
             ft.Button("Exportar Excel", icon=ft.Icons.DOWNLOAD, on_click=on_exportar),
         ],
         spacing=8,
+        run_spacing=8,
+        wrap=True,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    ancho_dlg = interfaz.ancho_adaptable(900) if hasattr(interfaz, "ancho_adaptable") else 900
+    alto_dlg = interfaz.alto_adaptable(540) if hasattr(interfaz, "alto_adaptable") else 540
     dialogo = ft.AlertDialog(
-        title=ft.Row([ft.Icon(ft.Icons.INSIGHTS, color=ROJO), ft.Text("Métricas y Rendimiento del Depósito", weight=ft.FontWeight.BOLD)], spacing=8),
+        title=ft.Row(
+            [
+                ft.Icon(ft.Icons.INSIGHTS, color=ROJO),
+                ft.Text("Métricas y Rendimiento del Depósito", weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+            ],
+            spacing=8,
+        ),
         content=ft.Container(
-            width=900,
-            height=540,
+            width=ancho_dlg,
+            height=alto_dlg,
             content=ft.Column([barra_filtros, ft.Divider(height=6), contenedor_cuerpo], tight=True, spacing=8, scroll=ft.ScrollMode.AUTO),
         ),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _ev: interfaz.page.pop_dialog())],

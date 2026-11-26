@@ -12,6 +12,7 @@ from ...warehouse_slotting import (
     ProductoRotacion,
     SlottingSuggestion,
 )
+from ..design import es_viewport_estrecho
 from ..theme import ROJO
 
 _RACK_DESCRIPTIONS = {
@@ -31,8 +32,16 @@ _LEYENDA_COLORS = (
 
 def kpi_heatmap_card(interfaz: Any, titulo: str, control_valor: ft.Text) -> ft.Container:
     """Construye una tarjeta KPI uniforme para la cabecera del panel Slotting."""
+    control_valor.max_lines = 1
+    control_valor.overflow = ft.TextOverflow.ELLIPSIS
     return ft.Container(
-        content=ft.Column([ft.Text(titulo, size=11, color=interfaz.secundario), control_valor], spacing=2),
+        content=ft.Column(
+            [
+                ft.Text(titulo, size=11, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                control_valor,
+            ],
+            spacing=2,
+        ),
         bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
         border=ft.Border.all(1, ft.Colors.WHITE_24 if interfaz.modo_oscuro else ft.Colors.GREY_300),
         border_radius=8,
@@ -108,7 +117,7 @@ def renderizar_layout_heatmap(
                         ink=True,
                     )
                 )
-            columnas_estantes.append(ft.Row(celdas, spacing=6))
+            columnas_estantes.append(ft.Row(celdas, spacing=6, wrap=True, run_spacing=6))
 
         card_rack = ft.Container(
             bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
@@ -117,7 +126,13 @@ def renderizar_layout_heatmap(
             padding=10,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.Icons.GRID_ON, size=16, color=ROJO), ft.Text(_RACK_DESCRIPTIONS[rack_id], size=12, weight=ft.FontWeight.BOLD)], spacing=6),
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.GRID_ON, size=16, color=ROJO),
+                            ft.Text(_RACK_DESCRIPTIONS[rack_id], size=12, weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ],
+                        spacing=6,
+                    ),
                     ft.Container(height=4),
                     ft.Column(columnas_estantes, spacing=4),
                 ],
@@ -172,41 +187,51 @@ def renderizar_lista_abc(
             if prod.desalineado
             else ft.Container()
         )
+        badge_clase = ft.Container(
+            content=ft.Text(f"Clase {prod.categoria_abc}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+            bgcolor=bg_badge,
+            padding=ft.Padding(6, 4, 6, 4),
+            border_radius=4,
+            width=60,
+            alignment=ft.Alignment(0, 0),
+        )
+        col_detalle_abc = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text(f"[{prod.codigo}]", weight=ft.FontWeight.BOLD, size=12),
+                        ft.Text(prod.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        tag_desalineado,
+                    ],
+                    spacing=6,
+                ),
+                ft.Row(
+                    [
+                        ft.Text(f"Picks: {prod.total_despachos}", size=11, weight=ft.FontWeight.BOLD, color=color_badge),
+                        ft.Text(f"Unidades: {prod.unidades_despachadas}", size=11, color=interfaz.secundario),
+                        ft.Text(f"Acumulado: {prod.porcentaje_acumulado}%", size=11, color=interfaz.secundario),
+                        ft.Text(f"📍 Actual: {prod.ubicacion_actual}", size=11, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"➔ Sugerida: {prod.ubicacion_sugerida}", size=11, color=ft.Colors.GREEN_400),
+                    ],
+                    spacing=10,
+                    run_spacing=4,
+                    wrap=True,
+                ),
+            ],
+            expand=True,
+            spacing=3,
+        )
+        estrecho_abc = es_viewport_estrecho(interfaz, umbral=560.0)
         container.controls.append(
             ft.Container(
                 bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
                 border=ft.Border.all(1, ft.Colors.WHITE_24 if interfaz.modo_oscuro else ft.Colors.GREY_300),
                 border_radius=6,
                 padding=8,
-                content=ft.Row(
-                    [
-                        ft.Container(
-                            content=ft.Text(f"Clase {prod.categoria_abc}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                            bgcolor=bg_badge,
-                            padding=ft.Padding(6, 4, 6, 4),
-                            border_radius=4,
-                            width=60,
-                            alignment=ft.Alignment(0, 0),
-                        ),
-                        ft.Column(
-                            [
-                                ft.Row([ft.Text(f"[{prod.codigo}]", weight=ft.FontWeight.BOLD, size=12), ft.Text(prod.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, no_wrap=True), tag_desalineado], spacing=6),
-                                ft.Row(
-                                    [
-                                        ft.Text(f"Picks: {prod.total_despachos}", size=11, weight=ft.FontWeight.BOLD, color=color_badge),
-                                        ft.Text(f"Unidades: {prod.unidades_despachadas}", size=11, color=interfaz.secundario),
-                                        ft.Text(f"Acumulado: {prod.porcentaje_acumulado}%", size=11, color=interfaz.secundario),
-                                        ft.Text(f"📍 Actual: {prod.ubicacion_actual}", size=11, weight=ft.FontWeight.BOLD),
-                                        ft.Text(f"➔ Sugerida: {prod.ubicacion_sugerida}", size=11, color=ft.Colors.GREEN_400),
-                                    ],
-                                    spacing=12,
-                                ),
-                            ],
-                            expand=True,
-                            spacing=3,
-                        ),
-                    ],
-                    spacing=10,
+                content=(
+                    ft.Column([badge_clase, col_detalle_abc], spacing=6, tight=True)
+                    if estrecho_abc
+                    else ft.Row([badge_clase, col_detalle_abc], spacing=10)
                 ),
             )
         )
@@ -238,59 +263,70 @@ def renderizar_lista_sugerencias(
         )
         return
 
+    estrecho_sug = es_viewport_estrecho(interfaz, umbral=600.0)
     for sug in sugerencias_actuales:
         badge_color = ft.Colors.RED_400 if sug.categoria_abc == "A" else ft.Colors.BLUE_GREY_400
+        ico_sug = ft.Icon(
+            ft.Icons.SWAP_HORIZ,
+            size=24,
+            color=ft.Colors.ORANGE_400 if sug.categoria_abc == "A" else ft.Colors.CYAN_400,
+        )
+        col_sug = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text(f"[{sug.sku}]", weight=ft.FontWeight.BOLD, size=12),
+                        ft.Text(sug.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Container(
+                            content=ft.Text(f"Clase {sug.categoria_abc}", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                            bgcolor=badge_color,
+                            padding=ft.Padding(5, 2, 5, 2),
+                            border_radius=4,
+                        ),
+                    ],
+                    spacing=6,
+                ),
+                ft.Text(sug.motivo, size=11, color=interfaz.secundario),
+                ft.Row(
+                    [
+                        ft.Text(f"📍 Actual: {sug.ubicacion_actual}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_300),
+                        ft.Icon(ft.Icons.ARROW_FORWARD, size=12, color=interfaz.secundario),
+                        ft.Text(f"🎯 Sugerida: {sug.ubicacion_sugerida}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400),
+                        ft.Text(f"({sug.impacto})", size=10, color=interfaz.secundario),
+                    ],
+                    spacing=8,
+                    run_spacing=4,
+                    wrap=True,
+                ),
+            ],
+            expand=True,
+            spacing=3,
+        )
+        btn_reubicar = ft.Button(
+            "Reubicar",
+            icon=ft.Icons.CHECK,
+            style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE, padding=ft.Padding(10, 6, 10, 6)),
+            on_click=lambda _e, s=sug: on_reubicar(s),
+        )
         container.controls.append(
             ft.Container(
                 bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
                 border=ft.Border.all(1, ft.Colors.WHITE_24 if interfaz.modo_oscuro else ft.Colors.GREY_300),
                 border_radius=8,
                 padding=10,
-                content=ft.Row(
-                    [
-                        ft.Icon(
-                            ft.Icons.SWAP_HORIZ,
-                            size=24,
-                            color=ft.Colors.ORANGE_400 if sug.categoria_abc == "A" else ft.Colors.CYAN_400,
-                        ),
-                        ft.Column(
-                            [
-                                ft.Row(
-                                    [
-                                        ft.Text(f"[{sug.sku}]", weight=ft.FontWeight.BOLD, size=12),
-                                        ft.Text(sug.nombre, weight=ft.FontWeight.W_500, size=12, expand=True, no_wrap=True),
-                                        ft.Container(
-                                            content=ft.Text(f"Clase {sug.categoria_abc}", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                                            bgcolor=badge_color,
-                                            padding=ft.Padding(5, 2, 5, 2),
-                                            border_radius=4,
-                                        ),
-                                    ],
-                                    spacing=6,
-                                ),
-                                ft.Text(sug.motivo, size=11, color=interfaz.secundario),
-                                ft.Row(
-                                    [
-                                        ft.Text(f"📍 Actual: {sug.ubicacion_actual}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_300),
-                                        ft.Icon(ft.Icons.ARROW_FORWARD, size=12, color=interfaz.secundario),
-                                        ft.Text(f"🎯 Sugerida: {sug.ubicacion_sugerida}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400),
-                                        ft.Text(f"({sug.impacto})", size=10, color=interfaz.secundario),
-                                    ],
-                                    spacing=8,
-                                ),
-                            ],
-                            expand=True,
-                            spacing=3,
-                        ),
-                        ft.Button(
-                            "Reubicar",
-                            icon=ft.Icons.CHECK,
-                            style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE, padding=ft.Padding(10, 6, 10, 6)),
-                            on_click=lambda _e, s=sug: on_reubicar(s),
-                        ),
-                    ],
-                    spacing=10,
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                content=(
+                    ft.Column(
+                        [ft.Row([ico_sug, col_sug], spacing=10), btn_reubicar],
+                        spacing=8,
+                        tight=True,
+                        horizontal_alignment=ft.CrossAxisAlignment.END,
+                    )
+                    if estrecho_sug
+                    else ft.Row(
+                        [ico_sug, col_sug, btn_reubicar],
+                        spacing=10,
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    )
                 ),
             )
         )

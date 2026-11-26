@@ -1,6 +1,5 @@
 """Diálogo modal para Sincronización y Configuración de Mercado Libre API."""
 
-from datetime import datetime
 import threading
 from typing import Any
 import flet as ft

@@ -220,17 +220,18 @@ def construir_manual_administrador(ruta_destino: Path) -> Path:
         "4. Módulo: VENTAS Y DESPACHOS (Botón por Botón)",
         [
             {
-                "nombre_boton": "Historial de Pedidos y Gestión de Clientes",
+                "nombre_boton": "Historial de Pedidos, Despacho (Solo Lectura) y Clientes",
                 "icono_str": "[🧾]",
                 "modulo": "VENTAS Y DESPACHOS",
-                "proposito_funcional": "Supervisión global de pedidos paginados en servidor (10/25/50/100) con soft-locking TTL 5 min, impresión en lote A4/térmico y administración del padrón de clientes.",
-                "datos_modificados": "Consulta tabla `pedidos`; actualiza padrón `clientes` (CUIT, domicilio, logística).",
+                "proposito_funcional": "Supervisión global en tarjetas responsivas (móvil/tablet/PC) de pedidos paginados (10/25/50/100), acceso al módulo <b>Despacho de Pedidos</b> en modo estrictamente solo lectura (KPIs del día y filtro 'Solo despachados hoy'), impresión en lote A4/térmico y padrón de clientes.",
+                "datos_modificados": "Consulta tablas `pedidos` y `despacho_bultos_escaneados`; actualiza padrón `clientes` (CUIT, domicilio, logística).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Historial de Pedidos'</b> para filtrar por cliente, logística o fecha e imprimir rótulos.",
+                    "Abrir <b>'Despacho de Pedidos'</b> para auditar en solo lectura pedidos despachados hoy e históricos.",
                     "Pulsar <b>'Gestión de Clientes'</b> para alta o edición de destinatarios comerciales.",
                 ],
-                "resultado_obtenido": "Trazabilidad integral de despachos y padrón comercial al día.",
-                "validaciones_advertencias": "La edición de bultos en pedidos abiertos permanece reservada al Operador.",
+                "resultado_obtenido": "Trazabilidad integral de armados y despachos con padrón comercial al día.",
+                "validaciones_advertencias": "Los botones rápidos de edición, desarmado y eliminación en tarjetas y listas del turno están reservados al Operador (SoD).",
             },
             {
                 "nombre_boton": "Cierres de Operarios",

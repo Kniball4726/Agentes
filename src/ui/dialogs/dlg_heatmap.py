@@ -17,6 +17,7 @@ from ...warehouse_slotting import (
     generar_mapa_calor,
     generar_sugerencias_slotting,
 )
+from ..design import grilla_tarjetas_responsiva, par_accion_tarjeta
 from ..theme import ROJO
 from .heatmap_render import (
     kpi_heatmap_card,
@@ -145,16 +146,21 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
     buscador_abc.on_change = _refrescar_abc
     filtro_abc_categoria.on_select = filtro_abc_categoria.on_change = _refrescar_abc
 
-    fila_kpis = ft.Row(
+    fila_kpis = grilla_tarjetas_responsiva(
         [
             kpi_heatmap_card(interfaz, "Eficiencia Slotting", kpi_eficiencia),
             kpi_heatmap_card(interfaz, "Picks Analizados", kpi_picks),
             kpi_heatmap_card(interfaz, "Pareto (A / B / C)", kpi_clases),
             kpi_heatmap_card(interfaz, "Reubicaciones", kpi_sugerencias),
         ],
+        interfaz=interfaz,
+        compacto=True,
         spacing=8,
+        run_spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
 
+    filtro_abc_row = par_accion_tarjeta(interfaz, buscador_abc, filtro_abc_categoria, umbral=560.0, spacing=8)
     tabs = ft.Tabs(
         length=3,
         expand=True,
@@ -172,7 +178,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
                     expand=True,
                     controls=[
                         ft.Column([leyenda_termica_heatmap(interfaz), info_slot_seleccionado, ft.Container(content=layout_heatmap_container, height=320)], spacing=8, expand=True),
-                        ft.Column([ft.Row([buscador_abc, filtro_abc_categoria], spacing=8), lista_abc_container], spacing=8, expand=True),
+                        ft.Column([filtro_abc_row, lista_abc_container], spacing=8, expand=True),
                         ft.Column([ft.Text("Sugerencias automáticas para eliminar sobre-recorridos y fatiga física de operarios:", size=11, color=interfaz.secundario), lista_sugerencias_container], spacing=8, expand=True),
                     ],
                 ),
@@ -180,6 +186,8 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         ),
     )
 
+    ancho_dlg = interfaz.ancho_adaptable(760) if hasattr(interfaz, "ancho_adaptable") else 760
+    alto_dlg = interfaz.alto_adaptable(490) if hasattr(interfaz, "alto_adaptable") else 490
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
@@ -187,15 +195,16 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
                 ft.Icon(ft.Icons.WAREHOUSE_ROUNDED, color=ROJO, size=24),
                 ft.Column(
                     [
-                        ft.Text("Mapa de Calor y Rotación de Picking (Slotting)", size=16, weight=ft.FontWeight.BOLD),
-                        ft.Text("Análisis ABC de Pareto, flujo térmico de estanterías y ergonomía de depósito", size=11, color=interfaz.secundario),
+                        ft.Text("Mapa de Calor y Rotación de Picking (Slotting)", size=16, weight=ft.FontWeight.BOLD, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text("Análisis ABC de Pareto, flujo térmico de estanterías y ergonomía de depósito", size=11, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ],
                     spacing=1,
+                    expand=True,
                 ),
             ],
             spacing=8,
         ),
-        content=ft.Container(content=ft.Column([fila_kpis, ft.Divider(height=1, color=interfaz.borde), tabs], spacing=10, expand=True), width=760, height=490),
+        content=ft.Container(content=ft.Column([fila_kpis, ft.Divider(height=1, color=interfaz.borde), tabs], spacing=10, expand=True), width=ancho_dlg, height=alto_dlg),
         actions=[
             ft.TextButton("Actualizar Análisis", icon=ft.Icons.REFRESH, on_click=lambda _e: cargar_datos()),
             ft.Button("Cerrar", on_click=lambda _e: interfaz.page.pop_dialog()),

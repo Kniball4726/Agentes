@@ -14,7 +14,6 @@ import urllib.request
 from .. import secretos
 from ..core.environment import get_data_dir
 from ..core.network_security import crear_contexto_tls_estricto
-from ..paths import application_root
 
 CONFIG_ML_PATH_DEFAULT = "data/config_mercadolibre.json"
 API_BASE_URL = "https://api.mercadolibre.com"

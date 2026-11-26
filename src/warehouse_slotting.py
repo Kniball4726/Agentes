@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .stock.slotting_models import (
     DEFAULT_LEVELS,
     DEFAULT_MODULES,
     DEFAULT_RACKS,
-    LEVEL_FACTORS,
-    RACK_DISTANCES,
     HeatmapSlot,
     ProductoRotacion,
     SlotInfo,

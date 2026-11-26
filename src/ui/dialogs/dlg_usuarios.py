@@ -1,9 +1,46 @@
 """Diálogo modal para la gestión de usuarios (administración)."""
+
+from __future__ import annotations
+
 from typing import Any
+
 import flet as ft
-from ...auth import USER_ROLES, User, UserStoreError
-from ..design import colores_de, confirmar_accion_destructiva, fijar_ocupado, marcar_error, tono_legible
+
+from ...auth import User, UserStoreError
+from ..design import colores_de, confirmar_accion_destructiva, fijar_ocupado, grilla_tarjetas_responsiva, marcar_error
 from ..theme import ROJO
+from .usuarios_modales import (
+    construir_tarjeta_usuario,
+    mostrar_modal_editar_usuario,
+    mostrar_modal_reset_clave,
+)
+
+
+def _registrar_auditoria_usuario(interfaz: Any, accion: str, detalle: str) -> None:
+    """Asienta un evento de administración IAM en OrderStore si está disponible."""
+    try:
+        if hasattr(interfaz, "order_store") and interfaz.order_store:
+            usr_act = interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin"
+            interfaz.order_store.registrar_auditoria(usr_act, accion, detalle)
+    except Exception:
+        pass
+
+
+def _obtener_usuarios_visibles(interfaz: Any, actual_es_master: bool, actual_es_admin: bool, actual: User | None) -> list[User]:
+    """Consulta el listado de usuarios con retrocompatibilidad entre versiones de UserStore."""
+    try:
+        return interfaz.user_store.list_users(
+            include_master=actual_es_master,
+            exclude_other_admins=actual_es_admin,
+            current_user_id=actual.id if actual else None,
+        )
+    except TypeError:
+        try:
+            return interfaz.user_store.list_users(include_master=actual_es_master)
+        except TypeError:
+            return interfaz.user_store.list_users()
+    except Exception:
+        return interfaz.user_store.list_users()
 
 
 def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
@@ -12,8 +49,6 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         return
 
     colores = colores_de(interfaz)
-    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
-
     nuevo_usuario = ft.TextField(label="Nombre de usuario *", expand=True)
     nuevo_nombre = ft.TextField(
         label="Nombre y apellido (identificador en documentos)",
@@ -31,22 +66,19 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         can_reveal_password=True,
         expand=True,
     )
+
     actual = interfaz.usuario_actual
     actual_es_master = bool(actual and actual.role == "master")
     actual_es_admin = bool(actual and actual.role == "administrador")
-    es_master = actual_es_master
     roles_creables = (
         ["administrador", "operador", "picker", "despachador", "consulta"]
-        if es_master
+        if actual_es_master
         else ["operador", "picker", "despachador", "consulta"]
     )
     nuevo_rol = ft.Dropdown(
         label="Rol",
         value="consulta",
-        options=[
-            ft.DropdownOption(key=role, text=role.capitalize())
-            for role in roles_creables
-        ],
+        options=[ft.DropdownOption(key=role, text=role.capitalize()) for role in roles_creables],
         width=180,
     )
     mensaje = ft.Text(color=colores.error, size=12)
@@ -71,9 +103,9 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             content=ft.Column(
                 [
                     ft.Text("Registrar nuevo usuario", weight=ft.FontWeight.BOLD, size=13),
-                    ft.Row([nuevo_usuario, nuevo_nombre], spacing=8),
-                    ft.Row([nuevo_email, nueva_clave], spacing=8),
-                    ft.Row([nuevo_rol, crear_boton], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    grilla_tarjetas_responsiva([nuevo_usuario, nuevo_nombre], interfaz=interfaz, compacto=False, spacing=8, run_spacing=8),
+                    grilla_tarjetas_responsiva([nuevo_email, nueva_clave], interfaz=interfaz, compacto=False, spacing=8, run_spacing=8),
+                    ft.Row([nuevo_rol, crear_boton], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True, run_spacing=6),
                     mensaje,
                     ft.Divider(),
                     ft.Text("Usuarios existentes", weight=ft.FontWeight.BOLD, size=13),
@@ -83,201 +115,8 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
                 spacing=8,
             ),
         ),
-        actions=[
-            interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())
-        ],
+        actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )
-
-    def abrir_editar_usuario(u_target: User) -> None:
-        actual = interfaz.usuario_actual
-        actual_es_master = bool(actual and actual.role == "master")
-        if not actual_es_master and u_target.role in ("master", "administrador") and u_target.id != (actual.id if actual else 0):
-            interfaz.notificar("No tienes permisos para editar a otro administrador.")
-            return
-
-        edit_nombre = ft.TextField(
-            label="Nombre y apellido / Identificador en documentos",
-            value=u_target.nombre,
-            hint_text="Ej: Juan Pérez",
-            autofocus=True,
-        )
-        edit_email = ft.TextField(
-            label="Correo electrónico",
-            value=u_target.email,
-            hint_text="Ej: usuario@ultratech.com",
-        )
-        err_edit = ft.Text("", color=ft.Colors.RED_400, size=12)
-
-        def guardar_edicion(_ev: ft.Event) -> None:
-            try:
-                interfaz.user_store.update_user_info(
-                    u_target.id,
-                    nombre=edit_nombre.value or "",
-                    email=edit_email.value or "",
-                    updater_role=interfaz.usuario_actual.role if interfaz.usuario_actual else None,
-                )
-                if interfaz.usuario_actual and interfaz.usuario_actual.id == u_target.id:
-                    interfaz.usuario_actual = interfaz.user_store.get_user(u_target.id)
-                    interfaz.construir()
-                interfaz.page.pop_dialog()
-                interfaz.notificar(f"Datos del usuario '{u_target.username}' actualizados.")
-                actualizar_lista()
-            except (ValueError, UserStoreError) as err:
-                err_edit.value = str(err)
-                interfaz.page.update()
-
-        dlg_edit = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Editar usuario: @{u_target.username}"),
-            content=ft.Container(
-                width=420,
-                content=ft.Column(
-                    [
-                        ft.Text(f"Rol: {u_target.role.capitalize()}", size=12, color=interfaz.secundario),
-                        edit_nombre,
-                        edit_email,
-                        err_edit,
-                    ],
-                    tight=True,
-                    spacing=10,
-                ),
-            ),
-            actions=[
-                ft.Button("Guardar", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=guardar_edicion),
-                interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
-            ],
-        )
-        interfaz.page.show_dialog(dlg_edit)
-
-    def actualizar_lista() -> None:
-        nonlocal actual, actual_es_master, actual_es_admin, es_master
-        usuarios.controls.clear()
-        actual = interfaz.usuario_actual
-        actual_es_master = bool(actual and actual.role == "master")
-        actual_es_admin = bool(actual and actual.role == "administrador")
-        es_master = actual_es_master
-        bloqueados = (
-            interfaz.user_store.list_locked_usernames()
-            if hasattr(interfaz.user_store, "list_locked_usernames")
-            else set()
-        )
-        roles_asignables = (
-            ["administrador", "operador", "picker", "despachador", "consulta"]
-            if actual_es_master
-            else ["operador", "picker", "despachador", "consulta"]
-        )
-        try:
-            lista_usuarios = interfaz.user_store.list_users(
-                include_master=actual_es_master,
-                exclude_other_admins=actual_es_admin,
-                current_user_id=actual.id if actual else None,
-            )
-        except TypeError:
-            try:
-                lista_usuarios = interfaz.user_store.list_users(include_master=actual_es_master)
-            except TypeError:
-                lista_usuarios = interfaz.user_store.list_users()
-        except Exception:
-            lista_usuarios = interfaz.user_store.list_users()
-
-        for usuario in lista_usuarios:
-            if not actual_es_master and usuario.role == "master":
-                continue
-            es_propio = actual is not None and usuario.id == actual.id
-            if actual_es_admin and usuario.role == "administrador" and not es_propio:
-                continue
-
-            es_target_master = usuario.role == "master"
-            es_target_admin = usuario.role == "administrador"
-            no_puede_editar = es_propio or es_target_master or (es_target_admin and not actual_es_master)
-            esta_bloqueado = usuario.username in bloqueados
-
-            selector_rol = ft.Dropdown(
-                value=usuario.role,
-                options=[
-                    ft.DropdownOption(key=role, text=role.capitalize())
-                    for role in (USER_ROLES if es_target_master else roles_asignables)
-                ],
-                width=135,
-                disabled=no_puede_editar,
-            )
-            boton_estado = ft.TextButton(
-                "Desactivar" if usuario.active else "Activar",
-                on_click=lambda _e, user_id=usuario.id, active=not usuario.active: cambiar_estado(
-                    user_id, active
-                ),
-                disabled=no_puede_editar,
-            )
-            boton_editar = ft.IconButton(
-                icon=ft.Icons.EDIT_OUTLINED,
-                tooltip="Editar nombre y correo",
-                icon_size=18,
-                disabled=es_target_master and not actual_es_master,
-                on_click=lambda _e, u=usuario: abrir_editar_usuario(u),
-            )
-            boton_reset = ft.IconButton(
-                icon=ft.Icons.LOCK_RESET,
-                tooltip="Restablecer contraseña de este usuario",
-                icon_size=18,
-                disabled=no_puede_editar,
-                on_click=lambda _e, u=usuario: abrir_reset_clave(u),
-            )
-            boton_desbloquear = (
-                ft.IconButton(
-                    icon=ft.Icons.LOCK_OPEN,
-                    tooltip="Desbloquear cuenta bloqueada por intentos fallidos",
-                    icon_color=ft.Colors.AMBER_400,
-                    icon_size=18,
-                    on_click=lambda _e, uname=usuario.username: desbloquear_cuenta(uname),
-                )
-                if esta_bloqueado
-                else ft.Container()
-            )
-            selector_rol.on_select = lambda _e, user_id=usuario.id, dropdown=selector_rol: cambiar_rol(
-                user_id, dropdown.value or ""
-            )
-
-            nombre_principal = usuario.nombre_identificador
-            sub_info = f"@{usuario.username}"
-            if usuario.email:
-                sub_info += f" · {usuario.email}"
-            if not usuario.active:
-                sub_info += " · (Inactivo)"
-            if esta_bloqueado:
-                sub_info += " · [BLOQUEADO]"
-
-            c_ambar = tono_legible("AMBER", es_oscuro)
-            info_col = ft.Column(
-                [
-                    ft.Text(
-                        nombre_principal,
-                        weight=ft.FontWeight.W_500,
-                        size=13,
-                        color=c_ambar if esta_bloqueado else interfaz.texto,
-                    ),
-                    ft.Text(
-                        sub_info,
-                        size=11,
-                        color=interfaz.secundario if not esta_bloqueado else c_ambar,
-                    ),
-                ],
-                spacing=1,
-                expand=True,
-            )
-
-            usuarios.controls.append(
-                ft.Row(
-                    [
-                        info_col,
-                        selector_rol,
-                        boton_desbloquear,
-                        boton_editar,
-                        boton_reset,
-                        boton_estado,
-                    ],
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                )
-            )
 
     def desbloquear_cuenta(uname: str) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
@@ -288,67 +127,10 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
             interfaz.page.update()
             return
         interfaz.user_store.unlock_user(uname)
-        try:
-            interfaz.order_store.registrar_auditoria(
-                usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin",
-                accion="DESBLOQUEO_USUARIO",
-                detalle=f"Cuenta '{uname}' desbloqueada manualmente",
-            )
-        except Exception:
-            pass
+        _registrar_auditoria_usuario(interfaz, "DESBLOQUEO_USUARIO", f"Cuenta '{uname}' desbloqueada manualmente")
         _set_feedback(f"Cuenta '{uname}' desbloqueada.", es_error=False)
         actualizar_lista()
         interfaz.page.update()
-
-    def abrir_reset_clave(u_target: User) -> None:
-        if not actual_es_master and u_target.role in ("master", "administrador"):
-            interfaz.notificar("Solo el usuario master puede restablecer la clave de un administrador.")
-            return
-
-        clave_temp = ft.TextField(
-            label=f"Nueva contraseña para {u_target.username} (mín. 10 caracteres)",
-            password=True,
-            can_reveal_password=True,
-            autofocus=True,
-        )
-        forzar_check = ft.Checkbox(
-            label="Exigir que el usuario la cambie en su próximo inicio de sesión",
-            value=True,
-        )
-        err_txt = ft.Text("", color=ft.Colors.RED_400, size=12)
-
-        def confirmar_reset(_ev: ft.Event) -> None:
-            try:
-                interfaz.user_store.reset_password(
-                    u_target.id,
-                    clave_temp.value or "",
-                    updater_role=interfaz.usuario_actual.role if interfaz.usuario_actual else None,
-                    must_change=bool(forzar_check.value),
-                )
-                interfaz.order_store.registrar_auditoria(
-                    usuario=interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin",
-                    accion="RESET_CLAVE",
-                    detalle=f"Contraseña restablecida para el usuario '{u_target.username}'",
-                )
-                interfaz.page.pop_dialog()
-                interfaz.notificar(f"Contraseña de '{u_target.username}' restablecida y cuenta desbloqueada.")
-            except (ValueError, UserStoreError) as err:
-                err_txt.value = str(err)
-                interfaz.page.update()
-
-        dlg_reset = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Restablecer clave: {u_target.username}"),
-            content=ft.Container(
-                width=400,
-                content=ft.Column([clave_temp, forzar_check, err_txt], tight=True, spacing=10),
-            ),
-            actions=[
-                ft.Button("Restablecer", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=confirmar_reset),
-                interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
-            ],
-        )
-        interfaz.page.show_dialog(dlg_reset)
 
     def cambiar_rol(user_id: int, role: str) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
@@ -370,13 +152,8 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
                 role,
                 updater_role=interfaz.usuario_actual.role if interfaz.usuario_actual else None,
             )
-            try:
-                if hasattr(interfaz, "order_store") and interfaz.order_store:
-                    usr_act = interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin"
-                    nom_t = target.username if target else str(user_id)
-                    interfaz.order_store.registrar_auditoria(usr_act, "CAMBIO_ROL_USUARIO", f"Usuario '{nom_t}' -> rol '{role}'")
-            except Exception:
-                pass
+            nom_t = target.username if target else str(user_id)
+            _registrar_auditoria_usuario(interfaz, "CAMBIO_ROL_USUARIO", f"Usuario '{nom_t}' -> rol '{role}'")
             _set_feedback("", es_error=False)
         except (ValueError, UserStoreError) as error:
             _set_feedback(str(error), es_error=True)
@@ -402,13 +179,8 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
                     active,
                     updater_role=interfaz.usuario_actual.role if interfaz.usuario_actual else None,
                 )
-                try:
-                    if hasattr(interfaz, "order_store") and interfaz.order_store:
-                        usr_act = interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin"
-                        acc = "ACTIVAR_USUARIO" if active else "DESACTIVAR_USUARIO"
-                        interfaz.order_store.registrar_auditoria(usr_act, acc, f"Usuario '{nom_t}' -> activo={active}")
-                except Exception:
-                    pass
+                acc = "ACTIVAR_USUARIO" if active else "DESACTIVAR_USUARIO"
+                _registrar_auditoria_usuario(interfaz, acc, f"Usuario '{nom_t}' -> activo={active}")
                 _set_feedback(f"Usuario '{nom_t}' {'activado' if active else 'desactivado'}.", es_error=False)
             except UserStoreError as error:
                 _set_feedback(str(error), es_error=True)
@@ -427,10 +199,49 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
         else:
             _aplicar_estado()
 
+    def actualizar_lista() -> None:
+        nonlocal actual, actual_es_master, actual_es_admin
+        usuarios.controls.clear()
+        actual = interfaz.usuario_actual
+        actual_es_master = bool(actual and actual.role == "master")
+        actual_es_admin = bool(actual and actual.role == "administrador")
+        bloqueados = (
+            interfaz.user_store.list_locked_usernames()
+            if hasattr(interfaz.user_store, "list_locked_usernames")
+            else set()
+        )
+        roles_asignables = (
+            ["administrador", "operador", "picker", "despachador", "consulta"]
+            if actual_es_master
+            else ["operador", "picker", "despachador", "consulta"]
+        )
+        lista_usuarios = _obtener_usuarios_visibles(interfaz, actual_es_master, actual_es_admin, actual)
+        for usuario in lista_usuarios:
+            if not actual_es_master and usuario.role == "master":
+                continue
+            es_propio = actual is not None and usuario.id == actual.id
+            if actual_es_admin and usuario.role == "administrador" and not es_propio:
+                continue
+            usuarios.controls.append(
+                construir_tarjeta_usuario(
+                    interfaz,
+                    usuario,
+                    actual=actual,
+                    actual_es_master=actual_es_master,
+                    roles_asignables=roles_asignables,
+                    esta_bloqueado=usuario.username in bloqueados,
+                    on_cambiar_rol=cambiar_rol,
+                    on_cambiar_estado=cambiar_estado,
+                    on_editar=lambda u: mostrar_modal_editar_usuario(interfaz, u, actualizar_lista),
+                    on_reset_clave=lambda u: mostrar_modal_reset_clave(interfaz, u),
+                    on_desbloquear=desbloquear_cuenta,
+                )
+            )
+
     def crear_usuario(_evento: ft.Event) -> None:
         if not interfaz.exigir_roles("administrador", "master"):
             return
-        if not es_master and nuevo_rol.value in ("administrador", "master"):
+        if not actual_es_master and nuevo_rol.value in ("administrador", "master"):
             _set_feedback("Solo el usuario master puede crear administradores.", es_error=True)
             interfaz.page.update()
             return
@@ -453,12 +264,7 @@ def mostrar_dialogo_gestion_usuarios(interfaz: Any) -> None:
                 marcar_error(nuevo_usuario, "El usuario ya existe en el sistema")
             _set_feedback(err_msg, es_error=True)
         else:
-            try:
-                if hasattr(interfaz, "order_store") and interfaz.order_store:
-                    usr_act = interfaz.usuario_actual.username if interfaz.usuario_actual else "Admin"
-                    interfaz.order_store.registrar_auditoria(usr_act, "CREAR_USUARIO", f"Alta de usuario '{uname_creado}' (rol={rol_creado})")
-            except Exception:
-                pass
+            _registrar_auditoria_usuario(interfaz, "CREAR_USUARIO", f"Alta de usuario '{uname_creado}' (rol={rol_creado})")
             nuevo_usuario.value = ""
             nuevo_nombre.value = ""
             nuevo_email.value = ""

@@ -19,13 +19,10 @@ from ..core.environment import get_data_dir
 from ..core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
 from ..parsers.mercado_libre_parser import _buscar_codigo
 from ..parsers.remito_parser import normalizar_codigo
-from ..paths import application_root
 from ..stock.models import RegistroDescuento
 from .mercado_libre_auth import (
     API_BASE_URL,
     CONFIG_ML_PATH_DEFAULT,
-    _CAMPOS_SECRETOS_ML,
-    _obtener_ruta_config_ml,
     cargar_config_mercadolibre,
     consultar_ordenes_ml,
     guardar_config_mercadolibre,

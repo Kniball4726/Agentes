@@ -55,11 +55,11 @@ def construir_manual_master(ruta_destino: Path) -> Path:
                 "nombre_boton": "Registro de Auditoría",
                 "icono_str": "[🛡️ Auditoría]",
                 "modulo": "ACCESO RÁPIDO / SEGURIDAD",
-                "proposito_funcional": "Consola forense de lectura sobre la bitácora inmutable de accesos, bloqueos por fuerza bruta, descuentos, cambios de stock y rollbacks.",
+                "proposito_funcional": "Consola forense de lectura con tarjetas responsivas sobre la bitácora inmutable de accesos, bloqueos por fuerza bruta, descuentos, cambios de stock, desarmado/eliminación de pedidos (`DESARMAR_PEDIDO`, `ELIMINAR_PEDIDO`), despachos y rollbacks.",
                 "datos_modificados": "Ninguno (lectura protegida de `logs_auditoria` append-only).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Registro de Auditoría'</b>.",
-                    "Filtrar por usuario, acción (`CIERRE_JORNADA`, `LOGIN_FALLIDO`, `RESTAURAR`) o fecha y exportar.",
+                    "Filtrar por usuario, acción (`CIERRE_JORNADA`, `ELIMINAR_PEDIDO`, `LOGIN_FALLIDO`, `RESTAURAR`) o fecha y exportar.",
                 ],
                 "resultado_obtenido": "Inspección forense en tiempo real con IP y marca de tiempo.",
                 "validaciones_advertencias": "Los registros de auditoría no admiten borrado ni modificación por ningún usuario.",

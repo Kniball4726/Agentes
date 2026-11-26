@@ -7,7 +7,6 @@ from typing import Any
 import flet as ft
 
 from ..design import colores_de, confirmar_accion_destructiva, tono_legible
-from ..theme import ROJO
 
 logger = logging.getLogger(__name__)
 

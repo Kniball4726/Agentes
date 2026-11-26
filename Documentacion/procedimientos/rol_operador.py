@@ -160,17 +160,17 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "validaciones_advertencias": "Verifica suficiencia previa de existencias antes de confirmar la transferencia.",
             },
             {
-                "nombre_boton": "Historial de Pedidos y Reimpresión",
+                "nombre_boton": "Historial de Pedidos y Reimpresión (Desarmar / Eliminar)",
                 "icono_str": "[🧾]",
                 "modulo": "PREPARACIÓN E INFORMES",
-                "proposito_funcional": "Reimpresión de comprobantes, rótulos QR (A4 o térmico 80 mm), edición de bultos/transporte y anulación/desarme de pedidos.",
-                "datos_modificados": "Tabla `pedidos` (actualiza bultos, chofer, fecha, estado DESPACHADO o restituye stock al desarmar).",
+                "proposito_funcional": "Consulta en tarjetas responsivas (móvil/tablet/PC), reimpresión de comprobantes y rótulos QR (A4 o térmico 80 mm), edición exclusiva de bultos/transporte y baja diferenciada mediante Desarmar (borrado lógico) o Eliminar (borrado físico definitivo).",
+                "datos_modificados": "Tabla `pedidos`: actualiza bultos, fecha o estado despachado. En <b>Desarmar</b> pasa a `anulado` conservando remito/hash SHA-256 y devolviendo stock; en <b>Eliminar</b> borra físicamente pedido, ítems, bloqueos e idempotencia (habilitando recarga del remito) y restituye stock sin duplicar si ya estaba anulado.",
                 "pasos_procedimiento": [
-                    "Abrir <b>'Historial de Pedidos'</b> desde el menú lateral o la paleta F2.",
-                    "Filtrar por cliente, remito o estado; usar acciones Ver Detalle, Rótulos QR, Editar o Anular/Desarmar.",
+                    "Abrir <b>'Historial de Pedidos'</b> (menú lateral o F2) o revisar el panel de pedidos del turno.",
+                    "Filtrar por cliente, remito o estado y usar: Ver Detalle, Rótulos QR, Editar (Operador), <b>Desarmar pedido</b> (icono naranja) o <b>Eliminar definitivamente</b> (icono rojo).",
                 ],
-                "resultado_obtenido": "Reimpresión directa y trazabilidad completa de pedidos del turno.",
-                "validaciones_advertencias": "Edición y desarme permitidos solo en pedidos sin `cierre_id` asignado.",
+                "resultado_obtenido": "Reimpresión ágil y control exacto sobre cancelaciones o errores de carga con retorno atómico de inventario.",
+                "validaciones_advertencias": "Desarmar conserva la trazabilidad del remito; Eliminar borra el registro permitiendo volver a procesar el archivo original.",
             },
             {
                 "nombre_boton": "Gestión de Clientes",
@@ -221,10 +221,10 @@ def construir_manual_operador(ruta_destino: Path) -> Path:
                 "validaciones_advertencias": "Solo habilitado con pedidos pendientes. Tras cerrar, los pedidos quedan inmutables.",
             },
             {
-                "nombre_boton": "Barra Móvil por Rol (Thumb Zone), Cola FIFO y Semáforo LAN",
+                "nombre_boton": "Interfaz Responsiva, Barra Móvil por Rol (Thumb Zone) y Semáforo LAN",
                 "icono_str": "[📱]",
                 "modulo": "ERGONOMÍA MÓVIL Y RED",
-                "proposito_funcional": "Navegación inferior adaptada al rol (<768 px), app móvil nativa con cola FIFO de escaneo, Modo Claro Alto Contraste / Modo Lector Láser, deshacer eliminación (`DESHACER`) y auto-sincronización `/api/v1/despacho/escanear-lote` más semáforo RTT.",
+                "proposito_funcional": "Tarjetas y grillas auto-adaptables a celular, tablet y PC (`<768 px`, `900 px`, `928 px`), navegación inferior adaptada al rol, app móvil nativa con cola FIFO de escaneo, Modo Claro Alto Contraste / Lector Láser y semáforo RTT.",
                 "datos_modificados": "Almacén seguro `AndroidKeyStore`, borradores aislados por usuario y cola offline persistente sincronizada al recuperar señal Wi-Fi/LAN.",
                 "pasos_procedimiento": [
                     "Supervisar el indicador superior (`ONLINE` / `OFFLINE` y latencia LAN).",

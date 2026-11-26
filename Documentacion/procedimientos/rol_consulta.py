@@ -54,7 +54,7 @@ def construir_manual_consulta(ruta_destino: Path) -> Path:
                 "nombre_boton": "Historial de Pedidos (Solo Lectura)",
                 "icono_str": "[🧾]",
                 "modulo": "INFORMES",
-                "proposito_funcional": "Permite consultar el estado de preparación/despacho de pedidos históricos, bultos y transporte asignado sin poder alterarlos.",
+                "proposito_funcional": "Permite consultar en tarjetas responsivas (móvil/tablet/PC) el estado de preparación/despacho de pedidos históricos, bultos y transporte asignado sin poder alterarlos.",
                 "datos_modificados": "Ninguno (consulta paginada de tabla `pedidos`).",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Historial de Pedidos'</b> y filtrar por cliente, remito o logística.",

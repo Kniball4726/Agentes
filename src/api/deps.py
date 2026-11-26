@@ -6,7 +6,7 @@ import hashlib
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -15,7 +15,6 @@ from ..auth.store import register_session_revocation_listener
 from ..core.environment import get_db_path, get_descuentos_dir, get_environment
 from ..inventory import StockManager
 from ..orders import OrderStore
-from ..paths import application_root
 from ..products import ProductStore
 
 # Configuración de sesiones

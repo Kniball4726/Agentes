@@ -19,7 +19,6 @@ from .models import (
     DEFAULT_MASTER_USERNAME,
     AuthResult,
     User,
-    UserRole,
 )
 from .password import hash_clave, validar_clave, verificar_clave
 from .schema import inicializar_esquema, migrar_columnas

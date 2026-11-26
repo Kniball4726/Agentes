@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 import flet as ft
 
-from ..design import tono_legible
+from ..design import es_viewport_estrecho, fila_cabecera_responsiva, tono_legible
 from ..theme import ROJO
 
 
@@ -20,6 +20,10 @@ def tarjeta_kpi_flujo(
     """Construye una tarjeta KPI compacta con ícono temático y subtítulo."""
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
     bg_ico = ft.Colors.with_opacity(0.15, color_ico) if es_oscuro else ft.Colors.with_opacity(0.10, color_ico)
+
+    for txt_ctrl in (control_valor, control_subtitulo):
+        txt_ctrl.max_lines = 1
+        txt_ctrl.overflow = ft.TextOverflow.ELLIPSIS
 
     return ft.Container(
         expand=True,
@@ -39,7 +43,14 @@ def tarjeta_kpi_flujo(
                 ),
                 ft.Column(
                     [
-                        ft.Text(titulo, size=10, weight=ft.FontWeight.W_500, color=interfaz.secundario),
+                        ft.Text(
+                            titulo,
+                            size=10,
+                            weight=ft.FontWeight.W_500,
+                            color=interfaz.secundario,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
                         control_valor,
                         control_subtitulo,
                     ],
@@ -57,41 +68,39 @@ def tarjeta_kpi_flujo(
 def construir_cabecera_flujo(interfaz: Any, es_oscuro: bool) -> ft.Row:
     """Construye la cabecera del panel de analítica operativa en tiempo real."""
     c_verde = tono_legible("GREEN", es_oscuro)
-    return ft.Row(
-        [
-            ft.Row(
+    return fila_cabecera_responsiva(
+        ft.Row(
+            [
+                ft.Icon(ft.Icons.ANALYTICS, color=ROJO, size=18),
+                ft.Text(
+                    "Flujo Operativo y Estadísticas de Stock (Tiempo Real)",
+                    size=13,
+                    weight=ft.FontWeight.BOLD,
+                    color=interfaz.texto,
+                ),
+            ],
+            spacing=6,
+            tight=True,
+            wrap=True,
+        ),
+        ft.Container(
+            content=ft.Row(
                 [
-                    ft.Icon(ft.Icons.ANALYTICS, color=ROJO, size=18),
+                    ft.Icon(ft.Icons.SYNC, size=12, color=c_verde),
                     ft.Text(
-                        "Flujo Operativo y Estadísticas de Stock (Tiempo Real)",
-                        size=13,
-                        weight=ft.FontWeight.BOLD,
-                        color=interfaz.texto,
+                        "Actualizado en vivo",
+                        size=10,
+                        color=c_verde,
+                        weight=ft.FontWeight.W_500,
                     ),
                 ],
-                spacing=6,
+                spacing=4,
+                tight=True,
             ),
-            ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.Icons.SYNC, size=12, color=c_verde),
-                        ft.Text(
-                            "Actualizado en vivo",
-                            size=10,
-                            color=c_verde,
-                            weight=ft.FontWeight.W_500,
-                        ),
-                    ],
-                    spacing=4,
-                    tight=True,
-                ),
-                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                border_radius=10,
-                bgcolor=ft.Colors.with_opacity(0.12, c_verde),
-            ),
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+            border_radius=10,
+            bgcolor=ft.Colors.with_opacity(0.12, c_verde),
+        ),
     )
 
 
@@ -207,18 +216,18 @@ def renderizar_barras_distribucion(
         columna.controls.append(
             ft.Column(
                 [
-                    ft.Row(
-                        [
-                            ft.Row(
-                                [
-                                    ft.Container(width=8, height=8, border_radius=2, bgcolor=color_c),
-                                    ft.Text(item["etiqueta"], size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
-                                ],
-                                spacing=4,
-                            ),
-                            ft.Text(f"{u} un. ({porc}%)", size=10, weight=ft.FontWeight.BOLD, color=color_c),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    fila_cabecera_responsiva(
+                        ft.Row(
+                            [
+                                ft.Container(width=8, height=8, border_radius=2, bgcolor=color_c),
+                                ft.Text(item["etiqueta"], size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
+                            ],
+                            spacing=4,
+                            tight=True,
+                        ),
+                        ft.Text(f"{u} un. ({porc}%)", size=10, weight=ft.FontWeight.BOLD, color=color_c),
+                        spacing=6,
+                        run_spacing=2,
                     ),
                     ft.ProgressBar(
                         value=ratio,
@@ -248,8 +257,9 @@ def renderizar_tendencia_7_dias(
         return
 
     max_ped = max((c for _, c, _ in por_dia[:7]), default=1) or 1
+    max_ancho = 85 if es_viewport_estrecho(interfaz, umbral=640.0) else 140
     for dia_str, cant_p, bultos_p in por_dia[:7]:
-        ancho = max(12, int((cant_p / max_ped) * 140))
+        ancho = max(12, int((cant_p / max_ped) * max_ancho))
         dia_fmt = dia_str
         try:
             partes = dia_str.split("-")
@@ -262,7 +272,15 @@ def renderizar_tendencia_7_dias(
                 [
                     ft.Text(dia_fmt, size=11, width=42, color=interfaz.secundario, weight=ft.FontWeight.W_500),
                     ft.Container(width=ancho, height=12, bgcolor=ft.Colors.CYAN_500, border_radius=3),
-                    ft.Text(f"{cant_p} ped. ({bultos_p} bultos)", size=10, color=interfaz.texto, weight=ft.FontWeight.BOLD),
+                    ft.Text(
+                        f"{cant_p} ped. ({bultos_p} bultos)",
+                        size=10,
+                        color=interfaz.texto,
+                        weight=ft.FontWeight.BOLD,
+                        expand=True,
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                 ],
                 spacing=6,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -290,11 +308,20 @@ def renderizar_top_movimientos(
             ft.Row(
                 [
                     ft.Text(f"{idx}.", size=11, weight=ft.FontWeight.BOLD, color=c_ambar, width=16),
-                    ft.Text(f"[{it['codigo']}]", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto, width=65),
-                    ft.Text(it["descripcion"], size=11, color=interfaz.secundario, expand=True, no_wrap=True),
+                    ft.Text(f"[{it['codigo']}]", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Text(
+                        it["descripcion"],
+                        size=11,
+                        color=interfaz.secundario,
+                        expand=True,
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                     ft.Text(f"{it['cantidad']} un.", size=11, weight=ft.FontWeight.BOLD, color=color_valor),
                 ],
+                spacing=6,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         )
 
@@ -320,18 +347,18 @@ def renderizar_productividad_armadores(
         col_arm.controls.append(
             ft.Column(
                 [
-                    ft.Row(
-                        [
-                            ft.Row(
-                                [
-                                    ft.Icon(ft.Icons.PERSON_OUTLINE, size=13, color=c_azul),
-                                    ft.Text(armador or "Sin asignar", size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
-                                ],
-                                spacing=4,
-                            ),
-                            ft.Text(f"{cant_a} ped. ({bultos_a} bultos)", size=10, weight=ft.FontWeight.BOLD, color=c_azul),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    fila_cabecera_responsiva(
+                        ft.Row(
+                            [
+                                ft.Icon(ft.Icons.PERSON_OUTLINE, size=13, color=c_azul),
+                                ft.Text(armador or "Sin asignar", size=11, weight=ft.FontWeight.W_500, color=interfaz.texto),
+                            ],
+                            spacing=4,
+                            tight=True,
+                        ),
+                        ft.Text(f"{cant_a} ped. ({bultos_a} bultos)", size=10, weight=ft.FontWeight.BOLD, color=c_azul),
+                        spacing=6,
+                        run_spacing=2,
                     ),
                     ft.ProgressBar(
                         value=ratio_a,
@@ -396,10 +423,18 @@ def renderizar_radar_criticos(
                         padding=ft.Padding.symmetric(horizontal=4, vertical=2),
                         border_radius=4,
                     ),
-                    ft.Text(f"[{codigo}]", size=10, weight=ft.FontWeight.BOLD, color=interfaz.texto, width=50),
-                    ft.Text(nombre, size=11, color=interfaz.secundario, expand=True, no_wrap=True),
+                    ft.Text(f"[{codigo}]", size=10, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                    ft.Text(
+                        nombre,
+                        size=11,
+                        color=interfaz.secundario,
+                        expand=True,
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                     ft.Text(f"Stock: {stk} (Pedir: +{sug})", size=10, weight=ft.FontWeight.BOLD, color=col_badge),
                 ],
+                spacing=6,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from .models import MensajeChat
 from .protocols import LookupOrderFn, OrderConnectFn
 

@@ -5,7 +5,7 @@ utilizando la biblioteca gspread y una cuenta de servicio de Google Cloud.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from ..consolidator import ItemConsolidado
 from ..parsers.remito_parser import normalizar_codigo
 from ..stock.models import AlertaStock, RegistroDescuento, ReporteStock

@@ -6,7 +6,6 @@ import flet as ft
 
 from ..theme import FUENTE_MENU, FUENTE_MENU_BOLD, FUENTE_MENU_SEMIBOLD, ROJO, estilo_texto_menu
 from .sidebar_sections import (
-    SeccionMenu,
     obtener_secciones_rol,
     verificar_pendientes_categoria,
     _crear_boton_cierre_jornada,

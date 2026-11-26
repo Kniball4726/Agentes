@@ -6,7 +6,7 @@ from contextlib import closing
 from typing import Any
 import flet as ft
 
-from ..design import tono_legible
+from ..design import grilla_tarjetas_responsiva, tono_legible
 from .admin_flow_widgets import (
     construir_cabecera_flujo,
     construir_tarjetas_graficos_flujo,
@@ -92,23 +92,29 @@ def construir_panel_analitica_flujo_admin(interfaz: Any) -> ft.Control | None:
     kpi_semaforo.on_click = lambda _: interfaz.mostrar_ver_stock() if hasattr(interfaz, "mostrar_ver_stock") else None
     kpi_semaforo.ink = True
 
-    if es_movil:
-        for k in (kpi_entradas, kpi_salidas, kpi_balance, kpi_bultos, kpi_semaforo):
-            k.expand = False
-            k.col = 6
-        fila_kpis = ft.ResponsiveRow([kpi_entradas, kpi_salidas, kpi_balance, kpi_bultos, kpi_semaforo], spacing=8, run_spacing=8)
-    else:
-        fila_kpis = ft.Row([kpi_entradas, kpi_salidas, kpi_balance, kpi_bultos, kpi_semaforo], spacing=10)
+    fila_kpis = grilla_tarjetas_responsiva(
+        [kpi_entradas, kpi_salidas, kpi_balance, kpi_bultos, kpi_semaforo],
+        interfaz=interfaz,
+        compacto=True,
+        spacing=8 if es_movil else 10,
+        run_spacing=8 if es_movil else 10,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
     # Tarjeta Izquierda y Derecha delegadas al módulo de widgets
     tarjeta_distribucion, tarjeta_top_movimientos = construir_tarjetas_graficos_flujo(
         interfaz, es_movil, interfaz.controles_flujo_admin
     )
 
-    if es_movil:
-        bloque_graficos = ft.Column([tarjeta_distribucion, tarjeta_top_movimientos], spacing=10)
-    else:
-        bloque_graficos = ft.Row([tarjeta_distribucion, tarjeta_top_movimientos], spacing=12, vertical_alignment=ft.CrossAxisAlignment.START)
+    bloque_graficos = grilla_tarjetas_responsiva(
+        [tarjeta_distribucion, tarjeta_top_movimientos],
+        interfaz=interfaz,
+        compacto=False,
+        cols={"xs": 12} if es_movil else {"xs": 12, "md": 12, "lg": 6},
+        spacing=10 if es_movil else 12,
+        run_spacing=10 if es_movil else 12,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
     cabecera_seccion = construir_cabecera_flujo(interfaz, es_oscuro)
 

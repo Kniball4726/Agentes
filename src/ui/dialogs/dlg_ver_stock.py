@@ -2,8 +2,9 @@
 
 from typing import Any
 import flet as ft
-from ..theme import ROJO
 from ..components.debounce import Debouncer
+from ..design import par_accion_tarjeta
+from ..theme import ROJO
 
 
 def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
@@ -27,7 +28,7 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
     filtro_estado = ["todos"]  # "todos", "normal", "bajo", "quiebre"
     limite = [60]
 
-    contenedor_kpis = ft.Row(spacing=8, scroll=ft.ScrollMode.ADAPTIVE)
+    contenedor_kpis = ft.Row(spacing=8, run_spacing=6, wrap=True)
     columna_productos = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
 
     cache_productos: list[dict[str, Any]] = []
@@ -208,50 +209,45 @@ def mostrar_dialogo_ver_stock(interfaz: Any) -> None:
                     )
                 )
 
+            info_prod = ft.Column(
+                [
+                    ft.Text(
+                        nombre,
+                        size=13,
+                        weight=ft.FontWeight.W_600,
+                        color=interfaz.texto,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                    ft.Row(chips_secundarios, spacing=6, wrap=True, run_spacing=4),
+                ],
+                spacing=4,
+                expand=True,
+            )
+            bloque_stock = ft.Column(
+                [
+                    ft.Container(
+                        content=ft.Text(f"{stock}", size=18, weight=ft.FontWeight.BOLD, color=color_stock),
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                    ft.Container(
+                        content=ft.Text(estado_texto, size=9, weight=ft.FontWeight.BOLD, color=color_stock),
+                        bgcolor=bg_badge,
+                        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                        border_radius=6,
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                    ft.Text(f"Mín: {stock_min}", size=10, color=interfaz.secundario),
+                ],
+                spacing=2,
+                horizontal_alignment=ft.CrossAxisAlignment.END,
+            )
             tarjeta = ft.Container(
                 bgcolor=ft.Colors.with_opacity(0.04 if es_oscuro else 0.02, interfaz.texto),
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.12, interfaz.borde)),
                 border_radius=10,
                 padding=ft.Padding.symmetric(horizontal=12, vertical=10),
-                content=ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Text(
-                                    nombre,
-                                    size=13,
-                                    weight=ft.FontWeight.W_600,
-                                    color=interfaz.texto,
-                                    max_lines=2,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                ),
-                                ft.Row(chips_secundarios, spacing=6, wrap=True),
-                            ],
-                            spacing=4,
-                            expand=True,
-                        ),
-                        ft.Column(
-                            [
-                                ft.Container(
-                                    content=ft.Text(f"{stock}", size=18, weight=ft.FontWeight.BOLD, color=color_stock),
-                                    alignment=ft.Alignment.CENTER,
-                                ),
-                                ft.Container(
-                                    content=ft.Text(estado_texto, size=9, weight=ft.FontWeight.BOLD, color=color_stock),
-                                    bgcolor=bg_badge,
-                                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                                    border_radius=6,
-                                    alignment=ft.Alignment.CENTER,
-                                ),
-                                ft.Text(f"Mín: {stock_min}", size=10, color=interfaz.secundario),
-                            ],
-                            spacing=2,
-                            horizontal_alignment=ft.CrossAxisAlignment.END,
-                        ),
-                    ],
-                    spacing=12,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
+                content=par_accion_tarjeta(interfaz, info_prod, bloque_stock, umbral=420.0, spacing=12),
             )
             tarjetas.append(tarjeta)
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from .models import ESTADOS_DESPACHO, RegistroAuditoria
 from .protocols import OrderConnectFn
 

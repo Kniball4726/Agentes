@@ -173,16 +173,6 @@ def formatear_respuesta_criticos(productos: Iterable[Any], umbral: int = 5) -> s
     return "\n".join(lineas)
 
 
-def _agregar_bloque_bandeja(lineas: list[str], titulo: str, rutas: Sequence[Path]) -> None:
-    if not rutas:
-        return
-    lineas.append(f"• {titulo}: {len(rutas)} archivo(s)" if "archivo" in titulo or "pedido" in titulo or "planilla" in titulo else f"• {titulo}: {len(rutas)}")
-    for item in rutas[:3]:
-        lineas.append(f"   - {item.name}")
-    if len(rutas) > 3:
-        lineas.append(f"   - ...y {len(rutas) - 3} más")
-
-
 def formatear_diagnostico_archivos(
     mayoristas: Sequence[Path],
     canjes: Sequence[Path],

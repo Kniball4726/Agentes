@@ -9,10 +9,8 @@ from ..design import confirmar_accion_destructiva, tono_legible
 from ..theme import ROJO
 from ...core.environment import (
     get_environment,
-    set_environment,
     is_qa_environment,
-    get_data_dir,
-    get_descuentos_dir,
+    set_environment,
 )
 from ...qa.seeder import inicializar_ambiente_qa
 
@@ -72,9 +70,10 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
                             ft.Column(
                                 [
                                     ft.Text("🟢 Producción (Datos Reales de Empresa)", size=12, weight=ft.FontWeight.BOLD),
-                                    ft.Text("Bases: data/ | Planillas: Descuentos/ | Operación regular", size=10, color=interfaz.secundario),
+                                    ft.Text("Bases: data/ | Planillas: Descuentos/ | Operación regular", size=10, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                                 spacing=2,
+                                expand=True,
                             ),
                         ],
                         spacing=8,
@@ -90,9 +89,10 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
                             ft.Column(
                                 [
                                     ft.Text("🟡 Ambiente de Pruebas / QA (Aislado)", size=12, weight=ft.FontWeight.BOLD),
-                                    ft.Text("Bases: data_qa/ | Planillas: Descuentos_QA/ | Seguro para capacitación y test", size=10, color=interfaz.secundario),
+                                    ft.Text("Bases: data_qa/ | Planillas: Descuentos_QA/ | Seguro para capacitación y test", size=10, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                                 ],
                                 spacing=2,
+                                expand=True,
                             ),
                         ],
                         spacing=8,
@@ -248,6 +248,8 @@ def mostrar_gestion_ambientes(interfaz: Any, _evento: ft.Event | None = None) ->
                             btn_reseed,
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        wrap=True,
+                        run_spacing=6,
                     ),
                 ],
                 spacing=10,

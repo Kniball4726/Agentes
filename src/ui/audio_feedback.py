@@ -1,10 +1,12 @@
 """Módulo de soporte para lectores de códigos de barra (Barcode Wedge) y feedback acústico."""
 
-from src.products.barcode_utils import (
-    coincide_codigo_o_barras,
-    generar_variantes_codigo_lector,
-    normalizar_codigo_lector,
-)
+from src.products.barcode_utils import normalizar_codigo_lector
+
+__all__ = [
+    "emitir_tono_error",
+    "emitir_tono_exito",
+    "normalizar_codigo_lector",
+]
 
 
 def emitir_tono_exito() -> None:

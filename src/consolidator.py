@@ -4,7 +4,6 @@ Toma los ítems extraídos de uno o más remitos y, si se repiten los códigos d
 los agrupa y suma sus cantidades totales para calcular el descuento neto.
 """
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List
 from .parsers.remito_parser import ItemRemito, normalizar_codigo

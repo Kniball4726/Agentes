@@ -7,14 +7,29 @@ from typing import Any, Callable
 import flet as ft
 
 from ...orders import Pedido
+from ..design import grilla_tarjetas_responsiva, par_accion_tarjeta
 from ..theme import ROJO
+from .despacho_acciones import (
+    aplicar_resultado_escaneo_qr,
+    construir_barra_filtros_despacho,
+    construir_estado_vacio_despacho,
+    construir_kpis_despacho,
+    filtrar_pedidos_despacho,
+)
 from .despacho_componentes import (
     abrir_modal_confirmar_despacho_manual,
-    construir_kpi_despacho,
     construir_tarjeta_pedido_despachado,
     construir_tarjeta_pedido_pendiente,
     es_fecha_hoy,
 )
+
+_COLORES_FEEDBACK = {
+    "ok": (ft.Colors.GREEN_500, ft.Icons.CHECK_CIRCLE),
+    "parcial": (ft.Colors.AMBER_500, ft.Icons.QR_CODE_SCANNER),
+    "alerta": (ft.Colors.ORANGE_500, ft.Icons.WARNING_AMBER_ROUNDED),
+    "error": (ft.Colors.RED_400, ft.Icons.ERROR_OUTLINE),
+    "info": (ROJO, ft.Icons.INFO_OUTLINE),
+}
 
 
 def construir_vista_modulo_despacho(
@@ -38,32 +53,15 @@ def construir_vista_modulo_despacho(
         "pedido_requiere_manual": None,
     }
 
-    # KPIs en vivo
-    kpi_val_1 = ft.Text("0", size=22, weight=ft.FontWeight.BOLD, color=interfaz.texto)
-    kpi_val_2 = ft.Text("0", size=22, weight=ft.FontWeight.BOLD, color=interfaz.texto)
-    kpi_val_3 = ft.Text("0", size=22, weight=ft.FontWeight.BOLD, color=interfaz.texto)
-    kpi_val_4 = ft.Text("0", size=22, weight=ft.FontWeight.BOLD, color=interfaz.texto)
-
-    if solo_lectura:
-        fila_kpis = ft.Row(
-            [
-                construir_kpi_despacho(interfaz, "Despachados hoy", kpi_val_1, ft.Icons.TODAY, ft.Colors.GREEN_500),
-                construir_kpi_despacho(interfaz, "Bultos hoy", kpi_val_2, ft.Icons.INVENTORY_2, ft.Colors.BLUE_500),
-                construir_kpi_despacho(interfaz, "Total despachados", kpi_val_3, ft.Icons.LOCAL_SHIPPING, ROJO),
-                construir_kpi_despacho(interfaz, "Bultos totales", kpi_val_4, ft.Icons.ALL_INBOX, ft.Colors.TEAL_500),
-            ],
-            spacing=10,
-        )
-    else:
-        fila_kpis = ft.Row(
-            [
-                construir_kpi_despacho(interfaz, "Pendientes (Armados)", kpi_val_1, ft.Icons.PENDING_ACTIONS, ft.Colors.BLUE_500),
-                construir_kpi_despacho(interfaz, "En control parcial", kpi_val_2, ft.Icons.QR_CODE_SCANNER, ft.Colors.AMBER_500),
-                construir_kpi_despacho(interfaz, "Despachados hoy", kpi_val_3, ft.Icons.CHECK_CIRCLE, ft.Colors.GREEN_500),
-                construir_kpi_despacho(interfaz, "Bultos despachados hoy", kpi_val_4, ft.Icons.LOCAL_SHIPPING, ROJO),
-            ],
-            spacing=10,
-        )
+    (kpi_val_1, kpi_val_2, kpi_val_3, kpi_val_4), kpis_cards = construir_kpis_despacho(interfaz, solo_lectura)
+    fila_kpis = grilla_tarjetas_responsiva(
+        kpis_cards,
+        interfaz=interfaz,
+        compacto=True,
+        spacing=8,
+        run_spacing=8,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
     es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
     lista_pedidos = ft.ListView(
@@ -71,21 +69,13 @@ def construir_vista_modulo_despacho(
         height=340 if (modo_dialogo or es_movil) else None,
         spacing=8,
     )
-
     campo_filtro = ft.TextField(
         label="Buscar por N° de remito, cliente, transporte o despachador",
         prefix_icon=ft.Icons.SEARCH,
         dense=True,
         expand=True,
     )
-
-    chk_solo_hoy = ft.Checkbox(
-        label="Solo despachados hoy",
-        value=False,
-        visible=solo_lectura,
-    )
-
-    # Controles exclusivos del modo operativo (despachador)
+    chk_solo_hoy = ft.Checkbox(label="Solo despachados hoy", value=False, visible=solo_lectura)
     campo_qr = ft.TextField(
         label="Pistola lectora QR / Código de remito",
         hint_text="Escanee el rótulo QR de cada bulto (ej: REMITO:0001-00012345|...|BULTO:1/3) y presione Enter",
@@ -112,11 +102,7 @@ def construir_vista_modulo_despacho(
         border_radius=8,
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         content=ft.Row(
-            [
-                icono_feedback,
-                ft.Container(content=txt_feedback, expand=True),
-                btn_manual_desde_scan,
-            ],
+            [icono_feedback, ft.Container(content=txt_feedback, expand=True), btn_manual_desde_scan],
             spacing=8,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -137,14 +123,7 @@ def construir_vista_modulo_despacho(
     )
 
     def _fijar_feedback(texto: str, tipo: str = "info", pedido_manual: Pedido | None = None) -> None:
-        colores = {
-            "ok": (ft.Colors.GREEN_500, ft.Icons.CHECK_CIRCLE),
-            "parcial": (ft.Colors.AMBER_500, ft.Icons.QR_CODE_SCANNER),
-            "alerta": (ft.Colors.ORANGE_500, ft.Icons.WARNING_AMBER_ROUNDED),
-            "error": (ft.Colors.RED_400, ft.Icons.ERROR_OUTLINE),
-            "info": (ROJO, ft.Icons.INFO_OUTLINE),
-        }
-        col, ico = colores.get(tipo, colores["info"])
+        col, ico = _COLORES_FEEDBACK.get(tipo, _COLORES_FEEDBACK["info"])
         txt_feedback.value = texto
         txt_feedback.color = col if tipo != "info" else interfaz.secundario
         icono_feedback.icon = ico
@@ -193,12 +172,10 @@ def construir_vista_modulo_despacho(
             return
 
         filtro = (campo_filtro.value or "").strip().lower()
-        despachados = order_store.listar_pedidos_por_estado_despacho(
-            estados=("despachado", "entregado"),
-            limit=300,
-        )
+        despachados = order_store.listar_pedidos_por_estado_despacho(estados=("despachado", "entregado"), limit=300)
         despachados_hoy = [p for p in despachados if es_fecha_hoy(p.despachado_at or p.created_at)]
         bultos_hoy = sum(max(1, int(p.bultos or 1)) for p in despachados_hoy)
+        mapa_bultos: dict[int, list[int]] = {}
 
         if solo_lectura:
             kpi_val_1.value = str(len(despachados_hoy))
@@ -207,65 +184,28 @@ def construir_vista_modulo_despacho(
             kpi_val_4.value = str(sum(max(1, int(p.bultos or 1)) for p in despachados))
             origen = despachados_hoy if chk_solo_hoy.value else despachados
         else:
-            pendientes = order_store.listar_pedidos_por_estado_despacho(
-                estados=("armado",),
-                limit=300,
-            )
+            pendientes = order_store.listar_pedidos_por_estado_despacho(estados=("armado",), limit=300)
             mapa_bultos = order_store.obtener_mapa_bultos_escaneados([p.id for p in pendientes])
-            en_control = sum(1 for p in pendientes if len(mapa_bultos.get(p.id, [])) > 0)
             kpi_val_1.value = str(len(pendientes))
-            kpi_val_2.value = str(en_control)
+            kpi_val_2.value = str(sum(1 for p in pendientes if len(mapa_bultos.get(p.id, [])) > 0))
             kpi_val_3.value = str(len(despachados_hoy))
             kpi_val_4.value = str(bultos_hoy)
             btn_tab_pendientes.content = f"Pendientes ({len(pendientes)})"
             btn_tab_despachados.content = f"Despachados ({len(despachados)})"
             origen = pendientes if estado_ui["vista"] == "pendientes" else despachados
 
-        def _coincide(p: Pedido) -> bool:
-            if not filtro:
-                return True
-            haystack = " ".join(
-                [
-                    p.nota_pedido or "",
-                    p.numero_pedido or "",
-                    p.cliente or "",
-                    p.logistica or "",
-                    p.armador or "",
-                    p.despachado_por or "",
-                    getattr(p, "numero_guia", "") or "",
-                ]
-            ).lower()
-            return filtro in haystack
-
-        filtrados = [p for p in origen if _coincide(p)]
+        filtrados = filtrar_pedidos_despacho(origen, filtro)
         lista_pedidos.controls.clear()
 
         if not filtrados:
-            vacio_txt = (
-                "No hay pedidos despachados que coincidan con el filtro."
-                if (solo_lectura or estado_ui["vista"] == "despachados")
-                else "No hay pedidos pendientes (armados) para despachar."
-            )
             lista_pedidos.controls.append(
-                ft.Container(
-                    padding=28,
-                    alignment=ft.Alignment.CENTER,
-                    content=ft.Column(
-                        [
-                            ft.Icon(ft.Icons.LOCAL_SHIPPING_OUTLINED, size=36, color=interfaz.secundario),
-                            ft.Text(vacio_txt, size=13, color=interfaz.secundario),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=6,
-                    ),
-                )
+                construir_estado_vacio_despacho(interfaz, solo_lectura=solo_lectura, vista=estado_ui["vista"])
             )
         elif solo_lectura or estado_ui["vista"] == "despachados":
             for p in filtrados:
                 lista_pedidos.controls.append(construir_tarjeta_pedido_despachado(interfaz, p))
         else:
             destacado_id = estado_ui["pedido_destacado_id"]
-            # Mostrar primero el pedido actualmente escaneado si existe
             filtrados.sort(key=lambda p: (0 if p.id == destacado_id else 1, -p.id))
             for p in filtrados:
                 lista_pedidos.controls.append(
@@ -292,39 +232,10 @@ def construir_vista_modulo_despacho(
         raw = (campo_qr.value or "").strip()
         if not raw:
             return
-        usuario_nom = (
-            interfaz.usuario_actual.nombre_identificador
-            if interfaz.usuario_actual
-            else "Despachador"
-        )
-        res = interfaz.order_store.registrar_escaneo_bulto_despacho(
-            codigo_qr_o_remito=raw,
-            usuario=usuario_nom,
-        )
+        usuario_nom = interfaz.usuario_actual.nombre_identificador if interfaz.usuario_actual else "Despachador"
+        res = interfaz.order_store.registrar_escaneo_bulto_despacho(codigo_qr_o_remito=raw, usuario=usuario_nom)
         campo_qr.value = ""
-        pedido_res: Pedido | None = res.get("pedido")
-
-        if res.get("completado"):
-            estado_ui["pedido_destacado_id"] = None
-            _fijar_feedback(str(res["mensaje"]), tipo="ok")
-            if hasattr(interfaz, "sincronizar_sesiones"):
-                try:
-                    interfaz.sincronizar_sesiones()
-                except Exception:
-                    pass
-        elif res.get("requiere_confirmacion_bultos") and pedido_res is not None:
-            estado_ui["vista"] = "pendientes"
-            estado_ui["pedido_destacado_id"] = pedido_res.id
-            _fijar_feedback(str(res["mensaje"]), tipo="alerta", pedido_manual=pedido_res)
-        elif res.get("ok") and pedido_res is not None:
-            estado_ui["vista"] = "pendientes"
-            estado_ui["pedido_destacado_id"] = pedido_res.id
-            _fijar_feedback(str(res["mensaje"]), tipo="parcial", pedido_manual=pedido_res)
-        elif res.get("duplicado"):
-            _fijar_feedback(str(res["mensaje"]), tipo="alerta")
-        else:
-            _fijar_feedback(str(res["mensaje"]), tipo="error")
-
+        aplicar_resultado_escaneo_qr(interfaz, res, estado_ui, _fijar_feedback)
         refrescar()
         try:
             campo_qr.focus()
@@ -334,17 +245,10 @@ def construir_vista_modulo_despacho(
     campo_qr.on_submit = _procesar_qr
     campo_filtro.on_change = refrescar
     chk_solo_hoy.on_change = refrescar
-
-    def _cambiar_tab(nueva_vista: str) -> None:
-        estado_ui["vista"] = nueva_vista
-        refrescar()
-
-    btn_tab_pendientes.on_click = lambda _e: _cambiar_tab("pendientes")
-    btn_tab_despachados.on_click = lambda _e: _cambiar_tab("despachados")
+    btn_tab_pendientes.on_click = lambda _e: (estado_ui.__setitem__("vista", "pendientes"), refrescar())
+    btn_tab_despachados.on_click = lambda _e: (estado_ui.__setitem__("vista", "despachados"), refrescar())
 
     bloques: list[ft.Control] = []
-
-    # Cabecera del módulo
     if solo_lectura:
         bloques.append(
             ft.Container(
@@ -368,51 +272,30 @@ def construir_vista_modulo_despacho(
             )
         )
     else:
-        bloques.append(
-            ft.Row(
-                [
-                    campo_qr,
-                    ft.Button(
-                        content="Registrar QR",
-                        icon=ft.Icons.QR_CODE_SCANNER,
-                        bgcolor=ROJO,
-                        color=ft.Colors.WHITE,
-                        height=46,
-                        on_click=_procesar_qr,
-                    ),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            )
+        btn_registrar_qr = ft.Button(
+            content="Registrar QR",
+            icon=ft.Icons.QR_CODE_SCANNER,
+            bgcolor=ROJO,
+            color=ft.Colors.WHITE,
+            height=46,
+            on_click=_procesar_qr,
         )
+        bloques.append(par_accion_tarjeta(interfaz, campo_qr, btn_registrar_qr, umbral=600.0, spacing=8))
         bloques.append(banner_feedback)
 
     bloques.append(fila_kpis)
-
-    # Barra de filtros y pestañas
-    controles_barra: list[ft.Control] = []
-    if not solo_lectura:
-        controles_barra.extend([btn_tab_pendientes, btn_tab_despachados])
-    controles_barra.append(campo_filtro)
-    if solo_lectura:
-        controles_barra.append(chk_solo_hoy)
-    controles_barra.append(
-        ft.IconButton(
-            icon=ft.Icons.REFRESH,
-            tooltip="Actualizar listado",
-            on_click=refrescar,
-        )
-    )
     bloques.append(
-        ft.Row(
-            controles_barra,
-            spacing=8,
-            wrap=es_movil,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        construir_barra_filtros_despacho(
+            interfaz,
+            solo_lectura=solo_lectura,
+            btn_tab_pendientes=btn_tab_pendientes,
+            btn_tab_despachados=btn_tab_despachados,
+            campo_filtro=campo_filtro,
+            chk_solo_hoy=chk_solo_hoy,
+            on_refrescar=refrescar,
         )
     )
     bloques.append(lista_pedidos)
-
     refrescar()
 
     contenedor = ft.Container(
@@ -445,22 +328,18 @@ def mostrar_modulo_despacho(interfaz: Any, _evento: ft.Event | None = None) -> N
     )
     vista, _refrescar = construir_vista_modulo_despacho(interfaz, modo_dialogo=True)
 
+    ancho_dlg = interfaz.ancho_adaptable(820) if hasattr(interfaz, "ancho_adaptable") else 820
+    alto_dlg = interfaz.alto_adaptable(560) if hasattr(interfaz, "alto_adaptable") else 560
     dlg = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.LOCAL_SHIPPING, color=ROJO),
-                ft.Text(titulo, weight=ft.FontWeight.BOLD, size=16),
+                ft.Text(titulo, weight=ft.FontWeight.BOLD, size=16, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=8,
         ),
-        content=ft.Container(
-            width=820,
-            height=560,
-            content=vista,
-        ),
-        actions=[
-            interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog()),
-        ],
+        content=ft.Container(width=ancho_dlg, height=alto_dlg, content=vista),
+        actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )
     interfaz.page.show_dialog(dlg)

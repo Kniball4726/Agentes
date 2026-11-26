@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..deps import get_current_user, get_stock_manager, require_roles
+from ..deps import get_stock_manager, require_roles
 from ..schemas import (
     ConteoInventarioRequest,
     InventarioItemComparativa,

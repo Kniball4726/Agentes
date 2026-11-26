@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 import flet as ft
+from ..design import par_accion_tarjeta
 from ..theme import ROJO
 
 
@@ -93,6 +94,50 @@ def renderizar_pedidos_armados_por_fecha(interfaz: Any, resumen_fechas: list[dic
         etiqueta_fecha = f"{fecha_fmt} · Hoy" if es_hoy else fecha_fmt
         txt_pedidos = f"{cant_pedidos} pedido" if cant_pedidos == 1 else f"{cant_pedidos} pedidos"
 
+        info_fecha = ft.Row(
+            [
+                ft.Container(
+                    content=ft.Icon(ft.Icons.CALENDAR_MONTH, size=18, color=ROJO),
+                    bgcolor=ft.Colors.RED_50,
+                    padding=6,
+                    border_radius=6,
+                ),
+                ft.Column(
+                    [
+                        ft.Text(
+                            etiqueta_fecha,
+                            weight=ft.FontWeight.BOLD,
+                            size=12,
+                            color=interfaz.texto,
+                            max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                        ft.Text(
+                            f"📦 {total_bultos} bulto(s) · {total_articulos} art. descontados",
+                            size=11,
+                            color=interfaz.secundario,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                    ],
+                    spacing=2,
+                    expand=True,
+                ),
+            ],
+            spacing=8,
+            expand=True,
+        )
+        badge_pedidos = ft.Container(
+            content=ft.Text(
+                txt_pedidos,
+                size=11,
+                weight=ft.FontWeight.BOLD,
+                color=ft.Colors.WHITE,
+            ),
+            bgcolor=ROJO if es_hoy else ft.Colors.BLUE_GREY_700,
+            padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+            border_radius=12,
+        )
         card_fecha = ft.Container(
             bgcolor=interfaz.superficie,
             border=ft.Border.all(1, interfaz.borde),
@@ -101,46 +146,6 @@ def renderizar_pedidos_armados_por_fecha(interfaz: Any, resumen_fechas: list[dic
             ink=True,
             tooltip="Clic para abrir el Historial de Pedidos",
             on_click=lambda _e: interfaz.mostrar_historial_pedidos() if hasattr(interfaz, "mostrar_historial_pedidos") else None,
-            content=ft.Row(
-                [
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=ft.Icon(ft.Icons.CALENDAR_MONTH, size=18, color=ROJO),
-                                bgcolor=ft.Colors.RED_50,
-                                padding=6,
-                                border_radius=6,
-                            ),
-                            ft.Column(
-                                [
-                                    ft.Text(etiqueta_fecha, weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                    ft.Text(
-                                        f"📦 {total_bultos} bulto(s) · {total_articulos} art. descontados",
-                                        size=11,
-                                        color=interfaz.secundario,
-                                    ),
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                        ],
-                        spacing=8,
-                        expand=True,
-                    ),
-                    ft.Container(
-                        content=ft.Text(
-                            txt_pedidos,
-                            size=11,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.WHITE,
-                        ),
-                        bgcolor=ROJO if es_hoy else ft.Colors.BLUE_GREY_700,
-                        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
-                        border_radius=12,
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
+            content=par_accion_tarjeta(interfaz, info_fecha, badge_pedidos, umbral=480.0, spacing=8),
         )
         interfaz.lista_informes.controls.append(card_fecha)

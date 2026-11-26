@@ -16,9 +16,10 @@
    - [Gestión de Perfil de Usuario ("Mi Perfil")](#gestión-de-perfil-de-usuario-mi-perfil)
    - [Autenticación, Seguridad y Bloqueo de Cuentas](#autenticación-seguridad-y-bloqueo-de-cuentas)
    - [Rol Master (`Auditoria`)](#rol-master-auditoria)
-   - [Rol Picker](#rol-picker)
+   - [Rol Picker](#rol-picker--preparación-de-pedidos-recepción-express-y-despachos)
    - [Rol Administrador](#rol-administrador)
    - [Rol Operador](#rol-operador)
+   - [Rol Despachador](#rol-despachador--control-de-muelle-escaneo-qr-y-entregas)
    - [Rol Consulta](#rol-consulta)
    - [Matriz Oficial de Permisos por Rol (IAM / SoD)](#matriz-oficial-de-permisos-por-rol-iam--sod)
 3. [Módulo de Carga Directa y Panel de Control de la Jornada](#3-módulo-de-carga-directa-y-panel-de-control-de-la-jornada)
@@ -185,7 +186,7 @@ flowchart TD
 Para asegurar que cada miembro del equipo cuente con asistencia inmediata y documentación oficial estandarizada acorde a su nivel de autorización, **la barra lateral de navegación presenta en primer lugar la sección 'DOCUMENTACIÓN' con el botón directo 'Manual de Uso'**:
 
 * **Estructura Normalizada por Procedimientos Operativos Estándar (SOP - Botón a Botón):**
-  A partir de la versión **v3.0.0** (actualizada a **v3.1.0** en manuales operativos de rol y **v2.2.0** en el Compendio Maestro ISO/BPMN), cada manual se estructura de manera modular y exhaustiva con **Fichas de Procedimiento Oficiales** que cubren los comandos reales habilitados en el menú lateral de cada rol. Cada ficha contiene:
+  A partir de la versión **v3.0.0** (actualizada a **v3.3.0** en manuales operativos de rol y **v2.3.0** en el Compendio Maestro ISO/BPMN), cada manual se estructura de manera modular y exhaustiva con **Fichas de Procedimiento Oficiales** que cubren los comandos reales habilitados en el menú lateral de cada rol. Cada ficha contiene:
   1. **Encabezado y Metadatos:** Nombre del comando, icono del sistema, sección de pertenencia y atajo de teclado (`Ctrl + K` / `F2`).
   2. **Propósito y Alcance (Qué hace):** Definición clara del objetivo operativo o administrativo en el flujo de trabajo.
   3. **Requisitos y Perfil Autorizado:** Precondiciones, rol con permisos y reglas de segregación de funciones (*Separation of Duties - SoD*).
@@ -203,9 +204,10 @@ Para asegurar que cada miembro del equipo cuente con asistencia inmediata y docu
     * `v1.0.0`: Versión inicial monolítica con arquitectura LAN y persistencia SQLite.
     * `v2.0.0`: Segregación estricta de funciones IAM (SoD), credenciales cifradas y PWA offline.
     * `v3.0.0`: Reestructuración integral botón a botón por fichas SOP para cada rol, módulo de auditoría de cierres descendente para administradores y visor documental Zero-Cache.
-    * `v3.1.0` / `v2.2.0`: Arquitectura completamente modular (`src/` + `Documentacion/pdf_engine/` + `Documentacion/procedimientos/`), endurecimiento HTTPS por defecto, Firewall en perfil privado, cifrado DPAPI/Fernet en secretos, enlaces con token HMAC `?dt=`, Swagger deshabilitado por defecto y matriz SoD de 5 roles.
+    * `v3.1.0` / `v2.2.0`: Arquitectura completamente modular (`src/` + `Documentacion/pdf_engine/` + `Documentacion/procedimientos/`), endurecimiento HTTPS por defecto, Firewall en perfil privado, cifrado DPAPI/Fernet en secretos, enlaces con token HMAC `?dt=`, Swagger deshabilitado por defecto y segregación SoD por roles.
+    * `v3.3.0` / `v2.3.0`: Sistema completo de diseño de tarjetas 100% responsivas (`src/ui/design/responsive.py`) para móvil/tablet/PC, incorporación documental integral del **Rol Despachador**, baja diferenciada de pedidos (**Desarmar** lógico vs. **Eliminar** físico sin doble restitución de stock) y refactorización modular final (`pedidos_edicion`, `pedidos_baja`, `usuarios_modales`, `despacho_acciones`, `cierre/cierres_admin_cards`).
 
-* **Manuales Oficiales Generados (9 PDFs):**
+* **Manuales Oficiales Generados (10 PDFs / 6 Roles):**
   * **Manual del Operador (`Manual_Operador.pdf`):** Cubre la botonera rápida de carga y los comandos del operador: *Cargar / Armar Pedido*, *Gestión de Clientes*, *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Fábrica*, *Historial de Pedidos*, *Imprimir Descuento*, *Inventario en Vivo (Escáner)*, *Cierre de Jornada*, *Centro de Reportes / Abrir informe*, *Compartir por correo*, *WhatsApp Web* y *Manual de Uso*.
   * **Manual del Picker (`Manual_Picker.pdf`):** Alineado estrictamente con su menú lateral acotado por SoD: *Descontar Mercado Libre*, *Descontar Mercado Full*, *Ingreso de Mercadería*, *Ingreso de Fábrica*, *Egreso de Mercadería*, *Paleta de Comandos F2*, *Chat Interno* y *Manual de Uso* (acceso HTTPS `?dt=`).
   * **Manual del Despachador (`Manual_Despachador.pdf`):** Especializado en expedición y control de muelle: *Consola de Despacho de Pedidos*, *Escaneo de Rótulos QR Bulto a Bulto (`i/N`)*, *Despacho Manual con Confirmación de Bultos*, *App Móvil con Cola FIFO y Persistencia Offline*, *Modo Lector Láser / Modo Claro Alto Contraste*, *Chat Interno* y *Manual de Uso*.
@@ -617,11 +619,13 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
     - 🔘 `Solo Hoy`: Filtra de inmediato los pedidos registrados en la fecha actual sin tener que tipear el día en el buscador.
     - 🔘 `Pendientes de Cierre`: Aísla exclusivamente los pedidos armados en el turno que aguardan el Cierre de Jornada.
     - 🔘 `Despachados`: Muestra únicamente los pedidos entregados al chofer o transporte.
-  * **Diseño Espacioso y Jerárquico de Tarjetas:** Tarjetas de 960px con división en 4 niveles semánticos que impiden el solapamiento de información (Cabecera con N° de pedido y badge de estado con borde temático, chips de cliente y transporte con ajuste multi-línea, datos de comprobante y resumen de artículos con elipsis, y barra inferior de acciones operativas).
+  * **Diseño Responsive y Jerárquico de Tarjetas:** Grilla de tarjetas y filas adaptables a móvil, tablet y escritorio mediante `src/ui/design/responsive.py` (`es_viewport_estrecho`, `fila_cabecera_responsiva`, `barra_chips_responsiva`), evitando solapamientos (cabecera con N° de pedido y badge de estado, chips de cliente y transporte multi-línea, datos de comprobante y barra inferior de acciones operativas).
   * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
   * **Botón Rótulos A4 (Lote):** Impresión directa de hojas A4 optimizadas que contienen los rótulos de todos los pedidos filtrados.
   * **Modificación de Pedidos Preparados (Exclusivo Operador):** Capacidad exclusiva para editar directamente cliente, N° de pedido, cantidad de bultos, logística y fecha programada de entrega, tanto desde el panel de pedidos en vivo como desde el Historial. Esta exclusividad operativa previene colisiones y discrepancias con administradores o usuarios master.
-  * **Desarmar Pedido y Regresión de Stock:** Opción para desarmar el pedido reincorporando automáticamente los productos y cantidades al stock físico en SQLite y `Productos.xlsx` al instante.
+  * **Desarmar vs. Eliminar Pedido y Regresión Atómica de Stock:**
+    - **Desarmar Pedido (Borrado Lógico — Icono Ámbar):** Marca el pedido como `anulado`, conserva el registro histórico y el bloqueo SHA-256 anti-duplicados, y reincorpora automáticamente sus unidades al inventario en SQLite y `Productos.xlsx`.
+    - **Eliminar Pedido (Borrado Físico — Icono Rojo):** Elimina definitivamente el pedido y sus vínculos (`pedido_items`, bloqueos, transacciones idempotentes y bultos escaneados) habilitando volver a cargar el mismo remito/hash si hubo un error de carga; restituye stock si el pedido estaba activo y evita doble devolución si ya había sido desarmado/anulado.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
 * **Cierre de Jornada Discriminado por Canales y Consolidado Admin (SQLite-First):**
   * Agrupa directamente desde SQLite (`cierres_jornada`, `pedidos` y `stock_movements`) todos los movimientos del turno sin requerir el archivo `Productos.xlsx`.
@@ -636,6 +640,18 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 * **Asistente Virtual y Chat de Comunicación de Equipo:**
   * Botones rápidos y comandos contextuales: `/stock <código>`, `/pedidos`, `/cierre`, `/mercadolibre`, `/ayuda`.
   * Canal de comunicación interno directo con compañeros y administración (`/equipo` y `/msg @usuario`). Permite enviar avisos operativos (faltantes de bultos, mercadería recibida o prioridades de despacho) con avisos de mensajes no leídos.
+
+---
+
+### Rol Despachador — Control de Muelle, Escaneo QR y Entregas
+
+Perfil dedicado al control físico de salida en muelle de carga y expedición logística bajo segregación estricta de funciones (SoD):
+
+* **Consola Centralizada de Despacho (`dlg_modulo_despacho.py`):** KPIs en vivo responsivos (Pendientes Armados, En control parcial, Despachados hoy y Bultos despachados hoy), pestañas `Pendientes de Despacho` / `Despachados` y buscador por remito, cliente, transporte, armador o guía.
+* **Verificación QR Bulto a Bulto (`i/N`):** Lectura con pistola láser o cámara móvil de códigos QR (`REMITO:...|BULTO:i/N`) con control anti-duplicados. El pedido transiciona automáticamente de `armado` $\to$ `despachado` únicamente al completarse los `N/N` bultos del remito.
+* **Despacho Manual Validado:** Permite liberar pedidos con etiqueta dañada exigiendo confirmación exacta de la cantidad de bultos del remito.
+* **Operación Móvil con Cola FIFO Offline (`stockagent_mobile`):** Compatible con colectores Android/iOS (Modo Lector Láser, Modo Claro Alto Contraste) con sincronización automática vía `/api/v1/despacho/escanear-lote` al recuperar cobertura Wi-Fi.
+* **Segregación de Funciones (SoD):** No puede modificar inventario, cargar/editar/eliminar remitos, alterar usuarios ni ejecutar cierres de jornada. El **Administrador** puede abrir este módulo estrictamente en **modo solo lectura** para auditar despachos.
 
 ---
 
@@ -655,31 +671,32 @@ Perfil restringido de solo lectura para auditoría externa, vendedores o supervi
 
 La siguiente matriz detalla de forma oficial la distribución de responsabilidades y segregación de funciones (*Separation of Duties - SoD*) implementada en StockAgent:
 
-| Módulo / Funcionalidad | Rol Master (`Auditoria`) | Rol Administrador | Rol Operador | Rol Picker | Rol Consulta | Justificación y Regla SoD |
-| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | Master y Picker desacoplados de la carga administrativa de pedidos/clientes. |
-| **Descuento Mercado Libre (Pistoleo / DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Preparación y despacho ágil online habilitado en depósito. |
-| **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Solo lectura | Operadores, Pickers y Administradores procesan envíos a fulfillment. |
-| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización de ventas por API reservada a administradores (credenciales bajo Master). |
-| **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Denegado | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque entre operarios, pickers y supervisores. |
-| **Desarmar Pedido y Restituir Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Retorno atómico de unidades físicas al inventario ante cancelaciones o rechazos. |
-| **Consulta / Historial y Reimpresión** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ✅ Habilitado | El Picker no accede a historial ni tarjetas de pedidos; Consulta opera en solo lectura. |
-| **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4. |
-| **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Consolidación diaria de pedidos y emisión de hojas de ruta de transporte. |
-| **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta previas. |
-| **Movimientos Rápidos (Ingreso / Egreso Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Entradas/egresos ágiles con justificación tipificada y auditoría inmediata. |
-| **Ingreso de Fábrica (Recepción de Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | Escáner rápido con lotes y steppers +/-; Administrador puede además procesar archivos y sobrescribir. |
-| **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ En sidebar web | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
-| **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
-| **Comparativa Stock Físico / Pedido Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Conciliación masiva y cálculo automático de reposición para gerencia. |
-| **Métricas, Heatmap y Radar de Anomalías** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Inteligencia operativa, slotting ABC y detección estadística Z-score. |
-| **Sincronización Total con Excel (Flush)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Volcado masivo y atómico desde SQLite hacia `Productos.xlsx`. |
-| **Gestión de Cuentas (Operador, Picker y Consulta)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Creación, reseteo de claves y desbloqueo de usuarios operativos. |
-| **Gestión de Cuentas (Administrador)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Solo Master puede promover, editar o dar de baja cuentas Administrador. |
-| **Auditoría Forense, API Keys y Salud Servidor** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | **SoD Estricto:** Imparcialidad técnica; el Administrador no audita sus propias operaciones. |
-| **Configuración Telegram, SMTP y ML Credenciales** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Custodia exclusiva de secretos cifrados (DPAPI / Fernet). |
-| **Copias de Seguridad (Backups .zip)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Generación de respaldos comprimidos de las 3 bases SQLite y el catálogo. |
-| **Restauración de Documentos (Rollback Lotes)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Reversión histórica de lotes restringida exclusivamente al perfil Master. |
+| Módulo / Funcionalidad | Rol Master (`Auditoria`) | Rol Administrador | Rol Operador | Rol Picker | Rol Despachador | Rol Consulta | Justificación y Regla SoD |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Carga de Pedidos (Remitos / Canjes)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | Master, Picker y Despachador desacoplados de la carga administrativa de pedidos/clientes. |
+| **Descuento Mercado Libre (Pistoleo / DOCX)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | Preparación y despacho ágil online habilitado en depósito. |
+| **Descuento Mercado Full (Excel)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | Operadores, Pickers y Administradores procesan envíos a fulfillment. |
+| **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización de ventas por API reservada a administradores (credenciales bajo Master). |
+| **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque entre operarios, pickers, despachadores y supervisores. |
+| **Desarmar / Eliminar Pedido y Restituir Stock** | ❌ Denegado | ✅ Diálogo baja | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Botones rápidos en tarjetas/listas reservados a Operador; Desarmar (lógico) y Eliminar (físico) devuelven stock sin duplicar. |
+| **Módulo Despacho (QR Bultos / Entregas)** | ❌ Denegado | ❌ Solo Lectura | ❌ Denegado | ❌ Denegado | ✅ **Exclusivo** | ❌ Denegado | **SoD Muelle:** Despachador verifica bultos `i/N` y avanza estados; Administrador inspecciona despachos en solo lectura. |
+| **Consulta / Historial y Reimpresión** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ✅ Lectura/Reimp. | ✅ Habilitado | Picker no accede al historial; Despachador y Consulta no editan datos comerciales. |
+| **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4. |
+| **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Consolidación diaria de pedidos y emisión de hojas de ruta de transporte. |
+| **Cierres de Operarios (Auditoría Descendente)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Auditoría centralizada, desglose de pedidos y regeneración de hojas de ruta previas. |
+| **Movimientos Rápidos (Ingreso / Egreso Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Entradas/egresos ágiles con justificación tipificada y auditoría inmediata. |
+| **Ingreso de Fábrica (Recepción de Stock)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | Escáner rápido con lotes y steppers +/-; Administrador puede además procesar archivos y sobrescribir. |
+| **Inventario en Vivo (Escáner PC y Celular)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ En sidebar web | ❌ Denegado | ❌ Denegado | Relevamiento físico de estanterías con cámara móvil o lector industrial. |
+| **Gestión de Catálogo (`Productos.xlsx`)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Altas, bajas, modificación de códigos, precios y umbrales mínimos/máximos. |
+| **Comparativa Stock Físico / Pedido Fábrica** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Conciliación masiva y cálculo automático de reposición para gerencia. |
+| **Métricas, Heatmap y Radar de Anomalías** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Inteligencia operativa, slotting ABC y detección estadística Z-score. |
+| **Sincronización Total con Excel (Flush)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Volcado masivo y atómico desde SQLite hacia `Productos.xlsx`. |
+| **Gestión de Cuentas (Op., Pick., Disp. y Cons.)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Creación, reseteo de claves y desbloqueo de usuarios operativos. |
+| **Gestión de Cuentas (Administrador)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Solo Master puede promover, editar o dar de baja cuentas Administrador. |
+| **Auditoría Forense, API Keys y Salud Servidor** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | **SoD Estricto:** Imparcialidad técnica; el Administrador no audita sus propias operaciones. |
+| **Configuración Telegram, SMTP y ML Credenciales** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Custodia exclusiva de secretos cifrados (DPAPI / Fernet). |
+| **Copias de Seguridad (Backups .zip)** | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Generación de respaldos comprimidos de las 3 bases SQLite y el catálogo. |
+| **Restauración de Documentos (Rollback Lotes)** | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Reversión histórica de lotes restringida exclusivamente al perfil Master. |
 
 ---
 
@@ -919,6 +936,7 @@ StockAgent/
 ├── Documentacion/                     # Manuales oficiales en PDF y motor modular de compilación
 │   ├── Manual_Operador.pdf            # Manual oficial para Rol Operador
 │   ├── Manual_Picker.pdf              # Manual oficial para Rol Picker
+│   ├── Manual_Despachador.pdf         # Manual oficial para Rol Despachador
 │   ├── Manual_Administrador.pdf       # Manual oficial para Rol Administrador
 │   ├── Manual_Master.pdf              # Manual oficial para Rol Master (Técnico / Forense)
 │   ├── Manual_Consulta.pdf            # Manual oficial para Rol Consulta
@@ -926,6 +944,7 @@ StockAgent/
 │   ├── Manual_Maestro_Imprimible.pdf  # Versión maestro imprimible con tablas de firmas/copias
 │   ├── Manual_de_Uso_StockAgent.pdf   # Manual general clásico compilado por generar_manual_pdf.py
 │   ├── Presentacion_Ejecutiva_StockAgent.pdf # Presentación ejecutiva gerencial (7 págs., v2.3)
+│   ├── Presentacion_Tren_Ejecutivo_StockAgent.pdf # Presentación ejecutiva panorámica 16:9 (12 diapositivas)
 │   ├── pdf_engine/                    # Motor modular ReportLab/ISO/BPMN (constants, canvas_iso, components_apa, forms_sgc, manuals_*, presentacion_*)
 │   ├── procedimientos/                # Fichas SOP modulares por rol (fichas, rol_*, runner)
 │   ├── generar_manual_pdf.py          # Fachada retrocompatible hacia Documentacion.pdf_engine
@@ -949,9 +968,12 @@ StockAgent/
 │   ├── qa/                            # Generador de datos sintéticos para QA Sandbox (seeder.py)
 │   ├── ui/                            # Capa de presentación gráfica Flet por composición pura
 │   │   ├── theme.py / app_config.py / audio_feedback.py / protocols.py / user_preferences.py / dashboard_presenter.py / shell_builder.py
+│   │   ├── design/                    # Sistema de diseño unificado (tokens, palette, semantic_buttons, forms, dialogs, responsive)
+│   │   ├── dashboard/                 # Subvistas de panel (auditoria_view, fechas_view, informes_view, pedidos_turno_view)
+│   │   ├── commands/                  # Paleta de comandos F2 / Ctrl+K (command_registry, palette_search)
 │   │   ├── controllers/               # auth_controller, batch_controller, chat_controller, dialog_coordinator, document_viewer_service, file_transfer_service, responsive_controller, session_sync_service, theme_controller
 │   │   ├── components/                # admin_flow_analytics, admin_flow_widgets, admin_operations_bar, audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_quick_actions/_sections), window_manager
-│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados sin monolitos (auth_*, analytics_*, api_panel_tabs, cierre/ + cierre_mercado_cards, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, mercadolibre_api_cards, ml_*, movimientos_rapidos_ops, pedidos_crear + pedidos_crear_modales + pedidos_gestion, productos_modales, quiebre_banner, stock_fisico_views)
+│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados sin monolitos (auth_*, analytics_*, api_panel_tabs, cierre/ [cierre_mercado_cards, cierres_admin_cards, dlg_*], despacho_acciones, despacho_componentes, dlg_modulo_despacho, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, mercadolibre_api_cards, ml_*, movimientos_rapidos_ops, pedidos_crear + pedidos_crear_modales + pedidos_edicion + pedidos_baja + pedidos_gestion, productos_modales, quiebre_banner, stock_fisico_views, usuarios_modales)
 │   ├── agent.py / menu.py             # Orquestadores CLI y de lotes
 │   ├── flet_gui.py                    # Orquestador GUI principal basado en composición pura e inyección de dependencias
 │   ├── secretos.py                    # Cifrado en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
@@ -1151,6 +1173,14 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
       - **Cierres Parciales Diarios:** `registrar_cierre_parcial_mercado_full` descuenta exclusivamente las unidades nuevas pickeadas (`delta = pickeada - descontada`), registrando cada lote en `cierres_parciales_full` y evitando dobles descuentos.
       - **Cierre Definitivo:** `registrar_cierre_final_mercado_full` descuenta cualquier remanente pendiente y marca el plan como completado, permitiendo el cierre aun cuando el avance sea parcial (< 100%).
       - **Integración UI Picking y Despacho:** Modales dedicados en `dlg_cierre_full_plan.py` y acciones accesibles desde `DialogCoordinator` y `InterfazFlet` tanto para rol `picker` como `operador`.
+
+22. **Sistema de Tarjetas 100% Responsivas y Refactorización Modular Final (`src/ui/design/responsive.py` + `src/ui/dialogs/`):**
+    * **Tarjetas y Grillas Adaptables (`src/ui/design/responsive.py`):** Centraliza `_bool_estricto`, `ancho_viewport`, `es_viewport_estrecho`, `resolver_columnas_grilla`, `grilla_tarjetas_responsiva`, `fila_cabecera_responsiva`, `barra_chips_responsiva` y `par_accion_tarjeta` junto con `ResponsiveController` (breakpoints dinámicos `< 768 px`, `900 px` y `928 px`) para adaptar KPIs, paneles de flujo, tarjetas de historial, cierres, despacho y modales en móvil, tablet y escritorio.
+    * **Descomposición Final de Monolitos y Deduplicación:**
+      - `pedidos_gestion.py` dividido en `pedidos_edicion.py` (soft-locking y edición), `pedidos_baja.py` (anulación, desarmado lógico y eliminación física `eliminar_pedido` con restitución sin duplicar) y fachada `pedidos_gestion.py`.
+      - `dlg_usuarios.py` dividido en `usuarios_modales.py` (tarjetas responsivas y sub-modales de edición/reseteo) y orquestador `dlg_usuarios.py`.
+      - `cierre/dlg_cierres_admin.py` dividido en `cierre/cierres_admin_cards.py` (tarjetas, métricas y modal de detalle) y `dlg_cierres_admin.py`.
+      - `dlg_modulo_despacho.py` complementado con `despacho_acciones.py` y `despacho_componentes.py`; `src/orders/dispatch_repo.py` refactorizado en helpers focalizados para el escaneo QR bulto a bulto; limpieza transversal de imports/código muerto y deduplicación de `safe_focus` en `_shared.py`.
 
 ### Esquema de Bases de Datos SQLite
 
@@ -1490,10 +1520,11 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias y de integración automatizadas que validan la persistencia transaccional, el endurecimiento de seguridad, el control de concurrencia, los flujos logísticos y todas las fachadas modulares:
 
-* **Total de pruebas:** `67` módulos en `tests/test_*.py` (`61` módulos verificados directamente en entorno sandbox con `360` pruebas y `7` subtests aprobados, más `6` módulos ASGI `TestClient`: `test_api_v1.py`, `test_client_code_and_order_fields.py`, `test_documentos_visor.py`, `test_fase5_features.py`, `test_security_api_keys.py` y `test_security_hardening.py`).
-* **Tasa de éxito:** 100% aprobadas sobre la batería ejecutada (`360 passed, 7 subtests passed`).
+* **Total de pruebas:** `78` módulos en `tests/test_*.py` (`506` pruebas y `23` subtests aprobados sobre el conjunto completo ejecutado mediante `pytest`).
+* **Observaciones:** En fecha `2026-11-25`, 2 aserciones temporales (`dias=30`) de `tests/test_fase6_features.py` requieren fechas dentro de los últimos 30 días de la ventana de fixtures.
 
 #### Suites Destacadas Recientes
+* `tests/test_responsive_cards.py`, `tests/test_rol_despachador.py`, `tests/test_pedido_eliminar_desarmar.py`: Cobertura completa de tarjetas responsivas (`src/ui/design/responsive.py`), control de muelle QR/manual para Rol Despachador y baja diferenciada (`Desarmar` lógico vs. `Eliminar` físico sin doble devolución de stock).
 * `tests/test_reports_movements_architecture.py`, `tests/test_sqlite_closing.py`, `tests/test_sqlite_first_architecture.py`, `tests/test_ui_composition_pattern.py`: Reporte discriminado en 3 canales (Mayoristas, Mercado Libre, Full) para Operario, Consolidado Admin, cierre determinístico SQLite con `closing()` (`sqlite_utils.py`), ausencia de ciclos `core` ↔ `products`, arquitectura SQLite-first y composición pura sin mixins.
 * `tests/test_cierre_mercado_picker.py`, `tests/test_document_options_dialog.py`, `tests/test_sincronizar_excel_dialog.py`, `tests/test_adaptive_quiebre_panel.py`: Cierre Mercado/Picker, opciones documentales, sincronización Excel bajo SQLite-first y panel adaptativo de quiebres.
 * `tests/test_security_hardening.py`: Rechazo de tokens en query string (`401`), revocación instantánea al desactivar usuario o cambiar rol, protección `?dt=` en `/documentacion/` y `/informes/`, cifrado DPAPI/Fernet de secretos, validación anti-SSRF en webhooks y límites seguros en backups `.zip`.
@@ -1753,10 +1784,12 @@ sequenceDiagram
 
 Todo el sistema StockAgent está construido con una **arquitectura 100% responsiva y adaptativa** que detecta el factor de forma del dispositivo en tiempo real:
 
-1. **Detección Automática de Viewport y Modo Teléfono:**
-   * Mediante la suscripción a eventos de redimensionamiento de ventana (`page.on_resized`), la interfaz clasifica dinámicamente el dispositivo:
-     - **Dispositivos Móviles (`ancho < 768px`):** Se activa automáticamente el modo compacto. El panel de navegación lateral persistente se oculta y es reemplazado por un **`NavigationDrawer` táctil deslizable** accesible desde el botón de menú tipo hamburguesa (`☰`).
-     - **Escritorio y Tablets (`ancho >= 768px`):** Menú lateral persistente visible con ancho optimizado para trabajo en múltiples monitores.
+1. **Detección Automática de Viewport y Sistema de Tarjetas Responsivas (`src/ui/design/responsive.py`):**
+   * Mediante la suscripción a eventos de redimensionamiento de ventana (`page.on_resized`) en `ResponsiveController`, la interfaz clasifica dinámicamente el dispositivo:
+     - **Dispositivos Móviles (`ancho < 768px`):** Se activa el modo compacto móvil, con `NavigationDrawer` táctil deslizable (`☰`), barra inferior "Thumb Zone" por rol y apilamiento vertical completo de tarjetas y formularios.
+     - **Tablets y Escritorio Compacto (`768px <= ancho < 928px`):** Menú lateral persistente con columnas adaptadas (2 KPIs por fila en tableros analíticos y paneles apilados a `< 900px`).
+     - **Escritorio Panorámico (`ancho >= 928px`):** Distribución completa multi-columna sin desperdicio horizontal.
+   * Las tarjetas, cabeceras de acción, barras de chips y grillas (`grilla_tarjetas_responsiva`, `fila_cabecera_responsiva`, `barra_chips_responsiva`, `par_accion_tarjeta`) ajustan `ResponsiveRow`, `wrap` y tamaños de control de forma uniforme en el dashboard y en todos los diálogos (`Historial`, `Despacho`, `Cierres`, `Métricas`, `Stock`, `Productos`, `Clientes`, `Usuarios`, `API`, `Heatmap` y `Anomalías`).
 2. **Diálogos Adaptables con Auto-Escala:**
    * Todas las ventanas modulares (`src/ui/dialogs/`) utilizan funciones de cálculo dinámico (`ancho_adaptable` y `alto_adaptable`) que limitan el ancho y alto al `95%` del viewport en pantallas pequeñas, evitando desbordamientos horizontales o botones fuera de pantalla.
 3. **Contenedores con Desplazamiento Táctil:**

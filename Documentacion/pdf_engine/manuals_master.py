@@ -41,7 +41,7 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
 
     agregar_portada_iso_upel(
         story, est, codigo_doc, titulo_doc,
-        "Todos los Roles (Master, Administrador, Operador, Picker, Consulta y Auditoría)",
+        "Todos los Roles (Master, Administrador, Operador, Picker, Despachador, Consulta y Auditoría)",
         "Compendio general exhaustivo de Procedimientos Operativos Estandarizados (POE / SOP) según Normas ISO 9001:2015,<br/>"
         "ISO/IEC/IEEE 26514:2022 e ISO/IEC 27001:2022 bajo modelado BPMN 2.0 (Bizagi), pautas UPEL y arquitectura modular",
         version=VERSION_SOP_ACTUAL,
@@ -50,8 +50,8 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
     # TABLA DE CONTENIDOS (SUMARIO GENERAL)
     agregar_titulo_capitulo(story, est, "Índice General de Contenidos del Manual Maestro")
     toc_filas = [
-        ("1. Marco Estratégico, Arquitectura Modular y Alcance", "Paquetes src/ y Documentacion/, seguridad LAN y trazabilidad.", "ISO 9001 §4.3"),
-        ("2. Matriz SoD Oficial de 5 Roles y Endurecimiento LAN", "Segregación Master / Admin / Operador / Picker / Consulta.", "ISO 27001 §5.3"),
+        ("1. Marco Estratégico, Arquitectura Modular y Alcance", "Paquetes src/ y Documentacion/, seguridad LAN y UI responsiva.", "ISO 9001 §4.3"),
+        ("2. Matriz SoD Oficial de 6 Roles y Endurecimiento LAN", "Segregación Master / Admin / Operador / Picker / Despachador / Consulta.", "ISO 27001 §5.3"),
         ("3. Procedimientos de Depósito (Operador y Picker)", "Remitos, Mercado Libre, Mercado Full, QR y Cierre.", "POE-OPE 01..04"),
         ("4. Procedimientos de Supervisión (Rol Admin)", "Catálogo, Entrada Fábrica, Compras y Slotting ABC.", "POE-ADM 01..04"),
         ("5. Procedimientos Técnicos (Rol Master)", "IAM Supremo, Rollback SoD, TLS/DPAPI y Respaldo 3-2-1.", "POE-MAS 01..03"),
@@ -85,41 +85,43 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
         est["body_sangria"],
     ))
 
-    # CAPÍTULO 2: ARQUITECTURA Y MATRIZ SOD OFICIAL (5 ROLES INCLUYENDO PICKER)
+    # CAPÍTULO 2: ARQUITECTURA Y MATRIZ SOD OFICIAL (6 ROLES)
     story.append(Spacer(1, 4))
-    agregar_titulo_capitulo(story, est, "2. Matriz Oficial de Segregación de Funciones (SoD - 5 Roles, ISO/IEC 27001)")
+    agregar_titulo_capitulo(story, est, "2. Matriz Oficial de Segregación de Funciones (SoD - 6 Roles, ISO/IEC 27001)")
     story.append(Paragraph(
-        "La Tabla 3 delimita con rigor las atribuciones de los cinco roles activos (`Master`, `Administrador`, `Operador`, "
-        "`Picker` y `Consulta`) junto con las medidas vigentes de seguridad perimetral en red LAN:",
+        "La Tabla 3 delimita con rigor las atribuciones de los seis roles activos (`Master`, `Administrador`, `Operador`, "
+        "`Picker`, `Despachador` y `Consulta`) junto con las medidas vigentes de seguridad perimetral en red LAN:",
         est["body_sangria"],
     ))
 
     headers_sod = [
         Paragraph(f"<b>{h}</b>", est["th_apa"])
-        for h in ("Funcionalidad / Módulo", "Master", "Admin", "Operador", "Picker", "Consulta", "Regla de Seguridad SoD")
+        for h in ("Funcionalidad / Módulo", "Master", "Admin", "Operador", "Picker", "Despach.", "Consulta", "Regla de Seguridad SoD")
     ]
     matriz_data = [headers_sod]
     filas_permisos = [
-        ("Carga Pedidos (Remitos / Canjes)", "❌ No", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "Solo Operador registra remitos de despacho."),
-        ("Descuento Mercado Libre (Escáner/DOCX)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Habilitado para empaque ágil y supervisión."),
-        ("Descuento Mercado Full (Excel)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Procesamiento rápido hacia bodega Full."),
-        ("Movimientos Rápidos (+ / − Stock)", "✅ Sí", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Trazabilidad obligatoria con motivo y auditoría."),
-        ("Modificar / Desarmar Pedidos", "❌ No", "❌ Lectura", "✅ Exclusivo", "❌ No", "❌ No", "Evita colisión remota con mercadería empaquetada."),
-        ("Cierre de Jornada y Hojas de Ruta", "❌ No", "❌ Audita", "✅ Exclusivo", "❌ No", "❌ No", "Operador cierra en 3 canales; Admin audita Consolidado."),
-        ("Ingreso de Fábrica (Escáner / Lote)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "Sobrescribir stock reservado a Administrador."),
-        ("Catálogo, Ped. Fábrica y Comparativa", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Administración maestra de SKUs y arqueos."),
-        ("Analítica, Radar y Heatmap Slotting", "✅ Lectura", "✅ Sí", "❌ No", "❌ No", "❌ No", "Inteligencia operativa y ergonomía de depósito."),
-        ("Gestión Usuarios (Op./Picker/Cons.)", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "❌ No", "Solo Master promueve o gestiona Administradores."),
-        ("Auditoría, API Docs/Keys, SMTP, Rollback", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "❌ No", "SoD estricto: control IAM, TLS, DPAPI y recuperación."),
-        ("Copias de Seguridad (.zip)", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "❌ No", "Respaldos íntegros de SQLite y Productos.xlsx."),
+        ("Carga Pedidos (Remitos / Canjes)", "❌ No", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Solo Operador registra remitos de despacho."),
+        ("Descuento Mercado Libre (Escáner/DOCX)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Habilitado para empaque ágil y supervisión."),
+        ("Descuento Mercado Full (Excel)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Procesamiento rápido hacia bodega Full."),
+        ("Movimientos Rápidos (+ / − Stock)", "✅ Sí", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Trazabilidad obligatoria con motivo y auditoría."),
+        ("Editar / Desarmar / Eliminar Pedidos", "❌ No", "❌ Lectura", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Operador desarma (lógico) o elimina (físico) devolviendo stock."),
+        ("Módulo Despacho (QR Bultos / Entregas)", "❌ No", "❌ Lectura", "❌ No", "❌ No", "✅ Exclusivo", "❌ No", "Despachador libera en muelle; Admin consulta solo lectura."),
+        ("Cierre de Jornada y Hojas de Ruta", "❌ No", "❌ Audita", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Operador cierra en 3 canales; Admin audita Consolidado."),
+        ("Ingreso de Fábrica (Escáner / Lote)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Sobrescribir stock reservado a Administrador."),
+        ("Catálogo, Ped. Fábrica y Comparativa", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "❌ No", "Administración maestra de SKUs y arqueos."),
+        ("Analítica, Radar y Heatmap Slotting", "✅ Lectura", "✅ Sí", "❌ No", "❌ No", "❌ No", "❌ No", "Inteligencia operativa y ergonomía de depósito."),
+        ("Gestión Usuarios (Op./Pick./Disp./Cons.)", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "❌ No", "❌ No", "Solo Master promueve o gestiona Administradores."),
+        ("Auditoría, API Docs/Keys, SMTP, Rollback", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "❌ No", "❌ No", "SoD estricto: control IAM, TLS, DPAPI y recuperación."),
+        ("Copias de Seguridad (.zip)", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "❌ No", "❌ No", "Respaldos íntegros de SQLite y Productos.xlsx."),
     ]
-    for f_nom, m_st, a_st, o_st, p_st, c_st, regla in filas_permisos:
+    for f_nom, m_st, a_st, o_st, p_st, d_st, c_st, regla in filas_permisos:
         matriz_data.append([
             Paragraph(f"<b>{escape(f_nom)}</b>", est["td_apa"]),
             Paragraph(m_st, est["td_apa_bold_center"] if "Exclusivo" in m_st else est["td_apa_center"]),
             Paragraph(a_st, est["td_apa_bold_center"] if "Exclusivo" in a_st else est["td_apa_center"]),
             Paragraph(o_st, est["td_apa_bold_center"] if "Exclusivo" in o_st else est["td_apa_center"]),
             Paragraph(p_st, est["td_apa_bold_center"] if "Exclusivo" in p_st else est["td_apa_center"]),
+            Paragraph(d_st, est["td_apa_bold_center"] if "Exclusivo" in d_st else est["td_apa_center"]),
             Paragraph(c_st, est["td_apa_center"]),
             Paragraph(escape(regla), est["td_apa"]),
         ])
@@ -127,7 +129,7 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
         story, est, 3,
         "Matriz Consolidada de Permisos por Rol y Controles de Segregación SoD",
         matriz_data,
-        [3.8 * cm, 1.3 * cm, 1.35 * cm, 1.45 * cm, 1.3 * cm, 1.4 * cm, 4.9 * cm],
+        [3.4 * cm, 1.2 * cm, 1.2 * cm, 1.3 * cm, 1.2 * cm, 1.25 * cm, 1.25 * cm, 4.7 * cm],
         "Control de segregación bajo ISO/IEC 27001 §5.3. Las descargas de manuales `/documentacion/` e `/informes/` requieren token HMAC `?dt=`; HTTPS y Firewall Privado aplican por defecto.",
         repeat_rows=1,
     )

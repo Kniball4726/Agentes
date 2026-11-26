@@ -1,20 +1,10 @@
 """Definición de secciones de menú, categorías y permisos por rol para el Sidebar."""
 
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
 import flet as ft
 
-from ..theme import ROJO, estilo_boton_menu_sidebar
-from ..user_preferences import (
-    guardar_preferencia_usuario,
-    obtener_preferencias_usuario,
-)
+from ..theme import estilo_boton_menu_sidebar
 from ..dialogs.dlg_preferencias import mostrar_dialogo_preferencias
-from ..dialogs.dlg_movimientos_rapidos import (
-    mostrar_dialogo_ingreso_rapido,
-    mostrar_dialogo_salida_rapida,
-)
 
 def _crear_boton_cierre_jornada(interfaz: Any, ancho: int | None = 218) -> ft.Button:
     """Genera y registra el botón de Cierre de Jornada con soporte dinámico de contadores."""

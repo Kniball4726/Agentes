@@ -236,10 +236,12 @@ class OrderStore:
     registrar_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
     buscar_pedido_por_hash = DelegadoAtributo("order_core_repo", OrderCoreRepository)
     listar_pedidos = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    obtener_pedido_por_id = DelegadoAtributo("order_core_repo", OrderCoreRepository)
     obtener_resumen_pedidos_por_fecha = DelegadoAtributo(
         "order_core_repo", OrderCoreRepository
     )
     anular_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
+    eliminar_pedido = DelegadoAtributo("order_core_repo", OrderCoreRepository)
     obtener_items_sin_coincidencia = DelegadoAtributo(
         "order_core_repo", OrderCoreRepository
     )

@@ -10,7 +10,6 @@ from typing import Any
 from ....consolidator import ItemConsolidado
 from ....inventory import StockManager as _DefaultStockManager
 from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
-from ....paths import application_root
 
 logger = logging.getLogger("stockagent.ui.cierre_mercado")
 

@@ -251,6 +251,8 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
                                     ft.Text(f"• {fecha_str}", size=11, color=interfaz.secundario),
                                 ],
                                 spacing=6,
+                                wrap=True,
+                                run_spacing=2,
                             ),
                         ],
                         spacing=2,
@@ -350,17 +352,22 @@ def mostrar_dialogo_opciones_documento(interfaz: Any, ruta_archivo: str | Path) 
         )
     )
 
+    ancho_dlg = (
+        interfaz.ancho_adaptable(540)
+        if hasattr(interfaz, "ancho_adaptable")
+        else (340 if es_movil else 540)
+    )
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.PRINT_ROUNDED, color=ROJO, size=24),
-                ft.Text("Opciones de Documento: Descargar o Imprimir", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("Opciones de Documento: Descargar o Imprimir", size=16, weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=10,
         ),
         content=ft.Container(
-            width=540 if not es_movil else 340,
+            width=ancho_dlg,
             content=ft.Column(filas_contenido, tight=True, spacing=10),
         ),
         actions=acciones_pie,

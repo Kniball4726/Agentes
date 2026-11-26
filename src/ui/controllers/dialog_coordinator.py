@@ -36,6 +36,7 @@ from ..dialogs import (
     mostrar_dialogo_configuracion_smtp,
     mostrar_dialogo_confirmar_anulacion_pedido,
     mostrar_dialogo_confirmar_desarmar_pedido,
+    mostrar_dialogo_confirmar_eliminacion_pedido,
     mostrar_dialogo_crear_pedido,
     mostrar_dialogo_editar_pedido,
     mostrar_dialogo_ajuste_bultos_express,
@@ -283,6 +284,9 @@ class DialogCoordinator:
 
     def confirmar_desarmar_pedido(self, pedido: Any, al_final: Callable[[], None] | None = None) -> None:
         self._dispatch(mostrar_dialogo_confirmar_desarmar_pedido, pedido, al_final)
+
+    def confirmar_eliminacion_pedido(self, pedido: Any, al_final: Callable[[], None] | None = None) -> None:
+        self._dispatch(mostrar_dialogo_confirmar_eliminacion_pedido, pedido, al_final)
 
     def mostrar_dialogo_backup(self, _e: ft.Event | None = None) -> None:
         self._dispatch(mostrar_dialogo_backup)

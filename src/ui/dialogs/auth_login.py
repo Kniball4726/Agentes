@@ -290,8 +290,8 @@ def mostrar_inicio_sesion(interfaz: Any, error: str = "") -> None:
         )
     else:
         ancho_tarjeta = interfaz.ancho_adaptable(880, margen=48)
-        ancho_panel_izq = 380
-        padding_derecho = 40
+        ancho_panel_izq = 320 if ancho_tarjeta < 820 else 380
+        padding_derecho = 28 if ancho_tarjeta < 820 else 40
         ancho_form = max(340, ancho_tarjeta - ancho_panel_izq)
         ancho_boton = ancho_form - (padding_derecho * 2)
         alto_tarjeta = 450

@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ..design import colores_de
+from ..design import colores_de, es_viewport_estrecho, par_accion_tarjeta
 from ..theme import ROJO
 
 
@@ -41,21 +41,47 @@ def construir_tarjeta_orden_ml(
             border_radius=4,
         )
 
+    es_estrecho = es_viewport_estrecho(interfaz, umbral=620.0)
     filas_items: list[ft.Control] = []
     for it in ord_info["items_coincidentes"]:
         stk_post = it["stock_actual"] - it["cantidad"]
         stk_color = colores.error if stk_post < 0 else interfaz.secundario
-        filas_items.append(
-            ft.Row(
-                [
-                    ft.Text(f"[{it['codigo']}]", weight=ft.FontWeight.BOLD, size=11, width=70),
-                    ft.Text(it["nombre"], size=11, expand=True, no_wrap=True),
-                    ft.Text(f"-{it['cantidad']} un.", color=colores.error, weight=ft.FontWeight.BOLD, size=11, width=60),
-                    ft.Text(f"Stock: {it['stock_actual']} -> {stk_post}", size=11, color=stk_color, width=130),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        if es_estrecho:
+            filas_items.append(
+                ft.Column(
+                    [
+                        ft.Text(
+                            f"[{it['codigo']}] {it['nombre']}",
+                            size=11,
+                            weight=ft.FontWeight.W_500,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Text(f"-{it['cantidad']} un.", color=colores.error, weight=ft.FontWeight.BOLD, size=11),
+                                ft.Text(f"Stock: {it['stock_actual']} -> {stk_post}", size=11, color=stk_color),
+                            ],
+                            spacing=10,
+                            wrap=True,
+                        ),
+                    ],
+                    spacing=1,
+                    tight=True,
+                )
             )
-        )
+        else:
+            filas_items.append(
+                ft.Row(
+                    [
+                        ft.Text(f"[{it['codigo']}]", weight=ft.FontWeight.BOLD, size=11, width=70),
+                        ft.Text(it["nombre"], size=11, expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(f"-{it['cantidad']} un.", color=colores.error, weight=ft.FontWeight.BOLD, size=11, width=60),
+                        ft.Text(f"Stock: {it['stock_actual']} -> {stk_post}", size=11, color=stk_color, width=130),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                )
+            )
 
     for no_it in ord_info["items_no_coincidentes"]:
         filas_items.append(
@@ -73,6 +99,32 @@ def construir_tarjeta_orden_ml(
         )
 
     ref = ord_info["ref_pedido"]
+    cabecera_info = ft.Row(
+        [
+            ft.Checkbox(
+                value=seleccionada,
+                disabled=ya_procesado,
+                on_change=on_check_change,
+            ),
+            ft.Column(
+                [
+                    ft.Text(f"{ref} · {ord_info['cliente']}", weight=ft.FontWeight.BOLD, size=12, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(
+                        f"Fecha: {ord_info['fecha']} | {ord_info['total_unidades']} un. | Total: ${ord_info['total_importe']:,.2f}",
+                        size=11,
+                        color=interfaz.secundario,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                ],
+                expand=True,
+                spacing=2,
+            ),
+        ],
+        spacing=6,
+        expand=not es_estrecho,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
     return ft.Container(
         bgcolor=ft.Colors.WHITE_10 if interfaz.modo_oscuro else ft.Colors.GREY_100,
         border=ft.Border.all(1, ft.Colors.WHITE_24 if interfaz.modo_oscuro else ft.Colors.GREY_300),
@@ -80,31 +132,9 @@ def construir_tarjeta_orden_ml(
         padding=10,
         content=ft.Column(
             [
-                ft.Row(
-                    [
-                        ft.Checkbox(
-                            value=seleccionada,
-                            disabled=ya_procesado,
-                            on_change=on_check_change,
-                        ),
-                        ft.Column(
-                            [
-                                ft.Text(f"{ref} · {ord_info['cliente']}", weight=ft.FontWeight.BOLD, size=12),
-                                ft.Text(
-                                    f"Fecha: {ord_info['fecha']} | {ord_info['total_unidades']} un. | Total: ${ord_info['total_importe']:,.2f}",
-                                    size=11,
-                                    color=interfaz.secundario,
-                                ),
-                            ],
-                            expand=True,
-                            spacing=2,
-                        ),
-                        chip_estado,
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
+                par_accion_tarjeta(interfaz, cabecera_info, chip_estado, umbral=540.0, spacing=8),
                 ft.Container(
-                    padding=ft.Padding(left=28, top=4, right=4, bottom=4),
+                    padding=ft.Padding(left=12 if es_estrecho else 28, top=4, right=4, bottom=4),
                     content=ft.Column(filas_items, spacing=2),
                 ),
             ],
@@ -140,6 +170,8 @@ def construir_contenido_dialogo_ml(
                     chk_solo_pendientes,
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                wrap=True,
+                run_spacing=6,
             ),
             texto_resumen_sincronizacion,
             ft.Divider(height=10, color=interfaz.borde),
@@ -171,6 +203,8 @@ def construir_contenido_dialogo_ml(
                     ft.Button("Guardar Configuración", icon=ft.Icons.SAVE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=on_guardar_config),
                 ],
                 alignment=ft.MainAxisAlignment.END,
+                wrap=True,
+                run_spacing=6,
             ),
         ],
         spacing=8,

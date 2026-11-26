@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from ..design import grilla_tarjetas_responsiva, par_accion_tarjeta
 from ..theme import ROJO
 
 
@@ -147,44 +148,44 @@ def construir_tarjeta_producto_contado(
                     max_lines=2,
                     overflow=ft.TextOverflow.ELLIPSIS,
                 ),
-                ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Text(f"Stock Digital: {stk_dig} un.", size=11, color=interfaz.secundario),
-                                ft.Text(f"Relevado: {cant} un.", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
-                            ],
-                            spacing=1,
-                        ),
-                        ft.Row(
-                            [
-                                ft.IconButton(
-                                    icon=ft.Icons.REMOVE_CIRCLE_OUTLINE,
-                                    icon_size=20,
-                                    tooltip="Restar 1",
-                                    on_click=lambda _e, c=cod: on_ajustar(c, -1),
-                                ),
-                                ft.Text(str(cant), weight=ft.FontWeight.BOLD, size=14, color=interfaz.texto),
-                                ft.IconButton(
-                                    icon=ft.Icons.ADD_CIRCLE_OUTLINE,
-                                    icon_size=20,
-                                    tooltip="Sumar 1",
-                                    on_click=lambda _e, c=cod: on_ajustar(c, 1),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.DELETE_OUTLINE,
-                                    icon_size=20,
-                                    icon_color=ft.Colors.RED_400,
-                                    tooltip="Quitar del conteo",
-                                    on_click=lambda _e, c=cod: on_eliminar(c),
-                                ),
-                            ],
-                            spacing=1,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                par_accion_tarjeta(
+                    interfaz,
+                    ft.Column(
+                        [
+                            ft.Text(f"Stock Digital: {stk_dig} un.", size=11, color=interfaz.secundario),
+                            ft.Text(f"Relevado: {cant} un.", size=11, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                        ],
+                        spacing=1,
+                    ),
+                    ft.Row(
+                        [
+                            ft.IconButton(
+                                icon=ft.Icons.REMOVE_CIRCLE_OUTLINE,
+                                icon_size=20,
+                                tooltip="Restar 1",
+                                on_click=lambda _e, c=cod: on_ajustar(c, -1),
+                            ),
+                            ft.Text(str(cant), weight=ft.FontWeight.BOLD, size=14, color=interfaz.texto),
+                            ft.IconButton(
+                                icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                                icon_size=20,
+                                tooltip="Sumar 1",
+                                on_click=lambda _e, c=cod: on_ajustar(c, 1),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DELETE_OUTLINE,
+                                icon_size=20,
+                                icon_color=ft.Colors.RED_400,
+                                tooltip="Quitar del conteo",
+                                on_click=lambda _e, c=cod: on_eliminar(c),
+                            ),
+                        ],
+                        spacing=1,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    umbral=460.0,
+                    spacing=8,
                 ),
             ],
             spacing=5,
@@ -319,13 +320,17 @@ def mostrar_resumen_inventario_finalizado(
                 spacing=12,
             ),
             ft.Divider(height=14),
-            ft.Row(
+            grilla_tarjetas_responsiva(
                 [
                     _tarjeta_balance(interfaz, "COINCIDEN", coinciden, ft.Colors.GREEN_900, ft.Colors.GREEN_50, ft.Colors.GREEN_400),
                     _tarjeta_balance(interfaz, "FALTANTES", faltantes, ft.Colors.RED_900, ft.Colors.RED_50, ft.Colors.RED_400),
                     _tarjeta_balance(interfaz, "SOBRANTES", sobrantes, ft.Colors.AMBER_900, ft.Colors.AMBER_50, ft.Colors.AMBER_400),
                 ],
+                interfaz=interfaz,
+                compacto=True,
                 spacing=8,
+                run_spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
             ),
             ft.Divider(height=14),
             ft.Container(

@@ -119,7 +119,7 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "nombre_boton": "Paleta Rápida (F2), Chat Interno y Manual HTTPS (?dt=)",
                 "icono_str": "[⚡]",
                 "modulo": "HERRAMIENTAS",
-                "proposito_funcional": "Lanzador por teclado (`F2` / `Ctrl+K`), comunicación en vivo con equipo de depósito/supervisión, preferencias visuales y apertura de `Manual_Picker.pdf` autenticado mediante token `?dt=` sobre HTTPS.",
+                "proposito_funcional": "Lanzador por teclado (`F2` / `Ctrl+K`), comunicación en vivo con equipo de depósito/supervisión, interfaz responsiva en tarjetas y modales, preferencias visuales y apertura de `Manual_Picker.pdf` autenticado mediante token `?dt=` sobre HTTPS.",
                 "datos_modificados": "Mensajes internos en tabla `chat_messages` y preferencias locales de interfaz.",
                 "pasos_procedimiento": [
                     "Presionar <b>F2</b> para saltar rápido entre Entrada, Salida, Mercado Libre, Full o Fábrica.",

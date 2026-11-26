@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.platypus import PageBreak, SimpleDocTemplate, Table, TableStyle
-
-if TYPE_CHECKING:
-    from ..orders import Pedido
 
 ETIQUETAS_POR_HOJA = 6
 FILAS_POR_HOJA = 3

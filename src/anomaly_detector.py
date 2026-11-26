@@ -14,10 +14,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from .integrations.telegram_notifier import notificar_anomalia_demanda_telegram
-from .paths import application_root
 
 
 @dataclass

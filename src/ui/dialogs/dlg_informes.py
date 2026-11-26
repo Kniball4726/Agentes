@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 import flet as ft
+from ..design import es_viewport_estrecho, par_accion_tarjeta
 from ..theme import ROJO
 
 
@@ -111,51 +112,60 @@ def mostrar_dialogo_informes(interfaz: Any) -> None:
                     )
                 )
 
+            info_informe = ft.Row(
+                [
+                    ft.Container(
+                        width=38,
+                        height=38,
+                        border_radius=8,
+                        bgcolor=ft.Colors.with_opacity(0.15, color_icono),
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Icon(icono, color=color_icono, size=20),
+                    ),
+                    ft.Column(
+                        [
+                            ft.Text(
+                                r.name,
+                                size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=interfaz.texto,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                max_lines=2 if es_viewport_estrecho(interfaz, umbral=540.0) else 1,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Container(
+                                        content=ft.Text(tipo_badge, size=9, weight=ft.FontWeight.BOLD, color=color_icono),
+                                        bgcolor=ft.Colors.with_opacity(0.1, color_icono),
+                                        padding=ft.Padding.symmetric(horizontal=5, vertical=1),
+                                        border_radius=4,
+                                    ),
+                                    ft.Text(f"{fecha_str} · {tamano_str}", size=11, color=interfaz.secundario),
+                                ],
+                                spacing=6,
+                                wrap=True,
+                                run_spacing=2,
+                            ),
+                        ],
+                        spacing=3,
+                        expand=True,
+                    ),
+                ],
+                spacing=12,
+                expand=not es_viewport_estrecho(interfaz, umbral=540.0),
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
             card = ft.Container(
                 bgcolor=ft.Colors.with_opacity(0.04 if es_oscuro else 0.02, interfaz.texto),
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.12, interfaz.borde)),
                 border_radius=10,
                 padding=ft.Padding.symmetric(horizontal=12, vertical=10),
-                content=ft.Row(
-                    [
-                        ft.Container(
-                            width=38,
-                            height=38,
-                            border_radius=8,
-                            bgcolor=ft.Colors.with_opacity(0.15, color_icono),
-                            alignment=ft.Alignment.CENTER,
-                            content=ft.Icon(icono, color=color_icono, size=20),
-                        ),
-                        ft.Column(
-                            [
-                                ft.Text(
-                                    r.name,
-                                    size=13,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=interfaz.texto,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                    max_lines=1,
-                                ),
-                                ft.Row(
-                                    [
-                                        ft.Container(
-                                            content=ft.Text(tipo_badge, size=9, weight=ft.FontWeight.BOLD, color=color_icono),
-                                            bgcolor=ft.Colors.with_opacity(0.1, color_icono),
-                                            padding=ft.Padding.symmetric(horizontal=5, vertical=1),
-                                            border_radius=4,
-                                        ),
-                                        ft.Text(f"{fecha_str} · {tamano_str}", size=11, color=interfaz.secundario),
-                                    ],
-                                    spacing=6,
-                                ),
-                            ],
-                            spacing=3,
-                            expand=True,
-                        ),
-                        ft.Row(botones_item, spacing=4, tight=True),
-                    ],
-                    spacing=12,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                content=par_accion_tarjeta(
+                    interfaz,
+                    info_informe,
+                    ft.Row(botones_item, spacing=4, tight=True, wrap=True),
+                    umbral=540.0,
+                    spacing=10,
                 ),
             )
             tarjetas.append(card)
@@ -221,7 +231,9 @@ def mostrar_dialogo_informes(interfaz: Any) -> None:
             height=alto_modal,
             content=ft.Column(
                 [
-                    ft.Row([filtro_input, btn_abrir_ultimo], spacing=8),
+                    par_accion_tarjeta(interfaz, filtro_input, btn_abrir_ultimo, umbral=540.0, spacing=8)
+                    if ultimo_informe
+                    else ft.Row([filtro_input], spacing=8),
                     columna_archivos,
                 ],
                 spacing=10,

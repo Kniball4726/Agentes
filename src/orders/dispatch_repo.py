@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from typing import Any
 
 from ..core.exceptions import OrderStoreError
@@ -259,6 +258,130 @@ class DispatchRepository:
         except Exception as e:
             return False, str(e), pedido
 
+    @staticmethod
+    def _respuesta_escaneo(
+        *,
+        ok: bool,
+        mensaje: str,
+        pedido: Pedido | None = None,
+        bultos_escaneados: list[int] | None = None,
+        bultos_esperados: int = 0,
+        completado: bool = False,
+        duplicado: bool = False,
+        requiere_confirmacion_bultos: bool = False,
+    ) -> dict[str, Any]:
+        """Construye el payload estándar de respuesta para un escaneo QR de despacho."""
+        return {
+            "ok": ok,
+            "completado": completado,
+            "duplicado": duplicado,
+            "requiere_confirmacion_bultos": requiere_confirmacion_bultos,
+            "mensaje": mensaje,
+            "pedido": pedido,
+            "bultos_escaneados": bultos_escaneados if bultos_escaneados is not None else [],
+            "bultos_esperados": bultos_esperados,
+        }
+
+    def _validar_escaneo_en_tx(
+        self,
+        connection: Any,
+        remito: str,
+        bulto_num: int | None,
+        total_qr: int | None,
+    ) -> tuple[Pedido | None, int | None, int, list[int], dict[str, Any] | None]:
+        """Valida existencia, estado y consistencia de bulto dentro de la transacción de escaneo."""
+        row = connection.execute(
+            f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE nota_pedido = ? COLLATE NOCASE LIMIT 1",
+            (remito,),
+        ).fetchone()
+        if row is None:
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                mensaje=f"No se encontró ningún pedido con el remito '{remito}'.",
+            )
+
+        pedido = self._map_pedido(row)
+        if pedido.estado == "anulado":
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                pedido=pedido,
+                bultos_esperados=pedido.bultos,
+                mensaje=f"El pedido #{pedido.nota_pedido} está ANULADO y no puede despacharse.",
+            )
+
+        if pedido.estado_despacho != "armado":
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                duplicado=True,
+                pedido=pedido,
+                bultos_escaneados=list(range(1, pedido.bultos + 1)),
+                bultos_esperados=pedido.bultos,
+                mensaje=f"El pedido #{pedido.nota_pedido} ({pedido.cliente}) ya figura como '{pedido.estado_despacho.upper()}'.",
+            )
+
+        esperados = max(1, int(pedido.bultos or 1))
+        escaneados = [
+            int(r["bulto_num"])
+            for r in connection.execute(
+                "SELECT bulto_num FROM despacho_bultos_escaneados WHERE pedido_id = ? ORDER BY bulto_num ASC",
+                (pedido.id,),
+            ).fetchall()
+        ]
+
+        if bulto_num is None:
+            if esperados > 1:
+                return None, None, 0, [], self._respuesta_escaneo(
+                    ok=True,
+                    requiere_confirmacion_bultos=True,
+                    pedido=pedido,
+                    bultos_escaneados=escaneados,
+                    bultos_esperados=esperados,
+                    mensaje=(
+                        f"Remito #{pedido.nota_pedido} ({pedido.cliente}) tiene {esperados} bultos "
+                        f"({len(escaneados)}/{esperados} verificados). Escanee el QR de cada bulto o despache manualmente."
+                    ),
+                )
+            bulto_num = 1
+
+        if total_qr is not None and total_qr != esperados:
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                pedido=pedido,
+                bultos_escaneados=escaneados,
+                bultos_esperados=esperados,
+                mensaje=(
+                    f"El rótulo indica {total_qr} bulto(s), pero el pedido #{pedido.nota_pedido} "
+                    f"registra {esperados} bulto(s). Verifique los rótulos o despache manualmente."
+                ),
+            )
+
+        if bulto_num < 1 or bulto_num > esperados:
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                pedido=pedido,
+                bultos_escaneados=escaneados,
+                bultos_esperados=esperados,
+                mensaje=(
+                    f"Número de bulto inválido ({bulto_num}) para el remito #{pedido.nota_pedido} "
+                    f"(esperados: 1..{esperados})."
+                ),
+            )
+
+        if bulto_num in escaneados:
+            return None, None, 0, [], self._respuesta_escaneo(
+                ok=False,
+                duplicado=True,
+                pedido=pedido,
+                bultos_escaneados=escaneados,
+                bultos_esperados=esperados,
+                mensaje=(
+                    f"El bulto {bulto_num}/{esperados} del remito #{pedido.nota_pedido} ya fue escaneado "
+                    f"({len(escaneados)}/{esperados} verificados)."
+                ),
+            )
+
+        return pedido, bulto_num, esperados, escaneados, None
+
     def registrar_escaneo_bulto_despacho(
         self,
         codigo_qr_o_remito: str,
@@ -267,137 +390,23 @@ class DispatchRepository:
         """Procesa el escaneo QR/pistola de un bulto y pasa el pedido de `armado` → `despachado` al completar los bultos."""
         datos = self.extraer_datos_qr_despacho(codigo_qr_o_remito)
         remito = str(datos["remito"] or "").strip()
-        bulto_num: int | None = datos["bulto_num"]
-        total_qr: int | None = datos["total_bultos"]
-
         if not remito:
-            return {
-                "ok": False,
-                "completado": False,
-                "duplicado": False,
-                "requiere_confirmacion_bultos": False,
-                "mensaje": "Código vacío. Escanee el QR del rótulo o ingrese un número de remito.",
-                "pedido": None,
-                "bultos_escaneados": [],
-                "bultos_esperados": 0,
-            }
+            return self._respuesta_escaneo(
+                ok=False,
+                mensaje="Código vacío. Escanee el QR del rótulo o ingrese un número de remito.",
+            )
 
         ahora_sql = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
         auditoria_detalle = ""
 
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                f"SELECT {_COLUMNAS_SELECT_PEDIDO} FROM pedidos WHERE nota_pedido = ? COLLATE NOCASE LIMIT 1",
-                (remito,),
-            ).fetchone()
-            if row is None:
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": False,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": f"No se encontró ningún pedido con el remito '{remito}'.",
-                    "pedido": None,
-                    "bultos_escaneados": [],
-                    "bultos_esperados": 0,
-                }
-
-            pedido = self._map_pedido(row)
-            if pedido.estado == "anulado":
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": False,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": f"El pedido #{pedido.nota_pedido} está ANULADO y no puede despacharse.",
-                    "pedido": pedido,
-                    "bultos_escaneados": [],
-                    "bultos_esperados": pedido.bultos,
-                }
-
-            if pedido.estado_despacho != "armado":
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": True,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": f"El pedido #{pedido.nota_pedido} ({pedido.cliente}) ya figura como '{pedido.estado_despacho.upper()}'.",
-                    "pedido": pedido,
-                    "bultos_escaneados": list(range(1, pedido.bultos + 1)),
-                    "bultos_esperados": pedido.bultos,
-                }
-
-            esperados = max(1, int(pedido.bultos or 1))
-            escaneados = [
-                int(r["bulto_num"])
-                for r in connection.execute(
-                    "SELECT bulto_num FROM despacho_bultos_escaneados WHERE pedido_id = ? ORDER BY bulto_num ASC",
-                    (pedido.id,),
-                ).fetchall()
-            ]
-
-            # Caso 1: Escaneo plano sin número de bulto específico
-            if bulto_num is None:
-                if esperados > 1:
-                    return {
-                        "ok": True,
-                        "completado": False,
-                        "duplicado": False,
-                        "requiere_confirmacion_bultos": True,
-                        "mensaje": (
-                            f"Remito #{pedido.nota_pedido} ({pedido.cliente}) tiene {esperados} bultos "
-                            f"({len(escaneados)}/{esperados} verificados). Escanee el QR de cada bulto o despache manualmente."
-                        ),
-                        "pedido": pedido,
-                        "bultos_escaneados": escaneados,
-                        "bultos_esperados": esperados,
-                    }
-                bulto_num = 1
-
-            # Caso 2: QR con BULTO:i/n (o pedido de 1 bulto)
-            if total_qr is not None and total_qr != esperados:
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": False,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": (
-                        f"El rótulo indica {total_qr} bulto(s), pero el pedido #{pedido.nota_pedido} "
-                        f"registra {esperados} bulto(s). Verifique los rótulos o despache manualmente."
-                    ),
-                    "pedido": pedido,
-                    "bultos_escaneados": escaneados,
-                    "bultos_esperados": esperados,
-                }
-            if bulto_num < 1 or bulto_num > esperados:
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": False,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": (
-                        f"Número de bulto inválido ({bulto_num}) para el remito #{pedido.nota_pedido} "
-                        f"(esperados: 1..{esperados})."
-                    ),
-                    "pedido": pedido,
-                    "bultos_escaneados": escaneados,
-                    "bultos_esperados": esperados,
-                }
-            if bulto_num in escaneados:
-                return {
-                    "ok": False,
-                    "completado": False,
-                    "duplicado": True,
-                    "requiere_confirmacion_bultos": False,
-                    "mensaje": (
-                        f"El bulto {bulto_num}/{esperados} del remito #{pedido.nota_pedido} ya fue escaneado "
-                        f"({len(escaneados)}/{esperados} verificados)."
-                    ),
-                    "pedido": pedido,
-                    "bultos_escaneados": escaneados,
-                    "bultos_esperados": esperados,
-                }
+            pedido, bulto_num, esperados, escaneados, error_resp = self._validar_escaneo_en_tx(
+                connection, remito, datos["bulto_num"], datos["total_bultos"]
+            )
+            if error_resp is not None:
+                return error_resp
+            assert pedido is not None and bulto_num is not None
 
             connection.execute(
                 f"""
@@ -428,39 +437,30 @@ class DispatchRepository:
                 pedido_upd = pedido
 
         if auditoria_detalle:
-            self._audit(
-                usuario=usuario,
-                accion="ESTADO_DESPACHO",
-                detalle=auditoria_detalle,
-            )
-            return {
-                "ok": True,
-                "completado": True,
-                "duplicado": False,
-                "requiere_confirmacion_bultos": False,
-                "mensaje": (
+            self._audit(usuario=usuario, accion="ESTADO_DESPACHO", detalle=auditoria_detalle)
+            return self._respuesta_escaneo(
+                ok=True,
+                completado=True,
+                pedido=pedido_upd,
+                bultos_escaneados=escaneados,
+                bultos_esperados=esperados,
+                mensaje=(
                     f"Remito #{pedido_upd.nota_pedido} ({pedido_upd.cliente}) → DESPACHADO "
                     f"({len(escaneados)}/{esperados} bulto(s) verificados)."
                 ),
-                "pedido": pedido_upd,
-                "bultos_escaneados": escaneados,
-                "bultos_esperados": esperados,
-            }
+            )
 
         faltantes = esperados - len(escaneados)
-        return {
-            "ok": True,
-            "completado": False,
-            "duplicado": False,
-            "requiere_confirmacion_bultos": False,
-            "mensaje": (
+        return self._respuesta_escaneo(
+            ok=True,
+            pedido=pedido_upd,
+            bultos_escaneados=escaneados,
+            bultos_esperados=esperados,
+            mensaje=(
                 f"Bulto {bulto_num}/{esperados} verificado para remito #{pedido_upd.nota_pedido} "
                 f"({pedido_upd.cliente}). Faltan {faltantes} bulto(s)."
             ),
-            "pedido": pedido_upd,
-            "bultos_escaneados": escaneados,
-            "bultos_esperados": esperados,
-        }
+        )
 
     def despachar_pedido_manual(
         self,

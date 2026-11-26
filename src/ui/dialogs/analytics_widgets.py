@@ -54,11 +54,19 @@ def tarjeta_kpi_analytics(
                 ft.Row(
                     [
                         ft.Icon(icono, color=color_ico, size=18),
-                        ft.Text(titulo, size=11, color=interfaz.secundario, weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            titulo,
+                            size=11,
+                            color=interfaz.secundario,
+                            weight=ft.FontWeight.W_500,
+                            expand=True,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
                     ],
                     spacing=6,
                 ),
-                ft.Text(valor, size=18, weight=ft.FontWeight.BOLD, color=interfaz.texto),
+                ft.Text(valor, size=18, weight=ft.FontWeight.BOLD, color=interfaz.texto, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=3,
         ),
@@ -78,7 +86,7 @@ def fila_progreso_metrica(
         [
             ft.Row(
                 [
-                    ft.Text(etiqueta, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto),
+                    ft.Text(etiqueta, size=12, weight=ft.FontWeight.W_500, expand=True, color=interfaz.texto, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Text(cant_texto, size=11, color=interfaz.secundario),
                     ft.Text(f"{bultos} bultos", size=11, weight=ft.FontWeight.BOLD, color=ROJO),
                 ],

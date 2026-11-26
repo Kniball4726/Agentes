@@ -196,8 +196,8 @@ def mostrar_dialogo_gestion_clientes(interfaz: Any) -> None:
                             ft.Icon(ft.Icons.BUSINESS, color=interfaz.secundario, size=18),
                             ft.Column(
                                 [
-                                    ft.Text(cli.nombre, weight=ft.FontWeight.W_500, size=13),
-                                    ft.Text(subtitulo, size=10, color=interfaz.secundario) if subtitulo else ft.Container(),
+                                    ft.Text(cli.nombre, weight=ft.FontWeight.W_500, size=13, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(subtitulo, size=10, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS) if subtitulo else ft.Container(),
                                 ],
                                 spacing=2,
                                 expand=True,

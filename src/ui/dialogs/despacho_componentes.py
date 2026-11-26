@@ -8,6 +8,7 @@ from typing import Any, Callable
 import flet as ft
 
 from ...orders import Pedido
+from ..design import par_accion_tarjeta
 from ..theme import ROJO
 
 
@@ -20,6 +21,8 @@ def construir_kpi_despacho(
 ) -> ft.Container:
     """Construye una tarjeta KPI compacta para el encabezado del módulo Despacho."""
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    valor_control.max_lines = 1
+    valor_control.overflow = ft.TextOverflow.ELLIPSIS
     return ft.Container(
         expand=True,
         bgcolor=interfaz.superficie,
@@ -38,7 +41,13 @@ def construir_kpi_despacho(
                 ),
                 ft.Column(
                     [
-                        ft.Text(titulo, size=11, color=interfaz.secundario),
+                        ft.Text(
+                            titulo,
+                            size=11,
+                            color=interfaz.secundario,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
                         valor_control,
                     ],
                     spacing=1,
@@ -125,6 +134,61 @@ def construir_tarjeta_pedido_pendiente(
     guia_txt = f" · Guía: {pedido.numero_guia}" if getattr(pedido, "numero_guia", "") else ""
     fecha_txt = (pedido.created_at or "")[:16]
 
+    info_col = ft.Column(
+        [
+            ft.Row(
+                [
+                    ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=16, color=ROJO),
+                    ft.Text(
+                        f"Remito #{pedido.nota_pedido}",
+                        size=13,
+                        weight=ft.FontWeight.BOLD,
+                        color=interfaz.texto,
+                    ),
+                    ft.Container(
+                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.AMBER_500 if parcial else ft.Colors.BLUE_500),
+                        border_radius=6,
+                        padding=ft.Padding.symmetric(horizontal=7, vertical=2),
+                        content=ft.Text(
+                            f"EN CONTROL ({len(bultos_escaneados)}/{pedido.bultos})"
+                            if parcial
+                            else f"ARMADO · {pedido.bultos} bulto(s)",
+                            size=10,
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.Colors.AMBER_400 if parcial else ft.Colors.BLUE_400,
+                        ),
+                    ),
+                ],
+                spacing=8,
+                wrap=True,
+                run_spacing=4,
+            ),
+            ft.Text(
+                f"Cliente: {pedido.cliente} · {pedido.logistica}{guia_txt}",
+                size=12,
+                color=interfaz.texto,
+                max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+            ft.Text(
+                f"Armador: {pedido.armador} · Armado: {fecha_txt}",
+                size=11,
+                color=interfaz.secundario,
+                max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+        ],
+        spacing=3,
+        expand=True,
+    )
+    btn_despachar = ft.Button(
+        content="Despachar manual",
+        icon=ft.Icons.LOCAL_SHIPPING,
+        bgcolor=ROJO,
+        color=ft.Colors.WHITE,
+        on_click=lambda _e, p=pedido: on_despachar_manual(p),
+    )
+
     return ft.Container(
         bgcolor=interfaz.superficie,
         border=ft.Border.all(1.5 if (destacado or parcial) else 1, borde_color),
@@ -132,62 +196,7 @@ def construir_tarjeta_pedido_pendiente(
         padding=ft.Padding.symmetric(horizontal=12, vertical=10),
         content=ft.Column(
             [
-                ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Row(
-                                    [
-                                        ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=16, color=ROJO),
-                                        ft.Text(
-                                            f"Remito #{pedido.nota_pedido}",
-                                            size=13,
-                                            weight=ft.FontWeight.BOLD,
-                                            color=interfaz.texto,
-                                        ),
-                                        ft.Container(
-                                            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.AMBER_500 if parcial else ft.Colors.BLUE_500),
-                                            border_radius=6,
-                                            padding=ft.Padding.symmetric(horizontal=7, vertical=2),
-                                            content=ft.Text(
-                                                f"EN CONTROL ({len(bultos_escaneados)}/{pedido.bultos})"
-                                                if parcial
-                                                else f"ARMADO · {pedido.bultos} bulto(s)",
-                                                size=10,
-                                                weight=ft.FontWeight.BOLD,
-                                                color=ft.Colors.AMBER_400 if parcial else ft.Colors.BLUE_400,
-                                            ),
-                                        ),
-                                    ],
-                                    spacing=8,
-                                    wrap=True,
-                                ),
-                                ft.Text(
-                                    f"Cliente: {pedido.cliente} · {pedido.logistica}{guia_txt}",
-                                    size=12,
-                                    color=interfaz.texto,
-                                ),
-                                ft.Text(
-                                    f"Armador: {pedido.armador} · Armado: {fecha_txt}",
-                                    size=11,
-                                    color=interfaz.secundario,
-                                ),
-                            ],
-                            spacing=3,
-                            expand=True,
-                        ),
-                        ft.Button(
-                            content="Despachar manual",
-                            icon=ft.Icons.LOCAL_SHIPPING,
-                            bgcolor=ROJO,
-                            color=ft.Colors.WHITE,
-                            on_click=lambda _e, p=pedido: on_despachar_manual(p),
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=10,
-                ),
+                par_accion_tarjeta(interfaz, info_col, btn_despachar, umbral=640.0, spacing=10),
                 _construir_chips_bultos(interfaz, pedido.bultos, bultos_escaneados),
             ],
             spacing=8,
@@ -263,11 +272,15 @@ def construir_tarjeta_pedido_despachado(
                             f"Cliente: {pedido.cliente} · {pedido.logistica}{guia_txt}",
                             size=12,
                             color=interfaz.texto,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
                         ),
                         ft.Text(
                             f"Despachado por: {quien} · Fecha despacho: {fecha_desp[:16]}",
                             size=11,
                             color=interfaz.secundario,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
                         ),
                     ],
                     spacing=3,

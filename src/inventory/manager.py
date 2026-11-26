@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Tuple
 
 import openpyxl
 
-from ..consolidator import ItemConsolidado
 from ..parsers.remito_parser import ResultadoRemito
 from ..products import ProductStore
 from ..stock.models import RegistroDescuento, ReporteStock

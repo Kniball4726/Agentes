@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 import flet as ft
 
+from ..design import par_accion_tarjeta
 from ..theme import ROJO
 from ...orders.picking_wave import consolidar_ola_picking
 
@@ -57,51 +58,61 @@ def mostrar_dialogo_ola_picking(
         if len(it["pedidos"]) > 3:
             resumen_pedidos_str += f" (+{len(it['pedidos']) - 3} pedidos más)"
 
+        info_item = ft.Row(
+            [
+                ft.Container(
+                    content=ft.Text(
+                        ubic_txt,
+                        size=10,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.WHITE if tiene_ubic else ft.Colors.BLUE_GREY_200,
+                    ),
+                    bgcolor=ft.Colors.TEAL_700 if tiene_ubic else ft.Colors.BLUE_GREY_800,
+                    padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+                    border_radius=6,
+                ),
+                ft.Column(
+                    [
+                        ft.Text(
+                            f"[{it['codigo']}] {it['descripcion']}",
+                            weight=ft.FontWeight.BOLD,
+                            size=12,
+                            color=interfaz.texto,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                        ft.Text(
+                            resumen_pedidos_str,
+                            size=10,
+                            color=interfaz.secundario,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                    ],
+                    spacing=2,
+                    expand=True,
+                ),
+            ],
+            spacing=10,
+            expand=True,
+        )
+        badge_total = ft.Container(
+            content=ft.Text(f"x{it['total_unidades']}", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+            bgcolor=ROJO,
+            padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+            border_radius=12,
+        )
         fila_item = ft.Container(
             bgcolor=interfaz.superficie,
             border=ft.Border.all(1, interfaz.borde),
             border_radius=8,
             padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-            content=ft.Row(
-                [
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=ft.Text(
-                                    ubic_txt,
-                                    size=10,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=ft.Colors.WHITE if tiene_ubic else ft.Colors.BLUE_GREY_200,
-                                ),
-                                bgcolor=ft.Colors.TEAL_700 if tiene_ubic else ft.Colors.BLUE_GREY_800,
-                                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                                border_radius=6,
-                            ),
-                            ft.Column(
-                                [
-                                    ft.Text(f"[{it['codigo']}] {it['descripcion']}", weight=ft.FontWeight.BOLD, size=12, color=interfaz.texto),
-                                    ft.Text(resumen_pedidos_str, size=10, color=interfaz.secundario),
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                        ],
-                        spacing=10,
-                        expand=True,
-                    ),
-                    ft.Container(
-                        content=ft.Text(f"x{it['total_unidades']}", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                        bgcolor=ROJO,
-                        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
-                        border_radius=12,
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
+            content=par_accion_tarjeta(interfaz, info_item, badge_total, umbral=480.0, spacing=8),
         )
         lista_controles.append(fila_item)
 
+    ancho_dlg = interfaz.ancho_adaptable(540) if hasattr(interfaz, "ancho_adaptable") else 540
+    alto_dlg = interfaz.alto_adaptable(380) if hasattr(interfaz, "alto_adaptable") else 380
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
@@ -109,17 +120,18 @@ def mostrar_dialogo_ola_picking(
                 ft.Icon(ft.Icons.WAVES, color=ft.Colors.BLUE_400),
                 ft.Column(
                     [
-                        ft.Text("Ola de Picking Consolidada (Wave Picking)", size=16, weight=ft.FontWeight.BOLD),
-                        ft.Text(f"{total_pedidos} pedidos agrupados · {len(items_ola)} SKUs · {total_unidades} unidades totales", size=11, color=interfaz.secundario),
+                        ft.Text("Ola de Picking Consolidada (Wave Picking)", size=16, weight=ft.FontWeight.BOLD, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(f"{total_pedidos} pedidos agrupados · {len(items_ola)} SKUs · {total_unidades} unidades totales", size=11, color=interfaz.secundario, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ],
                     spacing=2,
+                    expand=True,
                 ),
             ],
             spacing=10,
         ),
         content=ft.Container(
-            width=540,
-            height=380,
+            width=ancho_dlg,
+            height=alto_dlg,
             content=ft.Column(
                 [
                     ft.Text(

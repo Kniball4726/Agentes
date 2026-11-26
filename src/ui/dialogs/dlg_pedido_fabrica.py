@@ -1,39 +1,13 @@
 """Diálogo para generación de planillas Excel de pedido sugerido a fábrica."""
-from datetime import datetime
-import inspect
-from pathlib import Path
-import shutil
-import sys
 from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ...inventory import StockManager as _DefaultStockManager
+from ._shared import resolve_stock_manager, safe_focus
+
 
 def _get_stock_manager():
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
-
-def safe_focus(interfaz: Any, ctrl: Any) -> None:
-    try:
-        res = ctrl.focus()
-        if inspect.iscoroutine(res):
-            if (
-                hasattr(interfaz, "page")
-                and hasattr(interfaz.page, "run_task")
-                and callable(interfaz.page.run_task)
-                and not getattr(interfaz.page, "_is_mock", False)
-                and not hasattr(interfaz.page, "mock_calls")
-            ):
-                async def _f():
-                    await res
-                interfaz.page.run_task(_f)
-            else:
-                res.close()
-    except Exception:
-        pass
+    return resolve_stock_manager()
 
 
 def generar_pedido_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> None:

@@ -16,7 +16,7 @@ import flet as ft
 from ...server_app import PUERTO_WEB_DEFAULT as _DEFAULT_PUERTO
 from ...server_app import obtener_ip_local as _default_ip_local
 from ...server_app import obtener_ip_tailscale as _default_ip_tailscale
-from ..design import colores_de, confirmar_accion_destructiva, tono_legible
+from ..design import colores_de, confirmar_accion_destructiva, es_viewport_estrecho, par_accion_tarjeta, tono_legible
 from ..theme import ROJO, SECUNDARIO
 
 
@@ -133,6 +133,8 @@ def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:
                         ft.Button("Ping Salud", icon=ft.Icons.HEALTH_AND_SAFETY, on_click=probar_salud),
                     ],
                     spacing=8,
+                    wrap=True,
+                    run_spacing=6,
                 ),
                 res_salud_txt,
             ],
@@ -222,28 +224,44 @@ def construir_tab_sesiones(
             c_at = formatear_timestamp_api(s.get("created_at"))
             l_act = formatear_timestamp_api(s.get("last_active"))
 
-            items.append(
-                ft.Container(
-                    content=ft.Row(
+            info_sesion = ft.Row(
+                [
+                    ft.Icon(ft.Icons.LAPTOP_CHROMEBOOK, color=tono_legible("CYAN", es_oscuro), size=22),
+                    ft.Column(
                         [
-                            ft.Icon(ft.Icons.LAPTOP_CHROMEBOOK, color=tono_legible("CYAN", es_oscuro), size=22),
-                            ft.Column(
+                            ft.Row(
                                 [
-                                    ft.Row([ft.Text(f"{nom} (@{u_nom})", weight=ft.FontWeight.BOLD, size=13, color=texto_color), ft.Text(f"[{rol_s.upper()}]", size=11, color=colores.info)], spacing=6),
-                                    ft.Text(f"Token: {th[:12]}... | Creada: {c_at} | Última actividad: {l_act}", size=11, color=sec_color),
+                                    ft.Text(f"{nom} (@{u_nom})", weight=ft.FontWeight.BOLD, size=13, color=texto_color),
+                                    ft.Text(f"[{rol_s.upper()}]", size=11, color=colores.info),
                                 ],
-                                expand=True,
-                                spacing=2,
+                                spacing=6,
+                                wrap=True,
+                                run_spacing=2,
                             ),
-                            ft.Button(
-                                "Cerrar sesión",
-                                icon=ft.Icons.LOGOUT,
-                                style=ft.ButtonStyle(color=colores.error),
-                                on_click=lambda _e, h=th, u=u_nom: ejecutar_revocar_sesion(h, u),
+                            ft.Text(
+                                f"Token: {th[:12]}... | Creada: {c_at} | Última actividad: {l_act}",
+                                size=11,
+                                color=sec_color,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
                             ),
                         ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        expand=True,
+                        spacing=2,
                     ),
+                ],
+                spacing=8,
+                expand=not es_viewport_estrecho(interfaz, umbral=560.0),
+            )
+            btn_rev_ses = ft.Button(
+                "Cerrar sesión",
+                icon=ft.Icons.LOGOUT,
+                style=ft.ButtonStyle(color=colores.error),
+                on_click=lambda _e, h=th, u=u_nom: ejecutar_revocar_sesion(h, u),
+            )
+            items.append(
+                ft.Container(
+                    content=par_accion_tarjeta(interfaz, info_sesion, btn_rev_ses, umbral=560.0, spacing=8),
                     padding=ft.Padding.all(8),
                     border=ft.Border.all(1, ft.Colors.with_opacity(0.12, texto_color)),
                     border_radius=8,
@@ -277,15 +295,23 @@ def construir_tab_sesiones(
             auditoria=("REVOCAR_TODAS_SESIONES_API", "Revocación masiva de sesiones API/Móvil"),
         )
 
+    acciones_sesiones = ft.Row(
+        [
+            ft.Button("Limpiar Expiradas", icon=ft.Icons.CLEANING_SERVICES, on_click=ejecutar_limpiar_expiradas),
+            ft.Button("Cerrar Todas", icon=ft.Icons.LOGOUT, style=ft.ButtonStyle(color=colores.error), on_click=ejecutar_cerrar_todas),
+        ],
+        spacing=6,
+        wrap=True,
+        run_spacing=4,
+    )
     vista_sesiones = ft.Column(
         [
-            ft.Row(
-                [
-                    ft.Text("Sesiones de usuarios y terminales autenticados mediante API / Web móvil.", size=12, color=sec_color, expand=True),
-                    ft.Button("Limpiar Expiradas", icon=ft.Icons.CLEANING_SERVICES, on_click=ejecutar_limpiar_expiradas),
-                    ft.Button("Cerrar Todas", icon=ft.Icons.LOGOUT, style=ft.ButtonStyle(color=colores.error), on_click=ejecutar_cerrar_todas),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            par_accion_tarjeta(
+                interfaz,
+                ft.Text("Sesiones de usuarios y terminales autenticados mediante API / Web móvil.", size=12, color=sec_color, expand=True),
+                acciones_sesiones,
+                umbral=600.0,
+                spacing=8,
             ),
             ft.Divider(),
             ft.Row([ft.Text("Sesiones Activas", weight=ft.FontWeight.BOLD, size=13, color=texto_color), total_sesiones_txt], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),

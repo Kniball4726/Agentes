@@ -6,7 +6,7 @@ Soporta archivos Excel (.xlsx, .xls) y PDF con detalles de productos y cantidade
 from pathlib import Path
 from typing import Dict, List, Tuple
 import xlrd
-from .remito_parser import normalizar_codigo, parsear_remito, ResultadoRemito
+from .remito_parser import normalizar_codigo, parsear_remito
 from .safe_loader import MAX_EXCEL_COLS, MAX_EXCEL_ROWS, cargar_workbook_seguro, validar_xls_seguro
 
 

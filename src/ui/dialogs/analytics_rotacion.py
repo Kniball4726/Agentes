@@ -7,6 +7,7 @@ from typing import Any
 
 import flet as ft
 
+from ..design import es_viewport_estrecho
 from ..theme import ROJO
 from .analytics_widgets import parsear_fecha_iso, resolver_stock_manager_analytics
 
@@ -132,12 +133,13 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
         total_unidades = sum(row["total_quantity"] for row in resultados)
         total_productos = len(resultados)
 
+        max_barra = 140 if es_viewport_estrecho(interfaz, umbral=640.0) else 340
         for i, row in enumerate(resultados):
             cod = str(row["product_code"])
             nombre = str(row["product_name"] or cod)
             cant = int(row["total_quantity"])
             proporcion = cant / max_cant if max_cant > 0 else 0
-            ancho_barra = max(38, int(proporcion * 340))
+            ancho_barra = max(38, int(proporcion * max_barra))
             color_idx = min(i, len(_COLORES_BARRA_ROTACION) - 1)
             etiqueta = f"{nombre[:30]}..." if len(nombre) > 30 else nombre
             contenedor_grafico.controls.append(
@@ -153,7 +155,7 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
                             padding=ft.Padding(8, 0, 8, 0),
                             content=ft.Text(f"{cant} u.", size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
                         ),
-                        ft.Text(etiqueta, size=11, color=interfaz.secundario, expand=True),
+                        ft.Text(etiqueta, size=11, color=interfaz.secundario, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ],
                     spacing=8,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -169,19 +171,20 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
 
     generar_grafico()
 
+    ancho_dlg = interfaz.ancho_adaptable(700) if hasattr(interfaz, "ancho_adaptable") else 700
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Text("Estadísticas de movimiento de stock"),
         content=ft.Column(
             [
-                ft.Row([campo_desde, campo_hasta, campo_top, campo_tipo], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
+                ft.Row([campo_desde, campo_hasta, campo_top, campo_tipo], spacing=8, run_spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True),
                 ft.Button("Actualizar gráfico", icon=ft.Icons.REFRESH, on_click=generar_grafico, bgcolor=ROJO, color=ft.Colors.WHITE),
                 ft.Divider(height=1),
                 texto_resumen,
                 contenedor_grafico,
             ],
             tight=True,
-            width=700,
+            width=ancho_dlg,
         ),
         actions=[interfaz.boton_dialogo("Cerrar", lambda _e: interfaz.page.pop_dialog())],
     )

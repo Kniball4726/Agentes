@@ -1,7 +1,6 @@
 """Diálogo de Gestión y Archivado Histórico de Comprobantes para Administrador y Master."""
 
 import os
-from pathlib import Path
 import sys
 from typing import Any
 

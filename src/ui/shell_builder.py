@@ -11,7 +11,6 @@ from ..chat import obtener_mensaje_bienvenida
 from .components import (
     aplicar_posicion_sidebar_ui,
     construir_navigation_bar_movil,
-    construir_sidebar_controls,
     registrar_servicio_audio_web,
 )
 from .theme import FUENTES_APP, ROJO, crear_tema_menus
@@ -225,6 +224,9 @@ def construir_dashboard_shell(interfaz: Any) -> None:
     sidebar_items = interfaz._sidebar_controls()
     es_movil = interfaz.es_pantalla_movil
     interfaz._modo_movil_previo = es_movil
+    w_shell = getattr(page, "width", None)
+    if isinstance(w_shell, (int, float)) and not isinstance(w_shell, bool) and w_shell > 0:
+        interfaz._ancho_previo = float(w_shell)
 
     if es_movil and hasattr(page, "drawer"):
         page.drawer = ft.NavigationDrawer(
@@ -469,5 +471,4 @@ __all__ = [
     "fijar_estado_tarea_ui",
     "construir_tarjeta_ui",
     "copiar_al_portapapeles_ui",
-    "construir_sidebar_controls",
 ]

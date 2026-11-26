@@ -172,7 +172,7 @@ def mostrar_notificaciones_admin(interfaz: Any, _evento: ft.Event | None = None)
                     fila_cabecera.append(badge_leida)
 
                 card_content = [
-                    ft.Row(fila_cabecera, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
+                    ft.Row(fila_cabecera, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=6, wrap=True, run_spacing=4),
                     ft.Text(msg, size=12, color=interfaz.texto),
                 ]
                 acciones_fila = []
@@ -192,7 +192,7 @@ def mostrar_notificaciones_admin(interfaz: Any, _evento: ft.Event | None = None)
                         ft.TextButton("Marcar como leída", icon=ft.Icons.CHECK, on_click=crear_handler_marcar(nid))
                     )
                 if acciones_fila:
-                    card_content.append(ft.Row(acciones_fila, alignment=ft.MainAxisAlignment.END))
+                    card_content.append(ft.Row(acciones_fila, alignment=ft.MainAxisAlignment.END, wrap=True, run_spacing=4))
 
                 lista_notificaciones.controls.append(
                     ft.Container(
@@ -212,17 +212,18 @@ def mostrar_notificaciones_admin(interfaz: Any, _evento: ft.Event | None = None)
         recargar_lista()
         interfaz.page.update()
 
+    ancho_dlg = interfaz.ancho_adaptable(550) if hasattr(interfaz, "ancho_adaptable") else 550
     dialogo = ft.AlertDialog(
         modal=True,
         title=ft.Row(
             [
                 ft.Icon(ft.Icons.NOTIFICATIONS, color=ROJO),
-                ft.Text("Notificaciones de Descuentos de Operarios", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("Notificaciones de Descuentos de Operarios", size=16, weight=ft.FontWeight.BOLD, expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ],
             spacing=8,
         ),
         content=ft.Container(
-            width=550,
+            width=ancho_dlg,
             content=ft.Column(
                 [
                     ft.Text(

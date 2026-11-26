@@ -1,6 +1,5 @@
 """Panel de navegación lateral (Sidebar) interactivo para StockAgent."""
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 import flet as ft
@@ -20,7 +19,6 @@ from .sidebar_sections import (
 )
 from .sidebar_horizontal import construir_sidebar_horizontal_controls
 from .sidebar_quick_actions import construir_acceso_rapido_sidebar
-from ..dialogs.dlg_preferencias import mostrar_dialogo_preferencias
 
 
 def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:

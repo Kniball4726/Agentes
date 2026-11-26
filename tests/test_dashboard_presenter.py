@@ -128,7 +128,7 @@ class TestDashboardPresenter(unittest.TestCase):
         self.assertIn(ft.Icons.PRINT, iconos)
 
     def test_renderizar_pedidos_preparados_boton_editar_operador(self):
-        """Verifica que para un operador aparezca el botón de editar pedido."""
+        """Verifica que para un operador aparezcan los botones de editar, desarmar y eliminar pedido."""
         ped = MagicMock()
         ped.id = 101
         ped.numero_pedido = "10"
@@ -139,15 +139,28 @@ class TestDashboardPresenter(unittest.TestCase):
         ped.created_at = "2026-11-06 17:07:00"
         ped.resumen_items = "1 productos (3 un.)"
         ped.articulos_descontados = 3
+        ped.estado = "descontado"
 
         renderizar_pedidos_preparados_turno(self.interfaz, [ped])
 
         self.assertEqual(len(self.interfaz.lista_pedidos_preparados.controls), 1)
         card = self.interfaz.lista_pedidos_preparados.controls[0]
         col_der = card.content.controls[1]
-        botones = [c for c in col_der.controls if isinstance(c, ft.IconButton)]
-        self.assertEqual(len(botones), 1)
-        self.assertEqual(botones[0].icon, ft.Icons.EDIT_OUTLINED)
+        botones = []
+        for ctrl in col_der.controls:
+            if isinstance(ctrl, ft.IconButton):
+                botones.append(ctrl)
+            elif isinstance(ctrl, ft.Row):
+                botones.extend(c for c in ctrl.controls if isinstance(c, ft.IconButton))
+        iconos = [b.icon for b in botones]
+        self.assertEqual(
+            iconos,
+            [
+                ft.Icons.EDIT_OUTLINED,
+                ft.Icons.REMOVE_SHOPPING_CART_OUTLINED,
+                ft.Icons.DELETE_OUTLINE,
+            ],
+        )
 
     def test_renderizar_pedidos_armados_por_fecha_descendente(self):
         """Verifica que la tarjeta derecha del operador muestre el resumen de pedidos por fecha y cantidad descendente."""

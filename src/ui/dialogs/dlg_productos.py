@@ -9,6 +9,7 @@ import flet as ft
 
 from ...inventory import StockManager as _DefaultStockManager
 from ..components.debounce import Debouncer
+from ..design import es_viewport_estrecho
 from ..theme import ROJO
 from .productos_modales import (
     confirmar_cambio_estado_producto,
@@ -65,6 +66,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                 continue
             filtrados.append(producto)
 
+        es_estrecho = es_viewport_estrecho(interfaz, umbral=760.0)
         for producto in filtrados[: limite_visibles[0]]:
             codigo = str(producto["code"])
             nombre = str(producto["name"])
@@ -89,51 +91,93 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             else:
                 estado_texto, estado_color = "Óptimo", ft.Colors.GREEN_400
 
+            btn_hist = ft.IconButton(
+                icon=ft.Icons.HISTORY,
+                tooltip="Ver historial de movimientos de este producto",
+                icon_size=18,
+                on_click=lambda _e, code=codigo: interfaz.mostrar_historial_movimientos_stock(code),
+            )
+            btn_edit = ft.TextButton(
+                "Editar",
+                on_click=lambda _e, item=producto: mostrar_dialogo_editar_producto(
+                    interfaz, stock_manager, item, lambda: actualizar_lista(recargar=True)
+                ),
+            )
+            btn_estado = ft.TextButton(
+                "Desactivar" if activo else "Reactivar",
+                on_click=lambda _e, code=codigo, status=activo: confirmar_cambio_estado_producto(
+                    interfaz, stock_manager, code, not status, lambda: actualizar_lista(recargar=True)
+                ),
+            )
+
+            if es_estrecho:
+                contenido_prod: ft.Control = ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Text(codigo, color=interfaz.texto, weight=ft.FontWeight.BOLD, size=12),
+                                ft.Text(
+                                    "Activo" if activo else "Inactivo",
+                                    size=11,
+                                    color=ft.Colors.GREEN_400 if activo else interfaz.secundario,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
+                        ft.Text(nombre, color=interfaz.texto, size=13, weight=ft.FontWeight.W_500, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Row(
+                            [
+                                ft.Text(f"Stock: {stk} un.", size=11, color=interfaz.texto),
+                                ft.Text(
+                                    estado_texto,
+                                    size=11,
+                                    color=estado_color,
+                                    weight=ft.FontWeight.BOLD if stk <= stk_min else ft.FontWeight.NORMAL,
+                                ),
+                                *([ft.Text(f"🏷️ {barras}", size=11, color=interfaz.secundario)] if barras else []),
+                            ],
+                            spacing=10,
+                            wrap=True,
+                            run_spacing=4,
+                        ),
+                        ft.Row([btn_hist, btn_edit, btn_estado], spacing=4, wrap=True, alignment=ft.MainAxisAlignment.END),
+                    ],
+                    spacing=4,
+                    tight=True,
+                )
+            else:
+                contenido_prod = ft.Row(
+                    [
+                        ft.Text(codigo, width=90, color=interfaz.texto, weight=ft.FontWeight.BOLD),
+                        ft.Text(nombre, expand=True, color=interfaz.texto, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(f"🏷️ {barras}" if barras else "-", width=110, size=11, color=interfaz.secundario),
+                        ft.Text(f"{stk} un.", width=70, color=interfaz.texto),
+                        ft.Text(
+                            estado_texto,
+                            width=130,
+                            size=12,
+                            color=estado_color,
+                            weight=ft.FontWeight.BOLD if stk <= stk_min else ft.FontWeight.NORMAL,
+                        ),
+                        ft.Text(
+                            "Activo" if activo else "Inactivo",
+                            width=70,
+                            size=12,
+                            color=ft.Colors.GREEN_400 if activo else interfaz.secundario,
+                        ),
+                        btn_hist,
+                        btn_edit,
+                        btn_estado,
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+
             productos.controls.append(
                 ft.Container(
                     padding=8,
                     border=ft.Border.all(1, interfaz.borde),
                     border_radius=8,
-                    content=ft.Row(
-                        [
-                            ft.Text(codigo, width=90, color=interfaz.texto, weight=ft.FontWeight.BOLD),
-                            ft.Text(nombre, expand=True, color=interfaz.texto),
-                            ft.Text(f"🏷️ {barras}" if barras else "-", width=110, size=11, color=interfaz.secundario),
-                            ft.Text(f"{stk} un.", width=70, color=interfaz.texto),
-                            ft.Text(
-                                estado_texto,
-                                width=130,
-                                size=12,
-                                color=estado_color,
-                                weight=ft.FontWeight.BOLD if stk <= stk_min else ft.FontWeight.NORMAL,
-                            ),
-                            ft.Text(
-                                "Activo" if activo else "Inactivo",
-                                width=70,
-                                size=12,
-                                color=ft.Colors.GREEN_400 if activo else interfaz.secundario,
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.HISTORY,
-                                tooltip="Ver historial de movimientos de este producto",
-                                icon_size=18,
-                                on_click=lambda _e, code=codigo: interfaz.mostrar_historial_movimientos_stock(code),
-                            ),
-                            ft.TextButton(
-                                "Editar",
-                                on_click=lambda _e, item=producto: mostrar_dialogo_editar_producto(
-                                    interfaz, stock_manager, item, lambda: actualizar_lista(recargar=True)
-                                ),
-                            ),
-                            ft.TextButton(
-                                "Desactivar" if activo else "Reactivar",
-                                on_click=lambda _e, code=codigo, status=activo: confirmar_cambio_estado_producto(
-                                    interfaz, stock_manager, code, not status, lambda: actualizar_lista(recargar=True)
-                                ),
-                            ),
-                        ],
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    content=contenido_prod,
                 )
             )
         restantes = len(filtrados) - limite_visibles[0]
@@ -158,15 +202,13 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
             return
         interfaz.mostrar_formulario_producto(lambda: actualizar_lista(recargar=True))
 
-    dialogo = ft.AlertDialog(
-        modal=True,
-        title=ft.Text("Gestión de productos"),
-        content=ft.Column(
+    es_estrecho_prod = es_viewport_estrecho(interfaz, umbral=760.0)
+    fila_acciones_prod = (
+        ft.Column(
             [
-                ft.Text("Las bajas son lógicas: el producto se conserva, pero no aparece en futuros informes."),
+                busqueda,
                 ft.Row(
                     [
-                        busqueda,
                         ft.Button(
                             "Historial movimientos",
                             icon=ft.Icons.HISTORY,
@@ -175,16 +217,48 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                         ft.Button("Agregar producto", icon=ft.Icons.ADD, on_click=agregar, bgcolor=ROJO, color=ft.Colors.WHITE),
                     ],
                     spacing=8,
+                    wrap=True,
+                    run_spacing=6,
                 ),
-                ft.Row(
-                    [
-                        ft.Text("Código", width=100, weight=ft.FontWeight.BOLD),
-                        ft.Text("Nombre", expand=True, weight=ft.FontWeight.BOLD),
-                        ft.Text("Stock", width=70, weight=ft.FontWeight.BOLD),
-                        ft.Text("Estado", width=80, weight=ft.FontWeight.BOLD),
-                        ft.Container(width=145),
-                    ]
+            ],
+            spacing=8,
+            tight=True,
+        )
+        if es_estrecho_prod
+        else ft.Row(
+            [
+                busqueda,
+                ft.Button(
+                    "Historial movimientos",
+                    icon=ft.Icons.HISTORY,
+                    on_click=lambda _e: interfaz.mostrar_historial_movimientos_stock(busqueda.value or ""),
                 ),
+                ft.Button("Agregar producto", icon=ft.Icons.ADD, on_click=agregar, bgcolor=ROJO, color=ft.Colors.WHITE),
+            ],
+            spacing=8,
+        )
+    )
+    cabecera_prod = (
+        ft.Container(visible=False, height=0)
+        if es_estrecho_prod
+        else ft.Row(
+            [
+                ft.Text("Código", width=100, weight=ft.FontWeight.BOLD),
+                ft.Text("Nombre", expand=True, weight=ft.FontWeight.BOLD),
+                ft.Text("Stock", width=70, weight=ft.FontWeight.BOLD),
+                ft.Text("Estado", width=80, weight=ft.FontWeight.BOLD),
+                ft.Container(width=145),
+            ]
+        )
+    )
+    dialogo = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Gestión de productos"),
+        content=ft.Column(
+            [
+                ft.Text("Las bajas son lógicas: el producto se conserva, pero no aparece en futuros informes."),
+                fila_acciones_prod,
+                cabecera_prod,
                 ft.Container(height=420, content=productos),
             ],
             tight=True,

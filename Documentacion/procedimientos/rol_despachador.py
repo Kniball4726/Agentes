@@ -48,7 +48,7 @@ def construir_manual_despachador(ruta_destino: Path) -> Path:
                 "nombre_boton": "🚚 Despacho de Pedidos (Consola de Muelle)",
                 "icono_str": "[🚚 Despacho]",
                 "modulo": "DESPACHO Y LOGÍSTICA",
-                "proposito_funcional": "Consola centralizada de expedición con pestañas de Pedidos Pendientes (Armados) y Despachados, buscador con debounce (250 ms), filtro por empresa de transporte y progreso de bultos escaneados.",
+                "proposito_funcional": "Consola centralizada y responsiva (móvil/tablet/escritorio) con KPIs adaptables, pestañas de Pedidos Pendientes (Armados) y Despachados, buscador instantáneo, filtro por transporte y progreso de bultos escaneados.",
                 "datos_modificados": "Actualiza `estado_despacho` (`armado` -> `despachado` -> `entregado`) y registra cada bulto verificado en `pedidos_bultos_despacho` y `logs_auditoria`.",
                 "pasos_procedimiento": [
                     "Pulsar <b>'Despacho de Pedidos'</b> en la barra de acceso rápido o barra inferior móvil.",

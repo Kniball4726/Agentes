@@ -9,29 +9,15 @@ from typing import Any, Callable
 
 import flet as ft
 
-from .chat import obtener_mensaje_bienvenida
 from .logger_config import configurar_logging
 from .menu import MenuAgente
 from .orders import OrderStore
 from .paths import application_root, get_data_dir
 from .products import ProductStore
-from .server_app import (
-    _RegistroConexionesMiddleware,
-    _puerto_local_activo,
-    iniciar_servidor_web,
-    obtener_directorio_assets,
-    obtener_ip_local,
-    obtener_ip_tailscale,
-)
-from .auth import USER_ROLES, User, UserRole, UserStore, UserStoreError
+from .server_app import iniciar_servidor_web
+from .auth import User, UserStore
 from .inventory import StockManager
-from .ui.app_config import (
-    INACTIVIDAD_MAX_MINUTOS,
-    PUERTO_WEB_DEFAULT,
-    _obtener_inactividad_max_minutos,
-    guardar_correo_cierre,
-    obtener_correo_cierre_guardado,
-)
+from .ui.app_config import INACTIVIDAD_MAX_MINUTOS, PUERTO_WEB_DEFAULT
 from .ui.components import (
     actualizar_estado_conexion_ui,
     aplicar_posicion_sidebar_ui,
@@ -241,6 +227,7 @@ class InterfazFlet:
     mostrar_dialogo_editar_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_dialogo_ajuste_bultos_express = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     confirmar_desarmar_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
+    confirmar_eliminacion_pedido = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_dialogo_backup = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_dialogo_archivo_historico = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())
     mostrar_configuracion_telegram = _Delegado("dialog_coord", lambda h: h._crear_dialog_coord())

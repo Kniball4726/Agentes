@@ -14,7 +14,16 @@ class TestManualesProcedimientos(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             rutas = generar_todos_los_manuales(tmp_path)
 
-            roles_esperados = ["operador", "administrador", "master", "consulta", "general", "maestro"]
+            roles_esperados = [
+                "operador",
+                "picker",
+                "despachador",
+                "administrador",
+                "master",
+                "consulta",
+                "general",
+                "maestro",
+            ]
             for rol in roles_esperados:
                 self.assertIn(rol, rutas)
                 pdf_file = rutas[rol]
@@ -47,6 +56,23 @@ class TestManualesProcedimientos(unittest.TestCase):
             texto = "".join(p.extract_text() for p in reader.pages)
             self.assertIn("Cierre de Jornada", texto)
             self.assertIn("Cargar / Armar Pedido", texto)
+            self.assertIn("Desarmar", texto)
+            self.assertIn("Eliminar", texto)
+
+    def test_manual_despachador_y_maestro_actualizados(self):
+        """Verifica que existan procedimientos de Despachador e incluyan el 6to rol en el Maestro."""
+        import pypdf
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            rutas = generar_todos_los_manuales(tmp_path)
+
+            txt_dsp = "".join(p.extract_text() for p in pypdf.PdfReader(str(rutas["despachador"])).pages)
+            self.assertIn("Despacho de Pedidos", txt_dsp)
+            self.assertIn("QR", txt_dsp)
+
+            txt_mae = "".join(p.extract_text() for p in pypdf.PdfReader(str(rutas["maestro"])).pages)
+            self.assertIn("6 Roles", txt_mae)
+            self.assertIn("Despach", txt_mae)
 
     def test_presentacion_ejecutiva_actualizada(self):
         """Verifica que la presentación ejecutiva compile con datos de la arquitectura vigente."""
