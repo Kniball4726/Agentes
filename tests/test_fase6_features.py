@@ -3,6 +3,7 @@
 import sqlite3
 import unittest
 from contextlib import closing
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -32,6 +33,7 @@ class TestFase6WarehouseSlotting(unittest.TestCase):
         self.temp_dir = TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "test_productos.sqlite3"
         self.store = ProductStore(self.db_path)
+        fecha_base = datetime.now().replace(microsecond=0)
 
         # Poblar productos de prueba
         with closing(self.store._connect()) as conn, conn:
@@ -47,18 +49,20 @@ class TestFase6WarehouseSlotting(unittest.TestCase):
                 """
             )
             # Insertar movimientos históricos de salida (descuentos)
-            conn.execute(
+            conn.executemany(
                 """
                 INSERT INTO stock_movements (product_code, product_name, quantity, movement_type, registered_at)
-                VALUES
-                    ('SKU-A1', 'Artículo Estrella 1', -50, 'descuento', '2026-10-25T10:00:00'),
-                    ('SKU-A1', 'Artículo Estrella 1', -40, 'descuento', '2026-10-26T11:00:00'),
-                    ('SKU-A1', 'Artículo Estrella 1', -30, 'descuento', '2026-10-27T12:00:00'),
-                    ('SKU-A2', 'Artículo Estrella 2', -35, 'descuento', '2026-10-25T14:00:00'),
-                    ('SKU-A2', 'Artículo Estrella 2', -25, 'descuento', '2026-10-26T15:00:00'),
-                    ('SKU-B1', 'Artículo Medio 1', -15, 'descuento', '2026-10-25T16:00:00'),
-                    ('SKU-C1', 'Artículo Lento 1', -2, 'descuento', '2026-10-25T17:00:00')
-                """
+                VALUES (?, ?, ?, 'descuento', ?)
+                """,
+                [
+                    ("SKU-A1", "Artículo Estrella 1", -50, (fecha_base - timedelta(days=1)).isoformat()),
+                    ("SKU-A1", "Artículo Estrella 1", -40, (fecha_base - timedelta(days=2)).isoformat()),
+                    ("SKU-A1", "Artículo Estrella 1", -30, (fecha_base - timedelta(days=3)).isoformat()),
+                    ("SKU-A2", "Artículo Estrella 2", -35, (fecha_base - timedelta(days=1)).isoformat()),
+                    ("SKU-A2", "Artículo Estrella 2", -25, (fecha_base - timedelta(days=2)).isoformat()),
+                    ("SKU-B1", "Artículo Medio 1", -15, (fecha_base - timedelta(days=1)).isoformat()),
+                    ("SKU-C1", "Artículo Lento 1", -2, (fecha_base - timedelta(days=1)).isoformat()),
+                ],
             )
 
     def tearDown(self):

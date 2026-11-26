@@ -299,7 +299,7 @@ class StockManagerTests(unittest.TestCase):
                 self.assertEqual(libro_xls.font_list[indice_fuente].height, 180)
             archivos_pdf = list((Path(directorio) / "informes").glob("*.pdf"))
             self.assertEqual(len(archivos_pdf), 1)
-            self.assertEqual(reporte.archivo_pdf, str(archivos_pdf[0]))
+            self.assertTrue(Path(reporte.archivo_pdf).samefile(archivos_pdf[0]))
             reader_pdf = PdfReader(archivos_pdf[0])
             texto_pdf = "\n".join(
                 pagina.extract_text() or "" for pagina in reader_pdf.pages
