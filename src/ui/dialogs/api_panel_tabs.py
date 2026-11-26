@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import ssl
-import sys
 import urllib.request
 import webbrowser
 from datetime import datetime
@@ -53,12 +52,8 @@ def construir_estado_vacio_api(
 
 
 def _resolver_red_api():
-    """Resuelve funciones/constantes de red respetando mocks sobre dlg_api."""
-    mod = sys.modules.get("src.ui.dialogs.dlg_api")
-    ip_lan_fn = getattr(mod, "obtener_ip_local", _default_ip_local) if mod else _default_ip_local
-    ip_ts_fn = getattr(mod, "obtener_ip_tailscale", _default_ip_tailscale) if mod else _default_ip_tailscale
-    puerto_def = getattr(mod, "PUERTO_WEB_DEFAULT", _DEFAULT_PUERTO) if mod else _DEFAULT_PUERTO
-    return ip_lan_fn, ip_ts_fn, puerto_def
+    """Devuelve utilidades y constantes de red por defecto del servidor."""
+    return _default_ip_local, _default_ip_tailscale, _DEFAULT_PUERTO
 
 
 def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:

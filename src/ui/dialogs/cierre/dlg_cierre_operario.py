@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import flet as ft
@@ -23,9 +22,8 @@ def mostrar_dialogo_cierre_jornada(interfaz: Any) -> None:
         interfaz.notificar("El cierre de jornada es una función exclusiva del rol operador.")
         return
 
-    mod_gui = sys.modules.get("src.flet_gui")
-    obtener_correo_fn = getattr(mod_gui, "obtener_correo_cierre_guardado", obtener_correo_cierre_guardado)
-    guardar_correo_fn = getattr(mod_gui, "guardar_correo_cierre", guardar_correo_cierre)
+    obtener_correo_fn = obtener_correo_cierre_guardado
+    guardar_correo_fn = guardar_correo_cierre
 
     pedidos_pendientes = interfaz.order_store.listar_pedidos_pendientes_cierre()
     cierres_anteriores = interfaz.order_store.listar_cierres(limit=25)

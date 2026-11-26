@@ -3,19 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
-from typing import Any
+from typing import Any, Callable
 
 from ...orders import Pedido
-from ...paths import application_root as _default_app_root
-
-
-def _resolver_app_root() -> Path:
-    mod = sys.modules.get("src.ui.dialogs.dlg_historial_pedidos")
-    fn = getattr(mod, "application_root", None) if mod is not None else None
-    if callable(fn):
-        return Path(fn())
-    return Path(_default_app_root())
+from ._shared import resolve_app_root
 
 
 def _buscar_archivo_pedido(
@@ -49,12 +40,17 @@ def _buscar_archivo_pedido(
     return None
 
 
-def buscar_archivo_comprobante(pedido: Pedido) -> Path | None:
+def buscar_archivo_comprobante(
+    pedido: Pedido,
+    interfaz: Any = None,
+    *,
+    app_root_fn: Callable[[], Path] | None = None,
+) -> Path | None:
     """Busca en el servidor la ruta física del comprobante original cargado para un pedido."""
     nombre = (pedido.nombre_archivo or "").strip()
     if not nombre:
         return None
-    root = _resolver_app_root()
+    root = resolve_app_root(interfaz, app_root_fn=app_root_fn)
     directas = [
         root / "data" / "pedidos_archivos" / nombre,
         root / "data" / "descontados" / nombre,
@@ -76,12 +72,17 @@ def buscar_archivo_comprobante(pedido: Pedido) -> Path | None:
     )
 
 
-def buscar_archivo_descuento(pedido: Pedido) -> Path | None:
+def buscar_archivo_descuento(
+    pedido: Pedido,
+    interfaz: Any = None,
+    *,
+    app_root_fn: Callable[[], Path] | None = None,
+) -> Path | None:
     """Busca la ruta del informe de descuento asociado a un pedido."""
     nombre = (getattr(pedido, "archivo_descuento", "") or "").strip()
     if not nombre:
         return None
-    root = _resolver_app_root()
+    root = resolve_app_root(interfaz, app_root_fn=app_root_fn)
     directas = [
         root / "Descuentos" / nombre,
         root / "data" / "informes" / nombre,
@@ -95,9 +96,14 @@ def buscar_archivo_descuento(pedido: Pedido) -> Path | None:
     )
 
 
-def abrir_comprobante_pedido(interfaz: Any, ped: Pedido) -> None:
+def abrir_comprobante_pedido(
+    interfaz: Any,
+    ped: Pedido,
+    *,
+    app_root_fn: Callable[[], Path] | None = None,
+) -> None:
     """Abre el archivo original cargado para consulta o reimpresión."""
-    ruta = buscar_archivo_comprobante(ped)
+    ruta = buscar_archivo_comprobante(ped, interfaz=interfaz, app_root_fn=app_root_fn)
     if ruta is None or not ruta.exists():
         interfaz.notificar(
             f"El archivo cargado '{ped.nombre_archivo}' no se encuentra actualmente en el servidor.\n"
@@ -107,9 +113,14 @@ def abrir_comprobante_pedido(interfaz: Any, ped: Pedido) -> None:
     interfaz.abrir_informe(ruta_especifica=ruta)
 
 
-def abrir_descuento_pedido(interfaz: Any, ped: Pedido) -> None:
+def abrir_descuento_pedido(
+    interfaz: Any,
+    ped: Pedido,
+    *,
+    app_root_fn: Callable[[], Path] | None = None,
+) -> None:
     """Abre el informe de descuento asociado al pedido."""
-    ruta = buscar_archivo_descuento(ped)
+    ruta = buscar_archivo_descuento(ped, interfaz=interfaz, app_root_fn=app_root_fn)
     if ruta is None or not ruta.exists():
         interfaz.notificar(
             f"El informe de descuento '{ped.archivo_descuento}' no se encuentra en el servidor."

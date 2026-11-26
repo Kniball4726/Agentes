@@ -2,30 +2,22 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
 from ..theme import ROJO
-from ._shared import safe_focus
+from ._shared import resolve_stock_manager, safe_focus
 from .ingreso_fabrica_archivo import (
     construir_tab_archivo_fabrica,
     registrar_ingreso_escaner,
 )
 
 
-def _get_stock_manager():
-    """Devuelve StockManager vigente (respetando patches en dlg_stock_ops o src.flet_gui)."""
-    mod_ops = sys.modules.get("src.ui.dialogs.dlg_stock_ops")
-    if mod_ops and hasattr(mod_ops, "_get_stock_manager"):
-        return mod_ops._get_stock_manager()
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager(interfaz: Any = None):
+    """Devuelve StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def _buscar_sku_fabrica(stock_manager: Any, codigo_limpio: str) -> tuple[str | None, str | None, int]:
@@ -63,7 +55,7 @@ def mostrar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> N
         return
 
     es_admin = getattr(interfaz.usuario_actual, "role", None) == "administrador"
-    stock_manager = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+    stock_manager = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
 
     modo_sobrescribir = ft.Checkbox(
         label="Sobrescribir stock (establece el valor exacto indicado)",

@@ -1,162 +1,50 @@
-"""Diálogos de anulación, desarmado lógico, eliminación física y restitución de stock de pedidos."""
+"""Diálogos de anulación, desarmado lógico y eliminación física de pedidos.
+
+La lógica de restitución de stock, liberación de reservas y persistencia en
+``OrderStore`` reside en ``pedidos_baja_ops``.
+"""
 
 from __future__ import annotations
 
-import sys
 from typing import Any, Callable
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
+from ...core.stock_order_tx import tiene_reserva_activa_pedido
 from ...orders import Pedido
 from ..design import tono_legible
 from ..theme import ROJO
+from .pedidos_baja_ops import (
+    _calcular_devoluciones_pedido,
+    _instanciar_stock_manager_baja,
+    _persistir_baja_pedido,
+    _refrescar_vistas_pedido,
+    _resolver_pedido_actual,
+    _resolver_product_store_baja,
+    _resolver_sm_cls,
+    _restituir_stock_pedido,
+    _revertir_restitucion_baja,
+    _textos_confirmacion_baja,
+    ejecutar_anulacion_pedido_tx,
+    ejecutar_baja_transaccional,
+)
 
-
-def _resolver_sm_cls():
-    """Resuelve la clase StockManager vigente respetando mocks de tests en dlg_pedidos o flet_gui."""
-    mod_ped = sys.modules.get("src.ui.dialogs.dlg_pedidos")
-    if mod_ped is not None and hasattr(mod_ped, "_get_stock_manager_cls"):
-        return mod_ped._get_stock_manager_cls()
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui is not None and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
-
-
-def _restituir_stock_pedido(interfaz: Any, pedido: Pedido) -> int:
-    """Reincorpora los productos y cantidades de un pedido al stock de SQLite y Productos.xlsx en tiempo real."""
-    items = interfaz.order_store.obtener_items_pedido(pedido.id)
-    if not items:
-        return 0
-    devoluciones: dict[str, int] = {}
-    for cod, _desc, cant in items:
-        if cant > 0:
-            devoluciones[cod] = devoluciones.get(cod, 0) + cant
-    if devoluciones:
-        sm_cls = _resolver_sm_cls()
-        ruta_base_datos = getattr(interfaz, "ruta_base_datos", None) or getattr(interfaz.menu, "ruta_base_datos", None)
-        kwargs: dict[str, Any] = {"ruta_excel_base": interfaz.menu.ruta_excel_base}
-        if ruta_base_datos:
-            kwargs["ruta_base_datos"] = ruta_base_datos
-        sm = sm_cls(**kwargs)
-        sm.registrar_ingreso_fabrica(devoluciones, sobrescribir=False)
-        try:
-            sm.registrar_movimientos_historial(devoluciones, tipo="ingreso_fabrica")
-        except Exception:
-            pass
-    return sum(devoluciones.values())
-
-
-def mostrar_dialogo_confirmar_anulacion_pedido(
-    interfaz: Any,
-    pedido: Pedido,
-    al_final: Callable[[], None] | None = None,
-) -> None:
-    """Abre el diálogo para anular un pedido registrado restituyendo su stock en tiempo real."""
-    if not interfaz.exigir_roles("operador", "administrador"):
-        return
-
-    motivo_input = ft.TextField(
-        label="Motivo de la anulación (opcional)",
-        hint_text="ej: Cancelado por el cliente, duplicado, error en carga",
-        dense=True,
-        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
-    )
-    en_curso = [False]
-
-    def ejecutar_anulacion(_e: ft.Event) -> None:
-        if en_curso[0] or not interfaz.exigir_roles("operador", "administrador"):
-            return
-        en_curso[0] = True
-        interfaz.page.pop_dialog()
-        usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
-        motivo_txt = (motivo_input.value or "").strip()
-        try:
-            pedido_actual = interfaz.order_store.buscar_pedido_por_nota(pedido.nota_pedido) or pedido
-            if getattr(pedido_actual, "estado", "") == "anulado":
-                interfaz.notificar(f"El pedido {pedido.nota_pedido} ya se encontraba anulado.")
-                return
-            unidades_restituidas = _restituir_stock_pedido(interfaz, pedido_actual)
-            interfaz.order_store.anular_pedido(
-                pedido_id=pedido.id,
-                motivo=f"Anulación de pedido: {motivo_txt}".strip() if motivo_txt else "Anulación de pedido",
-                usuario=usr,
-            )
-            interfaz.order_store.registrar_auditoria(
-                usuario=usr,
-                accion="ANULAR_PEDIDO",
-                detalle=f"Pedido #{pedido.nota_pedido} ({pedido.cliente}) anulado. Stock devuelto: {unidades_restituidas} un. Motivo: {motivo_txt or 'Sin motivo'}",
-            )
-            msg = f"Pedido {pedido.nota_pedido} anulado correctamente."
-            if unidades_restituidas > 0:
-                msg += f" Se reincorporaron {unidades_restituidas} unidades al inventario y al Excel."
-            interfaz.notificar(msg)
-            if al_final:
-                al_final()
-            interfaz.actualizar_listas()
-            interfaz.sincronizar_sesiones(aviso_colaborativo=f"⚠️ {usr} anuló el Pedido #{pedido.nota_pedido} ({pedido.cliente})")
-        except Exception as err:
-            interfaz.notificar(f"Error al anular pedido: {err}")
-        finally:
-            en_curso[0] = False
-
-    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
-    c_ambar = tono_legible("AMBER", es_oscuro)
-    ancho_dlg = interfaz.ancho_adaptable(420) if hasattr(interfaz, "ancho_adaptable") else 420
-    dialogo = ft.AlertDialog(
-        modal=True,
-        title=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ROJO), ft.Text("Confirmar Anulación de Pedido")]),
-        content=ft.Container(
-            width=ancho_dlg,
-            content=ft.Column(
-                [
-                    ft.Text(f"¿Estás seguro de anular el pedido '{pedido.nota_pedido}' del cliente '{pedido.cliente}'?"),
-                    ft.Text(
-                        "⚠️ Al anular este pedido, todas las unidades descontadas se devolverán automáticamente al stock disponible y a la planilla Productos.xlsx en tiempo real.",
-                        size=11,
-                        color=c_ambar,
-                        weight=ft.FontWeight.W_500,
-                    ),
-                    ft.Text("Esta acción quedará registrada en el log de auditoría del sistema.", size=11, color=interfaz.secundario),
-                    ft.Divider(height=10),
-                    motivo_input,
-                ],
-                tight=True,
-                spacing=8,
-            ),
-        ),
-        actions=[
-            ft.Button("Anular y Devolver Stock", bgcolor=ROJO, color=ft.Colors.WHITE, on_click=ejecutar_anulacion),
-            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
-        ],
-    )
-    interfaz.page.show_dialog(dialogo)
-
-
-def _resolver_pedido_actual(interfaz: Any, pedido: Pedido) -> Pedido | None:
-    """Obtiene el estado vigente del pedido desde el store; tolera mocks sin configurar."""
-    store = getattr(interfaz, "order_store", None)
-    if store is None:
-        return pedido
-    for metodo, arg in (("obtener_pedido_por_id", pedido.id), ("buscar_pedido_por_nota", pedido.nota_pedido)):
-        fn = getattr(store, metodo, None)
-        if callable(fn):
-            res = fn(arg)
-            if res is None:
-                return None
-            if isinstance(getattr(res, "estado", None), str):
-                return res
-    return pedido
-
-
-def _refrescar_vistas_pedido(interfaz: Any, al_final: Callable[[], None] | None) -> None:
-    """Ejecuta el callback local y refresca las listas globales del dashboard sin duplicar."""
-    act_listas = getattr(interfaz, "actualizar_listas", None)
-    if callable(al_final):
-        al_final()
-    if callable(act_listas) and act_listas is not al_final:
-        act_listas()
+__all__ = [
+    "_calcular_devoluciones_pedido",
+    "_instanciar_stock_manager_baja",
+    "_persistir_baja_pedido",
+    "_refrescar_vistas_pedido",
+    "_resolver_pedido_actual",
+    "_resolver_product_store_baja",
+    "_resolver_sm_cls",
+    "_restituir_stock_pedido",
+    "_revertir_restitucion_baja",
+    "_textos_confirmacion_baja",
+    "construir_botones_baja_pedido",
+    "mostrar_dialogo_confirmar_anulacion_pedido",
+    "mostrar_dialogo_confirmar_desarmar_pedido",
+    "mostrar_dialogo_confirmar_eliminacion_pedido",
+]
 
 
 def _construir_lista_devolucion_items(
@@ -165,8 +53,9 @@ def _construir_lista_devolucion_items(
     items: list[tuple[str, str, int]],
     total_unidades: int,
     ya_anulado: bool,
+    solo_reserva_activa: bool = False,
 ) -> list[ft.Control]:
-    """Construye los controles de vista previa de artículos a restituir al stock."""
+    """Construye los controles de vista previa de artículos a restituir al stock o liberar de reserva."""
     if ya_anulado:
         return [
             ft.Container(
@@ -203,9 +92,14 @@ def _construir_lista_devolucion_items(
             )
         ]
 
+    etiqueta_previa = (
+        f"Productos en reserva activa a liberar ({total_unidades} unidades en total):"
+        if solo_reserva_activa
+        else f"Productos a devolver al inventario ({total_unidades} unidades en total):"
+    )
     return [
         ft.Text(
-            f"Productos a devolver al inventario ({total_unidades} unidades en total):",
+            etiqueta_previa,
             weight=ft.FontWeight.BOLD,
             size=11,
             color=interfaz.texto,
@@ -221,80 +115,96 @@ def _construir_lista_devolucion_items(
     ]
 
 
-def _textos_confirmacion_baja(pedido: Pedido, *, es_eliminar: bool, ya_anulado: bool) -> tuple[str, str, str]:
-    """Devuelve texto de confirmación, advertencia de cierre y texto del botón para baja de pedido."""
-    if es_eliminar:
-        texto = (
-            f"¿Confirmas la eliminación física definitiva del pedido anulado de '{pedido.cliente}'? "
-            "Se borrará permanentemente de la base de datos y podrás volver a cargar el remito."
-            if ya_anulado
-            else f"¿Confirmas la eliminación física definitiva del pedido de '{pedido.cliente}'? "
-            "Se borrará permanentemente de la base de datos (permitiendo recargar el remito) y los productos se devolverán al stock."
-        )
-        aviso_cierre = (
-            f"⚠️ Atención: Este pedido formó parte del Cierre #{pedido.cierre_id}. "
-            "Al eliminarlo, desaparecerá del historial de ese cierre y se restituirá el stock activo."
-        )
-        return texto, aviso_cierre, "Eliminar Definitivamente"
-
-    texto = (
-        f"¿Confirmas el desarmado del pedido de '{pedido.cliente}'? "
-        "Se aplicará borrado lógico (estado anulado) y los productos se sumarán de vuelta al stock disponible en el sistema y en el Excel."
-    )
-    aviso_cierre = (
-        f"⚠️ Atención: Este pedido ya formó parte del Cierre #{pedido.cierre_id}. "
-        "Al desarmarlo, las unidades se reincorporarán al stock actual."
-    )
-    return texto, aviso_cierre, "Desarmar y Devolver Stock"
-
-
-def _persistir_baja_pedido(
+def mostrar_dialogo_confirmar_anulacion_pedido(
     interfaz: Any,
     pedido: Pedido,
-    *,
-    es_eliminar: bool,
-    usr: str,
-    motivo_txt: str,
-    unidades_restituidas: int,
-) -> tuple[str, str]:
-    """Ejecuta el borrado físico o lógico en OrderStore junto con su registro de auditoría."""
-    if es_eliminar:
-        interfaz.order_store.eliminar_pedido(
-            pedido_id=pedido.id,
-            motivo=motivo_txt,
-            usuario=usr,
-            registrar_auditoria=False,
-        )
-        interfaz.order_store.registrar_auditoria(
-            usuario=usr,
-            accion="ELIMINAR_PEDIDO",
-            detalle=(
-                f"Pedido #{pedido.nota_pedido} ({pedido.cliente}) eliminado definitivamente (borrado físico). "
-                f"Stock restituido: {unidades_restituidas} unidades. Motivo: {motivo_txt or 'Sin especificar'}"
-            ),
-        )
-        msg_exito = f"Pedido #{pedido.nota_pedido} eliminado definitivamente."
-        if unidades_restituidas > 0:
-            msg_exito += f" Se reincorporaron {unidades_restituidas} unidades al stock."
-        return msg_exito, f"🗑️ {usr} eliminó el Pedido #{pedido.nota_pedido} ({pedido.cliente})"
+    al_final: Callable[[], None] | None = None,
+) -> None:
+    """Abre el diálogo para anular un pedido registrado restituyendo su stock o liberando reserva."""
+    if not interfaz.exigir_roles("operador", "administrador"):
+        return
 
-    interfaz.order_store.anular_pedido(
-        pedido_id=pedido.id,
-        motivo=f"Desarmado de pedido y devolución de stock. {motivo_txt}".strip(),
-        usuario=usr,
+    motivo_input = ft.TextField(
+        label="Motivo de la anulación (opcional)",
+        hint_text="ej: Cancelado por el cliente, duplicado, error en carga",
+        dense=True,
+        autofocus=not bool(getattr(interfaz, "es_pantalla_movil", False)),
     )
-    interfaz.order_store.registrar_auditoria(
-        usuario=usr,
-        accion="DESARMAR_PEDIDO",
-        detalle=(
-            f"Pedido #{pedido.nota_pedido} ({pedido.cliente}) desarmado (borrado lógico). "
-            f"Stock restituido: {unidades_restituidas} unidades. Motivo: {motivo_txt or 'Sin especificar'}"
+    en_curso = [False]
+
+    def ejecutar_anulacion(_e: ft.Event) -> None:
+        if en_curso[0] or not interfaz.exigir_roles("operador", "administrador"):
+            return
+        en_curso[0] = True
+        interfaz.page.pop_dialog()
+        usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
+        motivo_txt = (motivo_input.value or "").strip()
+        try:
+            msg, aviso_colab = ejecutar_anulacion_pedido_tx(
+                interfaz,
+                pedido,
+                usr=usr,
+                motivo_txt=motivo_txt,
+            )
+            interfaz.notificar(msg)
+            if not aviso_colab:
+                return
+            if al_final:
+                al_final()
+            interfaz.actualizar_listas()
+            interfaz.sincronizar_sesiones(aviso_colaborativo=aviso_colab)
+        except Exception as err:
+            interfaz.notificar(f"Error al anular pedido: {err}")
+        finally:
+            en_curso[0] = False
+
+    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+    c_ambar = tono_legible("AMBER", es_oscuro)
+    ancho_dlg = interfaz.ancho_adaptable(420) if hasattr(interfaz, "ancho_adaptable") else 420
+    dialogo = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            [
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ROJO),
+                ft.Text("Confirmar Anulación de Pedido"),
+            ]
         ),
+        content=ft.Container(
+            width=ancho_dlg,
+            content=ft.Column(
+                [
+                    ft.Text(
+                        f"¿Estás seguro de anular el pedido '{pedido.nota_pedido}' del cliente '{pedido.cliente}'?"
+                    ),
+                    ft.Text(
+                        "⚠️ Al anular este pedido, todas las unidades descontadas se devolverán automáticamente al stock disponible y a la planilla Productos.xlsx en tiempo real.",
+                        size=11,
+                        color=c_ambar,
+                        weight=ft.FontWeight.W_500,
+                    ),
+                    ft.Text(
+                        "Esta acción quedará registrada en el log de auditoría del sistema.",
+                        size=11,
+                        color=interfaz.secundario,
+                    ),
+                    ft.Divider(height=10),
+                    motivo_input,
+                ],
+                tight=True,
+                spacing=8,
+            ),
+        ),
+        actions=[
+            ft.Button(
+                "Anular y Devolver Stock",
+                bgcolor=ROJO,
+                color=ft.Colors.WHITE,
+                on_click=ejecutar_anulacion,
+            ),
+            interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
+        ],
     )
-    return (
-        f"Pedido #{pedido.nota_pedido} desarmado con éxito. Se reincorporaron {unidades_restituidas} unidades al stock.",
-        f"⚠️ {usr} desarmó el Pedido #{pedido.nota_pedido} ({pedido.cliente})",
-    )
+    interfaz.page.show_dialog(dialogo)
 
 
 def _mostrar_dialogo_baja_pedido(
@@ -306,7 +216,10 @@ def _mostrar_dialogo_baja_pedido(
 ) -> None:
     """Despliega confirmación unificada para Desarmar (borrado lógico) o Eliminar (borrado físico)."""
     es_eliminar = modo == "eliminar"
-    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador"):
+    if interfaz.usuario_actual is None or interfaz.usuario_actual.role not in (
+        "operador",
+        "administrador",
+    ):
         verbo = "eliminar" if es_eliminar else "desarmar"
         interfaz.notificar(f"No tienes permisos suficientes para {verbo} pedidos.")
         return
@@ -317,13 +230,25 @@ def _mostrar_dialogo_baja_pedido(
         return
 
     items = [] if ya_anulado else interfaz.order_store.obtener_items_pedido(pedido.id)
-    total_unidades = 0 if ya_anulado else (sum(cant for _, _, cant in items) if items else pedido.articulos_descontados)
+    total_unidades = (
+        0
+        if ya_anulado
+        else (sum(cant for _, _, cant in items) if items else pedido.articulos_descontados)
+    )
+    p_store_prev = _resolver_product_store_baja(interfaz)
+    solo_reserva_prev = (
+        False if ya_anulado else tiene_reserva_activa_pedido(p_store_prev, pedido.nota_pedido)
+    )
 
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
     c_ambar = tono_legible("AMBER", es_oscuro)
     color_acento = ROJO if es_eliminar else ft.Colors.AMBER_800
     icono_titulo = ft.Icons.DELETE_FOREVER if es_eliminar else ft.Icons.REMOVE_SHOPPING_CART
-    titulo_txt = f"Eliminar Pedido #{pedido.nota_pedido}" if es_eliminar else f"Desarmar Pedido #{pedido.nota_pedido}"
+    titulo_txt = (
+        f"Eliminar Pedido #{pedido.nota_pedido}"
+        if es_eliminar
+        else f"Desarmar Pedido #{pedido.nota_pedido}"
+    )
     motivo_input = ft.TextField(
         label="Motivo de la eliminación (opcional)" if es_eliminar else "Motivo del desarmado (opcional)",
         hint_text=(
@@ -338,7 +263,11 @@ def _mostrar_dialogo_baja_pedido(
     en_curso = [False]
 
     def ejecutar_baja(_e: ft.Event) -> None:
-        if en_curso[0] or interfaz.usuario_actual is None or interfaz.usuario_actual.role not in ("operador", "administrador"):
+        if (
+            en_curso[0]
+            or interfaz.usuario_actual is None
+            or interfaz.usuario_actual.role not in ("operador", "administrador")
+        ):
             return
         en_curso[0] = True
         usr = interfaz.usuario_actual.username if interfaz.usuario_actual else "Sistema"
@@ -358,14 +287,13 @@ def _mostrar_dialogo_baja_pedido(
                 _refrescar_vistas_pedido(interfaz, al_final)
                 return
 
-            unidades_restituidas = 0 if estaba_anulado else _restituir_stock_pedido(interfaz, pedido_actual)
-            msg_exito, aviso_colab = _persistir_baja_pedido(
+            msg_exito, aviso_colab = ejecutar_baja_transaccional(
                 interfaz,
                 pedido,
+                pedido_actual,
                 es_eliminar=es_eliminar,
                 usr=usr,
                 motivo_txt=motivo_txt,
-                unidades_restituidas=unidades_restituidas,
             )
             interfaz.page.pop_dialog()
             interfaz.notificar(msg_exito)
@@ -386,7 +314,10 @@ def _mostrar_dialogo_baja_pedido(
     ancho_dlg = interfaz.ancho_adaptable(460) if hasattr(interfaz, "ancho_adaptable") else 460
     dialogo = ft.AlertDialog(
         modal=True,
-        title=ft.Row([ft.Icon(icono_titulo, color=ROJO if es_eliminar else c_ambar), ft.Text(titulo_txt)], spacing=8),
+        title=ft.Row(
+            [ft.Icon(icono_titulo, color=ROJO if es_eliminar else c_ambar), ft.Text(titulo_txt)],
+            spacing=8,
+        ),
         content=ft.Container(
             width=ancho_dlg,
             content=ft.Column(
@@ -398,7 +329,14 @@ def _mostrar_dialogo_baja_pedido(
                         else []
                     ),
                     ft.Divider(height=10),
-                    *_construir_lista_devolucion_items(interfaz, pedido, items, total_unidades, ya_anulado),
+                    *_construir_lista_devolucion_items(
+                        interfaz,
+                        pedido,
+                        items,
+                        total_unidades,
+                        ya_anulado,
+                        solo_reserva_prev,
+                    ),
                     motivo_input,
                     error_msg,
                 ],
@@ -407,7 +345,9 @@ def _mostrar_dialogo_baja_pedido(
             ),
         ),
         actions=[
-            ft.Button(btn_texto, bgcolor=color_acento, color=ft.Colors.WHITE, on_click=ejecutar_baja),
+            ft.Button(
+                btn_texto, bgcolor=color_acento, color=ft.Colors.WHITE, on_click=ejecutar_baja
+            ),
             interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
         ],
     )

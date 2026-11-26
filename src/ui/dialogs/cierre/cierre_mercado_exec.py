@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import sys
 from typing import Any
 
 from ....consolidator import ItemConsolidado
-from ....inventory import StockManager as _DefaultStockManager
 from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
+from .._shared import resolve_stock_manager
 
 logger = logging.getLogger("stockagent.ui.cierre_mercado")
 
 
-def _resolver_sm_cls():
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
+def _resolver_sm_cls(interfaz: Any = None):
+    return resolve_stock_manager(interfaz)
 
 
 def ejecutar_tarea_cierre_mercado(
@@ -67,7 +63,7 @@ def ejecutar_tarea_cierre_mercado(
                     if p.nota_pedido not in items_consolidados[cod_n].remitos_origen:
                         items_consolidados[cod_n].remitos_origen.append(p.nota_pedido)
 
-    sm_cls = _resolver_sm_cls()
+    sm_cls = _resolver_sm_cls(interfaz)
     stock_mgr = sm_cls(ruta_excel_base=interfaz.menu.ruta_excel_base)
 
     pedidos_doc: list[ResultadoRemito] = []

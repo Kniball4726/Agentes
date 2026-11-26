@@ -14,6 +14,7 @@ import flet as ft
 
 logger = logging.getLogger(__name__)
 _PROCESAMIENTO_LOCAL_ACTIVO: bool = False
+_PROCESAMIENTO_LOCK = threading.RLock()
 _CAPTURE_LOCAL = threading.local()
 _STREAM_INSTALL_LOCK = threading.Lock()
 
@@ -52,18 +53,16 @@ def _asegurar_captura_aislada_por_hilo() -> None:
 
 
 def es_procesamiento_global_activo() -> bool:
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None and hasattr(mod, "PROCESAMIENTO_GLOBAL_ACTIVO"):
-        return bool(mod.PROCESAMIENTO_GLOBAL_ACTIVO)
-    return _PROCESAMIENTO_LOCAL_ACTIVO
+    """Devuelve si existe una operación por lotes globalmente activa en el proceso."""
+    with _PROCESAMIENTO_LOCK:
+        return bool(_PROCESAMIENTO_LOCAL_ACTIVO)
 
 
 def set_procesamiento_global_activo(valor: bool) -> None:
+    """Actualiza de forma segura para hilos el estado del lock global de procesamiento."""
     global _PROCESAMIENTO_LOCAL_ACTIVO
-    _PROCESAMIENTO_LOCAL_ACTIVO = bool(valor)
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None:
-        mod.PROCESAMIENTO_GLOBAL_ACTIVO = bool(valor)
+    with _PROCESAMIENTO_LOCK:
+        _PROCESAMIENTO_LOCAL_ACTIVO = bool(valor)
 
 
 class BatchTaskController:

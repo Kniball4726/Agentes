@@ -310,6 +310,8 @@ Diseñado específicamente para el personal de preparación y movimiento físico
   * **Generar Pedido a Fábrica:** Solicitud formal de reposición de artículos hacia producción.
   * **Descontar Mercado Libre:** Procesamiento individual o por lote de comprobantes y órdenes web.
   * **Descontar Mercado Full:** Traspaso masivo y descuento de inventario remitido a bodegas de fulfillment.
+  * **Ola de Picking (`dlg_ola_picking.py`) y Reserva Preventiva:** Generación de lista de picking ordenada por zona (`picking` -> `pulmon` -> `pallet` -> `recepcion`) con trazabilidad FEFO y botón **Reservar Stock de la Ola** (`ola_picking`).
+  * **Multi-Ubicación, Traslados y App Móvil (`Zonas / FEFO`):** Reubicación de unidades desde `pulmon` hacia `picking`, consumo guiado por vencimiento próximo FEFO y visualización en vivo de alertas/reservas desde `stockagent_mobile`.
   * **Carga de Stock Físico (Inventario Ciego):** Módulo de conteo ciego para relevar existencias reales en estanterías sin condicionamiento visual del saldo de sistema.
   * **Ver Stock en Tiempo Real:** Visor rápido con buscador instantáneo por código o descripción.
   * **Atajos de Teclado (F2):** Paleta de comandos instantánea para saltar a cualquier módulo sin usar el ratón.
@@ -562,7 +564,8 @@ El panel principal del Administrador prescinde de las tarjetas estáticas tradic
   * **Motor de Recomendaciones de Slotting:** Alerta sobre ineficiencias críticas:
     * *Fast-Mover en Fondo o Altura:* Producto Clase A alojado en Rack D o Nivel 3 (sobre-recorrido y riesgo de fatiga).
     * *Slow-Mover en Zona Dorada:* Producto Clase C ocupando una posición estratégica en Rack A.
-  * **Reubicación Atómica con 1 Clic:** Botón directo en la interfaz que actualiza de inmediato la posición física del artículo en SQLite (`products.ubicacion`) y recalcula la eficiencia global del depósito.
+  * **Reubicación Atómica con 1 Clic:** Botón directo en la interfaz que actualiza de inmediato la posición física del artículo en SQLite (`products.ubicacion` sincronizada con `product_locations`) y recalcula la eficiencia global del depósito.
+  * **Reposición Urgente & Alertas FEFO (`heatmap_fefo_render.py`):** Detecta bins de zona `picking` por debajo del umbral que poseen saldo en `pulmon`/`pallet` para ejecutar traslado en 1 clic (**Reponer Picking**) acompañando lotes FEFO, y clasifica vencimientos próximos (`VENCIDO`, `CRITICO <=7d`, `PROXIMO <=30d`).
 * **Cómo se hace:**
   1. En el menú de Administración, presionar **"Heatmap y Picking"**.
   2. Consultar los 4 indicadores KPI superiores (*Eficiencia de Slotting*, *Picks Analizados*, *Distribución A/B/C* y *Reubicaciones Pendientes*).
@@ -589,6 +592,7 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * Formulario rápido para procesar comprobantes individuales (PDF de remito o Excel de canje).
   * **Campo de Cliente con Buscador y Alta Automática:** Actúa como buscador interactivo en vivo al escribir un nombre; muestra sugerencias coincidentes y si el cliente no aparece, se da de alta automáticamente en el sistema sin interrumpir la carga.
   * Selector de **Logística Estandarizada** (`Domicilio`, `Centro de distribución`, `Transporte`, `Comisionista`, `Mabel`, `Canje`).
+  * **Reserva Preventiva en Carga (*Solo reservar stock*):** Casilla opcional que aparta existencias por FEFO en `stock_reservations` (`referencia_tipo = 'pedido'`) descontándolas del **Disponible Neto** (`Físico - Reservado`) mientras preserva intacto el saldo físico hasta su consolidación automática en muelle al despachar.
   * Asignación de cantidad de bultos y fecha de retiro programada (con calendario).
   * **Descuento Ágil sin Generación de Documentos Individuales:** Cada descuento impacta en el stock y queda registrado en la jornada sin generar archivos PDF o Excel individuales en disco. El documento formal se genera únicamente en el Cierre como un consolidado general.
   * **Protección Antiduplicados (SHA-256):** Bloquea automáticamente la carga si el archivo binario ya fue procesado con anterioridad.
@@ -623,9 +627,10 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
   * Buscador en tiempo real por cliente, remito/factura, N° de pedido, fecha (`DD/MM/AAAA`), logística o armador.
   * **Botón Rótulos A4 (Lote):** Impresión directa de hojas A4 optimizadas que contienen los rótulos de todos los pedidos filtrados.
   * **Modificación de Pedidos Preparados (Exclusivo Operador):** Capacidad exclusiva para editar directamente cliente, N° de pedido, cantidad de bultos, logística y fecha programada de entrega, tanto desde el panel de pedidos en vivo como desde el Historial. Esta exclusividad operativa previene colisiones y discrepancias con administradores o usuarios master.
-  * **Desarmar vs. Eliminar Pedido y Regresión Atómica de Stock:**
-    - **Desarmar Pedido (Borrado Lógico — Icono Ámbar):** Marca el pedido como `anulado`, conserva el registro histórico y el bloqueo SHA-256 anti-duplicados, y reincorpora automáticamente sus unidades al inventario en SQLite y `Productos.xlsx`.
-    - **Eliminar Pedido (Borrado Físico — Icono Rojo):** Elimina definitivamente el pedido y sus vínculos (`pedido_items`, bloqueos, transacciones idempotentes y bultos escaneados) habilitando volver a cargar el mismo remito/hash si hubo un error de carga; restituye stock si el pedido estaba activo y evita doble devolución si ya había sido desarmado/anulado.
+  * **Desarmar vs. Eliminar Pedido y Regresión Atómica de Stock (`pedidos_baja_ops.py`):**
+    - **Desarmar Pedido (Borrado Lógico — Icono Ámbar):** Marca el pedido como `anulado`, conserva el registro histórico y el bloqueo SHA-256 anti-duplicados; si el pedido estaba en reserva activa libera únicamente su reserva sin duplicar ingresos físicos, o bien reincorpora sus unidades al inventario en SQLite y `Productos.xlsx`.
+    - **Eliminar Pedido (Borrado Físico — Icono Rojo):** Elimina definitivamente el pedido y sus vínculos (`pedido_items`, bloqueos, transacciones idempotentes y bultos escaneados) habilitando volver a cargar el mismo remito/hash si hubo un error de carga; libera reserva o restituye stock evitando doble devolución si ya había sido desarmado/anulado.
+  * **Multi-Ubicación por Zona y Lotes FEFO (`dlg_ubicaciones_lotes.py`):** Desde las fichas de stock o app móvil permite consultar bins (`picking`, `pulmon`, `pallet`, `recepcion`, `cuarentena`), ejecutar traslados bin-a-bin acompañando lotes FEFO y consumir lotes próximos a vencer.
   * Visualización de estados de despacho (`Armado` $\to$ `Despachado` $\to$ `Entregado`) y acceso directo a reimprimir rótulos de bulto.
 * **Cierre de Jornada Discriminado por Canales y Consolidado Admin (SQLite-First):**
   * Agrupa directamente desde SQLite (`cierres_jornada`, `pedidos` y `stock_movements`) todos los movimientos del turno sin requerir el archivo `Productos.xlsx`.
@@ -648,9 +653,9 @@ Diseñado para el personal de preparación de pedidos, empaquetado y despacho en
 Perfil dedicado al control físico de salida en muelle de carga y expedición logística bajo segregación estricta de funciones (SoD):
 
 * **Consola Centralizada de Despacho (`dlg_modulo_despacho.py`):** KPIs en vivo responsivos (Pendientes Armados, En control parcial, Despachados hoy y Bultos despachados hoy), pestañas `Pendientes de Despacho` / `Despachados` y buscador por remito, cliente, transporte, armador o guía.
-* **Verificación QR Bulto a Bulto (`i/N`):** Lectura con pistola láser o cámara móvil de códigos QR (`REMITO:...|BULTO:i/N`) con control anti-duplicados. El pedido transiciona automáticamente de `armado` $\to$ `despachado` únicamente al completarse los `N/N` bultos del remito.
-* **Despacho Manual Validado:** Permite liberar pedidos con etiqueta dañada exigiendo confirmación exacta de la cantidad de bultos del remito.
-* **Operación Móvil con Cola FIFO Offline (`stockagent_mobile`):** Compatible con colectores Android/iOS (Modo Lector Láser, Modo Claro Alto Contraste) con sincronización automática vía `/api/v1/despacho/escanear-lote` al recuperar cobertura Wi-Fi.
+* **Verificación QR Bulto a Bulto (`i/N`) y Consolidación de Reservas:** Lectura con pistola láser o cámara móvil de códigos QR (`REMITO:...|BULTO:i/N`) con control anti-duplicados. El pedido transiciona automáticamente de `armado` $\to$ `despachado` únicamente al completarse los `N/N` bultos del remito, consolidando en el mismo acto cualquier reserva previa (`Solo reservar stock`) descontando stock físico y lotes FEFO en SQLite/Excel.
+* **Despacho Manual Validado:** Permite liberar pedidos con etiqueta dañada exigiendo confirmación exacta de la cantidad de bultos del remito y consolidando igualmente su reserva de stock activa si existía.
+* **Operación Móvil con Cola FIFO Offline (`stockagent_mobile`):** Compatible con colectores Android/iOS (Modo Lector Láser, Modo Claro Alto Contraste, consulta de `Zonas / FEFO`, `Alertas FEFO` y `Reservas Activas`) con sincronización automática vía `/api/v1/despacho/escanear-lote` al recuperar cobertura Wi-Fi.
 * **Segregación de Funciones (SoD):** No puede modificar inventario, cargar/editar/eliminar remitos, alterar usuarios ni ejecutar cierres de jornada. El **Administrador** puede abrir este módulo estrictamente en **modo solo lectura** para auditar despachos.
 
 ---
@@ -679,7 +684,9 @@ La siguiente matriz detalla de forma oficial la distribución de responsabilidad
 | **Sincronización Mercado Libre (API REST)** | ❌ Denegado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **SoD Administrativo:** Sincronización de ventas por API reservada a administradores (credenciales bajo Master). |
 | **Modificar Pedido Preparado** | ❌ Denegado | ❌ Solo Lectura | ✅ **Exclusivo** | ❌ Denegado | ❌ Denegado | ❌ Solo lectura | **Exclusividad Operador:** Evita colisiones de empaque entre operarios, pickers, despachadores y supervisores. |
 | **Desarmar / Eliminar Pedido y Restituir Stock** | ❌ Denegado | ✅ Diálogo baja | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Botones rápidos en tarjetas/listas reservados a Operador; Desarmar (lógico) y Eliminar (físico) devuelven stock sin duplicar. |
-| **Módulo Despacho (QR Bultos / Entregas)** | ❌ Denegado | ❌ Solo Lectura | ❌ Denegado | ❌ Denegado | ✅ **Exclusivo** | ❌ Denegado | **SoD Muelle:** Despachador verifica bultos `i/N` y avanza estados; Administrador inspecciona despachos en solo lectura. |
+| **Módulo Despacho (QR Bultos / Entregas)** | ❌ Denegado | ❌ Solo Lectura | ❌ Denegado | ❌ Denegado | ✅ **Exclusivo** | ❌ Denegado | **SoD Muelle:** Despachador verifica bultos `i/N`, consolida reservas activas y avanza estados; Administrador inspecciona despachos en solo lectura. |
+| **Multi-Ubicación, Traslados y Lotes FEFO** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | 🔍 Consulta móvil | ❌ Solo lectura | Asignación por zona (`picking`/`pulmon`/`pallet`), traslado bin-a-bin, registro/consumo FEFO y alertas de caducidad. |
+| **Ola de Picking y Reservas de Stock** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Solo lectura | Reserva atómica contra Disponible Neto (`pedido` / `ola_picking`), consolidación FEFO y liberación sin doble devolución. |
 | **Consulta / Historial y Reimpresión** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ✅ Lectura/Reimp. | ✅ Habilitado | Picker no accede al historial; Despachador y Consulta no editan datos comerciales. |
 | **Rótulos de Bulto con QR (A4 y Térmico)** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Emisión de etiquetas de despacho continuas (100x150 mm) o planchas A4. |
 | **Cierre de Jornada y Hojas de Ruta** | ❌ Denegado | ✅ Habilitado | ✅ Habilitado | ❌ Denegado | ❌ Denegado | ❌ Denegado | Consolidación diaria de pedidos y emisión de hojas de ruta de transporte. |
@@ -951,12 +958,12 @@ StockAgent/
 │   ├── generar_presentacion_ejecutiva.py # Generador CLI de la Presentación Ejecutiva PDF
 │   └── manuales_procedimientos.py     # Fachada retrocompatible hacia Documentacion.procedimientos
 ├── src/                               # Código fuente modular y desacoplado (sin archivos monolíticos)
-│   ├── core/                          # Núcleo de excepciones tipadas, entorno y SQLite (exceptions, environment, sqlite_utils con closing(), system_reset)
-│   ├── api/                           # API REST v1 (deps.py con HMAC ?dt=/Bearer/API Key, schemas.py, v1/*.py)
+│   ├── core/                          # Núcleo de excepciones tipadas, migraciones `PRAGMA user_version`, entorno, delegación (`DelegadoAtributo`), transacciones pedido/reserva (`stock_order_tx`) y SQLite (`sqlite_utils` con `closing()`)
+│   ├── api/                           # API REST v1 (deps.py con HMAC ?dt=/Bearer/API Key, schemas.py, v1/*.py incl. multi-ubicación, FEFO y reservas)
 │   ├── server_app/                    # Servidor web ASGI modular (__init__, flet_patch, middleware, network_utils, protected_docs_routes, static_routes)
-│   ├── auth/                          # Autenticación y usuarios (models, password [600k PBKDF2], schema, validators, events, lockout_repo, api_tokens_repo, store)
-│   ├── orders/                        # Pedidos, clientes, chat, concurrencia y auditoría (models, schema, protocols, 11 *_repo esp. order_core_repo y factory_plan_closure, store por composición)
-│   ├── products/                      # Catálogo, códigos de barra, movimientos y conteo físico (barcode_utils, schema, protocols, catalog_read/write/catalog_repo, movements_repo, movements_report_repo, physical_repo, notifications_repo, store)
+│   ├── auth/                          # Autenticación y usuarios (models, password [600k PBKDF2], schema v3, validators, events, lockout_repo, api_tokens_repo, store)
+│   ├── orders/                        # Pedidos, clientes, chat, concurrencia y auditoría (models, schema v3, protocols, 11 *_repo esp., store por composición)
+│   ├── products/                      # Catálogo, códigos de barra, multi-ubicación, FEFO y reservas (barcode_utils, schema v4, protocols, catalog_*, locations_repo, lots_fefo_repo, locations_lots_repo, reservations_repo, movements_*, physical_repo, notifications_repo, store)
 │   ├── inventory/                     # Orquestación StockManager y sincronización Excel (manager, catalog_loader, discount_engine, excel_exporter, excel_sync, template_sync)
 │   ├── stock/                         # Reportes SQLite-first, slotting, reposición y conciliación (models, slotting_models, report_styles, reports_stock, reports_movements_common/canales/reports_movements, reports_inventory, reports_kardex, reports_ops, xls_exporter, pdf_exporter, manifest_pdf, replenishment, physical_inventory, reportes_service)
 │   ├── labels/                        # Rótulos QR y códigos de barra (utils, thermal_labels 100x150 mm, a4_labels)
@@ -973,7 +980,7 @@ StockAgent/
 │   │   ├── commands/                  # Paleta de comandos F2 / Ctrl+K (command_registry, palette_search)
 │   │   ├── controllers/               # auth_controller, batch_controller, chat_controller, dialog_coordinator, document_viewer_service, file_transfer_service, responsive_controller, session_sync_service, theme_controller
 │   │   ├── components/                # admin_flow_analytics, admin_flow_widgets, admin_operations_bar, audio_manager, debounce, docking_manager, floating_chat (+ _intents), header, mobile_nav, network_heartbeat, panels, print_labels, sidebar (+ _horizontal/_quick_actions/_sections), window_manager
-│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados sin monolitos (auth_*, analytics_*, api_panel_tabs, cierre/ [cierre_mercado_cards, cierres_admin_cards, dlg_*], despacho_acciones, despacho_componentes, dlg_modulo_despacho, dlg_*, heatmap_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, mercadolibre_api_cards, ml_*, movimientos_rapidos_ops, pedidos_crear + pedidos_crear_modales + pedidos_edicion + pedidos_baja + pedidos_gestion, productos_modales, quiebre_banner, stock_fisico_views, usuarios_modales)
+│   │   └── dialogs/                   # Vistas y subcomponentes desacoplados sin monolitos (auth_*, analytics_*, api_panel_tabs, cierre/ [cierre_mercado_cards, cierres_admin_cards, dlg_*], despacho_acciones, despacho_componentes, dlg_modulo_despacho, dlg_*, dlg_ola_picking, dlg_ubicaciones_lotes, heatmap_render, heatmap_fefo_render, historial_*, ingreso_fabrica_archivo, inventario_vivo_views, mercadolibre_api_cards, ml_*, movimientos_rapidos_ops, pedidos_crear + pedidos_crear_componentes + pedidos_crear_modales + pedidos_edicion + pedidos_baja + pedidos_baja_ops + pedidos_gestion + dlg_pedidos, productos_modales, quiebre_banner, stock_fisico_views, usuarios_modales)
 │   ├── agent.py / menu.py             # Orquestadores CLI y de lotes
 │   ├── flet_gui.py                    # Orquestador GUI principal basado en composición pura e inyección de dependencias
 │   ├── secretos.py                    # Cifrado en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
@@ -981,7 +988,7 @@ StockAgent/
 │   ├── webhook_manager.py             # Webhooks salientes con validación anti-SSRF
 │   └── anomaly_detector.py / warehouse_slotting.py / system_telemetry.py / alertas_programadas.py / archive_manager.py / backup_manager.py / logger_config.py / paths.py
 ├── stockagent_mobile/                 # Proyecto cliente móvil nativo (Flutter para Android e iOS)
-│   ├── lib/                           # Código fuente Dart (controllers, models, screens, services, theme, widgets, main.dart)
+│   ├── lib/                           # Código fuente Dart (controllers, models [incl. warehouse_fefo], screens, services [api_service + part api_warehouse_extension], theme, widgets [incl. warehouse/product_zones_tab, product_fefo_tab, warehouse_alerts_sheet], main.dart)
 │   ├── android/                       # Configuración y manifiestos nativos Android
 │   ├── ios/                           # Configuración nativa Apple iOS
 │   ├── dist_movil/                    # Instalador oficial StockAgent.apk y version.json
@@ -1154,7 +1161,7 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
     * **`src/inventory/` y `src/stock/`:** Incluyen `catalog_loader.py`, `discount_engine.py`, `excel_sync.py`, `template_sync.py`, `report_styles.py`, `reports_stock.py`, `reports_ops.py`, `xls_exporter.py`, `pdf_exporter.py`, `manifest_pdf.py` y `reportes_service.py`.
     * **`src/integrations/`, `src/cli/` y `src/warehouse_slotting.py`:** Se extrajeron `mercado_libre_auth.py` (OAuth 2.0, cifrado de tokens y búsqueda), `cli/admin_flows.py` (flujos administrativos CLI) y `stock/slotting_models.py` (constantes de racks, dataclasses y heurística).
     * **Descomposición de Diálogos Extensos (`src/ui/` y `src/ui/dialogs/`):** `shell_builder.py` desacopla la cáscara UI de `flet_gui.py`; cada archivo extenso fue dividido en módulos cohesivos sin monolitos (`admin_flow_widgets`, `sidebar_quick_actions`, `pedidos_crear_modales`, `historial_cards`, `quiebre_banner`, `cierre/cierre_mercado_cards`, `analytics_widgets`, `analytics_rotacion`, `mercadolibre_api_cards`).
-    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Estructuran de forma modular la generación de manuales PDF e instructivos de procedimientos (`VERSION_SOP_ACTUAL = "v2.3.0"`, `VERSION_PROC_ACTUAL = "3.2.0"`).
+    * **`Documentacion/pdf_engine/` y `Documentacion/procedimientos/`:** Estructuran de forma modular la generación de manuales PDF e instructivos de procedimientos (`VERSION_SOP_ACTUAL = "v2.4.0"`, `VERSION_PROC_ACTUAL = "3.4.0"`).
 
 19. **SQLite-First, Cierre Determinístico y Reportes por Canal (`Mejoras 1–6`):**
     * **Cierre Discriminado en 3 Canales y Consolidado Admin (`reports_movements_common.py`, `reports_movements_canales.py`, `reports_movements.py`):** Operario recibe únicamente productos movidos en 3 columnas (Mayoristas, Mercado Libre y Full + Ingresos); Administración recibe el consolidado sumado por producto.
@@ -1181,10 +1188,16 @@ Para garantizar un código limpio, desacoplado, mantenible y escalable bajo est�
       - `dlg_usuarios.py` dividido en `usuarios_modales.py` (tarjetas responsivas y sub-modales de edición/reseteo) y orquestador `dlg_usuarios.py`.
       - `cierre/dlg_cierres_admin.py` dividido en `cierre/cierres_admin_cards.py` (tarjetas, métricas y modal de detalle) y `dlg_cierres_admin.py`.
       - `dlg_modulo_despacho.py` complementado con `despacho_acciones.py` y `despacho_componentes.py`; `src/orders/dispatch_repo.py` refactorizado en helpers focalizados para el escaneo QR bulto a bulto; limpieza transversal de imports/código muerto y deduplicación de `safe_focus` en `_shared.py`.
+23. **Multi-Ubicación Zonificada, Trazabilidad FEFO, Reservas y Refactorización Modular Final (`src/products/`, `src/core/`, `pedidos_baja_ops.py`, `stockagent_mobile/`):**
+    * **Desacoplamiento de `src/products/`:** El módulo `locations_lots_repo.py` (antes 944 líneas) se dividió en `locations_repo.py` (`WarehouseLocationsRepository`), `lots_fefo_repo.py` (`FefoLotsRepository`) y fachada delgada `locations_lots_repo.py` usando `DelegadoAtributo`. `ProductStore` (`src/products/store.py`) sustituye los métodos *forwarding* repetitivos por descriptores declarativos `DelegadoAtributo`, integrando además `StockReservationsRepository` (`reservations_repo.py`).
+    * **Reservas de Pedidos / Olas y Baja sin Doble Devolución:** `src/core/stock_order_tx.py` coordina carga de pedidos con *"Solo reservar stock"*, consolidación automática al despachar y liberación limpia de reservas desde `pedidos_baja_ops.py` (lógica transaccional extraída de `pedidos_baja.py`) en anulación, desarmado y eliminación.
+    * **Migraciones Versionadas, ASGI Único y App Escritorio Offline:** `src/core/sqlite_migrations.py` gestiona versiones incrementales mediante `PRAGMA user_version` (`PRODUCTS_SCHEMA_VERSION = 4`, `ORDERS_SCHEMA_VERSION = 3`, `AUTH_SCHEMA_VERSION = 3`); el servidor unifica FastAPI y Flet bajo un mismo punto de montaje ASGI (`flet.fastapi.app`) con ejecución offline de escritorio (`assets_dir` + `no_cdn=True`).
+    * **Modularización de Cliente Móvil (`stockagent_mobile/lib/`):** `ApiWarehouseExtension` extraído a `services/api_warehouse_extension.dart` (`part` de `api_service.dart`) y `ProductWarehouseSheet` descompuesto en `widgets/warehouse/product_zones_tab.dart` (`ProductZonesTab`) y `widgets/warehouse/product_fefo_tab.dart` (`ProductFefoTab`).
+    * **Manuales Operativos Actualizados:** Guías SOP/POE por rol regeneradas en `Documentacion/` (`VERSION_PROC_ACTUAL = "3.4.0"`, `VERSION_SOP_ACTUAL = "v2.4.0"`).
 
 ### Esquema de Bases de Datos SQLite
 
-#### `data/productos.sqlite3`
+#### `data/productos.sqlite3` (`PRODUCTS_SCHEMA_VERSION = 4`)
 
 ```sql
 CREATE TABLE products (
@@ -1196,10 +1209,12 @@ CREATE TABLE products (
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     stock_fisico INTEGER DEFAULT NULL,
     cod_barras TEXT DEFAULT '',
+    ubicacion TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_cod_barras ON products(cod_barras);
+CREATE INDEX IF NOT EXISTS idx_products_ubicacion ON products(ubicacion);
 
 CREATE TABLE product_catalog_rows (
     id INTEGER PRIMARY KEY,
@@ -1208,16 +1223,64 @@ CREATE TABLE product_catalog_rows (
     display_order INTEGER NOT NULL,
     template_row INTEGER
 );
+
+CREATE TABLE product_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_code TEXT NOT NULL REFERENCES products(code) ON UPDATE CASCADE ON DELETE CASCADE,
+    ubicacion TEXT NOT NULL,
+    tipo_zona TEXT NOT NULL DEFAULT 'picking'
+        CHECK (tipo_zona IN ('picking', 'pulmon', 'pallet', 'recepcion', 'cuarentena')),
+    stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    capacidad_max INTEGER NOT NULL DEFAULT 0 CHECK (capacidad_max >= 0),
+    es_principal INTEGER NOT NULL DEFAULT 0 CHECK (es_principal IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+    UNIQUE(product_code, ubicacion)
+);
+
+CREATE TABLE stock_lots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_code TEXT NOT NULL REFERENCES products(code) ON UPDATE CASCADE ON DELETE CASCADE,
+    lote TEXT NOT NULL,
+    ubicacion TEXT NOT NULL DEFAULT '',
+    fecha_vencimiento TEXT NOT NULL DEFAULT '',
+    stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    estado TEXT NOT NULL DEFAULT 'disponible'
+        CHECK (estado IN ('disponible', 'bloqueado', 'vencido', 'agotado')),
+    notas TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+    UNIQUE(product_code, lote, ubicacion)
+);
+
+CREATE TABLE stock_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referencia_tipo TEXT NOT NULL DEFAULT 'ola_picking',
+    referencia_id TEXT NOT NULL,
+    product_code TEXT NOT NULL REFERENCES products(code) ON UPDATE CASCADE ON DELETE CASCADE,
+    cantidad INTEGER NOT NULL CHECK (cantidad > 0),
+    estado TEXT NOT NULL DEFAULT 'activa'
+        CHECK (estado IN ('activa', 'consolidada', 'liberada')),
+    lot_id INTEGER REFERENCES stock_lots(id) ON DELETE SET NULL,
+    ubicacion TEXT NOT NULL DEFAULT '',
+    lotes_asignados TEXT NOT NULL DEFAULT '[]',
+    usuario TEXT NOT NULL DEFAULT 'sistema',
+    nota TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+    expires_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(referencia_tipo, referencia_id, product_code)
+);
+-- Vistas derivadas: v_analisis_reposicion y v_stock_disponible (stock_fisico, stock_reservado, stock_disponible)
 ```
 
-#### `data/usuarios.sqlite3`
+#### `data/usuarios.sqlite3` (`AUTH_SCHEMA_VERSION = 3`)
 
 ```sql
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('master', 'administrador', 'operador', 'consulta', 'picker')),
+    role TEXT NOT NULL CHECK (role IN ('master', 'administrador', 'operador', 'consulta', 'picker', 'despachador')),
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
     nombre TEXT NOT NULL DEFAULT '',
@@ -1465,8 +1528,9 @@ La API REST v1 y el servidor web (`src/server_app/`) han sido blindados con cont
    * Credenciales SMTP, tokens de Telegram y secretos de Mercado Libre se cifran en disco con Windows DPAPI (`enc:dpapi:`) o Fernet (`enc:fernet:`), manteniendo compatibilidad de lectura transparente y validación estricta de URLs en `webhook_manager.py` y rutas de backup en `backup_manager.py`.
 5. **Sistema de Claves de Integración API Keys (`X-API-Key`):**
    * Emisión de claves estáticas con prefijo seguro `sk_live_...` para conectar ERPs y plataformas satélite (`POST /api/v1/auth/api-keys`, `GET /api/v1/auth/api-keys`, `DELETE /api/v1/auth/api-keys/{key_hash}`), con registro `last_used` y revocación inmediata.
-6. **Consulta de Stock para ERPs (`GET /api/v1/productos/{codigo}/stock`):**
-   * Endpoint de alta velocidad para validar existencias de productos por SKU o código de barras escaneado mediante `X-API-Key` o token Bearer.
+6. **Consulta de Stock y Ecosistema Warehouse en API REST v1:**
+   * `GET /api/v1/productos/{codigo}/stock`: Consulta de alta velocidad para ERPs y cliente móvil devolviendo `stock` físico, `stock_reservado` y `stock_disponible` neto mediante `X-API-Key` o token Bearer.
+   * **Multi-Ubicación, Lotes FEFO y Reservas:** `GET/POST /api/v1/productos/{codigo}/ubicaciones`, `POST .../ubicaciones/transferir`, `GET/POST /api/v1/productos/{codigo}/lotes`, `POST .../lotes/consumir-fefo`, `GET /api/v1/productos/lotes/proximos-vencer`, `GET/POST /api/v1/productos/reservas`, `POST .../reservas/consolidar` y `POST .../reservas/liberar`.
 7. **Protección Contra Fuerza Bruta por IP y Cabeceras de Seguridad:**
    * Rate limiting en login (`429 Too Many Requests`), CORS restringido a localhost, LAN privada RFC 1918 y Tailscale (`100.x.x.x`), cabeceras `X-Content-Type-Options: nosniff` y `X-Frame-Options: SAMEORIGIN`, regla Firewall restringida al perfil `Private` e integridad referencial `PRAGMA foreign_keys = ON`.
 
@@ -1520,10 +1584,11 @@ StockAgent implementa una arquitectura de seguridad por capas conforme a estánd
 
 El proyecto cuenta con una cobertura integral de pruebas unitarias y de integración automatizadas que validan la persistencia transaccional, el endurecimiento de seguridad, el control de concurrencia, los flujos logísticos y todas las fachadas modulares:
 
-* **Total de pruebas:** `78` módulos en `tests/test_*.py` (`506` pruebas y `23` subtests aprobados sobre el conjunto completo ejecutado mediante `pytest`).
-* **Observaciones:** En fecha `2026-11-25`, 2 aserciones temporales (`dias=30`) de `tests/test_fase6_features.py` requieren fechas dentro de los últimos 30 días de la ventana de fixtures.
+* **Total de pruebas:** `86` módulos en `tests/test_*.py` (`545 passed, 23 subtests passed, 0 failed` sobre la batería completa ejecutada con `pytest`).
 
 #### Suites Destacadas Recientes
+* `tests/test_fase4_reservations_multiloc_fefo.py`, `tests/test_etapa_a_ui_fefo_multiloc.py`, `tests/test_etapa_b_order_reservations.py`, `tests/test_etapa_c_despacho_api_and_mobile_contract.py`, `tests/test_ola_picking.py`: Cobertura integral de multi-ubicación (`picking`, `pulmon`, `pallet`, etc.), lotes y alertas FEFO, reservas de stock en carga de pedidos/olas de picking, consolidación automática al despachar, liberación sin doble devolución y contrato Flutter móvil (`warehouse_fefo.dart` / `api_warehouse_extension.dart` / `widgets/warehouse/`).
+* `tests/test_modular_refactoring.py`, `tests/test_ci_and_lockfile.py`, `tests/test_app_paths.py`, `tests/test_product_store.py`: Verificación de composición declarativa `DelegadoAtributo` en `ProductStore` / `LocationsLotsRepository`, re-exportación compatible en `pedidos_baja_ops` / `pedidos_baja`, balanceo sintáctico Dart/CI (`stockagent_mobile/lib` y `test`) y migraciones `PRAGMA user_version`.
 * `tests/test_responsive_cards.py`, `tests/test_rol_despachador.py`, `tests/test_pedido_eliminar_desarmar.py`: Cobertura completa de tarjetas responsivas (`src/ui/design/responsive.py`), control de muelle QR/manual para Rol Despachador y baja diferenciada (`Desarmar` lógico vs. `Eliminar` físico sin doble devolución de stock).
 * `tests/test_reports_movements_architecture.py`, `tests/test_sqlite_closing.py`, `tests/test_sqlite_first_architecture.py`, `tests/test_ui_composition_pattern.py`: Reporte discriminado en 3 canales (Mayoristas, Mercado Libre, Full) para Operario, Consolidado Admin, cierre determinístico SQLite con `closing()` (`sqlite_utils.py`), ausencia de ciclos `core` ↔ `products`, arquitectura SQLite-first y composición pura sin mixins.
 * `tests/test_cierre_mercado_picker.py`, `tests/test_document_options_dialog.py`, `tests/test_sincronizar_excel_dialog.py`, `tests/test_adaptive_quiebre_panel.py`: Cierre Mercado/Picker, opciones documentales, sincronización Excel bajo SQLite-first y panel adaptativo de quiebres.
@@ -1701,7 +1766,7 @@ flowchart LR
 
 A diferencia de empaquetar un intérprete de Python completo dentro del teléfono (lo que haría la app excesivamente pesada y lenta), la arquitectura adopta un modelo de **Cliente Nativo Flutter Desacoplado con Seguridad Criptográfica**:
 
-1. **Rendimiento Nativo y Ergonomía en Depósito (`>= 48dp`):** Desarrollado sobre el motor gráfico de Flutter (Impeller/Skia), con objetivos táctiles aptos para guantes (`>= 48dp`), **Modo Claro de Alto Contraste** para luz solar directa, **Modo Lector Láser** (sin teclado virtual) y gestión explícita de foco entre pestañas (`IndexedStack`).
+1. **Rendimiento Nativo, Modularidad Dart y Ergonomía en Depósito (`>= 48dp`):** Desarrollado sobre Flutter (Impeller/Skia) con servicios REST modulares (`api_service.dart` + `part 'api_warehouse_extension.dart'`) y pestañas de depósito desacopladas (`widgets/warehouse/product_zones_tab.dart`, `product_fefo_tab.dart`, `warehouse_alerts_sheet.dart`), objetivos táctiles aptos para guantes (`>= 48dp`), **Modo Claro de Alto Contraste**, **Modo Lector Láser** y gestión explícita de foco entre pestañas (`IndexedStack`).
 2. **TLS Certificate Pinning (TOFU) y Anti-Downgrade (`TlsPinningService`):** Conecta por defecto sobre `HTTPS`, fija la huella digital del certificado X.509 del servidor en el primer enlace validado y prohíbe cualquier degradación silenciosa hacia `HTTP` en texto plano.
 3. **Almacenamiento Cifrado en Hardware (`AndroidKeyStore`):** Cifra el token de sesión (`Bearer Token`) con `AES/GCM/NoPadding` de 256 bits mediante el canal nativo `com.stockagent.mobile/secure_storage` y aísla los borradores y colas offline por nombre de usuario (`username`).
 4. **Colas FIFO y Resiliencia Offline Persistente:** Ráfagas de escaneo láser procesadas en orden FIFO sin descartar lecturas, con persistencia en disco ante cortes de Wi-Fi y **auto-sincronización** al reconectar con el servidor.

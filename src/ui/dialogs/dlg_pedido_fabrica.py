@@ -6,8 +6,8 @@ from ..theme import ROJO
 from ._shared import resolve_stock_manager, safe_focus
 
 
-def _get_stock_manager():
-    return resolve_stock_manager()
+def _get_stock_manager(interfaz: Any = None):
+    return resolve_stock_manager(interfaz)
 
 
 def generar_pedido_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> None:
@@ -16,7 +16,7 @@ def generar_pedido_fabrica(interfaz: Any, _evento: ft.Event | None = None) -> No
         return
 
     try:
-        sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+        sm = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
         analisis = sm.obtener_analisis_reposicion(solo_criticos=True)
         items_a_pedir = [p for p in analisis if int(p["cantidad_sugerida_pedir"]) > 0]
         ruta_excel = sm.generar_pedido_sugerido_fabrica(solo_criticos=True)

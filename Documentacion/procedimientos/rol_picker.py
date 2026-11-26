@@ -116,6 +116,33 @@ def construir_manual_picker(ruta_destino: Path) -> Path:
                 "validaciones_advertencias": "El Picker únicamente suma existencias (no puede sobrescribir saldos globales ni cargar archivos masivos admin).",
             },
             {
+                "nombre_boton": "Ola de Picking Zonificada y Reserva Preventiva de Ola",
+                "icono_str": "[🧭]",
+                "modulo": "PREPARACIÓN / OLA DE PICKING",
+                "proposito_funcional": "Agrupa múltiples pedidos o pendientes ordenados por recorrido óptimo de zonas (`picking` -> `pulmon` -> `pallet` -> `recepcion`), sugiere el lote FEFO a extraer y permite bloquear temporalmente el inventario con <b>'Reservar Stock de la Ola'</b>.",
+                "datos_modificados": "Registra reservas atómicas en `stock_reservations` (`referencia_tipo = 'ola_picking'`) en `productos.sqlite3` con lotes FEFO sugeridos.",
+                "pasos_procedimiento": [
+                    "Abrir <b>'Ola de Picking'</b>, seleccionar pedidos/lote y revisar la hoja de recorrido zonificada con vencimientos FEFO.",
+                    "Pulsar <b>'Reservar Stock de la Ola'</b> para apartar el disponible neto antes de recorrer los pasillos y evitar doble venta.",
+                    "Confirmar la consolidación al terminar o liberar la reserva desde el panel de Reservas Activas si se cancela la ola.",
+                ],
+                "resultado_obtenido": "Recorrido ergonómico sin solapamiento entre pickers y stock garantizado hasta finalizar la preparación.",
+                "validaciones_advertencias": "Verifica disponibilidad neta (`Físico - Reservado`) por SKU antes de confirmar la reserva de la ola.",
+            },
+            {
+                "nombre_boton": "Zonas / FEFO, Alertas FEFO y Reservas (Escritorio y Móvil)",
+                "icono_str": "[📦]",
+                "modulo": "DEPOSITO MÓVIL / FEFO",
+                "proposito_funcional": "Permite consultar múltiples ubicaciones por SKU (`picking`, `pulmon`, `pallet`), ejecutar traslados internos (`pulmon -> picking`), consumir unidades siguiendo orden FEFO y auditar lotes próximos a vencer (`Alertas FEFO`) o reservas activas (`Reservas`).",
+                "datos_modificados": "Actualiza `product_locations`, `stock_lots` y consumo FEFO vía UI de escritorio o endpoints `/api/v1/productos/...` en `stockagent_mobile`.",
+                "pasos_procedimiento": [
+                    "En el catálogo o buscador móvil, abrir el botón/pestaña <b>'Zonas / FEFO'</b> sobre el artículo deseado.",
+                    "Seleccionar ubicación origen/destino para reponer bins de picking o confirmar el consumo FEFO guiado.",
+                ],
+                "resultado_obtenido": "Reposición trazable y despacho priorizando siempre el lote más cercano a vencer.",
+                "validaciones_advertencias": "Las alertas FEFO clasifican lotes en `VENCIDO`, `CRITICO` (<=7 días) y `PROXIMO` (<=30 días).",
+            },
+            {
                 "nombre_boton": "Paleta Rápida (F2), Chat Interno y Manual HTTPS (?dt=)",
                 "icono_str": "[⚡]",
                 "modulo": "HERRAMIENTAS",

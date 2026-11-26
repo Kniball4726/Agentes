@@ -8,6 +8,7 @@ from typing import Any
 import flet as ft
 
 from ...agent import AgenteRemitosStock
+from ...core.stock_order_tx import detectar_conflictos_stock_y_reservas
 from ...orders import LOGISTICA_OPCIONES, calcular_hash_archivo
 from ..theme import ROJO
 from .pedidos_crear_componentes import (
@@ -19,6 +20,7 @@ from .pedidos_crear_modales import (
     _mostrar_alerta_preventiva_quiebre,
     _resolver_sm_cls,
     ejecutar_descuento_y_registro_pedido,
+    ejecutar_reserva_y_registro_pedido,
 )
 
 
@@ -124,6 +126,10 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
     armador_nom = interfaz.usuario_actual.nombre_identificador if interfaz.usuario_actual else "Operario"
     armador_input = ft.TextField(label="Armador responsable", value=armador_nom, read_only=True, disabled=True, expand=True)
     agregado_check = ft.Checkbox(label="Agregado", value=False)
+    solo_reservar_check = ft.Checkbox(
+        label="Solo reservar stock (en preparación, sin descontar todavía)",
+        value=False,
+    )
 
     async def confirmar_pedido(_e: ft.Event) -> None:
         remito = (remito_factura_input.value or "").strip()
@@ -132,6 +138,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         log = selector_logistica.value or ""
         f_retiro = selector_fecha.value
         es_agregado = bool(agregado_check.value)
+        solo_reservar = bool(solo_reservar_check.value)
 
         try:
             bultos_val = max(1, int(bultos_input.value or "1"))
@@ -187,8 +194,13 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
         tipo_archivo = "pdf" if archivo_path.suffix.lower() == ".pdf" else "excel"
         cache_simulacion: dict[str, Any] = {}
 
-        def ejecutar_descuento_pedido() -> None:
-            ejecutar_descuento_y_registro_pedido(
+        def ejecutar_operacion_pedido() -> None:
+            fn = (
+                ejecutar_reserva_y_registro_pedido
+                if solo_reservar
+                else ejecutar_descuento_y_registro_pedido
+            )
+            fn(
                 interfaz=interfaz,
                 remito=remito,
                 num_ped=num_ped,
@@ -205,20 +217,48 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             )
 
         try:
-            sm_sim = _resolver_sm_cls()(ruta_excel_base=interfaz.menu.ruta_excel_base)
+            sm_sim = _resolver_sm_cls(interfaz)(ruta_excel_base=interfaz.menu.ruta_excel_base)
             ag_sim = AgenteRemitosStock(stock_manager=sm_sim)
             kw_sim = {"rutas_pdf": [archivo_path]} if tipo_archivo == "pdf" else {"rutas_canjes": [archivo_path]}
             rep_sim = ag_sim.ejecutar(**kw_sim, carpeta_descuentos=interfaz.menu.carpeta_descuentos, simulacion=True, guardar_archivo=False)
             cache_simulacion["stock_mgr"] = sm_sim
             cache_simulacion["reporte"] = rep_sim
-            quiebres = [d for d in rep_sim.reporte_stock.descuentos_aplicados if d.stock_nuevo <= 0]
-            if quiebres and interfaz.page:
-                _mostrar_alerta_preventiva_quiebre(interfaz, remito, cli, quiebres, ejecutar_descuento_pedido)
+            p_store_sim = getattr(sm_sim, "product_store", None) or getattr(interfaz, "product_store", None)
+            conflictos = detectar_conflictos_stock_y_reservas(
+                rep_sim.reporte_stock.descuentos_aplicados,
+                p_store_sim,
+            )
+            if conflictos and interfaz.page:
+                _mostrar_alerta_preventiva_quiebre(
+                    interfaz,
+                    remito,
+                    cli,
+                    conflictos,
+                    ejecutar_operacion_pedido,
+                    solo_reservar=solo_reservar,
+                )
                 return
         except Exception as e_sim:
             print(f"[SIMULACION PREVENTIVA] Omitida: {e_sim}")
 
-        await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_descuento_pedido)
+        await interfaz.ejecutar_tarea(f"Remito #{remito} ({cli})", ejecutar_operacion_pedido)
+
+    btn_confirmar = ft.Button(
+        "Confirmar y Descontar",
+        icon=ft.Icons.CHECK_CIRCLE,
+        bgcolor=ROJO,
+        color=ft.Colors.WHITE,
+        on_click=confirmar_pedido,
+    )
+
+    def _al_cambiar_solo_reservar(_e: Any) -> None:
+        btn_confirmar.content = (
+            "Confirmar y Reservar" if solo_reservar_check.value else "Confirmar y Descontar"
+        )
+        if getattr(interfaz, "page", None):
+            interfaz.page.update()
+
+    solo_reservar_check.on_change = _al_cambiar_solo_reservar
 
     dialogo = ft.AlertDialog(
         modal=True,
@@ -238,6 +278,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
                     selector_fecha.fila_control,
                     armador_input,
                     agregado_check,
+                    solo_reservar_check,
                     mensaje_error,
                 ],
                 tight=True,
@@ -246,7 +287,7 @@ def mostrar_dialogo_crear_pedido(interfaz: Any) -> None:
             ),
         ),
         actions=[
-            ft.Button("Confirmar y Descontar", icon=ft.Icons.CHECK_CIRCLE, bgcolor=ROJO, color=ft.Colors.WHITE, on_click=confirmar_pedido),
+            btn_confirmar,
             interfaz.boton_dialogo("Cancelar", lambda _e: interfaz.page.pop_dialog()),
         ],
     )

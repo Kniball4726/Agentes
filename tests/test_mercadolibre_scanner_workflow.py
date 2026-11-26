@@ -76,79 +76,73 @@ class TestMercadoLibreScannerWorkflow(unittest.TestCase):
         }
         mock_sm.actualizar_stock_base = MagicMock(return_value=1)
 
-        import src.ui.dialogs.dlg_stock_ops as mod_ops
-        orig_get_sm = mod_ops._get_stock_manager
-        mod_ops._get_stock_manager = lambda: (lambda _ruta: mock_sm)
+        interfaz.stock_manager_factory = lambda _ruta: mock_sm
 
-        try:
-            mostrar_descuento_mercado_libre(interfaz)
-            self.assertIsNotNone(dialogo_capturado)
+        mostrar_descuento_mercado_libre(interfaz)
+        self.assertIsNotNone(dialogo_capturado)
 
-            # Verificar que tiene pestañas (Tabs)
-            tabs = dialogo_capturado.content.content
-            self.assertIsInstance(tabs, ft.Tabs)
-            self.assertEqual(tabs.length, 2)
+        # Verificar que tiene pestañas (Tabs)
+        tabs = dialogo_capturado.content.content
+        self.assertIsInstance(tabs, ft.Tabs)
+        self.assertEqual(tabs.length, 2)
 
-            # Controles de vista_escaner
-            vista_escaner = tabs.content.controls[1].controls[0]
-            self.assertIsInstance(vista_escaner, ft.Column)
+        # Controles de vista_escaner
+        vista_escaner = tabs.content.controls[1].controls[0]
+        self.assertIsInstance(vista_escaner, ft.Column)
 
-            # Fila de inputs de escaneo
-            fila_escaneo = vista_escaner.controls[1]
-            input_codigo = fila_escaneo.controls[0]
-            self.assertIsInstance(input_codigo, ft.TextField)
-            self.assertTrue(input_codigo.autofocus)
+        # Fila de inputs de escaneo
+        fila_escaneo = vista_escaner.controls[1]
+        input_codigo = fila_escaneo.controls[0]
+        self.assertIsInstance(input_codigo, ft.TextField)
+        self.assertTrue(input_codigo.autofocus)
 
-            # 1. Escanear por código de barras de empaque (EAN-13)
-            input_codigo.value = "7791234567890"
-            input_codigo.on_submit(None)
+        # 1. Escanear por código de barras de empaque (EAN-13)
+        input_codigo.value = "7791234567890"
+        input_codigo.on_submit(None)
 
-            # Verificar feedback sonoro y mensaje
-            interfaz.reproducir_sonido.assert_called_with("exito")
-            texto_feedback = vista_escaner.controls[3]
-            self.assertIn("TERM-01", texto_feedback.value)
-            self.assertIn("Termo Acero 1L", texto_feedback.value)
+        # Verificar feedback sonoro y mensaje
+        interfaz.reproducir_sonido.assert_called_with("exito")
+        texto_feedback = vista_escaner.controls[3]
+        self.assertIn("TERM-01", texto_feedback.value)
+        self.assertIn("Termo Acero 1L", texto_feedback.value)
 
-            # 2. Escanear por SKU interno
-            input_codigo.value = "MATE-02"
-            input_codigo.on_submit(None)
-            self.assertIn("MATE-02", texto_feedback.value)
+        # 2. Escanear por SKU interno
+        input_codigo.value = "MATE-02"
+        input_codigo.on_submit(None)
+        self.assertIn("MATE-02", texto_feedback.value)
 
-            # 3. Escanear código inexistente
-            input_codigo.value = "CODIGO_INEXISTENTE"
-            input_codigo.on_submit(None)
-            self.assertIn("no encontrado", texto_feedback.value)
-            interfaz.reproducir_sonido.assert_called_with("error")
+        # 3. Escanear código inexistente
+        input_codigo.value = "CODIGO_INEXISTENTE"
+        input_codigo.on_submit(None)
+        self.assertIn("no encontrado", texto_feedback.value)
+        interfaz.reproducir_sonido.assert_called_with("error")
 
-            # 4. Confirmar y Descontar el paquete
-            async def mock_ejecutar_tarea(nombre, func):
-                func()
-                return True
+        # 4. Confirmar y Descontar el paquete
+        async def mock_ejecutar_tarea(nombre, func):
+            func()
+            return True
 
-            interfaz.ejecutar_tarea = mock_ejecutar_tarea
-            btn_confirmar = dialogo_capturado.actions[0]
-            self.assertEqual(btn_confirmar.content, "Confirmar y Descontar")
+        interfaz.ejecutar_tarea = mock_ejecutar_tarea
+        btn_confirmar = dialogo_capturado.actions[0]
+        self.assertEqual(btn_confirmar.content, "Confirmar y Descontar")
 
-            # Ejecutar confirmación
-            asyncio.run(btn_confirmar.on_click(None))
+        # Ejecutar confirmación
+        asyncio.run(btn_confirmar.on_click(None))
 
-            # Verificar que se llamó actualizar_stock_base con los descuentos
-            mock_sm.actualizar_stock_base.assert_called_once()
-            descuentos_aplicados = mock_sm.actualizar_stock_base.call_args[1]["descuentos"]
-            codigos_descontados = [d.codigo for d in descuentos_aplicados]
-            self.assertIn("TERM-01", codigos_descontados)
-            self.assertIn("MATE-02", codigos_descontados)
+        # Verificar que se llamó actualizar_stock_base con los descuentos
+        mock_sm.actualizar_stock_base.assert_called_once()
+        descuentos_aplicados = mock_sm.actualizar_stock_base.call_args[1]["descuentos"]
+        codigos_descontados = [d.codigo for d in descuentos_aplicados]
+        self.assertIn("TERM-01", codigos_descontados)
+        self.assertIn("MATE-02", codigos_descontados)
 
-            # Verificar que el pedido se registró en OrderStore como tipo 'docx'
-            pedidos_pendientes = self.order_store.listar_pedidos_pendientes_cierre()
-            self.assertEqual(len(pedidos_pendientes), 1)
-            ped = pedidos_pendientes[0]
-            self.assertEqual(ped.tipo_archivo, "docx")
-            self.assertEqual(ped.articulos_descontados, 2)
-            self.assertEqual(ped.cliente, "Mercado Libre")
-
-        finally:
-            mod_ops._get_stock_manager = orig_get_sm
+        # Verificar que el pedido se registró en OrderStore como tipo 'docx'
+        pedidos_pendientes = self.order_store.listar_pedidos_pendientes_cierre()
+        self.assertEqual(len(pedidos_pendientes), 1)
+        ped = pedidos_pendientes[0]
+        self.assertEqual(ped.tipo_archivo, "docx")
+        self.assertEqual(ped.articulos_descontados, 2)
+        self.assertEqual(ped.cliente, "Mercado Libre")
 
 
 if __name__ == "__main__":

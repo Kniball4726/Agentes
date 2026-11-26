@@ -6,27 +6,19 @@ Re-exporta MercadoLibreScannerComponent, MercadoLibreDocxComponent y mostrar_des
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 from typing import Any
 
 import flet as ft
 
 from ..theme import ROJO
-from ...inventory import StockManager as _DefaultStockManager
-from ._shared import safe_focus
+from ._shared import resolve_stock_manager, safe_focus
 from .ml_docx_component import MercadoLibreDocxComponent
 from .ml_scanner_component import MercadoLibreScannerComponent
 
 
-def _get_stock_manager():
-    """Obtiene dinámicamente la clase StockManager activa o mockeada."""
-    mod_ops = sys.modules.get("src.ui.dialogs.dlg_stock_ops")
-    if mod_ops and hasattr(mod_ops, "_get_stock_manager") and mod_ops._get_stock_manager is not _get_stock_manager:
-        return mod_ops._get_stock_manager()
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager(interfaz: Any = None):
+    """Obtiene la clase StockManager activa mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def mostrar_descuento_mercado_libre(interfaz: Any, _evento: ft.Event | None = None) -> None:

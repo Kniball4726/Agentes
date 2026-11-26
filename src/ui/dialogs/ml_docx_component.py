@@ -5,24 +5,20 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import shutil
-import sys
 from typing import Any, Callable
 
 import flet as ft
 
 from ...agent import AgenteRemitosStock
-from ...inventory import StockManager as _DefaultStockManager
 from ...orders import calcular_hash_archivo
 from ...parsers.mercado_libre_parser import parsear_pedido_mercado_libre
 from ...parsers.remito_parser import ResultadoRemito, normalizar_codigo
 from ...paths import application_root
+from ._shared import resolve_stock_manager
 
 
-def _resolver_sm():
-    mod_ml = sys.modules.get("src.ui.dialogs.dlg_mercadolibre_descuento")
-    if mod_ml is not None and hasattr(mod_ml, "_get_stock_manager"):
-        return mod_ml._get_stock_manager()
-    return _DefaultStockManager
+def _resolver_sm(interfaz: Any = None):
+    return resolve_stock_manager(interfaz)
 
 
 class MercadoLibreDocxComponent:
@@ -123,7 +119,7 @@ class MercadoLibreDocxComponent:
             self.interfaz.page.update()
             return
 
-        sm = _resolver_sm()(self.interfaz.menu.ruta_excel_base)
+        sm = _resolver_sm(self.interfaz)(self.interfaz.menu.ruta_excel_base)
         productos_catalogo = [(codigo, nombre) for _, codigo, nombre, _ in sm.productos_base]
 
         try:
@@ -330,7 +326,7 @@ class MercadoLibreDocxComponent:
         self.interfaz.page.pop_dialog()
 
         def ejecutar_descuento_ml() -> None:
-            sm = _resolver_sm()(self.interfaz.menu.ruta_excel_base)
+            sm = _resolver_sm(self.interfaz)(self.interfaz.menu.ruta_excel_base)
             agente = AgenteRemitosStock(stock_manager=sm)
             reporte = agente.ejecutar(
                 rutas_mercado_libre=[arch],

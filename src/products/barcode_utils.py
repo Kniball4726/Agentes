@@ -8,6 +8,7 @@ a la izquierda (UPC-A <-> EAN-13).
 
 from __future__ import annotations
 
+import math
 import re
 
 
@@ -23,7 +24,7 @@ def normalizar_codigo_lector(raw: object) -> str:
         return ""
 
     if isinstance(raw, float):
-        if raw != raw or abs(raw) == float("inf"):
+        if not math.isfinite(raw):
             return ""
         texto = str(int(raw)) if raw.is_integer() else str(raw)
     else:

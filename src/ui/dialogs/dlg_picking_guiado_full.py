@@ -215,7 +215,7 @@ def mostrar_picking_guiado_full(interfaz: Any, _evento: ft.Event | None = None) 
             pid,
             es_final=True,
             picker_nom=picker_nom,
-            stock_manager_cls=_get_stock_manager(),
+            stock_manager_cls=_get_stock_manager(interfaz),
             cerrar_dialogo=True,
         )
 

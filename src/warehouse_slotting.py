@@ -149,7 +149,7 @@ def analizar_rotacion_abc(
                 motivo = f"Producto Clase A ubicado en fondo ({slot_actual.rack}). Genera sobre-recorrido."
             elif slot_actual.nivel == 3:
                 desalineado = True
-                motivo = f"Producto Clase A ubicado en altura (Nivel 3). Requiere escalera."
+                motivo = "Producto Clase A ubicado en altura (Nivel 3). Requiere escalera."
         elif cat == "C":
             # Baja rotación ocupando Golden Zone en Rack A
             if slot_actual.rack == "A" and slot_actual.es_zona_dorada:
@@ -356,3 +356,12 @@ def aplicar_reubicacion_slotting(
 ) -> bool:
     """Aplica la reubicación en la base de datos de productos."""
     return product_store.actualizar_ubicacion(sku, nueva_ubicacion)
+
+
+from .stock.slotting_replenishment import (  # noqa: E402
+    LoteStock as LoteStock,
+    SugerenciaReposicionPicking as SugerenciaReposicionPicking,
+    UbicacionProducto as UbicacionProducto,
+    analizar_ubicaciones_sku as analizar_ubicaciones_sku,
+    generar_sugerencias_reposicion_picking as generar_sugerencias_reposicion_picking,
+)

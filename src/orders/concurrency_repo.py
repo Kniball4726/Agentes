@@ -87,15 +87,33 @@ class ConcurrencyRepository:
             return True
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
+            ahora = datetime.now().isoformat()
             limite = (datetime.now() - timedelta(hours=1)).isoformat()
             connection.execute(
-                "DELETE FROM transacciones_procesadas WHERE created_at < ?", (limite,)
+                "DELETE FROM transacciones_procesadas WHERE created_at LIKE '%T%' AND created_at < ?",
+                (limite,),
+            )
+            connection.execute(
+                "DELETE FROM transacciones_procesadas WHERE created_at NOT LIKE '%T%' AND created_at < datetime('now', '-1 hour')"
             )
             try:
                 connection.execute(
-                    "INSERT INTO transacciones_procesadas (tx_id, accion, detalle) VALUES (?, ?, ?)",
-                    (tx_id, accion, detalle),
+                    """
+                    INSERT INTO transacciones_procesadas (tx_id, accion, detalle, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (tx_id, accion, detalle, ahora),
                 )
                 return True
             except sqlite3.IntegrityError:
                 return False
+
+    def liberar_transaccion_idempotente(self, tx_id: str) -> None:
+        """Elimina una marca de idempotencia fallida para permitir reintentar tras un rollback."""
+        if not tx_id:
+            return
+        with self._connect() as connection, connection:
+            connection.execute(
+                "DELETE FROM transacciones_procesadas WHERE tx_id = ?",
+                (tx_id,),
+            )

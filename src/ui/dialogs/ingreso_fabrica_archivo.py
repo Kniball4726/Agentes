@@ -5,29 +5,19 @@ from __future__ import annotations
 import asyncio
 import inspect
 import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ...parsers.factory_parser import parsear_archivo_fabrica
 from ..theme import ROJO
+from ._shared import resolve_stock_manager
 
 
-def resolver_stock_manager_fabrica():
-    """Resuelve StockManager respetando patches sobre dlg_ingreso_fabrica, dlg_stock_ops o src.flet_gui."""
-    mod_ing = sys.modules.get("src.ui.dialogs.dlg_ingreso_fabrica")
-    if mod_ing is not None and hasattr(mod_ing, "_get_stock_manager"):
-        return mod_ing._get_stock_manager()
-    mod_ops = sys.modules.get("src.ui.dialogs.dlg_stock_ops")
-    if mod_ops is not None and hasattr(mod_ops, "_get_stock_manager"):
-        return mod_ops._get_stock_manager()
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def resolver_stock_manager_fabrica(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def ejecutar_tarea_compatible(interfaz: Any, titulo: str, fn: Any) -> None:
@@ -58,7 +48,7 @@ def registrar_ingreso_escaner(interfaz: Any, items_escaneados: dict[str, int], s
     copia_items = dict(items_escaneados)
 
     def aplicar_ingreso() -> None:
-        sm = resolver_stock_manager_fabrica()(interfaz.menu.ruta_excel_base)
+        sm = resolver_stock_manager_fabrica(interfaz)(interfaz.menu.ruta_excel_base)
         res = sm.registrar_ingreso_fabrica(copia_items, sobrescribir=sobrescribir_seguro)
         print(f"[OK] Ingreso fábrica: {len(res)} productos actualizados.")
         for cod, (ant, nvo) in res.items():
@@ -125,7 +115,7 @@ def construir_tab_archivo_fabrica(interfaz: Any, modo_sobrescribir: ft.Checkbox)
         lote_archivos = list(archivos_pendientes)
 
         def ejecutar() -> None:
-            sm = resolver_stock_manager_fabrica()(interfaz.menu.ruta_excel_base)
+            sm = resolver_stock_manager_fabrica(interfaz)(interfaz.menu.ruta_excel_base)
             total_archivos = 0
             for arch in lote_archivos:
                 totales, _ = parsear_archivo_fabrica(arch)

@@ -6,6 +6,7 @@ import '../../models/inventory_result.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/barcode_scan_field.dart';
+import '../../widgets/warehouse_alerts_sheet.dart';
 
 class InventoryTab extends StatefulWidget {
   final ApiService apiService;
@@ -447,6 +448,16 @@ class _InventoryTabState extends State<InventoryTab> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                       const Spacer(),
+                      IconButton(
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                        icon: const Icon(Icons.event_available_outlined, color: Colors.amberAccent, size: 22),
+                        tooltip: 'Alertas FEFO y Reservas',
+                        onPressed: () => showWarehouseAlertsSheet(
+                          context,
+                          apiService: widget.apiService,
+                          currentUser: widget.currentUser,
+                        ),
+                      ),
                       if (_controller.isNotEmpty) ...[
                         IconButton(
                           constraints: const BoxConstraints(minWidth: 48, minHeight: 48),

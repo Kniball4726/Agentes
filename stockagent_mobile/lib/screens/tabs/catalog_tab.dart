@@ -4,6 +4,8 @@ import '../../models/auth_user.dart';
 import '../../models/product_item.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/product_warehouse_sheet.dart';
+import '../../widgets/warehouse_alerts_sheet.dart';
 
 class CatalogTab extends StatefulWidget {
   final ApiService apiService;
@@ -220,6 +222,34 @@ class _CatalogTabState extends State<CatalogTab> {
     }
   }
 
+  Future<void> _abrirDetalleWarehouse(ProductItem producto) async {
+    var cambiadoEnSheet = false;
+    final res = await showProductWarehouseSheet(
+      context,
+      apiService: widget.apiService,
+      currentUser: widget.currentUser,
+      producto: producto,
+      onChanged: () => cambiadoEnSheet = true,
+    );
+    if ((res == true || cambiadoEnSheet) && mounted) {
+      _buscarProductos(_searchController.text);
+    }
+  }
+
+  Future<void> _abrirAlertasWarehouse({int initialTab = 0}) async {
+    var cambiadoEnSheet = false;
+    final res = await showWarehouseAlertsSheet(
+      context,
+      apiService: widget.apiService,
+      currentUser: widget.currentUser,
+      initialTab: initialTab,
+      onChanged: () => cambiadoEnSheet = true,
+    );
+    if ((res == true || cambiadoEnSheet) && mounted) {
+      _buscarProductos(_searchController.text);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final puedeEditar = widget.currentUser.canEditCatalog;
@@ -275,6 +305,18 @@ class _CatalogTabState extends State<CatalogTab> {
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const Spacer(),
+                  IconButton(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    tooltip: 'Alertas vencimiento FEFO',
+                    icon: const Icon(Icons.event_available_outlined, size: 22, color: Colors.amberAccent),
+                    onPressed: () => _abrirAlertasWarehouse(initialTab: 0),
+                  ),
+                  IconButton(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    tooltip: 'Reservas activas',
+                    icon: const Icon(Icons.bookmark_border, size: 22, color: Colors.cyanAccent),
+                    onPressed: () => _abrirAlertasWarehouse(initialTab: 1),
+                  ),
                   IconButton(
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     icon: const Icon(Icons.refresh, size: 22, color: Colors.white54),
@@ -363,7 +405,9 @@ class _CatalogTabState extends State<CatalogTab> {
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
                                               child: Text(
-                                                'Stock: ${p.stock}',
+                                                p.hasReservas
+                                                    ? 'Disp: ${p.disponibleNeto} (Res: ${p.stockReservado})'
+                                                    : 'Disp: ${p.disponibleNeto}',
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 12,
@@ -383,6 +427,17 @@ class _CatalogTabState extends State<CatalogTab> {
                                             color: AppTheme.textPrimary,
                                           ),
                                         ),
+                                        if (p.hasReservas)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 4),
+                                            child: Text(
+                                              'Stock físico: ${p.stock} · Comprometido en reservas: ${p.stockReservado}',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.amberAccent,
+                                              ),
+                                            ),
+                                          ),
                                         const SizedBox(height: 10),
                                         Wrap(
                                           spacing: 8,
@@ -452,6 +507,43 @@ class _CatalogTabState extends State<CatalogTab> {
                                                       Text(
                                                         p.hasBarcode ? p.codBarras : 'Vincular código',
                                                         style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.white70,
+                                                          fontWeight: FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Acceso a Zonas multi-ubicación y Lotes FEFO
+                                            InkWell(
+                                              onTap: () => _abrirDetalleWarehouse(p),
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: ConstrainedBox(
+                                                constraints: const BoxConstraints(minHeight: 48),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.surfaceColor,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.warehouse_outlined,
+                                                        size: 16,
+                                                        color: Colors.tealAccent,
+                                                      ),
+                                                      SizedBox(width: 6),
+                                                      Text(
+                                                        'Zonas / FEFO',
+                                                        style: TextStyle(
                                                           fontSize: 12,
                                                           color: Colors.white70,
                                                           fontWeight: FontWeight.w500,

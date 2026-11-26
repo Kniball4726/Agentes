@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from pathlib import Path
@@ -21,13 +22,17 @@ from .catalog_loader import CatalogLoaderService
 from .discount_engine import DiscountEngineService
 from .template_sync import ResultadoSincronizacionExcel, TemplateSyncService
 
+logger = logging.getLogger("stockagent.inventory")
+
 
 class StockManager:
     """Orquestador unificado del inventario SQLite, plantilla Excel y reportes por composición."""
 
     _excel_locks: dict[str, threading.RLock] = {}
     _excel_timers: dict[str, threading.Timer] = {}
+    _excel_pending_keys: set[str] = set()
     _meta_lock = threading.Lock()
+    _MAX_EXCEL_SYNC_RETRIES = 3
 
     @classmethod
     def _obtener_lock_excel(cls, ruta: Path) -> threading.RLock:
@@ -39,8 +44,29 @@ class StockManager:
                 cls._excel_locks[key] = lock
             return lock
 
-    def programar_sincronizacion_excel(self, delay_s: float = 0.6) -> None:
-        """Programa la sincronización de Productos.xlsx en segundo plano (con debounce) sin bloquear la UI."""
+    @classmethod
+    def obtener_pendientes_sincronizacion_excel(cls) -> list[str]:
+        """Retorna las rutas de plantillas Excel con sincronización pendiente o en reintento."""
+        with cls._meta_lock:
+            return sorted(cls._excel_pending_keys)
+
+    @classmethod
+    def cancelar_sincronizaciones_pendientes(cls) -> None:
+        """Cancela temporizadores pendientes de sincronización Excel y limpia su estado."""
+        with cls._meta_lock:
+            for timer in cls._excel_timers.values():
+                timer.cancel()
+            cls._excel_timers.clear()
+            cls._excel_pending_keys.clear()
+
+    def programar_sincronizacion_excel(
+        self,
+        delay_s: float = 0.6,
+        *,
+        max_reintentos: int = _MAX_EXCEL_SYNC_RETRIES,
+        _intento: int = 0,
+    ) -> None:
+        """Programa la sincronización de Productos.xlsx en segundo plano con reintentos ante bloqueo."""
         if not getattr(self, "ruta_excel_base", None) or not self.ruta_excel_base.exists():
             return
         key = str(self.ruta_excel_base.resolve()) if self.ruta_excel_base.exists() else str(self.ruta_excel_base)
@@ -55,10 +81,35 @@ class StockManager:
                 with self._obtener_lock_excel(ruta_excel):
                     sm_bg = StockManager(ruta_excel, nombre_hoja=nombre_hoja, ruta_base_datos=ruta_db)
                     sm_bg.sincronizar_catalogo_completo_excel()
+                with self._meta_lock:
+                    self._excel_pending_keys.discard(key)
+            except (PermissionError, OSError) as exc_lock:
+                if _intento < max_reintentos:
+                    siguiente_delay = min(15.0, max(0.2, float(delay_s)) * (2 ** _intento) + 0.5)
+                    logger.warning(
+                        "Productos.xlsx bloqueado durante sincronización (%s); reintento %s/%s en %.1fs",
+                        exc_lock,
+                        _intento + 1,
+                        max_reintentos,
+                        siguiente_delay,
+                    )
+                    self.programar_sincronizacion_excel(
+                        delay_s=siguiente_delay,
+                        max_reintentos=max_reintentos,
+                        _intento=_intento + 1,
+                    )
+                else:
+                    logger.error(
+                        "Sincronización diferida de Excel agotó %s reintentos (%s): %s",
+                        max_reintentos,
+                        ruta_excel,
+                        exc_lock,
+                    )
             except Exception as exc_bg:
-                print(f"[AVISO] Sincronización diferida de Excel: {exc_bg}")
+                logger.warning("Sincronización diferida de Excel falló para %s: %s", ruta_excel, exc_bg)
 
         with self._meta_lock:
+            self._excel_pending_keys.add(key)
             timer_previo = self._excel_timers.pop(key, None)
             if timer_previo is not None:
                 timer_previo.cancel()

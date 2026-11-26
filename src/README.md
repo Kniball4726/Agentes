@@ -8,7 +8,7 @@ Este directorio contiene el código fuente principal de **StockAgent**, estructu
 
 ```text
 src/
-├── core/                       # Núcleo de excepciones, seguridad, sanitización y delegación
+├── core/                       # Núcleo de excepciones, migraciones SQLite, seguridad, sanitización y delegación
 │   ├── __init__.py             # Exportaciones públicas de excepciones, seguridad y entorno
 │   ├── delegation.py           # Descriptor no-datos DelegadoAtributo para composición en stores/fachadas
 │   ├── exceptions.py           # Jerarquía unificada de errores tipados
@@ -16,7 +16,9 @@ src/
 │   ├── network_security.py     # Protección anti-SSRF, TLS estricto, HMAC-SHA256 y sanitización MIME
 │   ├── sanitize_utils.py       # Sanitización anti-fórmulas Excel/CSV y escape HTML/XML (Telegram/ReportLab)
 │   ├── security_utils.py       # Confinamiento de rutas, validación de impresoras y URLs seguras
+│   ├── sqlite_migrations.py    # Migraciones versionadas idempotentes mediante PRAGMA user_version
 │   ├── sqlite_utils.py         # Apertura configurada y cierre determinista (closing) de SQLite
+│   ├── stock_order_tx.py       # Orquestación transaccional entre reservas/stock y órdenes de pedido
 │   └── system_reset.py         # Restablecimiento controlado a estado virgen (Clean Slate)
 │
 ├── api/                        # API REST v1 desacoplada (FastAPI)
@@ -60,18 +62,22 @@ src/
 │   ├── stock_flow_repo.py      # Repositorio de analítica ejecutiva y balance de stock en vivo
 │   └── store.py                # Repositorio SQLite OrderStore unificado por composición (11 repos)
 │
-├── products/                   # Dominio modular de productos, catálogo y despachos
+├── products/                   # Dominio modular de productos, multi-ubicación, FEFO, reservas y despachos
 │   ├── barcode_utils.py        # Normalización EAN-13 / SKU y lectura Barcode Wedge
-│   ├── schema.py               # Creación e inicialización de esquema SQLite de productos
+│   ├── schema.py               # Creación y migración versionada SQLite v4 (PRAGMA user_version) de productos
 │   ├── protocols.py            # Contratos Protocol para caché de catálogo y escrituras SQLite
 │   ├── catalog_read_repo.py    # Consultas optimizadas de catálogo, caché SKU y paginación
 │   ├── catalog_write_repo.py   # CRUD de catálogo, precios, umbrales y ubicaciones slotting
 │   ├── catalog_repo.py         # Fachada combinada de lectura/escritura del catálogo
+│   ├── locations_repo.py       # Repositorio especializado de multi-ubicación por zona y transferencias bin-a-bin
+│   ├── lots_fefo_repo.py       # Repositorio de lotes, vencimientos, alertas y consumo estricto FEFO
+│   ├── locations_lots_repo.py  # Fachada compuesta (DelegadoAtributo) sobre locations_repo y lots_fefo_repo
+│   ├── reservations_repo.py    # Repositorio transaccional de reservas de stock (pedido / ola_picking) y disponible neto
 │   ├── movements_repo.py       # Historial de movimientos, despachos y enriquecimiento atómico
 │   ├── movements_report_repo.py # Consultas consolidadas para reportes de movimientos diarios
 │   ├── physical_repo.py        # Conteo físico de operarios y comparativas de discrepancia
 │   ├── notifications_repo.py   # Notificaciones administrativas y alertas v_analisis_reposicion
-│   └── store.py                # Repositorio SQLite ProductStore por composición
+│   └── store.py                # Repositorio SQLite ProductStore por composición declarativa (DelegadoAtributo)
 │
 ├── inventory/                  # Dominio modular de inventario y sincronización Excel
 │   ├── protocols.py            # Contratos Protocol para host de inventario e informes
@@ -166,18 +172,19 @@ src/
 │                               # dlg_archivo_historico, dlg_backup,
 │                               # picking_plan_shared + dlg_control_ingreso_fabrica +
 │                               # dlg_picking_guiado_full + dlg_planificar_full + dlg_planificar_ingreso_fabrica,
-│                               # dlg_gestion_ambientes, dlg_heatmap + heatmap_render,
+│                               # dlg_gestion_ambientes, dlg_heatmap + heatmap_render + heatmap_fefo_render,
 │                               # historial_cards + historial_* + dlg_historial_pedidos, dlg_informes,
 │                               # dlg_ingreso_fabrica + ingreso_fabrica_archivo,
 │                               # dlg_inventario_vivo + inventario_vivo_views, dlg_mercado_full,
 │                               # dlg_mercadolibre + mercadolibre_api_cards,
 │                               # dlg_mercadolibre_descuento + ml_*, dlg_movimientos_rapidos + *_ops,
-│                               # dlg_pedido_fabrica, pedidos_crear + pedidos_crear_componentes +
+│                               # dlg_ola_picking, dlg_pedido_fabrica, pedidos_baja + pedidos_baja_ops,
+│                               # pedidos_crear + pedidos_crear_componentes +
 │                               # pedidos_crear_modales + pedidos_gestion + dlg_pedidos, dlg_preferencias,
 │                               # dlg_productos + productos_modales, dlg_quiebre + quiebre_banner,
 │                               # dlg_reportes, dlg_restaurar, dlg_sincronizar_excel, dlg_smtp,
 │                               # dlg_stock_fisico + stock_fisico_views, dlg_stock_ops (fachada),
-│                               # dlg_telegram, dlg_usuarios, dlg_ver_stock
+│                               # dlg_telegram, dlg_ubicaciones_lotes, dlg_usuarios + usuarios_modales, dlg_ver_stock
 │
 ├── secretos.py                 # Cifrado de secretos en disco (Windows DPAPI enc:dpapi: / Fernet enc:fernet:)
 ├── ssl_manager.py              # Autogeneración de certificados X.509 SAN en data/certs/
@@ -270,12 +277,16 @@ Reemplaza el antiguo archivo monolítico `orders_store.py` (anteriormente de má
 
 Reemplaza el antiguo archivo monolítico `product_store.py` (más de 1,410 líneas), distribuyendo el modelo de datos y consultas en repositorios desacoplados por composición:
 
-* **`schema.py` y `protocols.py`:** Inicialización aislada de esquema e índices (`inicializar_esquema_productos`) y contratos estructurales `CatalogCacheHostProtocol` y `CatalogWriteHostProtocol`.
+* **`schema.py`, `sqlite_migrations.py` y `protocols.py`:** Inicialización y migraciones incrementales versionadas mediante `PRAGMA user_version` (`PRODUCTS_SCHEMA_VERSION = 4` en `inicializar_esquema_productos`) y contratos estructurales `CatalogCacheHostProtocol` y `CatalogWriteHostProtocol`.
 * **`catalog_read_repo.py` / `catalog_write_repo.py` / `catalog_repo.py` (`CatalogRepository`):** Carga rápida en una sola consulta (`load_catalog_fast`), búsqueda difusa por SKU o código de barras, paginación, inserción y caché SKU.
+* **`locations_repo.py` (`WarehouseLocationsRepository`):** Multi-ubicación logística por zona (`picking`, `pulmon`, `pallet`, `recepcion`, `cuarentena`), sincronización de ubicación principal en `products` y transferencias atómicas bin-a-bin (`pulmon -> picking`).
+* **`lots_fefo_repo.py` (`FefoLotsRepository`):** Registro de lotes con fecha de vencimiento, planificación/consumo ordenado por FEFO (First Expired, First Out) y clasificación de alertas (`VENCIDO`, `CRITICO`, `PROXIMO`).
+* **`locations_lots_repo.py` (`LocationsLotsRepository`):** Fachada compuesta que integra `WarehouseLocationsRepository` y `FefoLotsRepository` mediante `DelegadoAtributo` preservando 100% los imports históricos.
+* **`reservations_repo.py` (`StockReservationsRepository`):** Reservas atómicas previas al picking (`pedido` y `ola_picking`), cálculo de `Disponible Neto` (`Físico - Reservado` y vista `v_stock_disponible`), consolidación en despacho FEFO y liberación sin doble devolución.
 * **`movements_repo.py` / `movements_report_repo.py` (`MovementsRepository`, `MovementsReportRepository`):** Historial paginado de movimientos de inventario (`stock_movements`), registro de despachos con trazabilidad (`despachos`, `despacho_detalles`), reportes de jornada y KPIs.
 * **`physical_repo.py` (`PhysicalRepository`):** Registro de conteos físicos de operarios, cálculo de diferencias vs. stock digital y almacenamiento de comparativas históricas.
 * **`notifications_repo.py` (`NotificationsRepository`):** Notificaciones administrativas y consulta a la vista `v_analisis_reposicion` para alertas de quiebre o sobrestock.
-* **`store.py` (`ProductStore`):** Orquesta los repositorios compuestos, el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
+* **`store.py` (`ProductStore`):** Orquesta los repositorios compuestos usando descriptores declarativos `DelegadoAtributo`, el caché de SKU en memoria protegido por `threading.Lock` y el trigger automático `trg_auditoria_stock`.
 * *(Las importaciones de este dominio se realizan directamente desde el paquete canónico `src.products`.)*
 
 ---
@@ -303,7 +314,7 @@ Reemplaza el antiguo archivo monolítico `stock_manager.py` (más de 1,500 líne
 
 ### Componentes, Modularidad UI y Reportes por Canal:
 * **`shell_builder.py`, `admin_flow_widgets.py` y `sidebar_quick_actions.py`:** Construyen la cáscara responsive, widgets de flujo administrativo y accesos rápidos de barra lateral sin recargar `flet_gui.py`.
-* **Diálogos Modulares sin Monolitos (`src/ui/dialogs/`):** Subcomponentes cohesivos como `analytics_widgets.py` / `analytics_rotacion.py` / `analytics_metricas.py`, `pedidos_crear_modales.py`, `historial_cards.py`, `quiebre_banner.py`, `mercadolibre_api_cards.py` y `cierre/cierre_mercado_cards.py`.
+* **Diálogos Modulares sin Monolitos (`src/ui/dialogs/`):** Subcomponentes cohesivos como `analytics_widgets.py` / `analytics_rotacion.py` / `analytics_metricas.py`, `pedidos_baja_ops.py`, `pedidos_crear_modales.py`, `historial_cards.py`, `quiebre_banner.py`, `dlg_ubicaciones_lotes.py`, `dlg_ola_picking.py`, `heatmap_fefo_render.py`, `mercadolibre_api_cards.py` y `cierre/cierre_mercado_cards.py`.
 * **Reportes SQLite-First y Cierre en 3 Canales (`src/stock/reports_movements_*.py`):** `reports_movements_common.py` comparte exportadores PDF/XLS, `reports_movements_canales.py` discrimina salidas del operario en Mayoristas / Mercado Libre / Full (+ Ingresos) solo para artículos con movimiento, y `reports_movements.py` emite el consolidado por producto para Administración.
 * **`Debouncer` (`src/ui/components/debounce.py`):** Temporizador reactivo para campos de búsqueda (ej. 200 ms en visor de stock e historial de pedidos), evitando re-renderizados innecesarios y garantizando fluidez a 60 FPS.
 * **Validación Inline (`error_text`):** Mensajes de error en tiempo real debajo de los campos de texto en `dlg_clientes.py` y `dlg_productos.py` (nombre, SKU, stock), sin necesidad de modales intrusivos.
@@ -336,6 +347,6 @@ Ubicado en `.github/workflows/ci.yml`:
 ## 🧪 9. Verificación y Cobertura de Pruebas
 
 Toda la arquitectura modular ha sido verificada contra la suite completa de pruebas automatizadas (`.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider`):
-* **Total de pruebas aprobadas:** `489 passed, 7 subtests passed, 0 failed` (incluyendo las suites integrales `test_fase1_security_ui_fixes.py`, `test_fase2_backend_hardening.py`, `test_fase3_design_system_ux.py`, `test_fase4_mobile_security_ux.py` y `test_rol_despachador.py`).
+* **Total de pruebas aprobadas:** `545 passed, 23 subtests passed, 0 failed` en `86` módulos `tests/test_*.py` (incluyendo las suites integrales `test_fase1_security_ui_fixes.py`, `test_fase2_backend_hardening.py`, `test_fase3_design_system_ux.py`, `test_fase4_mobile_security_ux.py`, `test_fase4_reservations_multiloc_fefo.py`, `test_etapa_a_ui_fefo_multiloc.py`, `test_etapa_b_order_reservations.py`, `test_etapa_c_despacho_api_and_mobile_contract.py`, `test_modular_refactoring.py` y `test_rol_despachador.py`).
 * **Tasa de éxito:** 100% pasando sobre toda la batería de pruebas unitarias y de integración.
 * **Retrocompatibilidad:** Cero rupturas de contratos; todas las fachadas y descriptores `DelegadoAtributo` preservan las firmas públicas e inyección de mocks.

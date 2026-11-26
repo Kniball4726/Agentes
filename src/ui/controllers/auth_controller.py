@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from datetime import datetime
 from typing import Any, Callable
 from unittest.mock import NonCallableMock
@@ -24,10 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def obtener_inactividad_actual() -> int:
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None and hasattr(mod, "INACTIVIDAD_MAX_MINUTOS"):
-        return int(mod.INACTIVIDAD_MAX_MINUTOS)
-    return INACTIVIDAD_MAX_MINUTOS
+    """Devuelve el límite de inactividad vigente configurado en el sistema."""
+    return int(INACTIVIDAD_MAX_MINUTOS)
 
 
 class AuthSessionController:

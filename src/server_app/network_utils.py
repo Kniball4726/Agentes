@@ -100,7 +100,12 @@ def resolver_instancia_unica(
     forzar_reinicio = any(
         f in sys.argv for f in ("--force", "--forzar", "--reiniciar", "--restart")
     )
-    if hasattr(ft_module.run, "_mock_name") or not _puerto_local_activo(port):
+    import uvicorn
+
+    es_mock_arranque = hasattr(getattr(ft_module, "run", None), "_mock_name") or hasattr(
+        uvicorn.Server, "_mock_name"
+    )
+    if es_mock_arranque or not _puerto_local_activo(port):
         return False
 
     if forzar_reinicio:

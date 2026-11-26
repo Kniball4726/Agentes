@@ -12,9 +12,9 @@ from ..audio_feedback import emitir_tono_error, emitir_tono_exito
 from ._shared import resolve_stock_manager, safe_focus
 
 
-def resolver_stock_manager_ui() -> type:
-    """Obtiene la clase StockManager activa (respetando dobles de prueba inyectados en flet_gui)."""
-    return resolve_stock_manager()
+def resolver_stock_manager_ui(interfaz: Any = None) -> type:
+    """Obtiene la clase StockManager activa inyectada en `interfaz`/`AppDependencies`."""
+    return resolve_stock_manager(interfaz)
 
 
 def construir_banner_escaneo_inicial(mensaje: str, es_oscuro: bool) -> ft.Container:

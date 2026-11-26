@@ -88,5 +88,5 @@ def mostrar_planificar_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None =
         interfaz,
         _CONFIG_PLAN_FABRICA,
         parsear_archivo_fabrica,
-        stock_manager_factory=_get_stock_manager,
+        stock_manager_factory=lambda: _get_stock_manager(interfaz),
     )

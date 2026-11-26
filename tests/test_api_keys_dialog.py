@@ -74,7 +74,7 @@ class TestApiKeysDialog(unittest.TestCase):
         """Verifica que ni Admin ni Operador vean 'Claves de API Externas' en sus menús."""
         for rol in ("operador", "administrador"):
             self.interfaz.usuario_actual = MagicMock(role=rol, username=f"{rol}1")
-            self.interfaz.exigir_roles = lambda *roles: rol in roles
+            self.interfaz.exigir_roles = lambda *roles, rol=rol: rol in roles
 
             controles = construir_sidebar_controls(self.interfaz)
             textos = []

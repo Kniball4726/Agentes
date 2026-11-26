@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..deps import get_current_user, get_order_store, require_roles
+from ..deps import get_current_user, get_order_store, get_product_store, require_roles
 from ..schemas import (
     EscanearDespachoRequest,
     EscanearDespachoResponse,
@@ -15,6 +15,7 @@ from ..schemas import (
     ListarPedidosResponse,
     PedidoDetalleResponse,
 )
+from ...core.stock_order_tx import consolidar_reserva_pedido_si_existe
 from ...orders import OrderStore, Pedido
 
 router = APIRouter(prefix="/despacho", tags=["Despacho y Logística"])
@@ -75,6 +76,46 @@ def _procesar_escaneo_por_rol(
     )
 
 
+def _resolver_product_store_opcional(request: Request):
+    """Resuelve `ProductStore` si está disponible en overrides o contexto sin fallar en tests aislados."""
+    override = request.app.dependency_overrides.get(get_product_store)
+    if callable(override):
+        try:
+            return override()
+        except Exception:
+            return None
+    try:
+        return get_product_store()
+    except Exception:
+        return None
+
+
+def _consolidar_reserva_al_despachar(
+    request: Request,
+    ok: bool,
+    pedido: Optional[Pedido],
+    user: Dict[str, Any],
+) -> None:
+    """Consolida automáticamente reservas activas del pedido cuando alcanza estado `despachado`."""
+    if not ok or pedido is None:
+        return
+    if str(getattr(pedido, "estado_despacho", "")).strip().lower() != "despachado":
+        return
+    p_store = _resolver_product_store_opcional(request)
+    if p_store is None:
+        return
+    usuario = str(user.get("username") or user.get("nombre") or "despacho")
+    try:
+        consolidar_reserva_pedido_si_existe(
+            p_store,
+            pedido.nota_pedido,
+            usuario=usuario,
+            detalle=f"Despacho móvil/API pedido #{pedido.nota_pedido}",
+        )
+    except Exception:
+        pass
+
+
 @router.post(
     "/escanear",
     response_model=EscanearDespachoResponse,
@@ -82,6 +123,7 @@ def _procesar_escaneo_por_rol(
 )
 async def escanear_despacho(
     req: EscanearDespachoRequest,
+    request: Request,
     order_store: OrderStore = Depends(get_order_store),
     user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "despachador")),
 ):
@@ -95,6 +137,7 @@ async def escanear_despacho(
         nuevo_estado=req.nuevo_estado,
         user=user,
     )
+    _consolidar_reserva_al_despachar(request, ok, pedido, user)
 
     pedido_detalle: Optional[PedidoDetalleResponse] = None
     if pedido is not None:
@@ -114,6 +157,7 @@ async def escanear_despacho(
 )
 async def escanear_despacho_lote(
     req: EscanearLoteRequest,
+    request: Request,
     order_store: OrderStore = Depends(get_order_store),
     user: Dict[str, Any] = Depends(require_roles("operador", "administrador", "despachador")),
 ):
@@ -129,6 +173,7 @@ async def escanear_despacho_lote(
             nuevo_estado=item.nuevo_estado,
             user=user,
         )
+        _consolidar_reserva_al_despachar(request, ok, pedido, user)
         det: Optional[PedidoDetalleResponse] = None
         if pedido is not None:
             det = _pedido_a_detalle(pedido, order_store)

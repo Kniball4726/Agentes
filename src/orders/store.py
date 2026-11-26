@@ -101,7 +101,7 @@ class OrderStore:
         if sig_before is not None and sig_before in self._initialized_dbs:
             return
         with self._connect() as connection, connection:
-            inicializar_esquema_pedidos(connection)
+            inicializar_esquema_pedidos(connection, self.database_path)
         sig_after = self._db_signature()
         if sig_after is not None:
             self._initialized_dbs.add(sig_after)
@@ -159,6 +159,9 @@ class OrderStore:
     liberar_bloqueo_pedido = DelegadoAtributo("concurrency_repo", ConcurrencyRepository)
     consultar_bloqueo_pedido = DelegadoAtributo("concurrency_repo", ConcurrencyRepository)
     registrar_transaccion_idempotente = DelegadoAtributo(
+        "concurrency_repo", ConcurrencyRepository
+    )
+    liberar_transaccion_idempotente = DelegadoAtributo(
         "concurrency_repo", ConcurrencyRepository
     )
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime
 from typing import Any
 
@@ -13,13 +12,9 @@ from ..theme import ROJO
 from ._shared import resolve_stock_manager
 
 
-def resolver_stock_manager_analytics():
-    """Resuelve StockManager respetando patches sobre dlg_analytics, analytics_metricas o src.flet_gui."""
-    for mod_name in ("src.ui.dialogs.dlg_analytics", "src.ui.dialogs.analytics_metricas"):
-        mod_dlg = sys.modules.get(mod_name)
-        if mod_dlg is not None and hasattr(mod_dlg, "_get_stock_manager"):
-            return mod_dlg._get_stock_manager()
-    return resolve_stock_manager("src.flet_gui")
+def resolver_stock_manager_analytics(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def parsear_fecha_iso(texto: str) -> str | None:

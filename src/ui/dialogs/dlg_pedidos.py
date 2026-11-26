@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import sys
-
-from ...inventory import StockManager as _DefaultStockManager
+from ._shared import resolve_stock_manager
 from .pedidos_crear import mostrar_dialogo_crear_pedido
 from .pedidos_gestion import (
     _restituir_stock_pedido,
@@ -16,11 +14,9 @@ from .pedidos_gestion import (
 )
 
 
-def _get_stock_manager_cls():
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager_cls(interfaz=None):
+    """Devuelve la clase StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 __all__ = [

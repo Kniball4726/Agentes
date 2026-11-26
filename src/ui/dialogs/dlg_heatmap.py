@@ -10,15 +10,18 @@ from ...warehouse_slotting import (
     HeatmapSlot,
     ProductoRotacion,
     SlottingSuggestion,
+    SugerenciaReposicionPicking,
     WarehouseMetrics,
     analizar_rotacion_abc,
     aplicar_reubicacion_slotting,
     calcular_metricas_deposito,
     generar_mapa_calor,
+    generar_sugerencias_reposicion_picking,
     generar_sugerencias_slotting,
 )
 from ..design import grilla_tarjetas_responsiva, par_accion_tarjeta
 from ..theme import ROJO
+from .heatmap_fefo_render import renderizar_panel_reposicion_y_fefo
 from .heatmap_render import (
     kpi_heatmap_card,
     leyenda_termica_heatmap,
@@ -36,6 +39,8 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
     analisis_actual: List[ProductoRotacion] = []
     mapa_calor_actual: List[HeatmapSlot] = []
     sugerencias_actuales: List[SlottingSuggestion] = []
+    reposicion_actual: List[SugerenciaReposicionPicking] = []
+    alertas_fefo_actuales: list[dict[str, Any]] = []
     p_store_activo: Any = getattr(interfaz, "product_store", None)
 
     kpi_eficiencia = ft.Text("0%", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
@@ -46,6 +51,20 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
     layout_heatmap_container = ft.Column(scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=12)
     lista_abc_container = ft.ListView(expand=True, spacing=6, height=340)
     lista_sugerencias_container = ft.ListView(expand=True, spacing=8, height=340)
+    reposicion_fefo_container = ft.ListView(expand=True, spacing=8, height=310)
+
+    filtro_fefo_nivel = ft.Dropdown(
+        label="Alerta FEFO",
+        value="TODOS",
+        options=[
+            ft.dropdown.Option("TODOS", "Todas las alertas"),
+            ft.dropdown.Option("VENCIDO", "Solo vencidos"),
+            ft.dropdown.Option("CRITICO", "Críticos (<= 7 días)"),
+            ft.dropdown.Option("PROXIMO", "Próximos (<= 30 días)"),
+        ],
+        width=210,
+        dense=True,
+    )
 
     filtro_abc_categoria = ft.Dropdown(
         label="Categoría ABC",
@@ -98,6 +117,18 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         if hasattr(interfaz, "page") and interfaz.page:
             interfaz.page.update()
 
+    def _refrescar_fefo(_e=None) -> None:
+        renderizar_panel_reposicion_y_fefo(
+            interfaz,
+            reposicion_fefo_container,
+            reposicion_actual,
+            alertas_fefo_actuales,
+            filtro_fefo_nivel.value or "TODOS",
+            ejecutar_traslado_reposicion,
+        )
+        if hasattr(interfaz, "page") and interfaz.page:
+            interfaz.page.update()
+
     def _resolver_product_store() -> Any:
         p_store = getattr(interfaz, "product_store", None)
         if p_store is None:
@@ -120,8 +151,30 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         else:
             interfaz.notificar(f"Error al reubicar producto [{sug.sku}]", color=ft.Colors.RED_600)
 
+    def ejecutar_traslado_reposicion(sug: SugerenciaReposicionPicking) -> None:
+        nonlocal p_store_activo
+        if p_store_activo is None:
+            p_store_activo = _resolver_product_store()
+        if p_store_activo is None or not hasattr(p_store_activo, "transferir_entre_ubicaciones"):
+            interfaz.notificar("ProductStore no soporta transferencias multi-ubicación.", color=ft.Colors.RED_600)
+            return
+        try:
+            res = p_store_activo.transferir_entre_ubicaciones(
+                sug.product_code,
+                sug.ubicacion_origen,
+                sug.ubicacion_destino,
+                sug.cantidad_sugerida,
+            )
+            interfaz.notificar(
+                f"✅ Trasladadas {res['cantidad']} u. de [{sug.product_code}] ({sug.ubicacion_origen} -> {sug.ubicacion_destino})",
+                color=ft.Colors.GREEN_600,
+            )
+            cargar_datos()
+        except Exception as exc:
+            interfaz.notificar(f"Error al trasladar [{sug.product_code}]: {exc}", color=ft.Colors.RED_600)
+
     def cargar_datos() -> None:
-        nonlocal analisis_actual, mapa_calor_actual, sugerencias_actuales, p_store_activo
+        nonlocal analisis_actual, mapa_calor_actual, sugerencias_actuales, reposicion_actual, alertas_fefo_actuales, p_store_activo
 
         order_store = getattr(interfaz, "order_store", None)
         p_store = _resolver_product_store()
@@ -132,10 +185,28 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
         sugerencias_actuales = generar_sugerencias_slotting(analisis_actual)
         metrics = calcular_metricas_deposito(analisis_actual, mapa_calor_actual)
 
+        reposicion_actual = generar_sugerencias_reposicion_picking(p_store, dias_alerta_vencimiento=30)
+        alertas_fefo_actuales = []
+        if p_store is not None and hasattr(p_store, "listar_lotes_proximos_vencer"):
+            try:
+                cand_alertas = p_store.listar_lotes_proximos_vencer(dias=30, incluir_vencidos=True)
+                if isinstance(cand_alertas, list):
+                    alertas_fefo_actuales = cand_alertas
+            except Exception:
+                alertas_fefo_actuales = []
+
         refrescar_metricas_ui(metrics)
         renderizar_layout_heatmap(interfaz, layout_heatmap_container, mapa_calor_actual, seleccionar_slot_heatmap)
         renderizar_lista_abc(interfaz, lista_abc_container, analisis_actual, buscador_abc.value or "", filtro_abc_categoria.value or "TODAS")
         renderizar_lista_sugerencias(interfaz, lista_sugerencias_container, sugerencias_actuales, reubicar_item)
+        renderizar_panel_reposicion_y_fefo(
+            interfaz,
+            reposicion_fefo_container,
+            reposicion_actual,
+            alertas_fefo_actuales,
+            filtro_fefo_nivel.value or "TODOS",
+            ejecutar_traslado_reposicion,
+        )
 
         try:
             if hasattr(interfaz, "page") and interfaz.page:
@@ -145,6 +216,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
 
     buscador_abc.on_change = _refrescar_abc
     filtro_abc_categoria.on_select = filtro_abc_categoria.on_change = _refrescar_abc
+    filtro_fefo_nivel.on_select = filtro_fefo_nivel.on_change = _refrescar_fefo
 
     fila_kpis = grilla_tarjetas_responsiva(
         [
@@ -162,7 +234,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
 
     filtro_abc_row = par_accion_tarjeta(interfaz, buscador_abc, filtro_abc_categoria, umbral=560.0, spacing=8)
     tabs = ft.Tabs(
-        length=3,
+        length=4,
         expand=True,
         content=ft.Column(
             expand=True,
@@ -172,6 +244,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
                         ft.Tab(label="Mapa Térmico (Layout)", icon=ft.Icons.GRID_VIEW_ROUNDED),
                         ft.Tab(label="Matriz Rotación ABC", icon=ft.Icons.ANALYTICS_OUTLINED),
                         ft.Tab(label="Plan de Reubicación", icon=ft.Icons.ALT_ROUTE_ROUNDED),
+                        ft.Tab(label="Reposición y FEFO", icon=ft.Icons.INVENTORY_2_OUTLINED),
                     ]
                 ),
                 ft.TabBarView(
@@ -180,6 +253,7 @@ def mostrar_dialogo_heatmap(interfaz: Any, _e: Optional[ft.Event] = None) -> Non
                         ft.Column([leyenda_termica_heatmap(interfaz), info_slot_seleccionado, ft.Container(content=layout_heatmap_container, height=320)], spacing=8, expand=True),
                         ft.Column([filtro_abc_row, lista_abc_container], spacing=8, expand=True),
                         ft.Column([ft.Text("Sugerencias automáticas para eliminar sobre-recorridos y fatiga física de operarios:", size=11, color=interfaz.secundario), lista_sugerencias_container], spacing=8, expand=True),
+                        ft.Column([ft.Row([ft.Text("Reposición entre zonas y control de vencimientos FEFO:", size=11, color=interfaz.secundario, expand=True), filtro_fefo_nivel], spacing=8), reposicion_fefo_container], spacing=8, expand=True),
                     ],
                 ),
             ],

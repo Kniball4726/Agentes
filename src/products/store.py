@@ -9,13 +9,16 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from ..core.delegation import DelegadoAtributo
 from ..core.sqlite_utils import open_sqlite_connection
 from .catalog_read_repo import CatalogReadRepository
 from .catalog_write_repo import CatalogWriteRepository
+from .locations_lots_repo import LocationsLotsRepository
 from .movements_repo import MovementsRepository
 from .movements_report_repo import MovementsReportRepository
 from .notifications_repo import NotificationsRepository
 from .physical_repo import PhysicalRepository
+from .reservations_repo import StockReservationsRepository
 from .schema import inicializar_esquema_productos
 
 
@@ -39,6 +42,12 @@ class ProductStore:
         self.movements_report_repo = MovementsReportRepository(self._connect)
         self.physical_repo = PhysicalRepository(self._connect)
         self.notifications_repo = NotificationsRepository(self._connect)
+        self.locations_lots_repo = LocationsLotsRepository(
+            self._connect, self.catalog_write.invalidar_cache
+        )
+        self.reservations_repo = StockReservationsRepository(
+            self._connect, self.catalog_write.invalidar_cache
+        )
         self._initialize()
 
     def invalidar_cache(self) -> None:
@@ -86,7 +95,7 @@ class ProductStore:
         if sig_before is not None and sig_before in self._initialized_dbs:
             return
         with closing(self._connect()) as connection, connection:
-            inicializar_esquema_productos(connection)
+            inicializar_esquema_productos(connection, self.database_path)
         sig_after = self._db_signature()
         if sig_after is not None:
             self._initialized_dbs.add(sig_after)
@@ -171,6 +180,40 @@ class ProductStore:
 
     def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:
         return self.catalog_write.actualizar_ubicacion(code, ubicacion)
+
+    # ── Multi-ubicación por zona ───────────────────────────────────────────
+    asignar_ubicacion_producto = DelegadoAtributo(
+        "locations_lots_repo", LocationsLotsRepository
+    )
+    listar_ubicaciones_producto = DelegadoAtributo(
+        "locations_lots_repo", LocationsLotsRepository
+    )
+    listar_ubicaciones_mapa = DelegadoAtributo(
+        "locations_lots_repo", LocationsLotsRepository
+    )
+    transferir_entre_ubicaciones = DelegadoAtributo(
+        "locations_lots_repo", LocationsLotsRepository
+    )
+
+    # ── Lotes y vencimientos (FEFO) ───────────────────────────────────────
+    registrar_lote = DelegadoAtributo("locations_lots_repo", LocationsLotsRepository)
+    listar_lotes_fefo = DelegadoAtributo("locations_lots_repo", LocationsLotsRepository)
+    consumir_lotes_fefo = DelegadoAtributo("locations_lots_repo", LocationsLotsRepository)
+    listar_lotes_proximos_vencer = DelegadoAtributo(
+        "locations_lots_repo", LocationsLotsRepository
+    )
+
+    # ── Reservas de stock y disponibilidad neta ───────────────────────────
+    obtener_mapa_reservas_activas = DelegadoAtributo(
+        "reservations_repo", StockReservationsRepository
+    )
+    obtener_resumen_stock_disponible = DelegadoAtributo(
+        "reservations_repo", StockReservationsRepository
+    )
+    listar_reservas = DelegadoAtributo("reservations_repo", StockReservationsRepository)
+    reservar_stock = DelegadoAtributo("reservations_repo", StockReservationsRepository)
+    consolidar_reserva = DelegadoAtributo("reservations_repo", StockReservationsRepository)
+    liberar_reserva = DelegadoAtributo("reservations_repo", StockReservationsRepository)
 
     def set_product_barcode(self, code: object, cod_barras: object) -> None:
         self.catalog_write.set_product_barcode(code, cod_barras)

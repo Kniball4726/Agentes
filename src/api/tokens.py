@@ -11,19 +11,34 @@ from fastapi import HTTPException, status
 
 from ..auth import User, UserStore
 from ..auth.store import register_session_revocation_listener
-from .stores import get_user_store, register_token_reset_listener
+from .stores import (
+    get_user_store,
+    obtener_contexto_api_actual,
+    obtener_contexto_api_por_defecto,
+    obtener_contextos_api_registrados,
+    register_token_reset_listener,
+)
 
 SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de inactividad máxima por token
 SESSION_ABSOLUTE_TTL_SECONDS = 7 * 24 * 3600  # 7 días de vida absoluta máxima por token
 DOC_TOKEN_TTL_SECONDS = 300  # 5 minutos para tokens efímeros de visor/descarga web
 
-_sesiones_activas: Dict[str, Dict[str, Any]] = {}
-_doc_tokens: Dict[str, Dict[str, Any]] = {}
+_DEFAULT_CTX = obtener_contexto_api_por_defecto()
+_sesiones_activas: Dict[str, Dict[str, Any]] = _DEFAULT_CTX.sesiones_activas
+_doc_tokens: Dict[str, Dict[str, Any]] = _DEFAULT_CTX.doc_tokens
+
+
+def _obtener_cache_sesiones() -> Dict[str, Dict[str, Any]]:
+    return obtener_contexto_api_actual().sesiones_activas
+
+
+def _obtener_cache_doc_tokens() -> Dict[str, Dict[str, Any]]:
+    return obtener_contexto_api_actual().doc_tokens
 
 
 def _limpiar_caches_tokens_memoria() -> None:
-    _sesiones_activas.clear()
-    _doc_tokens.clear()
+    obtener_contexto_api_actual().sesiones_activas.clear()
+    obtener_contexto_api_actual().doc_tokens.clear()
 
 
 register_token_reset_listener(_limpiar_caches_tokens_memoria)
@@ -43,17 +58,26 @@ def _sesion_expirada(sesion: Dict[str, Any], ahora: float) -> bool:
 def _on_user_store_session_revocation(
     event: str, user_id: Optional[int], token_hash: Optional[str]
 ) -> None:
-    """Mantiene sincronizada la caché en memoria ante revocaciones en UserStore."""
+    """Mantiene sincronizadas las cachés en memoria ante revocaciones en UserStore."""
+    contextos = obtener_contextos_api_registrados()
     if event == "all":
-        _limpiar_caches_tokens_memoria()
+        for ctx in contextos:
+            ctx.sesiones_activas.clear()
+            ctx.doc_tokens.clear()
     elif event == "token" and token_hash:
-        _sesiones_activas.pop(token_hash, None)
+        for ctx in contextos:
+            ctx.sesiones_activas.pop(token_hash, None)
     elif event == "user" and user_id is not None:
         objetivo = int(user_id)
-        for th in [k for k, v in _sesiones_activas.items() if int(v.get("user_id", 0) or 0) == objetivo]:
-            _sesiones_activas.pop(th, None)
-        for dh in [k for k, v in _doc_tokens.items() if int(v.get("user_id", 0) or 0) == objetivo]:
-            _doc_tokens.pop(dh, None)
+        for ctx in contextos:
+            for th in [
+                k for k, v in ctx.sesiones_activas.items() if int(v.get("user_id", 0) or 0) == objetivo
+            ]:
+                ctx.sesiones_activas.pop(th, None)
+            for dh in [
+                k for k, v in ctx.doc_tokens.items() if int(v.get("user_id", 0) or 0) == objetivo
+            ]:
+                ctx.doc_tokens.pop(dh, None)
 
 
 register_session_revocation_listener(_on_user_store_session_revocation)
@@ -69,6 +93,7 @@ def crear_sesion(user: User, store: UserStore | None = None) -> str:
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw_token)
     ahora = time.time()
+    target_store = store or get_user_store()
     sesion_data = {
         "user_id": user.id,
         "username": user.username,
@@ -79,9 +104,9 @@ def crear_sesion(user: User, store: UserStore | None = None) -> str:
         "last_active": ahora,
     }
 
-    _sesiones_activas[token_hash] = sesion_data
+    _obtener_cache_sesiones()[token_hash] = sesion_data
     try:
-        (store or get_user_store()).create_api_session(
+        target_store.create_api_session(
             token_hash=token_hash,
             user_id=user.id,
             username=user.username,
@@ -101,7 +126,7 @@ def crear_sesion(user: User, store: UserStore | None = None) -> str:
 def revocar_sesion(raw_token: str) -> bool:
     """Revoca de forma atómica una sesión activa tanto en memoria como en SQLite."""
     token_hash = _hash_token(raw_token)
-    mem_revocada = _sesiones_activas.pop(token_hash, None) is not None
+    mem_revocada = _obtener_cache_sesiones().pop(token_hash, None) is not None
     try:
         db_revocada = get_user_store().revoke_api_session(token_hash)
     except Exception:
@@ -112,12 +137,13 @@ def revocar_sesion(raw_token: str) -> bool:
 def _limpiar_sesiones_expiradas() -> None:
     """Elimina sesiones vencidas de memoria y de la base de datos."""
     ahora = time.time()
+    cache = _obtener_cache_sesiones()
     expirados = [
-        th for th, data in _sesiones_activas.items()
+        th for th, data in cache.items()
         if ahora - data.get("last_active", ahora) > SESSION_TTL_SECONDS
     ]
     for th in expirados:
-        _sesiones_activas.pop(th, None)
+        cache.pop(th, None)
 
     try:
         get_user_store().cleanup_expired_api_sessions(SESSION_TTL_SECONDS)
@@ -131,9 +157,10 @@ def _normalizar_recurso_doc(recurso: str) -> str:
 
 def _limpiar_doc_tokens_expirados(ahora: Optional[float] = None) -> None:
     ref = time.time() if ahora is None else ahora
-    expirados = [dh for dh, info in _doc_tokens.items() if ref > float(info.get("exp", 0))]
+    cache_doc = _obtener_cache_doc_tokens()
+    expirados = [dh for dh, info in cache_doc.items() if ref > float(info.get("exp", 0))]
     for dh in expirados:
-        _doc_tokens.pop(dh, None)
+        cache_doc.pop(dh, None)
 
 
 def crear_token_documento(
@@ -164,7 +191,7 @@ def crear_token_documento(
 
     raw_token = f"doc_{secrets.token_urlsafe(24)}"
     token_hash = _hash_token(raw_token)
-    _doc_tokens[token_hash] = {
+    _obtener_cache_doc_tokens()[token_hash] = {
         "user_id": uid,
         "username": username,
         "role": role,
@@ -188,9 +215,10 @@ def validar_token_documento(
     ahora = time.time()
     _limpiar_doc_tokens_expirados(ahora)
     token_hash = _hash_token(raw_token)
-    entry = _doc_tokens.get(token_hash)
+    cache_doc = _obtener_cache_doc_tokens()
+    entry = cache_doc.get(token_hash)
     if not entry or ahora > float(entry.get("exp", 0)):
-        _doc_tokens.pop(token_hash, None)
+        cache_doc.pop(token_hash, None)
         return None
 
     recurso_esperado = entry.get("recurso", "")
@@ -206,17 +234,17 @@ def validar_token_documento(
             db_user = None
         if isinstance(db_user, User):
             if not db_user.active:
-                _doc_tokens.pop(token_hash, None)
+                cache_doc.pop(token_hash, None)
                 return None
         elif db_user is None:
-            _doc_tokens.pop(token_hash, None)
+            cache_doc.pop(token_hash, None)
             return None
 
     return dict(entry)
 
 
 def _revocar_sesion_silenciosa(token_hash: str, user_store: UserStore) -> None:
-    _sesiones_activas.pop(token_hash, None)
+    _obtener_cache_sesiones().pop(token_hash, None)
     try:
         user_store.revoke_api_session(token_hash)
     except Exception:
@@ -259,7 +287,8 @@ def resolver_sesion_activa(token: str, user_store: UserStore) -> Dict[str, Any]:
     """Resuelve y refresca una sesión API desde memoria caché o SQLite."""
     token_hash = _hash_token(token)
     ahora = time.time()
-    sesion = _sesiones_activas.get(token_hash)
+    cache = _obtener_cache_sesiones()
+    sesion = cache.get(token_hash)
 
     if sesion and _sesion_expirada(sesion, ahora):
         _revocar_sesion_silenciosa(token_hash, user_store)
@@ -271,7 +300,7 @@ def resolver_sesion_activa(token: str, user_store: UserStore) -> Dict[str, Any]:
             if db_session:
                 if not _sesion_expirada(db_session, ahora):
                     sesion = db_session
-                    _sesiones_activas[token_hash] = sesion
+                    cache[token_hash] = sesion
                 else:
                     user_store.revoke_api_session(token_hash)
         except Exception:

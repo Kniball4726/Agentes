@@ -15,8 +15,8 @@ from ..theme import ROJO
 from ._shared import resolve_stock_manager
 
 
-def _get_stock_manager():
-    return resolve_stock_manager()
+def _get_stock_manager(interfaz: Any = None):
+    return resolve_stock_manager(interfaz)
 
 
 def _construir_fila_preview_full(
@@ -155,7 +155,7 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         color=interfaz.secundario,
     )
 
-    sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+    sm = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
     items_a_descontar: dict[str, int] = {}
     archivo_seleccionado: list[Path | None] = [archivos_pendientes[0] if archivos_pendientes else None]
 
@@ -241,7 +241,12 @@ def mostrar_descuento_mercado_full(interfaz: Any, _evento: ft.Event | None = Non
         interfaz.page.pop_dialog()
         await interfaz.ejecutar_tarea(
             f"Descuento Mercado Full ({arch.name})",
-            lambda: _archivar_y_registrar_full(interfaz, arch, items_a_descontar, _get_stock_manager),
+            lambda: _archivar_y_registrar_full(
+                interfaz,
+                arch,
+                items_a_descontar,
+                lambda: _get_stock_manager(interfaz),
+            ),
         )
         interfaz.actualizar_estado()
         interfaz.notificar(f"Se descontaron exitosamente los productos de {arch.name} para Mercado Full.")

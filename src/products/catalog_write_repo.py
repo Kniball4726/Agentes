@@ -276,11 +276,26 @@ class CatalogWriteRepository:
 
     def actualizar_ubicacion(self, code: str, ubicacion: str) -> bool:
         """Actualiza la ubicación física en el depósito para un producto (ej. 'A-01-2')."""
+        from .locations_lots_repo import (
+            normalizar_ubicacion,
+            sincronizar_ubicacion_principal_en_tx,
+        )
+
+        ubic_norm = normalizar_ubicacion(ubicacion)
+        cod_norm = code.strip()
         with closing(self._connect()) as connection, connection:
             cur = connection.execute(
                 "UPDATE products SET ubicacion = ? WHERE code = ?",
-                (ubicacion.strip().upper(), code.strip()),
+                (ubic_norm, cod_norm),
             )
+            if cur.rowcount > 0:
+                if ubic_norm:
+                    sincronizar_ubicacion_principal_en_tx(connection, cod_norm, ubic_norm)
+                else:
+                    connection.execute(
+                        "UPDATE product_locations SET es_principal = 0 WHERE product_code = ?",
+                        (cod_norm,),
+                    )
             self.invalidar_cache()
             return cur.rowcount > 0
 

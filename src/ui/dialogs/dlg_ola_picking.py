@@ -7,7 +7,7 @@ import flet as ft
 
 from ..design import par_accion_tarjeta
 from ..theme import ROJO
-from ...orders.picking_wave import consolidar_ola_picking
+from ...orders.picking_wave import consolidar_ola_picking, crear_y_reservar_ola_picking
 
 
 def mostrar_dialogo_ola_picking(
@@ -58,6 +58,42 @@ def mostrar_dialogo_ola_picking(
         if len(it["pedidos"]) > 3:
             resumen_pedidos_str += f" (+{len(it['pedidos']) - 3} pedidos más)"
 
+        stock_fis = int(it.get("stock_fisico", 0) or 0)
+        stock_res = int(it.get("stock_reservado", 0) or 0)
+        stock_disp = int(it.get("stock_disponible", 0) or 0)
+        sub_controles: list[ft.Control] = [
+            ft.Text(
+                f"[{it['codigo']}] {it['descripcion']}",
+                weight=ft.FontWeight.BOLD,
+                size=12,
+                color=interfaz.texto,
+                max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+            ft.Text(
+                resumen_pedidos_str,
+                size=10,
+                color=interfaz.secundario,
+                max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+        ]
+        if stock_fis > 0 or stock_res > 0 or it.get("lote_sugerido"):
+            disp_color = ft.Colors.RED_400 if stock_disp < int(it["total_unidades"]) else ft.Colors.TEAL_400
+            partes_disp = [f"Disp: {stock_disp} u. (Fís: {stock_fis} · Res: {stock_res})"]
+            if it.get("lote_sugerido"):
+                fv_txt = f" vto {it['vencimiento_sugerido']}" if it.get("vencimiento_sugerido") else ""
+                partes_disp.append(f"FEFO: {it['lote_sugerido']}{fv_txt}")
+            sub_controles.append(
+                ft.Text(
+                    " | ".join(partes_disp),
+                    size=10,
+                    color=disp_color,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                )
+            )
+
         info_item = ft.Row(
             [
                 ft.Container(
@@ -72,23 +108,7 @@ def mostrar_dialogo_ola_picking(
                     border_radius=6,
                 ),
                 ft.Column(
-                    [
-                        ft.Text(
-                            f"[{it['codigo']}] {it['descripcion']}",
-                            weight=ft.FontWeight.BOLD,
-                            size=12,
-                            color=interfaz.texto,
-                            max_lines=2,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                        ft.Text(
-                            resumen_pedidos_str,
-                            size=10,
-                            color=interfaz.secundario,
-                            max_lines=2,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                    ],
+                    sub_controles,
                     spacing=2,
                     expand=True,
                 ),
@@ -110,6 +130,34 @@ def mostrar_dialogo_ola_picking(
             content=par_accion_tarjeta(interfaz, info_item, badge_total, umbral=480.0, spacing=8),
         )
         lista_controles.append(fila_item)
+
+    acciones: list[ft.Control] = []
+    if product_store is not None and hasattr(product_store, "reservar_stock"):
+        def _reservar_ola(_e: ft.Event) -> None:
+            usuario_actual = str(
+                getattr(interfaz, "usuario_actual", "")
+                or getattr(interfaz, "username", "")
+                or "operario"
+            ).strip()
+            try:
+                res = crear_y_reservar_ola_picking(
+                    order_store,
+                    pedidos_target,
+                    product_store,
+                    usuario=usuario_actual,
+                )
+                total_res = int(res.get("reserva", {}).get("total_unidades_reservadas", 0))
+                interfaz.notificar(
+                    f"Stock reservado para ola {res['referencia_id']} ({total_res} u.)."
+                )
+                interfaz.page.pop_dialog()
+            except Exception as exc:
+                interfaz.notificar(f"No se pudo reservar la ola: {exc}")
+
+        acciones.append(
+            ft.Button("Reservar Stock de la Ola", on_click=_reservar_ola)
+        )
+    acciones.append(ft.TextButton("Cerrar", on_click=lambda _: interfaz.page.pop_dialog()))
 
     ancho_dlg = interfaz.ancho_adaptable(540) if hasattr(interfaz, "ancho_adaptable") else 540
     alto_dlg = interfaz.alto_adaptable(380) if hasattr(interfaz, "alto_adaptable") else 380
@@ -148,8 +196,6 @@ def mostrar_dialogo_ola_picking(
                 spacing=8,
             ),
         ),
-        actions=[
-            ft.TextButton("Cerrar", on_click=lambda _: interfaz.page.pop_dialog()),
-        ],
+        actions=acciones,
     )
     interfaz.page.show_dialog(dialogo)

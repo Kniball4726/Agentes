@@ -3,27 +3,23 @@
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ...parsers.physical_stock_parser import parsear_excel_stock_fisico
 from ..theme import ROJO
+from ._shared import resolve_stock_manager
 from .stock_fisico_views import (
     construir_fila_comparativa_sf,
     mostrar_comparativa_stock_fisico_admin,
 )
 
 
-def _get_stock_manager():
-    """Devuelve StockManager vigente respetando mocks en src.flet_gui."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager(interfaz: Any = None):
+    """Devuelve StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def _listar_planillas_stock_fisico(interfaz: Any, carpeta_sf: Path) -> list[Path]:
@@ -57,7 +53,7 @@ def mostrar_stock_fisico_operario(interfaz: Any, _evento: ft.Event | None = None
         color=interfaz.secundario,
     )
 
-    sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+    sm = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
     items_relevados: dict[str, int] = {}
     archivo_seleccionado: list[Path | None] = [archivos_pendientes[0] if archivos_pendientes else None]
 
@@ -159,7 +155,7 @@ def mostrar_stock_fisico_operario(interfaz: Any, _evento: ft.Event | None = None
         ruta_generada: list[Path | None] = [None]
 
         def ejecutar() -> None:
-            sm_exec = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+            sm_exec = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
             ruta_doc, comp = sm_exec.procesar_stock_fisico(
                 items_relevados,
                 usuario=operario_nom,
@@ -226,5 +222,4 @@ __all__ = [
     "_get_stock_manager",
     "mostrar_comparativa_stock_fisico_admin",
     "mostrar_stock_fisico_operario",
-    "safe_focus",
 ]

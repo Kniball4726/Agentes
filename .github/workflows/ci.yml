@@ -7,6 +7,68 @@ on:
     branches: [ master ]
 
 jobs:
+  lint:
+    name: Python Lint & Syntax (Python 3.11)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff==0.17.6
+
+      - name: Run Ruff & Python 3.11 syntax check
+        run: |
+          ruff check src tests
+          python -m compileall -q src tests
+
+  frontend-check:
+    name: PWA JS/TS Static Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run TypeScript checkJs
+        run: |
+          npx --yes -p typescript tsc --noEmit -p tsconfig.json
+          npx --yes -p typescript tsc --noEmit -p tsconfig.sw.json
+
+  mobile-check:
+    name: Flutter Mobile Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Analyze & Test Flutter App
+        working-directory: stockagent_mobile
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          if [ -d test ]; then flutter test; fi
+
   test:
     name: Run Pytest Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
@@ -25,12 +87,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
+          cache-dependency-path: "requirements.lock"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio anyio
+          pip install -r requirements.lock
 
       - name: Run test suite
         env:

@@ -72,18 +72,18 @@ def construir_manual_master(ruta_destino: Path) -> Path:
         "3. Módulos: DATOS, RESGUARDO E INTEGRACIONES CIFRADAS",
         [
             {
-                "nombre_boton": "Copia de Seguridad / Restaurar documentos / Archivado Histórico",
+                "nombre_boton": "Copia de Seguridad / Restaurar documentos / Migraciones SQLite",
                 "icono_str": "[💾]",
                 "modulo": "DATOS Y RESGUARDO",
-                "proposito_funcional": "Respaldos `.zip` en `data/backups/`, potestad exclusiva Master para rollback documental de lotes erróneos y migración de históricos hacia `historico.sqlite3` con `VACUUM`.",
-                "datos_modificados": "Archivos `.zip`, reposición atómica de SQLite / `Productos.xlsx` o compactación histórica.",
+                "proposito_funcional": "Respaldos `.zip` en `data/backups/`, potestad exclusiva Master para rollback documental de lotes erróneos, archivado histórico en `historico.sqlite3` con `VACUUM` y gobierno de migraciones versionadas en SQLite (`PRAGMA user_version` v4 en `productos.sqlite3` y v3 en `pedidos.sqlite3`).",
+                "datos_modificados": "Archivos `.zip`, reposición atómica de SQLite / `Productos.xlsx` o compactación histórica; migraciones incrementales idempotentes (`locations_repo`, `lots_fefo_repo`, `reservations_repo`).",
                 "pasos_procedimiento": [
                     "En <b>'Copia de Seguridad'</b>, generar respaldo íntegro o configurar espejo de red.",
                     "En <b>'Restaurar documentos'</b>, previsualizar el rollback autorizado y confirmar reposición (conexiones SQLite con `closing()` en `src/core/sqlite_utils.py`).",
                     "En <b>'Archivado Histórico'</b>, definir fecha de corte y ejecutar compactación.",
                 ],
-                "resultado_obtenido": "Continuidad operativa, recuperación ante errores críticos y base operativa ágil.",
-                "validaciones_advertencias": "Todo rollback queda asentado con usuario Master en auditoría forense.",
+                "resultado_obtenido": "Continuidad operativa, evolución de esquema controlada sin pérdida de datos y base operativa ágil.",
+                "validaciones_advertencias": "Todo rollback queda asentado con usuario Master en auditoría forense y verificado con `PRAGMA integrity_check`.",
             },
             {
                 "nombre_boton": "Configuración SMTP / Alertas Telegram / Mercado Libre API",
@@ -108,16 +108,16 @@ def construir_manual_master(ruta_destino: Path) -> Path:
         "4. Módulo: API REST, ENDURECIMIENTO HTTPS Y CONCURRENCIA LAN",
         [
             {
-                "nombre_boton": "Documentación y Estado (Swagger protegido)",
+                "nombre_boton": "Documentación, Estado ASGI y Modo Offline (no_cdn)",
                 "icono_str": "[🚀]",
                 "modulo": "API REST Y SERVICIOS",
-                "proposito_funcional": "Monitoriza el estado HTTPS/TLS, IP LAN/Tailscale, puerto `8550` y rutas FastAPI. Por endurecimiento de red, `/docs`, `/redoc` y `/openapi.json` están <b>deshabilitados por defecto</b> (`STOCKAGENT_ENABLE_API_DOCS=0`).",
-                "datos_modificados": "Ninguno (telemetría de servicio y estado de documentación OpenAPI).",
+                "proposito_funcional": "Monitoriza el servidor unificado ASGI (FastAPI + Flet montados en el mismo puerto `8550` sobre HTTPS/TLS), IP LAN/Tailscale, logging rotativo (`src/logger_config.py`), recursos empaquetados offline en escritorio (`assets_dir` + `no_cdn=True`) y rutas OpenAPI (`/docs` apagado por defecto con `STOCKAGENT_ENABLE_API_DOCS=0`).",
+                "datos_modificados": "Ninguno (telemetría de servicio ASGI, rutas `/api/v1/productos/*` multi-ubicación/FEFO/reservas y estado OpenAPI).",
                 "pasos_procedimiento": [
-                    "Pulsar <b>'Documentación y Estado'</b> para validar esquema activo (`HTTPS` por defecto), IP LAN/Tailscale y estado de OpenAPI.",
+                    "Pulsar <b>'Documentación y Estado'</b> para validar esquema activo (`HTTPS` por defecto), servidor ASGI único en puerto `8550`, IP LAN/Tailscale y estado de OpenAPI.",
                     "Solo si se requiere depuración local temporal, definir `STOCKAGENT_ENABLE_API_DOCS=1` en `.env` y reiniciar.",
                 ],
-                "resultado_obtenido": "Superficie de exposición mínima en red local al mantener Swagger desactivado en producción.",
+                "resultado_obtenido": "Superficie de exposición mínima en red local, arranque offline determinístico en escritorio y API unificada para escritorio y app móvil.",
                 "validaciones_advertencias": "Desactivar nuevamente `STOCKAGENT_ENABLE_API_DOCS=0` al concluir pruebas técnicas.",
             },
             {

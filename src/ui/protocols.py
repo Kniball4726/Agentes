@@ -19,6 +19,11 @@ class AppDependencies:
     menu: Any
     stock_manager_factory: Callable[..., Any] | None = None
     app_root_fn: Callable[[], Path] | None = None
+    get_global_lock_fn: Callable[[], bool] | None = None
+    set_global_lock_fn: Callable[[bool], None] | None = None
+    sessions_provider: SessionsProvider | None = None
+    session_discard_fn: Callable[[Any], None] | None = None
+    inactivity_limit_fn: Callable[[], int] | None = None
 
 
 @runtime_checkable

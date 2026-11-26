@@ -14,7 +14,6 @@ from src.auth import User, UserRole
 
 class TestDocumentosVisor(unittest.TestCase):
     def setUp(self):
-        import tempfile
         from src.auth.store import UserStore
         from src.api.deps import (
             crear_sesion,

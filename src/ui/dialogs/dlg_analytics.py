@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import sys
-
-from ...inventory import StockManager as _DefaultStockManager
+from ._shared import resolve_stock_manager
 from .analytics_auditoria_notif import (
     mostrar_notificaciones_admin,
     mostrar_registro_auditoria,
@@ -15,12 +13,9 @@ from .analytics_metricas import (
 )
 
 
-def _get_stock_manager():
-    """Devuelve la clase StockManager vigente (respetando mocks sobre src.flet_gui)."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager(interfaz=None):
+    """Devuelve la clase StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 __all__ = [

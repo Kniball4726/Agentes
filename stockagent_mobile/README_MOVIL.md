@@ -22,6 +22,9 @@ La aplicación móvil es **100% nativa en Flutter** e implementa controles de se
 * **Ergonomía para Depósito (`>= 48dp`, Modo Claro Alto Contraste y Modo Lector Láser):**
   * Botones y chips con área táctil mínima de `48dp` para operación con guantes de trabajo.
   * **Modo Claro de Alto Contraste** para lectura bajo luz solar directa en muelles exteriores y **Modo Lector Láser** para ocultar el teclado virtual en colectores de datos físicos (Zebra, Sunmi, Urovo).
+* **Arquitectura Modular en Dart (`lib/`):**
+  * Servicios REST modulares: `services/api_service.dart` + extensión declarativa `part 'api_warehouse_extension.dart'` para multi-ubicación, lotes FEFO y reservas activas.
+  * Hojas de depósito desacopladas en `widgets/product_warehouse_sheet.dart` junto a `widgets/warehouse/product_zones_tab.dart` (`ProductZonesTab`) y `widgets/warehouse/product_fefo_tab.dart` (`ProductFefoTab`).
 
 ---
 
@@ -36,11 +39,15 @@ La aplicación móvil es **100% nativa en Flutter** e implementa controles de se
 
 ### 2. Despacho y Logística (Rótulos QR y Remitos)
 * **Escaneo de rótulos QR y remitos:** Lee etiquetas impresas (`REMITO:...|CLIENTE:...|BULTOS:...`) o números de remito con cola FIFO.
+* **Consolidación automática de reservas en muelle:** Cuando un pedido fue cargado en escritorio con la opción *"Solo reservar stock"*, el escaneo completo de sus bultos QR consolida atómicamente la reserva (`stock_reservations`) descontando stock físico y lotes FEFO en el servidor.
 * **Control de permisos por rol (RBAC):** Avance automático (`Armado → Despachado → Entregado`) o fijación de estado; la acción de revertir a `ARMADO` se restringe exclusivamente a perfiles con permiso administrativo (`canRevertDispatchState`).
 * **Cola offline persistente con auto-sync:** Almacena en disco únicamente fallas reales de conectividad (sin contaminar la cola con errores `4xx` de negocio) y sincroniza el lote vía `/api/v1/despacho/escanear-lote` al recuperar conexión.
 
-### 3. Catálogo y Slotting de Depósito
+### 3. Catálogo, Multi-Ubicación, Lotes FEFO y Reservas
 * **Búsqueda reactiva con debounce:** Filtrado automático por nombre, SKU o código de barras (`EAN-13`, `Code-128`, `Code-39` alfanumérico) con botón de limpieza reactivo (`ValueListenableBuilder`).
+* **Badges de Disponibilidad Neta en tiempo real:** Cada tarjeta exhibe **Físico**, **Reservado** y **Disponible Neto** (`Físico - Reservado`).
+* **Hoja modal `Zonas / FEFO` (`ProductWarehouseSheet`):** Permite consultar ubicaciones por zona (`picking`, `pulmon`, `pallet`, `recepcion`, `cuarentena`), transferir stock entre ubicaciones (`pulmon -> picking`), registrar/consultar lotes con fecha de caducidad y ejecutar consumo guiado FEFO.
+* **Alertas FEFO y Reservas Activas (`WarehouseAlertsSheet`):** Acceso directo desde Catálogo a la lista de lotes `VENCIDO` / `CRITICO <=7d` / `PROXIMO <=30d` y al gestor para consolidar o liberar reservas activas (`pedido` / `ola_picking`).
 * **Gestión de ubicación y códigos (`canEditCatalog`):** Chips de `>= 48dp` en layout adaptable (`Wrap`) para actualizar estantería/posición (ej. `A-02-3`) o vincular códigos de barras numéricos y alfanuméricos.
 
 ---

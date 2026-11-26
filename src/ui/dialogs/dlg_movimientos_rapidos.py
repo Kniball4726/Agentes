@@ -327,9 +327,7 @@ def _mostrar_dialogo_movimiento_rapido(interfaz: Any, tipo: str = "ingreso") -> 
 __all__ = [
     "MotivoIngresoRapido",
     "MotivoSalidaRapida",
-    "ROJO",
     "_mostrar_dialogo_movimiento_rapido",
-    "despachar_evento_webhook",
     "mostrar_dialogo_ingreso_rapido",
     "mostrar_dialogo_salida_rapida",
 ]

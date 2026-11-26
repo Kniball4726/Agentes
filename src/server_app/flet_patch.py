@@ -1,18 +1,20 @@
-"""Orquestación de arranque HTTPS/FastAPI, integración Flet Web y bandeja del sistema."""
+"""Orquestación explícita de servidor HTTPS/FastAPI/Uvicorn, Flet Web ASGI y bandeja del sistema."""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 import logging
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 import webbrowser
 
 import flet as ft
+import flet_web.fastapi as flet_web_fastapi
+import uvicorn
 
 from ..alertas_programadas import iniciar_planificador
+from ..api.stores import ApiStoreContext, crear_contexto_api
 from ..logger_config import configurar_logging
 from ..ssl_manager import asegurar_ca_confiable_windows, asegurar_certificado_ssl
 from .middleware import configurar_middlewares_http
@@ -31,185 +33,68 @@ from .static_routes import registrar_rutas_ota, registrar_rutas_pwa
 logger = logging.getLogger("stockagent.server")
 
 
-def _parchear_navegador_local(abrir_navegador: bool, https: bool) -> Callable[[str], None]:
-    _browser_opened = False
+def _resolver_no_cdn_web(no_cdn: bool | None) -> bool:
+    """Resuelve modo offline web (`no_cdn=True` por defecto en LAN para evitar CDNs externos)."""
+    if no_cdn is not None:
+        return bool(no_cdn)
+    raw = os.environ.get("STOCKAGENT_WEB_NO_CDN", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
-    def _noop_open(_url: str) -> None:
-        return None
+
+def crear_aplicacion_asgi(
+    entrypoint_main: Callable[[ft.Page], Any],
+    *,
+    assets_dir: str | Path | None = None,
+    no_cdn: bool | None = None,
+    web_renderer: ft.WebRenderer = ft.WebRenderer.AUTO,
+    habilitar_docs_api: bool | None = None,
+    store_context: ApiStoreContext | None = None,
+) -> flet_web_fastapi.FastAPI:
+    """Construye la aplicación ASGI explícita sin monkey-patching sobre FastAPI o Uvicorn.
+
+    Registra middlewares HTTP/CORS/CSP, API REST `/api/v1`, rutas PWA, OTA,
+    documentos protegidos y monta la subaplicación web de Flet en `/`.
+    Por defecto sirve recursos CanvasKit y fuentes localmente (`no_cdn=True`) para operar
+    sin acceso a Internet en la red local del depósito.
+    """
+    assets_path = Path(assets_dir or obtener_directorio_assets()).resolve()
+    os.environ["FLET_ASSETS_DIR"] = str(assets_path)
+    no_cdn_activo = _resolver_no_cdn_web(no_cdn)
+    ctx_api = store_context or crear_contexto_api(name="asgi")
+
+    if habilitar_docs_api is None:
+        habilitar_docs_api = os.environ.get(
+            "STOCKAGENT_ENABLE_API_DOCS", "0"
+        ).strip().lower() in ("1", "true", "si", "yes")
+
+    fastapi_kwargs: dict[str, Any] = {}
+    if not habilitar_docs_api:
+        fastapi_kwargs.update({"docs_url": None, "redoc_url": None, "openapi_url": None})
+
+    app = flet_web_fastapi.FastAPI(**fastapi_kwargs)
+    app.state.api_store_context = ctx_api
+    configurar_middlewares_http(app, no_cdn=no_cdn_activo, store_context=ctx_api)
 
     try:
-        import flet.app as _flet_app
-        import flet.utils as _flet_utils
+        from ..api import api_v1_router
 
-        _orig_open = getattr(
-            _flet_app, "_orig_open_in_browser", getattr(_flet_app, "open_in_browser", None)
-        )
-        if _orig_open:
-            setattr(_flet_app, "_orig_open_in_browser", _orig_open)
+        app.include_router(api_v1_router)
+        logger.info("Endpoints REST API (/api/v1) montados exitosamente.")
+    except Exception as exc_api:
+        logger.error("Error al montar router de API REST: %s", exc_api, exc_info=True)
 
-        def _open_local_browser(url: str) -> None:
-            nonlocal _browser_opened
-            if not abrir_navegador or _browser_opened:
-                return
-            _browser_opened = True
-            url_local = url.replace("://0.0.0.0:", "://localhost:").replace(
-                "://127.0.0.1:", "://localhost:"
-            )
-            if https and url_local.startswith("http://"):
-                url_local = "https://" + url_local[len("http://") :]
-            if _orig_open:
-                _orig_open(url_local)
-            else:
-                webbrowser.open(url_local)
+    registrar_rutas_pwa(app, assets_path)
+    registrar_rutas_ota(app)
+    registrar_rutas_documentos_e_informes(app)
 
-        _flet_app.open_in_browser = _open_local_browser
-        _flet_utils.open_in_browser = _open_local_browser
-        if hasattr(ft, "open_in_browser"):
-            ft.open_in_browser = _open_local_browser
-        if hasattr(ft.run_async, "__globals__"):
-            ft.run_async.__globals__["open_in_browser"] = _open_local_browser
-        return _open_local_browser
-    except Exception:
-        return _noop_open
-
-
-def _parchear_websocket_logging() -> None:
-    import flet_web.fastapi.flet_app as _ffa
-
-    if not hasattr(_ffa, "FletApp"):
-        return
-
-    if not hasattr(_ffa.FletApp, "_orig_send_loop"):
-        _orig_send_loop = getattr(_ffa.FletApp, "_FletApp__send_loop", None)
-        if _orig_send_loop:
-            setattr(_ffa.FletApp, "_orig_send_loop", _orig_send_loop)
-
-            async def _clean_send_loop(self):
-                try:
-                    await _orig_send_loop(self)
-                except Exception as e:
-                    if not any(
-                        k in e.__class__.__name__
-                        for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")
-                    ):
-                        raise
-
-            setattr(_ffa.FletApp, "_FletApp__send_loop", _clean_send_loop)
-
-    if not hasattr(_ffa.FletApp, "_orig_handle"):
-        _orig_handle = _ffa.FletApp.handle
-        setattr(_ffa.FletApp, "_orig_handle", _orig_handle)
-
-        async def _clean_handle(self, websocket):
-            _cliente = getattr(getattr(websocket, "client", None), "host", None) or "desconocido"
-            print(f"[{datetime.now():%H:%M:%S}] [CONEXION] Cliente conectado: {_cliente}", flush=True)
-            logger.info("Cliente conectado: %s", _cliente)
-            try:
-                await _orig_handle(self, websocket)
-            except Exception as e:
-                if not any(
-                    k in e.__class__.__name__
-                    for k in ("Disconnect", "InvalidState", "ConnectionClosed", "ClientDisconnected")
-                ):
-                    raise
-            finally:
-                print(
-                    f"[{datetime.now():%H:%M:%S}] [CONEXION] Cliente desconectado: {_cliente}",
-                    flush=True,
-                )
-                logger.info("Cliente desconectado: %s", _cliente)
-
-        _ffa.FletApp.handle = _clean_handle
-
-
-def _configurar_adaptadores_web(
-    https: bool,
-    port: int,
-    esquema: str,
-    abrir_navegador: bool,
-    cert_path_final: Path | None,
-    key_path_final: Path | None,
-    open_browser_cb: Callable[[str], None],
-) -> None:
-    try:
-        import flet_web.fastapi
-        import flet_web.fastapi.serve_fastapi_web_app as _sfa
-        import uvicorn
-
-        if https and cert_path_final and key_path_final:
-            _orig_uv_init = getattr(uvicorn.Config, "_orig_init", uvicorn.Config.__init__)
-            setattr(uvicorn.Config, "_orig_init", _orig_uv_init)
-
-            def _https_uv_init(self_cfg, *u_args, **u_kwargs):
-                u_kwargs.setdefault("ssl_certfile", str(cert_path_final))
-                u_kwargs.setdefault("ssl_keyfile", str(key_path_final))
-                _orig_uv_init(self_cfg, *u_args, **u_kwargs)
-
-            uvicorn.Config.__init__ = _https_uv_init
-
-        _orig_serve = getattr(_sfa, "_orig_serve_fastapi_web_app", _sfa.serve_fastapi_web_app)
-        setattr(_sfa, "_orig_serve_fastapi_web_app", _orig_serve)
-
-        async def _serve_local_url(*args, **kwargs):
-            if kwargs.get("url_host") in ("0.0.0.0", "*", "", None, "127.0.0.1"):
-                kwargs["url_host"] = "localhost"
-            elif len(args) >= 4 and args[3] in ("0.0.0.0", "*", "", None, "127.0.0.1"):
-                args = (*args[:3], "localhost", *args[4:])
-
-            orig_on_startup = kwargs.get("on_startup")
-            if orig_on_startup:
-                def _wrapped_on_startup(p_url: str):
-                    if https and p_url.startswith("http://"):
-                        p_url = "https://" + p_url[len("http://") :]
-                    p_url = p_url.replace("://0.0.0.0:", "://localhost:").replace(
-                        "://127.0.0.1:", "://localhost:"
-                    )
-                    orig_on_startup(p_url)
-
-                kwargs["on_startup"] = _wrapped_on_startup
-
-            assets_path = Path(obtener_directorio_assets())
-            if not hasattr(flet_web.fastapi.FastAPI, "_orig_init"):
-                orig_init = flet_web.fastapi.FastAPI.__init__
-                setattr(flet_web.fastapi.FastAPI, "_orig_init", orig_init)
-
-                def custom_fastapi_init(self, *a, **kw):
-                    habilitar_docs_api = os.environ.get(
-                        "STOCKAGENT_ENABLE_API_DOCS", "0"
-                    ).strip().lower() in ("1", "true", "si", "yes")
-                    if not habilitar_docs_api:
-                        kw.setdefault("docs_url", None)
-                        kw.setdefault("redoc_url", None)
-                        kw.setdefault("openapi_url", None)
-                    orig_init(self, *a, **kw)
-                    configurar_middlewares_http(self)
-                    try:
-                        from ..api import api_v1_router
-
-                        self.include_router(api_v1_router)
-                        logger.info("Endpoints REST API (/api/v1) montados exitosamente.")
-                    except Exception as exc_api:
-                        logger.error("Error al montar router de API REST: %s", exc_api, exc_info=True)
-                    registrar_rutas_pwa(self, assets_path)
-                    registrar_rutas_ota(self)
-                    registrar_rutas_documentos_e_informes(self)
-
-                flet_web.fastapi.FastAPI.__init__ = custom_fastapi_init
-
-            handle = await _orig_serve(*args, **kwargs)
-            for _ in range(100):
-                if getattr(handle.server, "started", False) or handle.serve_task.done():
-                    break
-                await asyncio.sleep(0.05)
-
-            if abrir_navegador:
-                open_browser_cb(f"{esquema}://localhost:{port}")
-            return handle
-
-        _sfa.serve_fastapi_web_app = _serve_local_url
-        _parchear_websocket_logging()
-    except Exception:
-        pass
+    sub_app_flet = flet_web_fastapi.app(
+        entrypoint_main,
+        assets_dir=str(assets_path),
+        web_renderer=web_renderer,
+        no_cdn=no_cdn_activo,
+    )
+    app.mount("/", sub_app_flet)
+    return app
 
 
 def _imprimir_banner_red(esquema: str, port: int, https: bool, cert_path_final: Path | None) -> None:
@@ -230,8 +115,26 @@ def _imprimir_banner_red(esquema: str, port: int, https: bool, cert_path_final: 
     print("=" * 70, flush=True)
 
 
+async def _servir_uvicorn_con_apertura(
+    server: uvicorn.Server,
+    *,
+    abrir_navegador: bool,
+    url_local: str,
+) -> None:
+    """Inicia Uvicorn de forma asíncrona y abre el navegador cuando el socket queda listo."""
+    serve_task = asyncio.create_task(server.serve())
+    if abrir_navegador:
+        for _ in range(100):
+            if getattr(server, "started", False) or serve_task.done():
+                break
+            await asyncio.sleep(0.05)
+        if getattr(server, "started", False) and not serve_task.done():
+            webbrowser.open(url_local)
+    await serve_task
+
+
 def iniciar_servidor_web(
-    entrypoint_main: Callable[[ft.Page], None],
+    entrypoint_main: Callable[[ft.Page], Any],
     modo_web: bool = True,
     host: str = "0.0.0.0",
     port: int = PUERTO_WEB_DEFAULT,
@@ -243,7 +146,7 @@ def iniciar_servidor_web(
     con_tray: bool = True,
     **kwargs,
 ) -> None:
-    """Inicia el servidor web ASGI / FastAPI o la aplicación en modo ventana."""
+    """Inicia el servidor web ASGI / FastAPI explícito o la aplicación en modo ventana."""
     if ocultar_consola:
         ocultar_consola_windows()
     asegurar_flujos_estandar()
@@ -273,15 +176,18 @@ def iniciar_servidor_web(
             esquema = "http"
             os.environ["STOCKAGENT_SCHEME"] = "http"
 
+    assets_dir = obtener_directorio_assets()
+    web_renderer = kwargs.get("web_renderer", ft.WebRenderer.AUTO)
+
     if not modo_web:
-        assets_dir = obtener_directorio_assets()
+        no_cdn_desktop = bool(kwargs.get("no_cdn", False))
         ft.run(
             entrypoint_main,
             view=ft.AppView.FLET_APP,
             name="Control de Inventario Depósito Pasteur",
             assets_dir=assets_dir,
-            no_cdn=False,
-            web_renderer=ft.WebRenderer.AUTO,
+            no_cdn=no_cdn_desktop,
+            web_renderer=web_renderer,
         )
         return
 
@@ -295,14 +201,28 @@ def iniciar_servidor_web(
     if flet_logger.getEffectiveLevel() in (logging.CRITICAL, logging.NOTSET):
         flet_logger.setLevel(logging.WARNING)
 
-    open_cb = _parchear_navegador_local(abrir_navegador, https)
-    _configurar_adaptadores_web(
-        https, port, esquema, abrir_navegador, cert_path_final, key_path_final, open_cb
+    no_cdn_web = bool(kwargs["no_cdn"]) if "no_cdn" in kwargs else None
+    app = crear_aplicacion_asgi(
+        entrypoint_main,
+        assets_dir=assets_dir,
+        no_cdn=no_cdn_web,
+        web_renderer=web_renderer,
+        store_context=kwargs.get("store_context"),
     )
     _imprimir_banner_red(esquema, port, https, cert_path_final)
 
-    assets_dir = obtener_directorio_assets()
-    os.environ["FLET_ASSETS_DIR"] = assets_dir
+    config_kwargs: dict[str, Any] = {
+        "host": host,
+        "port": port,
+        "log_level": "warning",
+        "ws": "websockets-sansio",
+    }
+    if https and cert_path_final and key_path_final:
+        config_kwargs["ssl_certfile"] = str(cert_path_final)
+        config_kwargs["ssl_keyfile"] = str(key_path_final)
+
+    config = uvicorn.Config(app, **config_kwargs)
+    server = uvicorn.Server(config)
 
     tray_service = None
     if con_tray:
@@ -313,16 +233,14 @@ def iniciar_servidor_web(
         except Exception as exc_tray:
             logger.warning("No se pudo iniciar icono en bandeja del sistema: %s", exc_tray)
 
+    url_local = f"{esquema}://localhost:{port}"
     try:
-        ft.run(
-            entrypoint_main,
-            view=ft.AppView.WEB_BROWSER,
-            host=host,
-            port=port,
-            name="",
-            assets_dir=assets_dir,
-            no_cdn=False,
-            web_renderer=ft.WebRenderer.AUTO,
+        asyncio.run(
+            _servir_uvicorn_con_apertura(
+                server,
+                abrir_navegador=abrir_navegador,
+                url_local=url_local,
+            )
         )
     finally:
         if tray_service:

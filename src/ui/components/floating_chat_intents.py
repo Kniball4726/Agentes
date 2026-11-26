@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime
 from typing import Any
 
@@ -17,8 +16,7 @@ from ...chat import (
     obtener_mensaje_bienvenida,
     obtener_pie_ayuda,
 )
-from ...inventory import StockManager as _DefaultStockManager
-from ...paths import application_root as _default_app_root
+from ..dialogs._shared import resolve_app_root, resolve_stock_manager
 
 _INTENCIONES_BLOQUEADAS_MASTER = frozenset({
     "simular",
@@ -62,26 +60,14 @@ _INTENCIONES_BLOQUEADAS_DESPACHADOR = frozenset({
 })
 
 
-def _resolver_stock_manager():
-    """Resuelve StockManager respetando patches sobre src.flet_gui o floating_chat."""
-    mod_fc = sys.modules.get("src.ui.components.floating_chat")
-    if mod_fc is not None:
-        fc_sm = getattr(mod_fc, "StockManager", _DefaultStockManager)
-        if fc_sm is not _DefaultStockManager:
-            return fc_sm
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui is not None and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
+def _resolver_stock_manager(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección de dependencias desde `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
-def _resolver_app_root():
-    mod_fc = sys.modules.get("src.ui.components.floating_chat")
-    if mod_fc is not None:
-        fc_root = getattr(mod_fc, "application_root", _default_app_root)
-        if fc_root is not _default_app_root:
-            return fc_root
-    return _default_app_root
+def _resolver_app_root(interfaz: Any = None):
+    """Resuelve la raíz de aplicación mediante inyección desde `interfaz`."""
+    return resolve_app_root(interfaz)
 
 
 def _validar_permiso_intencion(rol: str, intencion: str) -> str | None:
@@ -159,7 +145,7 @@ def _responder_cierre(interfaz: Any) -> str:
 
 
 def _responder_reposicion(interfaz: Any) -> str:
-    stock_mgr = _resolver_stock_manager()(interfaz.menu.ruta_excel_base)
+    stock_mgr = _resolver_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
     analisis = stock_mgr.obtener_analisis_reposicion(solo_criticos=True)
     if not analisis:
         return "¡Excelente! No hay productos en quiebre de stock ni bajo su umbral mínimo."
@@ -318,7 +304,7 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
         lineas.append("\n💡 Accede a 'Registro de Auditoría' en el menú lateral para buscar y filtrar todos los eventos.")
         respuesta = "\n".join(lineas)
     elif intencion == "backup":
-        carpeta_bks = _resolver_app_root()() / "data" / "backups"
+        carpeta_bks = _resolver_app_root(interfaz) / "data" / "backups"
         bks = sorted(carpeta_bks.glob("Backup_Deposito_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True) if carpeta_bks.exists() else []
         if bks:
             ultimo = bks[0]
@@ -333,7 +319,7 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
         else:
             respuesta = "💾 Aún no se han generado copias de seguridad. Se generará una automáticamente en el próximo Cierre de Jornada o puedes presionar 'Copia de Seguridad' en el menú lateral."
     elif intencion == "criticos":
-        productos = _resolver_stock_manager()(interfaz.menu.ruta_excel_base).listar_productos()
+        productos = _resolver_stock_manager(interfaz)(interfaz.menu.ruta_excel_base).listar_productos()
         respuesta = formatear_respuesta_criticos(productos)
     elif intencion == "reposicion" or mensaje.strip().casefold().startswith("/reposicion"):
         respuesta = _responder_reposicion(interfaz)
@@ -346,7 +332,7 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
         respuesta = formatear_ultimo_informe(interfaz.informes)
     elif intencion == "buscar_stock":
         termino = extraer_termino_busqueda(mensaje)
-        productos = _resolver_stock_manager()(interfaz.menu.ruta_excel_base).listar_productos()
+        productos = _resolver_stock_manager(interfaz)(interfaz.menu.ruta_excel_base).listar_productos()
         respuesta = formatear_respuesta_stock(termino, productos)
     elif intencion == "simular":
         if interfaz.ocupado:

@@ -220,7 +220,7 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
 
             items_a_ingresar = res_parcial.get("items_a_ingresar", {})
             if items_a_ingresar:
-                sm = resolver_stock_manager_fabrica()(interfaz.menu.ruta_excel_base)
+                sm = resolver_stock_manager_fabrica(interfaz)(interfaz.menu.ruta_excel_base)
                 try:
                     sm.registrar_ingreso_fabrica(items_a_ingresar, sobrescribir=False)
                 except Exception as exc_sm:
@@ -255,7 +255,7 @@ def mostrar_control_ingreso_fabrica(interfaz: Any, _evento: ft.Event | None = No
             items_controlados = res_fin.get("items_controlados", {})
 
             if items_controlados:
-                sm = resolver_stock_manager_fabrica()(interfaz.menu.ruta_excel_base)
+                sm = resolver_stock_manager_fabrica(interfaz)(interfaz.menu.ruta_excel_base)
                 try:
                     sm.registrar_ingreso_fabrica(items_controlados, sobrescribir=False)
                 except Exception as exc_sm:

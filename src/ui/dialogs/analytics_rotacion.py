@@ -96,7 +96,7 @@ def mostrar_estadisticas(interfaz: Any, _evento: ft.Event | None = None) -> None
             tipo = None
 
         try:
-            sm_cls = resolver_stock_manager_analytics()
+            sm_cls = resolver_stock_manager_analytics(interfaz)
             try:
                 if hasattr(interfaz, "product_store") and hasattr(interfaz.product_store, "database_path"):
                     sm = sm_cls(interfaz.menu.ruta_excel_base, ruta_base_datos=interfaz.product_store.database_path)

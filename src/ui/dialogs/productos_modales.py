@@ -7,20 +7,14 @@ from typing import Any, Callable
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..components.debounce import Debouncer
 from ..design import colores_de, limpiar_errores, marcar_error
+from ._shared import resolve_stock_manager
 
 
-def _resolver_stock_manager_cls():
-    """Resuelve StockManager respetando patches sobre dlg_productos o src.flet_gui."""
-    mod_prod = sys.modules.get("src.ui.dialogs.dlg_productos")
-    if mod_prod is not None and hasattr(mod_prod, "_get_stock_manager_cls"):
-        return mod_prod._get_stock_manager_cls()
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui is not None and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
+def _resolver_stock_manager_cls(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección desde `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def mostrar_dialogo_editar_producto(
@@ -210,7 +204,7 @@ def mostrar_dialogo_historial_movimientos_stock(interfaz: Any, codigo_inicial: s
     """Muestra el historial detallado de movimientos de stock registrado en SQLite."""
     if not interfaz.exigir_roles("administrador"):
         return
-    stock_manager = _resolver_stock_manager_cls()(interfaz.menu.ruta_excel_base)
+    stock_manager = _resolver_stock_manager_cls(interfaz)(interfaz.menu.ruta_excel_base)
     filtro_prod = ft.TextField(
         label="Filtrar por código o nombre de producto",
         value=codigo_inicial.strip(),
@@ -345,7 +339,7 @@ def mostrar_dialogo_formulario_producto(
             interfaz.page.update()
             return
 
-        stock_manager = _resolver_stock_manager_cls()(interfaz.menu.ruta_excel_base)
+        stock_manager = _resolver_stock_manager_cls(interfaz)(interfaz.menu.ruta_excel_base)
 
         # 1. Validar si el código ya existe
         prod_existente = None

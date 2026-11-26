@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any, Callable
 
 import flet as ft
 
 from ...products.barcode_utils import generar_variantes_codigo_lector, normalizar_codigo_lector
-from ...webhook_manager import despachar_evento_webhook as _default_despachar_webhook
+from ...webhook_manager import despachar_evento_webhook
+from ._shared import resolve_stock_manager
 
 
 def obtener_stock_manager_movimiento(interfaz: Any, cache_sm: list[Any]) -> Any:
@@ -21,9 +21,8 @@ def obtener_stock_manager_movimiento(interfaz: Any, cache_sm: list[Any]) -> Any:
     ruta_excel = getattr(getattr(interfaz, "menu", None), "ruta_excel_base", None)
     if ruta_excel:
         try:
-            from src.inventory import StockManager
-
-            cache_sm[0] = StockManager(ruta_excel)
+            sm_cls = resolve_stock_manager(interfaz)
+            cache_sm[0] = sm_cls(ruta_excel)
             return cache_sm[0]
         except Exception:
             return None
@@ -71,13 +70,6 @@ def extraer_datos_fila_producto(sm: Any, row: Any) -> dict[str, Any]:
         "barcode": barcode,
         "stock_actual": stock_actual,
     }
-
-
-def _resolver_despachar_webhook():
-    mod = sys.modules.get("src.ui.dialogs.dlg_movimientos_rapidos")
-    if mod is not None and hasattr(mod, "despachar_evento_webhook"):
-        return getattr(mod, "despachar_evento_webhook")
-    return _default_despachar_webhook
 
 
 def ejecutar_transaccion_movimiento_rapido(
@@ -129,7 +121,7 @@ def ejecutar_transaccion_movimiento_rapido(
             )
 
         try:
-            _resolver_despachar_webhook()(
+            despachar_evento_webhook(
                 "MOVIMIENTO_RAPIDO",
                 {
                     "tipo": "ingreso" if es_ingreso else "salida",

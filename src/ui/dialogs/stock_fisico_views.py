@@ -2,25 +2,18 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..theme import ROJO
+from ._shared import resolve_stock_manager
 
 
-def resolver_stock_manager_sf():
-    """Resuelve StockManager respetando patches en dlg_stock_fisico o src.flet_gui."""
-    mod_sf = sys.modules.get("src.ui.dialogs.dlg_stock_fisico")
-    if mod_sf is not None and hasattr(mod_sf, "_get_stock_manager"):
-        return mod_sf._get_stock_manager()
-    mod_gui = sys.modules.get("src.flet_gui")
-    if mod_gui is not None and hasattr(mod_gui, "StockManager"):
-        return getattr(mod_gui, "StockManager")
-    return _DefaultStockManager
+def resolver_stock_manager_sf(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def construir_fila_comparativa_sf(
@@ -75,7 +68,7 @@ def mostrar_comparativa_stock_fisico_admin(interfaz: Any, _evento: ft.Event | No
     if not interfaz.exigir_roles("administrador"):
         return
 
-    sm = resolver_stock_manager_sf()(interfaz.menu.ruta_excel_base)
+    sm = resolver_stock_manager_sf(interfaz)(interfaz.menu.ruta_excel_base)
     inventarios = sm.listar_inventarios_fisicos(limit=25)
     lista_detalles = ft.ListView(expand=True, spacing=4, height=300)
     solo_diferencias = ft.Checkbox(label="Mostrar solo productos con diferencias", value=False)

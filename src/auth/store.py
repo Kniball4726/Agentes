@@ -64,7 +64,7 @@ class UserStore:
 
     def _initialize(self) -> None:
         with self._connect() as connection, connection:
-            inicializar_esquema(connection)
+            inicializar_esquema(connection, self.database_path)
 
     _migrar_columnas = staticmethod(migrar_columnas)
     _normalizar_usuario = staticmethod(normalizar_usuario)
@@ -202,7 +202,7 @@ class UserStore:
             return self._registrar_fallo(identificador, ahora)
         with self._connect() as connection:
             row = connection.execute(
-                f"""
+                """
                 SELECT id, username, password_hash, role, active, must_change_password, nombre, email, created_at, updated_at
                 FROM users
                 WHERE username = ? COLLATE NOCASE OR (email != '' AND email = ? COLLATE NOCASE)

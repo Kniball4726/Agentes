@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sqlite3
+
+from ..core.sqlite_migrations import MigrationStep, aplicar_migraciones_sqlite
+
+ORDERS_SCHEMA_VERSION = 3
 
 _COLUMNAS_PEDIDO_COMPLETO = (
     "id, nota_pedido, numero_pedido, cliente, bultos, logistica, armador, "
@@ -21,8 +26,8 @@ _COLUMNAS_MIGRACION_DESPACHO = (
 )
 
 
-def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
-    """Crea tablas, ejecuta migraciones pendientes y asegura índices del store de pedidos."""
+def _crear_tablas_base_pedidos(connection: sqlite3.Connection) -> None:
+    """Crea tablas e índices base del dominio de pedidos, cierres y planes."""
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS clientes (
@@ -238,12 +243,14 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_mensajes_destinatario ON mensajes_chat(destinatario, leido)",
         "CREATE INDEX IF NOT EXISTS idx_mensajes_chat_leidos_usuario ON mensajes_chat_leidos(usuario)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos(estado)",
-        "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre ON pedidos(cierre_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_cliente ON pedidos(cliente)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_fecha ON pedidos(created_at)",
     ):
         connection.execute(ddl)
 
+
+def _migrar_esquemas_y_columnas_pedidos(connection: sqlite3.Connection) -> None:
+    """Aplica migraciones de columnas incrementales y restricción CHECK de docx."""
     cols_clientes = {r["name"] for r in connection.execute("PRAGMA table_info(clientes)").fetchall()}
     if "codigo" not in cols_clientes:
         connection.execute("ALTER TABLE clientes ADD COLUMN codigo TEXT NOT NULL DEFAULT ''")
@@ -267,7 +274,11 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     _migrar_columnas_pedidos(connection)
     _migrar_columnas_full(connection)
 
+
+def _crear_tablas_concurrencia_y_bultos(connection: sqlite3.Connection) -> None:
+    """Crea índices extendidos y tablas de bloqueos, idempotencia y bultos escaneados."""
     for ddl in (
+        "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre ON pedidos(cierre_id)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_estado_despacho ON pedidos(estado_despacho)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_turno ON pedidos(estado, cierre_id, id DESC)",
         "CREATE INDEX IF NOT EXISTS idx_pedidos_cierre_mercado ON pedidos(cierre_mercado_id)",
@@ -319,6 +330,21 @@ def inicializar_esquema_pedidos(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_despacho_bultos_pedido ON despacho_bultos_escaneados(pedido_id)"
     )
+
+
+_ORDERS_MIGRATION_STEPS: tuple[MigrationStep, ...] = (
+    MigrationStep(1, "Tablas e índices base de pedidos, clientes, cierres y planes", _crear_tablas_base_pedidos),
+    MigrationStep(2, "Columnas incrementales y CHECK docx de pedidos", _migrar_esquemas_y_columnas_pedidos),
+    MigrationStep(3, "Índices extendidos, bloqueos, idempotencia y bultos QR", _crear_tablas_concurrencia_y_bultos),
+)
+
+
+def inicializar_esquema_pedidos(
+    connection: sqlite3.Connection,
+    database_path: Path | str | None = None,
+) -> None:
+    """Crea tablas, ejecuta migraciones versionadas (`PRAGMA user_version`) y asegura índices."""
+    aplicar_migraciones_sqlite(connection, database_path, _ORDERS_MIGRATION_STEPS, domain="orders")
 
 
 def _migrar_constraint_docx(connection: sqlite3.Connection) -> None:
@@ -383,6 +409,12 @@ def _migrar_columnas_pedidos(connection: sqlite3.Connection) -> None:
     columnas_actuales = {
         r["name"] for r in connection.execute("PRAGMA table_info(pedidos)").fetchall()
     }
+    if "fecha_retiro" not in columnas_actuales:
+        connection.execute("ALTER TABLE pedidos ADD COLUMN fecha_retiro TEXT NOT NULL DEFAULT ''")
+    if "archivo_descuento" not in columnas_actuales:
+        connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_descuento TEXT NOT NULL DEFAULT ''")
+    if "cierre_id" not in columnas_actuales:
+        connection.execute("ALTER TABLE pedidos ADD COLUMN cierre_id INTEGER DEFAULT NULL")
     if "archivo_hash" not in columnas_actuales:
         connection.execute("ALTER TABLE pedidos ADD COLUMN archivo_hash TEXT NOT NULL DEFAULT ''")
     if "items_sin_coincidencia" not in columnas_actuales:

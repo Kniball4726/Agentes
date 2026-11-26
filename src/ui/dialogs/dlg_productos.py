@@ -7,10 +7,11 @@ from typing import Any
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..components.debounce import Debouncer
 from ..design import es_viewport_estrecho
 from ..theme import ROJO
+from ._shared import resolve_stock_manager
+from .dlg_ubicaciones_lotes import mostrar_dialogo_ubicaciones_lotes
 from .productos_modales import (
     confirmar_cambio_estado_producto,
     mostrar_dialogo_editar_producto,
@@ -19,19 +20,16 @@ from .productos_modales import (
 )
 
 
-def _get_stock_manager_cls():
-    """Devuelve StockManager vigente respetando mocks en src.flet_gui."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager_cls(interfaz: Any = None):
+    """Devuelve StockManager vigente mediante inyección desde `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
     """Abre el catálogo interactivo para listar, buscar, editar y activar/desactivar productos."""
     if not interfaz.exigir_roles("administrador"):
         return
-    stock_manager = _get_stock_manager_cls()(interfaz.menu.ruta_excel_base)
+    stock_manager = _get_stock_manager_cls(interfaz)(interfaz.menu.ruta_excel_base)
     busqueda = ft.TextField(
         label="Buscar por código, nombre o código de barras",
         hint_text="Escribe o escanea un código para filtrar...",
@@ -97,6 +95,14 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                 icon_size=18,
                 on_click=lambda _e, code=codigo: interfaz.mostrar_historial_movimientos_stock(code),
             )
+            btn_ubic_lotes = ft.IconButton(
+                icon=ft.Icons.WAREHOUSE_OUTLINED,
+                tooltip="Gestionar ubicaciones multi-zona y lotes FEFO",
+                icon_size=18,
+                on_click=lambda _e, item=producto: mostrar_dialogo_ubicaciones_lotes(
+                    interfaz, stock_manager, item, lambda: actualizar_lista(recargar=True)
+                ),
+            )
             btn_edit = ft.TextButton(
                 "Editar",
                 on_click=lambda _e, item=producto: mostrar_dialogo_editar_producto(
@@ -140,7 +146,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                             wrap=True,
                             run_spacing=4,
                         ),
-                        ft.Row([btn_hist, btn_edit, btn_estado], spacing=4, wrap=True, alignment=ft.MainAxisAlignment.END),
+                        ft.Row([btn_ubic_lotes, btn_hist, btn_edit, btn_estado], spacing=4, wrap=True, alignment=ft.MainAxisAlignment.END),
                     ],
                     spacing=4,
                     tight=True,
@@ -165,6 +171,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                             size=12,
                             color=ft.Colors.GREEN_400 if activo else interfaz.secundario,
                         ),
+                        btn_ubic_lotes,
                         btn_hist,
                         btn_edit,
                         btn_estado,
@@ -247,7 +254,7 @@ def mostrar_dialogo_gestion_productos(interfaz: Any) -> None:
                 ft.Text("Nombre", expand=True, weight=ft.FontWeight.BOLD),
                 ft.Text("Stock", width=70, weight=ft.FontWeight.BOLD),
                 ft.Text("Estado", width=80, weight=ft.FontWeight.BOLD),
-                ft.Container(width=145),
+                ft.Container(width=185),
             ]
         )
     )

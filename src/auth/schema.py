@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sqlite3
 
+from ..core.sqlite_migrations import MigrationStep, aplicar_migraciones_sqlite
 from .models import DEFAULT_MASTER_PASSWORD, _master_default_credentials
 from .password import hash_clave, verificar_clave
+
+AUTH_SCHEMA_VERSION = 3
 
 
 def migrar_esquema(connection: sqlite3.Connection) -> None:
@@ -171,8 +175,8 @@ def asegurar_usuario_master(connection: sqlite3.Connection) -> None:
             )
 
 
-def inicializar_esquema(connection: sqlite3.Connection) -> None:
-    """Crea tablas, índices, migraciones y cuenta Master inicial en SQLite."""
+def _crear_tablas_base(connection: sqlite3.Connection) -> None:
+    """Crea tablas base de autenticación cuando aún no existen."""
     migrar_esquema(connection)
     connection.execute(
         """
@@ -234,6 +238,24 @@ def inicializar_esquema(connection: sqlite3.Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active)"
     )
+
+
+def _aplicar_migracion_roles_y_columnas(connection: sqlite3.Connection) -> None:
+    migrar_esquema(connection)
     migrar_columnas(connection)
-    asegurar_indices_y_triggers(connection)
+
+
+_AUTH_MIGRATION_STEPS: tuple[MigrationStep, ...] = (
+    MigrationStep(1, "Tablas base de usuarios, intentos y sesiones API", _crear_tablas_base),
+    MigrationStep(2, "Migración de CHECK roles y columnas incrementales", _aplicar_migracion_roles_y_columnas),
+    MigrationStep(3, "Índices únicos y trigger updated_at de usuarios", asegurar_indices_y_triggers),
+)
+
+
+def inicializar_esquema(
+    connection: sqlite3.Connection,
+    database_path: Path | str | None = None,
+) -> None:
+    """Crea tablas, ejecuta migraciones versionadas y garantiza la cuenta Master inicial."""
+    aplicar_migraciones_sqlite(connection, database_path, _AUTH_MIGRATION_STEPS, domain="auth")
     asegurar_usuario_master(connection)

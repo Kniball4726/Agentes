@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -44,6 +44,8 @@ class ProductoItemResponse(BaseModel):
     name: str
     stock: int
     stock_fisico: Optional[int] = 0
+    stock_reservado: int = 0
+    stock_disponible: Optional[int] = None
     stock_minimo: Optional[int] = 0
     stock_maximo: Optional[int] = 0
     cod_barras: Optional[str] = ""
@@ -163,3 +165,77 @@ class EstadoSistemaResponse(BaseModel):
     ip_local: str
     sesiones_activas: int
     modo_conexion: str
+    sqlite_latencia_ms: Dict[str, Optional[float]] = Field(default_factory=dict)
+    colas_y_logs: Dict[str, Any] = Field(default_factory=dict)
+    planificador_alertas: Dict[str, Any] = Field(default_factory=dict)
+    salud_sistema: str = ""
+
+
+# ==========================================
+# Fase 4: Reservas, Multi-ubicación y Lotes FEFO
+# ==========================================
+
+
+class ReservaItemRequest(BaseModel):
+    codigo: str = Field(..., min_length=1, max_length=80)
+    cantidad: int = Field(..., ge=1)
+
+
+class CrearReservaRequest(BaseModel):
+    referencia_id: str = Field(..., min_length=1, max_length=120)
+    referencia_tipo: str = Field("ola_picking", max_length=40)
+    items: List[ReservaItemRequest] = Field(..., min_length=1)
+    nota: str = Field("", max_length=250)
+    asignar_fefo: bool = True
+    permitir_parcial: bool = False
+    expires_at: str = Field("", max_length=40)
+
+
+class ConsolidarReservaRequest(BaseModel):
+    referencia_id: str = Field(..., min_length=1, max_length=120)
+    referencia_tipo: str = Field("ola_picking", max_length=40)
+    codigo: Optional[str] = Field(None, max_length=80)
+    descontar_stock: bool = True
+    detalle: str = Field("", max_length=120)
+
+
+class LiberarReservaRequest(BaseModel):
+    referencia_id: str = Field(..., min_length=1, max_length=120)
+    referencia_tipo: str = Field("ola_picking", max_length=40)
+    codigo: Optional[str] = Field(None, max_length=80)
+    motivo: str = Field("", max_length=250)
+
+
+class AsignarUbicacionRequest(BaseModel):
+    ubicacion: str = Field(..., min_length=1, max_length=80)
+    tipo_zona: str = Field("picking", max_length=30)
+    stock: Optional[int] = Field(None, ge=0)
+    capacidad_max: int = Field(0, ge=0)
+    es_principal: bool = False
+
+
+class TransferirUbicacionRequest(BaseModel):
+    origen: str = Field(..., min_length=1, max_length=80)
+    destino: str = Field(..., min_length=1, max_length=80)
+    cantidad: int = Field(..., ge=1)
+    destino_zona: str = Field("picking", max_length=30)
+    crear_destino: bool = True
+
+
+class RegistrarLoteRequest(BaseModel):
+    lote: str = Field(..., min_length=1, max_length=80)
+    cantidad: int = Field(..., ge=0)
+    fecha_vencimiento: str = Field("", max_length=20)
+    ubicacion: str = Field("", max_length=80)
+    estado: str = Field("disponible", max_length=20)
+    notas: str = Field("", max_length=250)
+    sumar_si_existe: bool = False
+
+
+class ConsumirLotesFefoRequest(BaseModel):
+    cantidad: int = Field(..., ge=1)
+    ubicacion: Optional[str] = Field(None, max_length=80)
+    permitir_parcial: bool = False
+    incluir_vencidos: bool = False
+    descontar_stock_producto: bool = False
+    detalle: str = Field("", max_length=120)

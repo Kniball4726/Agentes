@@ -30,7 +30,13 @@ from .factory_plan_repo import FactoryPlanRepository
 from .full_plan_repo import FullPlanRepository
 from .order_core_repo import OrderCoreRepository
 from .stock_flow_repo import StockFlowRepository
-from .picking_wave import consolidar_ola_picking
+from .picking_wave import (
+    consolidar_ola_picking,
+    consolidar_y_despachar_ola_picking,
+    crear_y_reservar_ola_picking,
+    generar_referencia_ola,
+    liberar_ola_picking,
+)
 from .store import OrderStore
 
 __all__ = [
@@ -40,6 +46,10 @@ __all__ = [
     "calcular_hash_archivo",
     "inicializar_esquema_pedidos",
     "consolidar_ola_picking",
+    "crear_y_reservar_ola_picking",
+    "consolidar_y_despachar_ola_picking",
+    "liberar_ola_picking",
+    "generar_referencia_ola",
     "OrderStoreError",
     "OrderNotFoundError",
     "OrderValidationError",

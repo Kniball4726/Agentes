@@ -78,10 +78,12 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
     # CAPÍTULO 1: MARCO ESTRATÉGICO Y ARQUITECTURA MODULAR
     agregar_titulo_capitulo(story, est, "1. Marco Estratégico, Arquitectura Modular y Alcance (ISO 9001 §4.3)", page_break=True)
     story.append(Paragraph(
-        "StockAgent constituye la plataforma logística troncal para control de inventario SQLite-first, despacho mayorista/e-commerce "
-        "y trazabilidad física. Su arquitectura modular sin archivos monolíticos organiza el código por composición pura bajo `src/` "
-        "(`core` con cierre determinístico `closing()`, `server_app`, `auth`, `orders`, `products`, `stock`, `inventory`, `labels`, `chat`, "
-        "`cli`, `tray`, `integrations`, `parsers`, `api` y `ui`) y los generadores documentales en `Documentacion/pdf_engine/` y `Documentacion/procedimientos/`.",
+        "StockAgent constituye la plataforma logística troncal para control de inventario SQLite-first, despacho mayorista/e-commerce, "
+        "multi-ubicación zonificada, trazabilidad FEFO y reservas de stock. Su arquitectura modular sin archivos monolíticos organiza el código "
+        "por composición declarativa (``DelegadoAtributo``) bajo `src/` (`core` con migraciones `PRAGMA user_version` v4, logging estructurado y cierre "
+        "determinístico `closing()`, `server_app` ASGI unificado, `auth`, `orders`, `products` con `locations_repo` / `lots_fefo_repo` / `reservations_repo`, "
+        "`stock`, `inventory`, `labels`, `chat`, `cli`, `tray`, `integrations`, `parsers`, `api` y `ui` modularizado con `pedidos_baja_ops` y `no_cdn=True`) "
+        "y los generadores documentales en `Documentacion/pdf_engine/` y `Documentacion/procedimientos/`.",
         est["body_sangria"],
     ))
 
@@ -105,7 +107,8 @@ def construir_manual_maestro_imprimible(ruta_destino: Path) -> Path:
         ("Descuento Mercado Full (Excel)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Procesamiento rápido hacia bodega Full."),
         ("Movimientos Rápidos (+ / − Stock)", "✅ Sí", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Trazabilidad obligatoria con motivo y auditoría."),
         ("Editar / Desarmar / Eliminar Pedidos", "❌ No", "❌ Lectura", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Operador desarma (lógico) o elimina (físico) devolviendo stock."),
-        ("Módulo Despacho (QR Bultos / Entregas)", "❌ No", "❌ Lectura", "❌ No", "❌ No", "✅ Exclusivo", "❌ No", "Despachador libera en muelle; Admin consulta solo lectura."),
+        ("Módulo Despacho (QR Bultos / Entregas)", "❌ No", "❌ Lectura", "❌ No", "❌ No", "✅ Exclusivo", "❌ No", "Despachador libera en muelle y consolida reservas; Admin consulta solo lectura."),
+        ("Multi-Ubicación, FEFO y Reservas", "✅ Lectura", "✅ Sí", "✅ Sí", "✅ Sí", "🔍 Móvil", "❌ No", "Zonas/traslados/lotes FEFO, reserva preventiva y alertas de vencimiento."),
         ("Cierre de Jornada y Hojas de Ruta", "❌ No", "❌ Audita", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "Operador cierra en 3 canales; Admin audita Consolidado."),
         ("Ingreso de Fábrica (Escáner / Lote)", "❌ No", "✅ Sí", "✅ Sí", "✅ Sí", "❌ No", "❌ No", "Sobrescribir stock reservado a Administrador."),
         ("Catálogo, Ped. Fábrica y Comparativa", "❌ No", "✅ Exclusivo", "❌ No", "❌ No", "❌ No", "❌ No", "Administración maestra de SKUs y arqueos."),

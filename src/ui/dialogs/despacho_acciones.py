@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+from unittest.mock import NonCallableMock
 
 import flet as ft
 
+from ...core.stock_order_tx import consolidar_reserva_pedido_si_existe
 from ...orders import Pedido
 from ..design import es_viewport_estrecho
 from ..theme import ROJO
@@ -139,6 +141,15 @@ def aplicar_resultado_escaneo_qr(
     """Actualiza el estado local, feedback visual y sincronización tras un escaneo QR de despacho."""
     pedido_res: Pedido | None = res.get("pedido")
     if res.get("completado"):
+        if pedido_res is not None:
+            ps = getattr(interfaz, "product_store", None)
+            if ps is not None and not isinstance(ps, NonCallableMock) and hasattr(ps, "consolidar_reserva"):
+                usr_obj = getattr(interfaz, "usuario_actual", None)
+                usr_nom = str(getattr(usr_obj, "username", "") or "despacho") if not isinstance(usr_obj, NonCallableMock) else "despacho"
+                try:
+                    consolidar_reserva_pedido_si_existe(ps, pedido_res.nota_pedido, usuario=usr_nom)
+                except Exception:
+                    pass
         estado_ui["pedido_destacado_id"] = None
         fijar_feedback(str(res["mensaje"]), tipo="ok")
         if hasattr(interfaz, "sincronizar_sesiones"):

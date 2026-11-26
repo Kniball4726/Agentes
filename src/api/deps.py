@@ -11,11 +11,17 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..auth import UserStore
 from .stores import (
+    ApiStoreContext,
+    crear_contexto_api,
+    establecer_contexto_api,
     get_order_store,
     get_product_store,
     get_stock_manager,
     get_user_store,
+    obtener_contexto_api_actual,
     reset_api_stores,
+    restaurar_contexto_api,
+    usar_contexto_api,
 )
 from .tokens import (
     DOC_TOKEN_TTL_SECONDS,
@@ -154,6 +160,7 @@ def require_roles(*roles_permitidos: str):
 
 
 __all__ = [
+    "ApiStoreContext",
     "DOC_TOKEN_TTL_SECONDS",
     "SESSION_ABSOLUTE_TTL_SECONDS",
     "SESSION_TTL_SECONDS",
@@ -166,18 +173,23 @@ __all__ = [
     "_sesion_expirada",
     "_sesiones_activas",
     "_validar_y_sincronizar_usuario",
+    "crear_contexto_api",
     "crear_sesion",
     "crear_token_documento",
+    "establecer_contexto_api",
     "get_current_user",
     "get_optional_current_user",
     "get_order_store",
     "get_product_store",
     "get_stock_manager",
     "get_user_store",
+    "obtener_contexto_api_actual",
     "require_document_access",
     "require_roles",
     "reset_api_stores",
+    "restaurar_contexto_api",
     "revocar_sesion",
     "security_bearer",
+    "usar_contexto_api",
     "validar_token_documento",
 ]

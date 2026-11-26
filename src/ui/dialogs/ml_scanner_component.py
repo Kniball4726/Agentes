@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import sys
 from typing import Any, Callable
 
 import flet as ft
@@ -12,17 +11,13 @@ from ..audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_co
 from ..theme import ROJO
 from ...core.environment import get_data_dir
 from ...core.security_utils import resolver_ruta_confinada, sanitizar_componente_archivo
-from ...inventory import StockManager as _DefaultStockManager
 from ...stock.models import RegistroDescuento
-from ._shared import safe_focus
+from ._shared import resolve_stock_manager, safe_focus
 from .ml_helpers import generar_docx_respaldo_escaner, mostrar_prompt_rotulo_ml
 
 
-def _resolver_sm():
-    mod_ml = sys.modules.get("src.ui.dialogs.dlg_mercadolibre_descuento")
-    if mod_ml is not None and hasattr(mod_ml, "_get_stock_manager"):
-        return mod_ml._get_stock_manager()
-    return _DefaultStockManager
+def _resolver_sm(interfaz: Any = None):
+    return resolve_stock_manager(interfaz)
 
 
 class MercadoLibreScannerComponent:
@@ -162,7 +157,7 @@ class MercadoLibreScannerComponent:
         except ValueError:
             cant_a_sumar = 1
 
-        sm = _resolver_sm()(self.interfaz.menu.ruta_excel_base)
+        sm = _resolver_sm(self.interfaz)(self.interfaz.menu.ruta_excel_base)
         sku_final, nombre_final, stk_actual = self._buscar_en_catalogo(sm, codigo_limpio)
 
         if not sku_final:
@@ -238,7 +233,7 @@ class MercadoLibreScannerComponent:
 
     def actualizar_vista(self) -> None:
         self.lista_escaneo_view.controls.clear()
-        sm = _resolver_sm()(self.interfaz.menu.ruta_excel_base)
+        sm = _resolver_sm(self.interfaz)(self.interfaz.menu.ruta_excel_base)
 
         if not self.items_escaneados:
             self.lista_escaneo_view.controls.append(
@@ -361,7 +356,7 @@ class MercadoLibreScannerComponent:
         self.interfaz.page.pop_dialog()
 
         def tarea_descuento() -> None:
-            sm = _resolver_sm()(self.interfaz.menu.ruta_excel_base)
+            sm = _resolver_sm(self.interfaz)(self.interfaz.menu.ruta_excel_base)
             descuentos: list[RegistroDescuento] = []
             items_pedido_store: list[tuple[str, str, int]] = []
             total_unidades = 0

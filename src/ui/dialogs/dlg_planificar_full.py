@@ -79,5 +79,5 @@ def mostrar_planificar_full(interfaz: Any, _evento: ft.Event | None = None) -> N
         interfaz,
         _CONFIG_PLAN_FULL,
         parsear_archivo_mercado_full,
-        stock_manager_factory=_get_stock_manager,
+        stock_manager_factory=lambda: _get_stock_manager(interfaz),
     )

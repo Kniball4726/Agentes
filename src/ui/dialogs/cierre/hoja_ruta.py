@@ -1,19 +1,16 @@
 """Resolución de comprobantes y gestión de hojas de ruta de despacho."""
 from pathlib import Path
-import sys
 from typing import Any
 import flet as ft
 
-from ....inventory import StockManager as _DefaultStockManager
 from ....paths import application_root
 from ....stock.manifest_pdf import generar_hoja_ruta_pdf
+from .._shared import resolve_stock_manager
 from ...theme import ROJO
 
-def _get_stock_manager_cls():
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager_cls(interfaz: Any = None):
+    """Devuelve la clase StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 def resolver_archivos_cierre(interfaz: Any, c: Any) -> tuple[Path | None, Path | None, Path | None]:
     """Resuelve las rutas absolutas físicas de los archivos generados en un cierre de jornada."""

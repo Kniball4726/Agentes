@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import flet as ft
@@ -11,12 +10,9 @@ from ..theme import ROJO
 from ._shared import resolve_stock_manager
 
 
-def _resolver_stock_manager():
-    """Resuelve StockManager respetando patches sobre dlg_analytics o src.flet_gui."""
-    mod_dlg = sys.modules.get("src.ui.dialogs.dlg_analytics")
-    if mod_dlg is not None and hasattr(mod_dlg, "_get_stock_manager"):
-        return mod_dlg._get_stock_manager()
-    return resolve_stock_manager("src.flet_gui")
+def _resolver_stock_manager(interfaz: Any = None):
+    """Resuelve StockManager mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def mostrar_registro_auditoria(interfaz: Any, _e: ft.Event | None = None) -> None:
@@ -115,7 +111,7 @@ def mostrar_notificaciones_admin(interfaz: Any, _evento: ft.Event | None = None)
     if not interfaz.exigir_roles("administrador"):
         return
 
-    sm = _resolver_stock_manager()(interfaz.menu.ruta_excel_base)
+    sm = _resolver_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
     lista_notificaciones = ft.ListView(expand=True, spacing=8, height=340)
 
     def recargar_lista() -> None:

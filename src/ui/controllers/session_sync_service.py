@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 from typing import Any, Callable, Iterable
 
@@ -29,10 +28,7 @@ def _tocar_campana_chat(sesion: Any) -> None:
 
 
 def _sesiones_activas_por_defecto() -> Iterable[Any]:
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None and hasattr(mod, "SESIONES_ACTIVAS"):
-        return list(mod.SESIONES_ACTIVAS)
-    return []
+    return ()
 
 
 def _es_entorno_test(obj: Any) -> bool:
@@ -45,20 +41,11 @@ def _es_entorno_test(obj: Any) -> bool:
     return False
 
 
-def _descartar_sesion_invalida(sesion: Any) -> None:
-    """Remueve una sesión desconectada o fallida para evitar fugas de memoria."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod is not None and hasattr(mod, "SESIONES_ACTIVAS"):
-        try:
-            mod.SESIONES_ACTIVAS.discard(sesion)
-        except Exception:
-            pass
-
-
 def _actualizar_una_sesion(
     sesion: Any,
     aviso_colaborativo: str | None,
     notificar_chat: tuple[str, str, str] | None,
+    session_discard_fn: Callable[[Any], None] | None = None,
 ) -> None:
     """Aplica las actualizaciones a una sesión remota de forma tolerante a fallos."""
     try:
@@ -109,9 +96,11 @@ def _actualizar_una_sesion(
         try:
             sesion.page.update()
         except Exception:
-            _descartar_sesion_invalida(sesion)
+            if callable(session_discard_fn):
+                session_discard_fn(sesion)
     except Exception:
-        _descartar_sesion_invalida(sesion)
+        if callable(session_discard_fn):
+            session_discard_fn(sesion)
 
 
 class SessionSyncService:
@@ -123,11 +112,13 @@ class SessionSyncService:
         sessions_provider: Callable[[], Iterable[Any]] | None = None,
         check_roles_fn: Callable[..., bool] | None = None,
         enrich_message_fn: Callable[[str], str] | None = None,
+        session_discard_fn: Callable[[Any], None] | None = None,
     ) -> None:
         self._host = host
         self._sessions_provider = sessions_provider or _sesiones_activas_por_defecto
         self._check_roles_fn = check_roles_fn
         self._enrich_message_fn = enrich_message_fn
+        self._session_discard_fn = session_discard_fn
 
     def _exigir_roles(self, *roles: Any) -> bool:
         fn = self._check_roles_fn or getattr(self._host, "exigir_roles", None)
@@ -154,12 +145,17 @@ class SessionSyncService:
 
             # En entornos de testing ejecutar síncrono para mantener las aserciones de mocks
             if _es_entorno_test(self._host) or _es_entorno_test(sesion):
-                _actualizar_una_sesion(sesion, aviso_colaborativo, notificar_chat)
+                _actualizar_una_sesion(
+                    sesion,
+                    aviso_colaborativo,
+                    notificar_chat,
+                    self._session_discard_fn,
+                )
             else:
                 # En producción se difunde en segundo plano para no bloquear el hilo de la UI
                 threading.Thread(
                     target=_actualizar_una_sesion,
-                    args=(sesion, aviso_colaborativo, notificar_chat),
+                    args=(sesion, aviso_colaborativo, notificar_chat, self._session_discard_fn),
                     daemon=True,
                 ).start()
 

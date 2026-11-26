@@ -104,78 +104,73 @@ class TestFabricaScannerWorkflow(unittest.TestCase):
         }
         mock_sm.registrar_ingreso_fabrica.return_value = {"TERM-01": (10, 22)}
 
-        import src.ui.dialogs.dlg_stock_ops as mod_ops
-        orig_get_sm = mod_ops._get_stock_manager
-        mod_ops._get_stock_manager = lambda: (lambda _ruta: mock_sm)
+        interfaz.stock_manager_factory = lambda _ruta: mock_sm
 
-        try:
-            mostrar_ingreso_fabrica(interfaz)
-            self.assertIsNotNone(dialogo_capturado)
+        mostrar_ingreso_fabrica(interfaz)
+        self.assertIsNotNone(dialogo_capturado)
 
-            # Verificar título para operador
-            title_row = dialogo_capturado.title
-            self.assertIsInstance(title_row, ft.Row)
-            self.assertIn("Ingreso de Fábrica", title_row.controls[1].value)
+        # Verificar título para operador
+        title_row = dialogo_capturado.title
+        self.assertIsInstance(title_row, ft.Row)
+        self.assertIn("Ingreso de Fábrica", title_row.controls[1].value)
 
-            # El contenido es directo (sin tabs de archivo ni checkbox de sobrescribir)
-            content_container = dialogo_capturado.content
-            self.assertIsInstance(content_container, ft.Container)
-            vista_col = content_container.content.content
-            self.assertIsInstance(vista_col, ft.Column)
+        # El contenido es directo (sin tabs de archivo ni checkbox de sobrescribir)
+        content_container = dialogo_capturado.content
+        self.assertIsInstance(content_container, ft.Container)
+        vista_col = content_container.content.content
+        self.assertIsInstance(vista_col, ft.Column)
 
-            # Fila de lotes x12
-            fila_multiplos = vista_col.controls[0]
-            self.assertIsInstance(fila_multiplos, ft.Row)
-            botones_x12 = [c.content for c in fila_multiplos.controls if isinstance(c, ft.Button)]
-            self.assertIn("12", botones_x12)
-            self.assertIn("24", botones_x12)
-            self.assertIn("36", botones_x12)
-            self.assertIn("48", botones_x12)
-            self.assertIn("60", botones_x12)
-            self.assertIn("120", botones_x12)
+        # Fila de lotes x12
+        fila_multiplos = vista_col.controls[0]
+        self.assertIsInstance(fila_multiplos, ft.Row)
+        botones_x12 = [c.content for c in fila_multiplos.controls if isinstance(c, ft.Button)]
+        self.assertIn("12", botones_x12)
+        self.assertIn("24", botones_x12)
+        self.assertIn("36", botones_x12)
+        self.assertIn("48", botones_x12)
+        self.assertIn("60", botones_x12)
+        self.assertIn("120", botones_x12)
 
-            # Fila de cantidad por lectura con steppers + y -
-            fila_cant = vista_col.controls[1]
-            btn_menos = fila_cant.controls[1]
-            input_cant = fila_cant.controls[2]
-            btn_mas = fila_cant.controls[3]
-            self.assertEqual(input_cant.value, "12")
+        # Fila de cantidad por lectura con steppers + y -
+        fila_cant = vista_col.controls[1]
+        btn_menos = fila_cant.controls[1]
+        input_cant = fila_cant.controls[2]
+        btn_mas = fila_cant.controls[3]
+        self.assertEqual(input_cant.value, "12")
 
-            # Probar stepper + (ej: 13 no múltiplo de 12)
-            btn_mas.on_click(None)
-            self.assertEqual(input_cant.value, "13")
-            btn_menos.on_click(None)
-            self.assertEqual(input_cant.value, "12")
+        # Probar stepper + (ej: 13 no múltiplo de 12)
+        btn_mas.on_click(None)
+        self.assertEqual(input_cant.value, "13")
+        btn_menos.on_click(None)
+        self.assertEqual(input_cant.value, "12")
 
-            # Fila de escaneo
-            fila_escaneo = vista_col.controls[2]
-            input_codigo = fila_escaneo.controls[0]
-            self.assertTrue(input_codigo.autofocus)
+        # Fila de escaneo
+        fila_escaneo = vista_col.controls[2]
+        input_codigo = fila_escaneo.controls[0]
+        self.assertTrue(input_codigo.autofocus)
 
-            # Escanear por código de barras de fábrica
-            input_codigo.value = "7791234567890"
-            input_codigo.on_submit(None)
+        # Escanear por código de barras de fábrica
+        input_codigo.value = "7791234567890"
+        input_codigo.on_submit(None)
 
-            # Verificar que se actualizó el texto de feedback y la lista
-            texto_feedback = vista_col.controls[3]
-            self.assertIn("Termo Acero 1L", texto_feedback.value)
-            self.assertIn("+12 un.", texto_feedback.value)
-            self.assertIn("Stock actual: 10 → Con ingreso: 22", texto_feedback.value)
+        # Verificar que se actualizó el texto de feedback y la lista
+        texto_feedback = vista_col.controls[3]
+        self.assertIn("Termo Acero 1L", texto_feedback.value)
+        self.assertIn("+12 un.", texto_feedback.value)
+        self.assertIn("Stock actual: 10 → Con ingreso: 22", texto_feedback.value)
 
-            # Lista de escaneo
-            lista_view = vista_col.controls[6]
-            self.assertEqual(len(lista_view.controls), 1)
+        # Lista de escaneo
+        lista_view = vista_col.controls[6]
+        self.assertEqual(len(lista_view.controls), 1)
 
-            # Botón confirmar
-            btn_confirmar = dialogo_capturado.actions[2]
-            self.assertFalse(btn_confirmar.disabled)
+        # Botón confirmar
+        btn_confirmar = dialogo_capturado.actions[2]
+        self.assertFalse(btn_confirmar.disabled)
 
-            # Confirmar ingreso
-            btn_confirmar.on_click(None)
-            mock_sm.registrar_ingreso_fabrica.assert_called_once_with({"TERM-01": 12}, sobrescribir=False)
-            interfaz.actualizar_estado.assert_called_once()
-        finally:
-            mod_ops._get_stock_manager = orig_get_sm
+        # Confirmar ingreso
+        btn_confirmar.on_click(None)
+        mock_sm.registrar_ingreso_fabrica.assert_called_once_with({"TERM-01": 12}, sobrescribir=False)
+        interfaz.actualizar_estado.assert_called_once()
 
     def test_administrador_has_both_scanner_and_archivo_tabs(self):
         """Verifica que el administrador cuente con las pestañas de escáner y de archivos."""
@@ -208,27 +203,22 @@ class TestFabricaScannerWorkflow(unittest.TestCase):
         mock_sm.product_store = self.product_store
         mock_sm.catalogo = {}
 
-        import src.ui.dialogs.dlg_stock_ops as mod_ops
-        orig_get_sm = mod_ops._get_stock_manager
-        mod_ops._get_stock_manager = lambda: (lambda _ruta: mock_sm)
+        interfaz.stock_manager_factory = lambda _ruta: mock_sm
 
-        try:
-            mostrar_ingreso_fabrica(interfaz)
-            self.assertIsNotNone(dialogo_capturado)
+        mostrar_ingreso_fabrica(interfaz)
+        self.assertIsNotNone(dialogo_capturado)
 
-            # En admin el contenido tiene pestañas y modo sobrescribir
-            col = dialogo_capturado.content
-            self.assertIsInstance(col, ft.Column)
-            # Primer control es el Checkbox de sobrescribir
-            self.assertIsInstance(col.controls[0], ft.Checkbox)
-            # Segundo control es la fila de pestañas
-            tabs_row = col.controls[1]
-            self.assertIsInstance(tabs_row, ft.Row)
-            self.assertEqual(len(tabs_row.controls), 2)
-            self.assertIn("Escáner", tabs_row.controls[0].content)
-            self.assertIn("archivo", tabs_row.controls[1].content)
-        finally:
-            mod_ops._get_stock_manager = orig_get_sm
+        # En admin el contenido tiene pestañas y modo sobrescribir
+        col = dialogo_capturado.content
+        self.assertIsInstance(col, ft.Column)
+        # Primer control es el Checkbox de sobrescribir
+        self.assertIsInstance(col.controls[0], ft.Checkbox)
+        # Segundo control es la fila de pestañas
+        tabs_row = col.controls[1]
+        self.assertIsInstance(tabs_row, ft.Row)
+        self.assertEqual(len(tabs_row.controls), 2)
+        self.assertIn("Escáner", tabs_row.controls[0].content)
+        self.assertIn("archivo", tabs_row.controls[1].content)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ def procesar_cierre_plan_full_sync(
     archivo_excel = str(res.get("archivo_excel") or "MercadoFull.xlsx")
 
     if total_unidades > 0 and delta_items:
-        sm_factory = stock_manager_cls or _get_stock_manager_cls()
+        sm_factory = stock_manager_cls or _get_stock_manager_cls(interfaz)
         sm = sm_factory(interfaz.menu.ruta_excel_base)
         try:
             sm.descontar_mercado_full(

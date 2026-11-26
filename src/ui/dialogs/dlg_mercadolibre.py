@@ -227,7 +227,6 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
             texto_resumen_sincronizacion.color = ft.Colors.GREEN_400
             renderizar_lista_ordenes()
 
-        import threading
         threading.Thread(target=tarea_sincronizar, daemon=True).start()
 
     def confirmar_descuento_seleccionadas(_e: ft.Event | None = None) -> None:
@@ -269,7 +268,6 @@ def mostrar_dialogo_mercadolibre(interfaz: Any, _e: ft.Event | None = None) -> N
                 resumen_msg += f" Hubo {len(errores)} con advertencias."
             interfaz.notificar(resumen_msg)
 
-        import threading
         threading.Thread(target=tarea_descuento_masivo, daemon=True).start()
 
     es_master = bool(interfaz.usuario_actual and interfaz.usuario_actual.role == "master")

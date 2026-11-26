@@ -7,8 +7,11 @@ import '../models/inventory_result.dart';
 import '../models/order_dispatch.dart';
 import '../models/product_item.dart';
 import '../models/server_config.dart';
+import '../models/warehouse_fefo.dart';
 import 'storage_service.dart';
 import 'tls_pinning_service.dart';
+
+part 'api_warehouse_extension.dart';
 
 class ApiException implements Exception {
   final int statusCode;

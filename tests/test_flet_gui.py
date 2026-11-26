@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import flet as ft
 
@@ -492,14 +492,43 @@ class FletGuiTests(unittest.TestCase):
 
     def test_iniciar_runs_web_browser_mode_by_default(self):
         from src import flet_gui
+        from src.server_app import flet_patch
+
+        fake_server = MagicMock()
+        fake_server.started = False
+
+        async def _noop_serve():
+            return None
+
+        fake_server.serve.side_effect = _noop_serve
+
+        from starlette.testclient import TestClient
+
+        with patch("src.server_app.flet_patch.uvicorn.Server", return_value=fake_server) as mock_server_cls, patch(
+            "src.server_app.flet_patch.uvicorn.Config"
+        ) as mock_config_cls, patch(
+            "src.server_app.flet_patch.resolver_instancia_unica", return_value=False
+        ):
+            flet_gui.iniciar(modo_web=True, host="0.0.0.0", port=8550, https=False, con_tray=False, abrir_navegador=False)
+            mock_config_cls.assert_called_once()
+            cfg_args, cfg_kwargs = mock_config_cls.call_args
+            asgi_app = cfg_args[0]
+            self.assertEqual(cfg_kwargs["host"], "0.0.0.0")
+            self.assertEqual(cfg_kwargs["port"], 8550)
+            client = TestClient(asgi_app)
+            self.assertEqual(client.get("/api/v1/sistema/ping").status_code, 200)
+            self.assertEqual(client.get("/sw.js").status_code, 200)
+            mock_server_cls.assert_called_once()
+            fake_server.serve.assert_called_once()
+
+        self.assertFalse(hasattr(flet_patch.uvicorn.Config, "_orig_init"))
+        self.assertFalse(hasattr(flet_patch.flet_web_fastapi.FastAPI, "_orig_init"))
 
         with patch("src.flet_gui.ft.run") as mock_run:
-            flet_gui.iniciar(modo_web=True, host="0.0.0.0", port=8550)
+            flet_gui.iniciar(modo_web=False, https=False, con_tray=False)
             mock_run.assert_called_once()
             _, kwargs = mock_run.call_args
-            self.assertEqual(kwargs["view"], ft.AppView.WEB_BROWSER)
-            self.assertEqual(kwargs["host"], "0.0.0.0")
-            self.assertEqual(kwargs["port"], 8550)
+            self.assertEqual(kwargs["view"], ft.AppView.FLET_APP)
             self.assertFalse(kwargs["no_cdn"])
             self.assertEqual(kwargs["web_renderer"], ft.WebRenderer.AUTO)
 

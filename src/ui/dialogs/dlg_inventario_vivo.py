@@ -8,15 +8,13 @@ al instante contra el stock del sistema y generando reportes de diferencias.
 from __future__ import annotations
 
 import sqlite3
-import sys
 from datetime import datetime
 from typing import Any, Dict
 
 import flet as ft
 
-from ...inventory import StockManager as _DefaultStockManager
 from ..theme import ROJO
-from ._shared import safe_focus
+from ._shared import resolve_stock_manager, safe_focus
 from .inventario_vivo_views import (
     construir_estado_vacio_inventario,
     construir_tarjeta_producto_contado,
@@ -25,12 +23,9 @@ from .inventario_vivo_views import (
 )
 
 
-def _get_stock_manager():
-    """Devuelve StockManager vigente (respetando mocks sobre src.flet_gui o este módulo)."""
-    mod = sys.modules.get("src.flet_gui")
-    if mod and hasattr(mod, "StockManager"):
-        return getattr(mod, "StockManager")
-    return _DefaultStockManager
+def _get_stock_manager(interfaz: Any = None):
+    """Devuelve StockManager vigente mediante inyección en `interfaz`."""
+    return resolve_stock_manager(interfaz)
 
 
 def _buscar_producto_en_cache_o_db(
@@ -76,7 +71,7 @@ def mostrar_dialogo_inventario_vivo(
     if not interfaz.exigir_roles("operador", "administrador"):
         return
 
-    sm = _get_stock_manager()(interfaz.menu.ruta_excel_base)
+    sm = _get_stock_manager(interfaz)(interfaz.menu.ruta_excel_base)
     usuario_operario = (
         interfaz.usuario_actual.username
         if interfaz.usuario_actual

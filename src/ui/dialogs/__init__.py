@@ -17,6 +17,7 @@ from .dlg_productos import (
     mostrar_dialogo_historial_movimientos_stock,
     mostrar_dialogo_formulario_producto,
 )
+from .dlg_ubicaciones_lotes import mostrar_dialogo_ubicaciones_lotes
 from .dlg_ver_stock import mostrar_dialogo_ver_stock
 from .dlg_informes import mostrar_dialogo_informes
 from .dlg_document_options import mostrar_dialogo_opciones_documento
@@ -121,6 +122,7 @@ __all__ = [
     "mostrar_dialogo_gestion_productos",
     "mostrar_dialogo_historial_movimientos_stock",
     "mostrar_dialogo_formulario_producto",
+    "mostrar_dialogo_ubicaciones_lotes",
     "mostrar_dialogo_ver_stock",
     "mostrar_dialogo_informes",
     "mostrar_dialogo_opciones_documento",

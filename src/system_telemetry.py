@@ -2,10 +2,14 @@
 
 import os
 import shutil
+import sqlite3
+import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
+from .logger_config import obtener_ruta_log
 from .paths import application_root
 
 
@@ -132,3 +136,40 @@ def obtener_telemetria_sistema(ruta_base: Optional[Path] = None) -> TelemetriaSi
         estado_salud=salud,
         detalle_salud=detalle,
     )
+
+
+def medir_latencia_sqlite(db_path: Path | str | None) -> Optional[float]:
+    """Mide en milisegundos un sondeo `SELECT 1` sobre una base SQLite existente."""
+    if not db_path:
+        return None
+    ruta = Path(db_path)
+    try:
+        if not ruta.exists() or not ruta.is_file():
+            return None
+        inicio = time.perf_counter()
+        with closing(sqlite3.connect(str(ruta), timeout=2.0)) as conn:
+            conn.execute("SELECT 1").fetchone()
+        return round((time.perf_counter() - inicio) * 1000.0, 2)
+    except Exception:
+        return None
+
+
+def obtener_metricas_logs(ruta_log: Optional[Path] = None) -> Dict[str, int]:
+    """Retorna tamaño actual del log principal, tamaño total rotado y cantidad de archivos."""
+    try:
+        objetivo = ruta_log or obtener_ruta_log()
+        principal_bytes = objetivo.stat().st_size if objetivo.exists() and objetivo.is_file() else 0
+        carpeta = objetivo.parent
+        archivos = list(carpeta.glob(f"{objetivo.name}*")) if carpeta.exists() else []
+        total_bytes = sum(f.stat().st_size for f in archivos if f.is_file())
+        return {
+            "log_principal_bytes": int(principal_bytes),
+            "log_total_bytes": int(total_bytes),
+            "log_archivos": int(sum(1 for f in archivos if f.is_file())),
+        }
+    except Exception:
+        return {
+            "log_principal_bytes": 0,
+            "log_total_bytes": 0,
+            "log_archivos": 0,
+        }

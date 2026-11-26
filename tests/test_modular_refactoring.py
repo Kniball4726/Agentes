@@ -191,3 +191,35 @@ def test_planificar_fabrica_dialogo_unificado_y_mercado_full_archiva(tmp_path: P
     assert not origen.exists()
     assert (carpeta_desc / "MercadoFull" / "full_envio.xlsx").exists()
     assert store.buscar_pedido_por_nota("FULL-full_envio") is not None
+
+
+def test_fase4_y_pedidos_baja_modularizacion(tmp_path: Path):
+    from src.products import ProductStore
+    from src.products.locations_lots_repo import LocationsLotsRepository
+    from src.products.locations_repo import WarehouseLocationsRepository
+    from src.products.lots_fefo_repo import FefoLotsRepository
+    from src.ui.dialogs import pedidos_baja, pedidos_baja_ops
+
+    p_store = ProductStore(tmp_path / "productos.sqlite3")
+    assert isinstance(p_store.locations_lots_repo, LocationsLotsRepository)
+    assert isinstance(p_store.locations_lots_repo.locations, WarehouseLocationsRepository)
+    assert isinstance(p_store.locations_lots_repo.lots, FefoLotsRepository)
+
+    p_store.import_template_once([(1, "SKU-MOD", "Modulado", 20)])
+    ubic = p_store.asignar_ubicacion_producto(
+        "SKU-MOD", "A-01-1", tipo_zona="picking", stock=10, es_principal=True
+    )
+    assert ubic["ubicacion"] == "A-01-1" and ubic["es_principal"] is True
+
+    lote = p_store.registrar_lote(
+        "SKU-MOD", "LOT-MOD-1", 10, fecha_vencimiento="2027-01-15", ubicacion="A-01-1"
+    )
+    assert lote["lote"] == "LOT-MOD-1"
+    assert len(p_store.listar_lotes_fefo("SKU-MOD")) == 1
+
+    # Compatibilidad de re-exportación en pedidos_baja
+    assert pedidos_baja._restituir_stock_pedido is pedidos_baja_ops._restituir_stock_pedido
+    assert pedidos_baja._resolver_sm_cls is pedidos_baja_ops._resolver_sm_cls
+    assert pedidos_baja._persistir_baja_pedido is pedidos_baja_ops._persistir_baja_pedido
+    assert callable(pedidos_baja.mostrar_dialogo_confirmar_desarmar_pedido)
+    assert callable(pedidos_baja.mostrar_dialogo_confirmar_eliminacion_pedido)

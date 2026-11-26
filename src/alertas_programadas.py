@@ -139,3 +139,30 @@ def iniciar_planificador() -> None:
     if _planificador is None or not _planificador.is_alive():
         _planificador = PlanificadorAlertas()
         _planificador.start()
+
+
+def obtener_estado_planificador() -> dict[str, object]:
+    """Devuelve métricas operativas y configuración actual del planificador de alertas."""
+    activo_hilo = bool(_planificador is not None and _planificador.is_alive())
+    try:
+        config = obtener_config_email()
+        alertas = config.get("alertas", {})
+        destinatarios_raw = str(alertas.get("destinatarios", "") or "").replace(";", ",")
+        destinatarios = [d.strip() for d in destinatarios_raw.split(",") if d.strip()]
+        return {
+            "iniciado": _planificador is not None,
+            "hilo_activo": activo_hilo,
+            "habilitado": bool(alertas.get("activo", False)),
+            "hora_programada": str(alertas.get("hora", "08:00") or "08:00"),
+            "ultimo_envio": str(alertas.get("ultimo_envio", "") or ""),
+            "destinatarios_configurados": len(destinatarios),
+        }
+    except Exception:
+        return {
+            "iniciado": _planificador is not None,
+            "hilo_activo": activo_hilo,
+            "habilitado": False,
+            "hora_programada": "08:00",
+            "ultimo_envio": "",
+            "destinatarios_configurados": 0,
+        }

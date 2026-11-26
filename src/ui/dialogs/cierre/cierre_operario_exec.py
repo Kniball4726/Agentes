@@ -2,40 +2,37 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 import flet as ft
 
-from ....backup_manager import crear_backup_sistema as _default_crear_backup
+from ....backup_manager import crear_backup_sistema
 from ....consolidator import ItemConsolidado
-from ....parsers.canjes_parser import parsear_canje_excel as _default_parsear_canje
-from ....parsers.mercado_libre_parser import parsear_pedido_mercado_libre as _default_parsear_ml
-from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo
-from ....parsers.remito_parser import parsear_remito as _default_parsear_remito
-from ....paths import application_root
-from ....stock.manifest_pdf import generar_hoja_ruta_pdf as _default_generar_hoja_ruta
+from ....parsers.canjes_parser import parsear_canje_excel
+from ....parsers.mercado_libre_parser import parsear_pedido_mercado_libre
+from ....parsers.remito_parser import ItemRemito, ResultadoRemito, normalizar_codigo, parsear_remito
+from ....stock.manifest_pdf import generar_hoja_ruta_pdf
+from .._shared import resolve_app_root
 from ...theme import ROJO
 from .cierre_reportes_helper import generar_reportes_cierre_jornada
 from .hoja_ruta import (
-    _get_stock_manager_cls as _default_get_sm_cls,
+    _get_stock_manager_cls,
     gestionar_hoja_ruta_cierre,
     resolver_archivos_cierre,
 )
 
 
-def _resolver_dependencias_cierre():
-    """Resuelve funciones potencialmente mockeadas sobre dlg_cierre_operario."""
-    mod = sys.modules.get("src.ui.dialogs.cierre.dlg_cierre_operario")
+def _resolver_dependencias_cierre(interfaz: Any = None) -> dict[str, Any]:
+    """Retorna las dependencias de cierre inyectadas desde `interfaz` y helpers de dominio."""
     return {
-        "get_sm_cls": getattr(mod, "_get_stock_manager_cls", _default_get_sm_cls) if mod else _default_get_sm_cls,
-        "parsear_remito": getattr(mod, "parsear_remito", _default_parsear_remito) if mod else _default_parsear_remito,
-        "parsear_canje": getattr(mod, "parsear_canje_excel", _default_parsear_canje) if mod else _default_parsear_canje,
-        "parsear_ml": getattr(mod, "parsear_pedido_mercado_libre", _default_parsear_ml) if mod else _default_parsear_ml,
-        "generar_hr": getattr(mod, "generar_hoja_ruta_pdf", _default_generar_hoja_ruta) if mod else _default_generar_hoja_ruta,
-        "crear_backup": getattr(mod, "crear_backup_sistema", _default_crear_backup) if mod else _default_crear_backup,
-        "app_root": getattr(mod, "application_root", application_root) if mod else application_root,
+        "get_sm_cls": lambda: _get_stock_manager_cls(interfaz),
+        "parsear_remito": parsear_remito,
+        "parsear_canje": parsear_canje_excel,
+        "parsear_ml": parsear_pedido_mercado_libre,
+        "generar_hr": generar_hoja_ruta_pdf,
+        "crear_backup": crear_backup_sistema,
+        "app_root": lambda: resolve_app_root(interfaz),
     }
 
 
@@ -179,7 +176,8 @@ def poblar_historial_cierres(interfaz: Any, lista_cierres: ft.ListView, cierres_
 
 def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> dict[str, Any]:
     """Ejecuta en segundo plano el cálculo consolidado, PDF, cierre DB, Hoja de Ruta, backup y alertas."""
-    deps = _resolver_dependencias_cierre()
+    deps = _resolver_dependencias_cierre(interfaz)
+    app_root = deps["app_root"]()
     items_pendientes_data = interfaz.order_store.obtener_items_pendientes_cierre()
     items_consolidados: dict[str, ItemConsolidado] = {}
 
@@ -200,7 +198,7 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
 
     if not items_consolidados:
         for ped in pedidos_pendientes:
-            arch_path = deps["app_root"]() / "data" / "pedidos_archivos" / ped.nombre_archivo
+            arch_path = app_root / "data" / "pedidos_archivos" / ped.nombre_archivo
             if arch_path.exists():
                 res = deps["parsear_remito"](arch_path) if ped.tipo_archivo == "pdf" else deps["parsear_canje"](arch_path)
                 for it in res.items:
@@ -232,7 +230,7 @@ def ejecutar_tarea_cierre_operario(interfaz: Any, pedidos_pendientes: list) -> d
             except Exception:
                 sin_coincidencia_p = []
 
-        arch_p = deps["app_root"]() / "data" / "pedidos_archivos" / p.nombre_archivo
+        arch_p = app_root / "data" / "pedidos_archivos" / p.nombre_archivo
         if not arch_p.exists():
             carp_desc = getattr(interfaz.menu, "carpeta_descontados", None)
             if carp_desc:

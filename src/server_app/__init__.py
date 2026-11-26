@@ -1,7 +1,7 @@
 """Componentes modulares del servidor web ASGI / FastAPI y runtime Flet."""
 
-from .flet_patch import iniciar_servidor_web
-from .middleware import _RegistroConexionesMiddleware, configurar_middlewares_http
+from .flet_patch import crear_aplicacion_asgi, iniciar_servidor_web
+from .middleware import _RegistroConexionesMiddleware, configurar_middlewares_http, construir_csp_app_web
 from .network_utils import (
     PUERTO_WEB_DEFAULT,
     _puerto_local_activo,
@@ -20,8 +20,10 @@ __all__ = [
     "_puerto_local_activo",
     "_RegistroConexionesMiddleware",
     "configurar_middlewares_http",
+    "construir_csp_app_web",
     "registrar_rutas_pwa",
     "registrar_rutas_ota",
     "registrar_rutas_documentos_e_informes",
+    "crear_aplicacion_asgi",
     "iniciar_servidor_web",
 ]

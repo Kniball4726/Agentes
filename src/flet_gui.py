@@ -54,6 +54,10 @@ from .ui.controllers import (
     SessionSyncService,
     ThemeController,
 )
+from .ui.controllers.batch_controller import (
+    es_procesamiento_global_activo,
+    set_procesamiento_global_activo,
+)
 from .ui.dashboard_presenter import actualizar_estado_dashboard
 from .ui.dialogs import (
     actualizar_alerta_quiebre,
@@ -271,8 +275,20 @@ class InterfazFlet:
         self.order_store = deps_activas.order_store
         self.product_store = deps_activas.product_store
         self.menu = deps_activas.menu
-        self._stock_manager_factory = deps_activas.stock_manager_factory or StockManager
-        self._app_root_fn = deps_activas.app_root_fn or application_root
+        self._stock_manager_factory = (
+            deps_activas.stock_manager_factory
+            or (lambda *args, **kwargs: StockManager(*args, **kwargs))
+        )
+        self._app_root_fn = deps_activas.app_root_fn or (lambda: application_root())
+        self._get_global_lock_fn = deps_activas.get_global_lock_fn or _obtener_procesamiento_global
+        self._set_global_lock_fn = deps_activas.set_global_lock_fn or _fijar_procesamiento_global
+        self._sessions_provider = deps_activas.sessions_provider or (lambda: list(SESIONES_ACTIVAS))
+        self._session_discard_fn = deps_activas.session_discard_fn or (
+            lambda sesion: SESIONES_ACTIVAS.discard(sesion)
+        )
+        self._inactivity_limit_fn = deps_activas.inactivity_limit_fn or (
+            lambda: INACTIVIDAD_MAX_MINUTOS
+        )
 
         self.usuario_actual: User | None = None
         self.ocupado = False
@@ -324,9 +340,24 @@ class InterfazFlet:
             order_store=OrderStore(data_dir / "pedidos.sqlite3"),
             product_store=ProductStore(data_dir / "productos.sqlite3"),
             menu=MenuAgente(),
-            stock_manager_factory=StockManager,
-            app_root_fn=application_root,
+            stock_manager_factory=lambda *args, **kwargs: StockManager(*args, **kwargs),
+            app_root_fn=lambda: application_root(),
+            get_global_lock_fn=_obtener_procesamiento_global,
+            set_global_lock_fn=_fijar_procesamiento_global,
+            sessions_provider=lambda: list(SESIONES_ACTIVAS),
+            session_discard_fn=lambda sesion: SESIONES_ACTIVAS.discard(sesion),
+            inactivity_limit_fn=lambda: INACTIVIDAD_MAX_MINUTOS,
         )
+
+    def resolver_stock_manager(self) -> Callable[..., Any]:
+        """Devuelve la fábrica activa de StockManager inyectada en esta sesión."""
+        factory = getattr(getattr(self, "_deps", None), "stock_manager_factory", None)
+        return factory or self._stock_manager_factory
+
+    def resolver_app_root(self) -> Path:
+        """Devuelve la ruta raíz de la aplicación inyectada en esta sesión."""
+        root_fn = getattr(getattr(self, "_deps", None), "app_root_fn", None) or self._app_root_fn
+        return Path(root_fn())
 
     def _crear_theme_ctrl(self) -> ThemeController:
         return ThemeController(self, on_rebuild=lambda: self.construir())
@@ -359,7 +390,7 @@ class InterfazFlet:
     def _crear_auth_ctrl(self) -> AuthSessionController:
         return AuthSessionController(
             self,
-            inactivity_limit_fn=lambda: INACTIVIDAD_MAX_MINUTOS,
+            inactivity_limit_fn=self._inactivity_limit_fn,
             notify_fn=lambda msg: self.notificar(msg),
             ensure_file_picker_fn=lambda forzar_recrear=False: self._asegurar_file_picker(
                 forzar_recrear=forzar_recrear
@@ -369,8 +400,8 @@ class InterfazFlet:
     def _crear_batch_ctrl(self) -> BatchTaskController:
         return BatchTaskController(
             self,
-            get_global_lock_fn=lambda: bool(PROCESAMIENTO_GLOBAL_ACTIVO),
-            set_global_lock_fn=_fijar_procesamiento_global,
+            get_global_lock_fn=self._get_global_lock_fn,
+            set_global_lock_fn=self._set_global_lock_fn,
             check_roles_fn=lambda *r: self.exigir_roles(*r),
             notify_fn=lambda msg: self.notificar(msg),
             refresh_dashboard_fn=lambda: self.actualizar_estado(),
@@ -383,9 +414,10 @@ class InterfazFlet:
     def _crear_session_sync_svc(self) -> SessionSyncService:
         return SessionSyncService(
             self,
-            sessions_provider=lambda: list(SESIONES_ACTIVAS),
+            sessions_provider=self._sessions_provider,
             check_roles_fn=lambda *r: self.exigir_roles(*r),
             enrich_message_fn=lambda txt: self._enriquecer_mensaje_con_pedidos(txt),
+            session_discard_fn=self._session_discard_fn,
         )
 
     def _crear_dialog_coord(self) -> DialogCoordinator:
@@ -437,7 +469,7 @@ class InterfazFlet:
     def _al_desconectar(self, _evento: Any = None) -> None:
         """Libera recursos y detiene hilos de monitoreo cuando la sesión cliente se desconecta."""
         detener_heartbeat_red(self)
-        SESIONES_ACTIVAS.discard(self)
+        self._session_discard_fn(self)
 
     def _sidebar_horizontal_controls(self) -> list[ft.Control]:
         from .ui.components.sidebar import construir_sidebar_horizontal_controls
@@ -486,7 +518,7 @@ class InterfazFlet:
         return boton_dialogo_semantico(texto, accion, variante)  # type: ignore[arg-type]
 
     def _actualizar_icono_notificaciones(self) -> None:
-        sm_cls = getattr(self, "_stock_manager_factory", None) or StockManager
+        sm_cls = self.resolver_stock_manager()
         actualizar_icono_notificaciones_ui(self, sm_cls)
 
     def encabezado(self) -> ft.Control:
@@ -605,9 +637,14 @@ class InterfazFlet:
         mostrar_command_palette(self, _evento)
 
 
+def _obtener_procesamiento_global() -> bool:
+    return bool(PROCESAMIENTO_GLOBAL_ACTIVO or es_procesamiento_global_activo())
+
+
 def _fijar_procesamiento_global(valor: bool) -> None:
     global PROCESAMIENTO_GLOBAL_ACTIVO
     PROCESAMIENTO_GLOBAL_ACTIVO = bool(valor)
+    set_procesamiento_global_activo(valor)
 
 
 async def main(page: ft.Page) -> None:
