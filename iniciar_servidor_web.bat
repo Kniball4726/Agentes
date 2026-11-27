@@ -27,6 +27,11 @@ rem main.py detecta si ya hay una instancia activa en el puerto 8550
 rem y abre el navegador hacia ella sin duplicar procesos
 
 if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -m src.auto_updater --pre-start %*
+    if "!ERRORLEVEL!"=="75" (
+        call "%~f0" --no-auto-update %*
+        exit /b !ERRORLEVEL!
+    )
     echo [INFO] Iniciando con entorno virtual Python .venv...
     ".venv\Scripts\python.exe" main.py %*
     goto :FIN
@@ -39,6 +44,11 @@ if exist "StockAgent.exe" (
 )
 
 if exist "ttech\Scripts\python.exe" (
+    "ttech\Scripts\python.exe" -m src.auto_updater --pre-start %*
+    if "!ERRORLEVEL!"=="75" (
+        call "%~f0" --no-auto-update %*
+        exit /b !ERRORLEVEL!
+    )
     echo [INFO] Iniciando con entorno Python ttech...
     "ttech\Scripts\python.exe" main.py %*
     goto :FIN
@@ -46,6 +56,11 @@ if exist "ttech\Scripts\python.exe" (
 
 where python >nul 2>&1
 if not errorlevel 1 (
+    python -m src.auto_updater --pre-start %*
+    if "!ERRORLEVEL!"=="75" (
+        call "%~f0" --no-auto-update %*
+        exit /b !ERRORLEVEL!
+    )
     echo [INFO] Iniciando con Python del sistema...
     python main.py %*
     goto :FIN

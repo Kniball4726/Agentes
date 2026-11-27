@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+import sys
 from typing import Any, Callable
 import webbrowser
 
@@ -15,6 +16,7 @@ import uvicorn
 
 from ..alertas_programadas import iniciar_planificador
 from ..api.stores import ApiStoreContext, crear_contexto_api
+from ..auto_updater import iniciar_watcher_auto_update
 from ..logger_config import configurar_logging
 from ..ssl_manager import asegurar_ca_confiable_windows, asegurar_certificado_ssl
 from .middleware import configurar_middlewares_http
@@ -216,6 +218,7 @@ def iniciar_servidor_web(
         "port": port,
         "log_level": "warning",
         "ws": "websockets-sansio",
+        "timeout_graceful_shutdown": 5,
     }
     if https and cert_path_final and key_path_final:
         config_kwargs["ssl_certfile"] = str(cert_path_final)
@@ -224,14 +227,33 @@ def iniciar_servidor_web(
     config = uvicorn.Config(app, **config_kwargs)
     server = uvicorn.Server(config)
 
+    def _solicitar_reinicio_servidor() -> None:
+        server.should_exit = True
+
     tray_service = None
     if con_tray:
         try:
             from ..tray import iniciar_icono_bandeja
 
-            tray_service = iniciar_icono_bandeja(port=port, host=host, https=https)
+            tray_service = iniciar_icono_bandeja(
+                port=port,
+                host=host,
+                https=https,
+                on_restart=_solicitar_reinicio_servidor,
+            )
         except Exception as exc_tray:
             logger.warning("No se pudo iniciar icono en bandeja del sistema: %s", exc_tray)
+
+    watcher_auto_update = None
+    if not hasattr(uvicorn.Server, "_mock_name"):
+        try:
+            watcher_auto_update = iniciar_watcher_auto_update(
+                port=port,
+                argv=sys.argv[1:],
+                on_restart_requested=_solicitar_reinicio_servidor,
+            )
+        except Exception as exc_upd:
+            logger.warning("No se pudo iniciar vigilante de auto-actualización: %s", exc_upd)
 
     url_local = f"{esquema}://localhost:{port}"
     try:
@@ -243,5 +265,7 @@ def iniciar_servidor_web(
             )
         )
     finally:
+        if watcher_auto_update:
+            watcher_auto_update.detener()
         if tray_service:
             tray_service.detener()

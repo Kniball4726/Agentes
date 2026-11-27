@@ -142,6 +142,31 @@ class TestTrayIcon(unittest.TestCase):
         self.assertIn("1 dispositivo", mock_icon.title)
         self.assertIsNotNone(tray._crear_menu())
 
+    def test_menu_incluye_actualizacion_y_usa_callback_reinicio(self):
+        reinicios = []
+        tray = TrayIconServidor(
+            port=8550,
+            https=False,
+            on_restart=lambda: reinicios.append(True),
+        )
+        menu = tray._crear_menu()
+        textos = [getattr(item, "text", "") for item in menu.items]
+        self.assertTrue(any("Buscar actualización" in str(t) for t in textos))
+
+        with patch(
+            "src.auto_updater.solicitar_actualizacion_y_reinicio_manual",
+            side_effect=lambda **kw: (kw["on_restart_requested"](), (True, "ok"))[1],
+        ):
+            tray._accion_actualizar_y_reiniciar()
+            # El worker corre en un hilo demonio breve; esperar hasta 1s
+            import time as _time
+
+            for _ in range(40):
+                if reinicios:
+                    break
+                _time.sleep(0.025)
+        self.assertEqual(reinicios, [True])
+
 
 if __name__ == "__main__":
     unittest.main()

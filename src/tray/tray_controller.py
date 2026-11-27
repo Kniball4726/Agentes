@@ -41,12 +41,14 @@ class TrayIconServidor:
         host: str = "0.0.0.0",
         https: bool = True,
         on_exit: Optional[Callable[[], None]] = None,
+        on_restart: Optional[Callable[[], None]] = None,
     ):
         self.port = port
         self.host = host
         self.https = https
         self.esquema = "https" if https else "http"
         self.on_exit = on_exit
+        self.on_restart = on_restart
 
         self.ip_local = _obtener_ip_local()
         self.url_local = f"{self.esquema}://localhost:{self.port}"
@@ -140,6 +142,7 @@ class TrayIconServidor:
             pystray.MenuItem("📂 Abrir carpeta del programa", self._accion_abrir_carpeta),
             pystray.MenuItem("📄 Ver registro de actividad (Logs)", self._accion_ver_logs),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("🔄 Buscar actualización y reiniciar", self._accion_actualizar_y_reiniciar),
             pystray.MenuItem("⏹️ Detener servidor y salir", self._accion_detener),
         ])
         return pystray.Menu(*items)
@@ -177,6 +180,36 @@ class TrayIconServidor:
                 subprocess.run(["xdg-open", str(ruta_log)], check=False)
         except Exception as exc:
             logger.warning("No se pudo abrir archivo de log: %s", exc)
+
+    def _solicitar_cierre_para_reinicio(self) -> None:
+        if callable(self.on_restart):
+            self.on_restart()
+            return
+        self.detener()
+        if callable(self.on_exit):
+            self.on_exit()
+        os._exit(0)
+
+    def _accion_actualizar_y_reiniciar(self, _icon=None, _item=None):
+        def _worker():
+            try:
+                from ..auto_updater import solicitar_actualizacion_y_reinicio_manual
+
+                solicitar_actualizacion_y_reinicio_manual(
+                    port=self.port,
+                    argv=sys.argv[1:],
+                    notifier=self.mostrar_notificacion,
+                    on_restart_requested=self._solicitar_cierre_para_reinicio,
+                )
+            except Exception as exc:
+                logger.warning("Error al buscar actualización desde System Tray: %s", exc)
+                self.mostrar_notificacion("StockAgent: Error al actualizar", str(exc))
+
+        threading.Thread(
+            target=_worker,
+            name="StockAgentTrayUpdateThread",
+            daemon=True,
+        ).start()
 
     def _accion_detener(self, _icon=None, _item=None):
         logger.info("Cierre del servidor solicitado desde el System Tray.")

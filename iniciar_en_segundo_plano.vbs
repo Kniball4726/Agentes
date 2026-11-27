@@ -8,7 +8,7 @@ args = "--ocultar-consola"
 
 ' Permitir únicamente flags CLI conocidos (previene inyección de comandos en cmd.exe)
 Set rxSafeFlag = New RegExp
-rxSafeFlag.Pattern = "^--(no-browser|sin-navegador|silent|no-tray|sin-tray|https|http|qa|desktop|force|forzar|reiniciar|restart)$"
+rxSafeFlag.Pattern = "^--(no-browser|sin-navegador|silent|no-tray|sin-tray|https|http|qa|desktop|force|forzar|reiniciar|restart|no-auto-update|sin-actualizar)$"
 rxSafeFlag.IgnoreCase = True
 
 If WScript.Arguments.Count > 0 Then

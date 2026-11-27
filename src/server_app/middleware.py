@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING, Optional
 import uuid
 
 from ..api.stores import establecer_contexto_api, restaurar_contexto_api
+from ..auto_updater import (
+    registrar_actividad_http,
+    registrar_ws_abierto,
+    registrar_ws_actividad,
+    registrar_ws_cerrado,
+)
 
 if TYPE_CHECKING:
     from ..api.stores import ApiStoreContext
@@ -118,6 +124,22 @@ class _RegistroConexionesMiddleware:
         ruta_req = scope.get("path", "/")
         metodo = scope.get("method", "WS" if not es_http else "GET")
         status_code: int | str = "ws" if not es_http else 500
+        try:
+            if es_http:
+                registrar_actividad_http(ruta_req)
+            else:
+                registrar_ws_abierto()
+        except Exception:
+            pass
+
+        async def _receive_observado():
+            mensaje = await receive()
+            if isinstance(mensaje, dict) and mensaje.get("type") == "websocket.receive":
+                try:
+                    registrar_ws_actividad()
+                except Exception:
+                    pass
+            return mensaje
 
         async def _send_observado(message):
             nonlocal status_code
@@ -142,7 +164,11 @@ class _RegistroConexionesMiddleware:
             await send(message)
 
         try:
-            await self.app(scope, receive, _send_observado if es_http else send)
+            await self.app(
+                scope,
+                receive if es_http else _receive_observado,
+                _send_observado if es_http else send,
+            )
         finally:
             duracion_ms = round((time.perf_counter() - inicio) * 1000.0, 2)
             if es_http:
@@ -166,6 +192,10 @@ class _RegistroConexionesMiddleware:
                     cliente,
                     agente or "-",
                 )
+                try:
+                    registrar_ws_cerrado()
+                except Exception:
+                    pass
             if cliente_ws is not None:
                 try:
                     from ..tray import cliente_ws_cerrado

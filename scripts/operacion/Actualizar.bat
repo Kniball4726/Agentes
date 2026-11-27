@@ -8,11 +8,14 @@ if not exist "%STOCKAGENT_ROOT%iniciar_en_segundo_plano.vbs" (
 )
 cd /d "%STOCKAGENT_ROOT%"
 echo Cerrando servidor actual...
-taskkill /f /im python.exe 2>nul
-taskkill /f /im StockAgent.exe 2>nul
+call "%STOCKAGENT_ROOT%detener_servidor.bat" >nul 2>&1
 echo Descargando ultimas mejoras...
-git pull origin master
+if exist "%STOCKAGENT_ROOT%.venv\Scripts\python.exe" (
+    "%STOCKAGENT_ROOT%.venv\Scripts\python.exe" -m src.auto_updater --pre-start --reiniciar
+) else (
+    git pull --ff-only origin master
+)
 echo Iniciando servidor actualizado...
-start "" "%STOCKAGENT_ROOT%iniciar_en_segundo_plano.vbs" --no-browser
+start "" "%STOCKAGENT_ROOT%iniciar_en_segundo_plano.vbs" --no-browser --no-auto-update
 echo [OK] Sistema actualizado exitosamente.
 pause

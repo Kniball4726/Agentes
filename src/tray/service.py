@@ -17,11 +17,18 @@ def iniciar_icono_bandeja(
     host: str = "0.0.0.0",
     https: bool = True,
     on_exit: Optional[Callable[[], None]] = None,
+    on_restart: Optional[Callable[[], None]] = None,
 ) -> Optional[TrayIconServidor]:
     """Crea e inicia el servicio de System Tray para el servidor StockAgent."""
     global _INSTANCIA_ACTIVA
     try:
-        tray = TrayIconServidor(port=port, host=host, https=https, on_exit=on_exit)
+        tray = TrayIconServidor(
+            port=port,
+            host=host,
+            https=https,
+            on_exit=on_exit,
+            on_restart=on_restart,
+        )
         if tray.iniciar():
             _INSTANCIA_ACTIVA = tray
             return tray
