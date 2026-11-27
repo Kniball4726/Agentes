@@ -7,6 +7,16 @@ cd /d "%ROOT_DIR%"
 powershell -NoProfile -Command "Get-Process -Name StockAgent -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
 if not exist "Descuentos\Productos.xlsx" (
+    if not exist "Descuentos" mkdir "Descuentos"
+    echo Creando plantilla base Descuentos\Productos.xlsx...
+    if exist ".venv\Scripts\python.exe" (
+        ".venv\Scripts\python.exe" -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws.title='Stock'; ws.append(['CÓDIGO', 'PRODUCTOS', 'STOCK']); wb.save('Descuentos/Productos.xlsx')" >nul 2>&1
+    ) else (
+        python -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws.title='Stock'; ws.append(['CÓDIGO', 'PRODUCTOS', 'STOCK']); wb.save('Descuentos/Productos.xlsx')" >nul 2>&1
+    )
+)
+
+if not exist "Descuentos\Productos.xlsx" (
     echo No se encontro Descuentos\Productos.xlsx.
     echo Coloque el catalogo obligatorio en esa ubicacion antes de compilar.
     exit /b 1
