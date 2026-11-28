@@ -6,15 +6,7 @@ cd /d "%ROOT_DIR%"
 
 powershell -NoProfile -Command "Get-Process -Name StockAgent -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
-if not exist "Descuentos\Productos.xlsx" (
-    if not exist "Descuentos" mkdir "Descuentos"
-    echo Creando plantilla base Descuentos\Productos.xlsx...
-    if exist ".venv\Scripts\python.exe" (
-        ".venv\Scripts\python.exe" -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws.title='Stock'; ws.append(['CÓDIGO', 'PRODUCTOS', 'STOCK']); wb.save('Descuentos/Productos.xlsx')" >nul 2>&1
-    ) else (
-        python -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws.title='Stock'; ws.append(['CÓDIGO', 'PRODUCTOS', 'STOCK']); wb.save('Descuentos/Productos.xlsx')" >nul 2>&1
-    )
-)
+if not exist "Descuentos\Productos.xlsx" call :crear_plantilla
 
 if not exist "Descuentos\Productos.xlsx" (
     echo No se encontro Descuentos\Productos.xlsx.
@@ -32,9 +24,9 @@ if exist "ttech\Scripts\pyinstaller.exe" (
 )
 
 set "FLET_EXE="
-if exist "ttech\Scripts\python.exe" (
+if exist "ttech\Scripts\flet.exe" (
     set "FLET_EXE=%ROOT_DIR%\ttech\Scripts\flet.exe"
-) else if exist ".venv\Scripts\python.exe" (
+) else if exist ".venv\Scripts\flet.exe" (
     set "FLET_EXE=%ROOT_DIR%\.venv\Scripts\flet.exe"
 ) else (
     for /f "delims=" %%P in ('where flet 2^>nul') do if not defined FLET_EXE set "FLET_EXE=%%P"
@@ -45,27 +37,36 @@ if not defined PYINSTALLER_EXE if not defined FLET_EXE (
     exit /b 1
 )
 
-set "APP_VERSION=2.0.1"
-for /f "usebackq delims=" %%V in (`python -c "from src.version import APP_VERSION; print(APP_VERSION)" 2^>nul`) do set "APP_VERSION=%%V"
+set "APP_VERSION=2.0.2"
+set "PY_BIN=python"
+if exist ".venv\Scripts\python.exe" set "PY_BIN=%ROOT_DIR%\.venv\Scripts\python.exe"
+for /f "usebackq delims=" %%V in (`"%PY_BIN%" -m src.version 2^>nul`) do set "APP_VERSION=%%V"
 
-if defined PYINSTALLER_EXE if exist "StockAgent.spec" (
-    echo Compilando con PyInstaller (StockAgent.spec)...
-    "%PYINSTALLER_EXE%" StockAgent.spec --distpath dist -y
-) else (
-    echo Compilando con Flet pack (StockAgent v%APP_VERSION%)...
-    "%FLET_EXE%" pack main.py ^
-        --name StockAgent ^
-        --icon src/img/ultratech.ico ^
-        --product-name "Stock Agent" ^
-        --product-version "%APP_VERSION%" ^
-        --file-description "Agente de control de stock" ^
-        --add-data "src/img:src/img" ^
-        --add-data "assets:assets" ^
-        --distpath dist ^
-        --debug-console True ^
-        --yes ^
-        -- --console --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets --collect-all reportlab
-)
+if defined PYINSTALLER_EXE if exist "StockAgent.spec" goto :build_spec
+goto :build_flet
+
+:build_spec
+echo Compilando con PyInstaller - StockAgent.spec...
+"%PYINSTALLER_EXE%" StockAgent.spec --distpath dist -y
+goto :after_build
+
+:build_flet
+echo Compilando con Flet pack - StockAgent v%APP_VERSION%...
+"%FLET_EXE%" pack main.py ^
+    --name StockAgent ^
+    --icon src/img/ultratech.ico ^
+    --product-name "Stock Agent" ^
+    --product-version "%APP_VERSION%" ^
+    --file-description "Agente de control de stock" ^
+    --add-data "src/img:src/img" ^
+    --add-data "assets:assets" ^
+    --distpath dist ^
+    --debug-console True ^
+    --yes ^
+    -- --console --collect-all flet_web --collect-all uvicorn --collect-all fastapi --collect-all starlette --collect-all websockets --collect-all reportlab
+goto :after_build
+
+:after_build
 if errorlevel 1 (
     echo Error al crear el ejecutable.
     exit /b 1
@@ -97,3 +98,12 @@ if exist "Documentacion\*.pdf" (
 echo.
 echo Ejecutable creado: dist\StockAgent.exe
 echo Mantenga Descuentos\Productos.xlsx junto al ejecutable.
+exit /b 0
+
+:crear_plantilla
+if not exist "Descuentos" mkdir "Descuentos"
+echo Creando plantilla base Descuentos\Productos.xlsx...
+set "PY_PLANTILLA=python"
+if exist ".venv\Scripts\python.exe" set "PY_PLANTILLA=%ROOT_DIR%\.venv\Scripts\python.exe"
+"%PY_PLANTILLA%" -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws.title='Stock'; ws.append(['CÓDIGO', 'PRODUCTOS', 'STOCK']); wb.save('Descuentos/Productos.xlsx')"
+exit /b %errorlevel%
