@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import flet as ft
 
@@ -136,129 +137,249 @@ def _construir_opciones_planes(
     ]
 
 
-def mostrar_dialogo_planificacion(
-    interfaz: Any,
-    cfg: PlanDialogConfig,
-    parser_fn: Callable[[Path], tuple[dict[str, int], Any]],
-    stock_manager_factory: Callable[[], type] = resolver_stock_manager_ui,
-) -> None:
-    """Construye y muestra el diálogo dual de carga de planilla y monitoreo en tiempo real."""
-    if not interfaz.exigir_roles("administrador", "master", "operador"):
-        return
+class _PlanificacionPickingController:
+    """Controlador del diálogo dual de carga de planilla y monitoreo en tiempo real."""
 
-    es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
-    carpeta = _resolver_carpeta_plan(interfaz, cfg)
-    archivos_pendientes = _listar_archivos_carpeta(carpeta, cfg.extensiones)
-    tab_actual = ["monitor" if cfg.obtener_plan_activo_fn(interfaz.order_store) else "nuevo"]
+    def __init__(
+        self,
+        interfaz: Any,
+        cfg: PlanDialogConfig,
+        parser_fn: Callable[[Path], tuple[dict[str, int], Any]],
+        stock_manager_factory: Callable[[], type],
+    ) -> None:
+        self.interfaz = interfaz
+        self.cfg = cfg
+        self.parser_fn = parser_fn
+        self.stock_manager_factory = stock_manager_factory
+        self.es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
+        self.bg_inactivo = ft.Colors.WHITE_12 if self.es_oscuro else ft.Colors.GREY_200
 
-    archivo_seleccionado: list[Path | None] = [archivos_pendientes[0] if archivos_pendientes else None]
-    items_parseados: list[tuple[str, str, int]] = []
-    totales_dict: dict[str, int] = {}
+        self.carpeta = _resolver_carpeta_plan(interfaz, cfg)
+        self.archivos_pendientes = _listar_archivos_carpeta(self.carpeta, cfg.extensiones)
+        self.tab_actual = "monitor" if cfg.obtener_plan_activo_fn(interfaz.order_store) else "nuevo"
+        self.archivo_seleccionado: Path | None = (
+            self.archivos_pendientes[0] if self.archivos_pendientes else None
+        )
+        self.items_parseados: list[tuple[str, str, int]] = []
+        self.totales_dict: dict[str, int] = {}
 
-    txt_nombre = ft.TextField(
-        label=cfg.label_nombre_plan,
-        value=f"{cfg.prefijo_nombre} - {datetime.now().strftime('%d/%m/%Y')}",
-        dense=True,
-        expand=True,
-    )
-    lista_items_nuevo = ft.ListView(expand=True, spacing=4, height=220)
-    lbl_resumen_nuevo = ft.Text(
-        "Seleccione una planilla para previsualizar los artículos.",
-        size=12,
-        color=interfaz.secundario,
-    )
-    selector_archivo = ft.Dropdown(
-        label=cfg.label_selector_archivo,
-        options=[ft.dropdown.Option(arch.name) for arch in archivos_pendientes],
-        value=archivos_pendientes[0].name if archivos_pendientes else None,
-        dense=True,
-        expand=True,
-    )
+        planes_disponibles = cfg.listar_planes_fn(interfaz.order_store)
+        self.plan_activo_id: int | None = (
+            planes_disponibles[0]["id"] if planes_disponibles else None
+        )
 
-    def _cargar_preview(arch: Path) -> None:
+        self._inicializar_controles_nuevo()
+        self._inicializar_controles_monitor(planes_disponibles)
+        self._inicializar_tabs()
+
+        if self.archivo_seleccionado:
+            self._cargar_preview(self.archivo_seleccionado)
+        if self.plan_activo_id:
+            self.recargar_monitor(self.plan_activo_id)
+
+    def _inicializar_controles_nuevo(self) -> None:
+        cfg = self.cfg
+        self.txt_nombre = ft.TextField(
+            label=cfg.label_nombre_plan,
+            value=f"{cfg.prefijo_nombre} - {datetime.now().strftime('%d/%m/%Y')}",
+            dense=True,
+            expand=True,
+        )
+        self.lista_items_nuevo = ft.ListView(expand=True, spacing=4, height=220)
+        self.lbl_resumen_nuevo = ft.Text(
+            "Seleccione una planilla para previsualizar los artículos.",
+            size=12,
+            color=self.interfaz.secundario,
+        )
+        self.selector_archivo = ft.Dropdown(
+            label=cfg.label_selector_archivo,
+            options=[ft.dropdown.Option(arch.name) for arch in self.archivos_pendientes],
+            value=self.archivos_pendientes[0].name if self.archivos_pendientes else None,
+            dense=True,
+            expand=True,
+            on_select=self._al_cambiar_archivo,
+        )
+        self.btn_publicar = ft.Button(
+            cfg.texto_boton_publicar,
+            icon=ft.Icons.SEND,
+            bgcolor=cfg.color_acento,
+            color=ft.Colors.WHITE,
+            on_click=self._al_confirmar_publicacion,
+        )
+        self.panel_nuevo = ft.Column(
+            [
+                ft.Text(cfg.descripcion_nuevo, size=12, color=self.interfaz.secundario),
+                ft.Row(
+                    [
+                        self.selector_archivo,
+                        ft.IconButton(
+                            ft.Icons.UPLOAD_FILE,
+                            tooltip="Subir archivo desde PC",
+                            on_click=self._examinar_pc,
+                        ),
+                    ]
+                ),
+                self.txt_nombre,
+                self.lbl_resumen_nuevo,
+                self.lista_items_nuevo,
+                ft.Row([self.btn_publicar], alignment=ft.MainAxisAlignment.END),
+            ],
+            spacing=8,
+        )
+
+    def _inicializar_controles_monitor(self, planes_disponibles: list[dict[str, Any]]) -> None:
+        cfg = self.cfg
+        self.selector_plan = ft.Dropdown(
+            label=cfg.label_selector_plan,
+            options=_construir_opciones_planes(planes_disponibles, cfg.plan_nombre_key),
+            value=str(self.plan_activo_id) if self.plan_activo_id else None,
+            dense=True,
+            expand=True,
+            on_select=self._al_cambiar_plan,
+        )
+        self.lbl_estado_monitor = ft.Text("Estado: -", size=12, weight=ft.FontWeight.BOLD)
+        self.lbl_picker_monitor = ft.Text(f"{cfg.label_picker_prefix}: -", size=12)
+        self.lbl_cantidades_monitor = ft.Text(
+            cfg.texto_cantidades_inicial,
+            size=14,
+            weight=ft.FontWeight.BOLD,
+        )
+        self.lbl_porcentaje_monitor = ft.Text(
+            "0.0%",
+            size=20,
+            weight=ft.FontWeight.BOLD,
+            color=cfg.color_porcentaje,
+        )
+        self.progreso_monitor = ft.ProgressBar(
+            value=0.0,
+            color=cfg.color_progreso,
+            bgcolor=ft.Colors.GREY_300,
+            height=10,
+        )
+        self.lista_items_monitor = ft.ListView(expand=True, spacing=4, height=220)
+        self.panel_monitor = ft.Column(
+            [
+                ft.Row(
+                    [
+                        self.selector_plan,
+                        ft.IconButton(
+                            ft.Icons.REFRESH,
+                            tooltip="Actualizar progreso en tiempo real",
+                            on_click=lambda _: self.recargar_monitor(),
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                ft.Container(
+                    padding=10,
+                    border_radius=8,
+                    bgcolor=ft.Colors.WHITE_10 if self.es_oscuro else ft.Colors.GREY_100,
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Column(
+                                        [self.lbl_estado_monitor, self.lbl_picker_monitor],
+                                        spacing=2,
+                                    ),
+                                    ft.Column(
+                                        [self.lbl_cantidades_monitor, self.lbl_porcentaje_monitor],
+                                        horizontal_alignment=ft.CrossAxisAlignment.END,
+                                        spacing=2,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            self.progreso_monitor,
+                        ],
+                        spacing=6,
+                    ),
+                ),
+                ft.Text(cfg.titulo_detalle_monitor, size=12, weight=ft.FontWeight.BOLD),
+                self.lista_items_monitor,
+            ],
+            spacing=8,
+        )
+
+    def _inicializar_tabs(self) -> None:
+        cfg = self.cfg
+        self.contenedor_vistas = ft.AnimatedSwitcher(
+            content=self.panel_monitor if self.tab_actual == "monitor" else self.panel_nuevo,
+            transition=ft.AnimatedSwitcherTransition.FADE,
+            duration=200,
+        )
+        self.btn_tab_nuevo = ft.Button(
+            cfg.texto_tab_nuevo,
+            icon=ft.Icons.ADD_TASK,
+            bgcolor=cfg.color_acento if self.tab_actual == "nuevo" else self.bg_inactivo,
+            color=ft.Colors.WHITE if self.tab_actual == "nuevo" else self.interfaz.texto,
+            on_click=lambda _: self.cambiar_tab("nuevo"),
+        )
+        self.btn_tab_monitor = ft.Button(
+            "Monitoreo en Tiempo Real",
+            icon=ft.Icons.INSIGHTS,
+            bgcolor=cfg.color_acento if self.tab_actual == "monitor" else self.bg_inactivo,
+            color=ft.Colors.WHITE if self.tab_actual == "monitor" else self.interfaz.texto,
+            on_click=lambda _: self.cambiar_tab("monitor"),
+        )
+
+    def _cargar_preview(self, arch: Path) -> None:
         _cargar_preview_plan(
             arch=arch,
-            parser_fn=parser_fn,
-            stock_manager_factory=stock_manager_factory,
-            interfaz=interfaz,
-            cfg=cfg,
-            es_oscuro=es_oscuro,
-            items_parseados=items_parseados,
-            totales_dict=totales_dict,
-            lista_items_nuevo=lista_items_nuevo,
-            lbl_resumen_nuevo=lbl_resumen_nuevo,
+            parser_fn=self.parser_fn,
+            stock_manager_factory=self.stock_manager_factory,
+            interfaz=self.interfaz,
+            cfg=self.cfg,
+            es_oscuro=self.es_oscuro,
+            items_parseados=self.items_parseados,
+            totales_dict=self.totales_dict,
+            lista_items_nuevo=self.lista_items_nuevo,
+            lbl_resumen_nuevo=self.lbl_resumen_nuevo,
         )
 
-    def al_cambiar_dropdown(_e: ft.Event) -> None:
-        nom = selector_archivo.value
-        for arch in archivos_pendientes:
+    def _al_cambiar_archivo(self, _e: ft.Event) -> None:
+        nom = self.selector_archivo.value
+        for arch in self.archivos_pendientes:
             if arch.name == nom:
-                archivo_seleccionado[0] = arch
-                _cargar_preview(arch)
-                txt_nombre.value = f"{cfg.prefijo_nombre} - {arch.stem}"
+                self.archivo_seleccionado = arch
+                self._cargar_preview(arch)
+                self.txt_nombre.value = f"{self.cfg.prefijo_nombre} - {arch.stem}"
                 break
 
-    selector_archivo.on_select = al_cambiar_dropdown
-    if archivo_seleccionado[0]:
-        _cargar_preview(archivo_seleccionado[0])
-
-    def al_subir_archivo(guardados: list[Path]) -> None:
-        nonlocal archivos_pendientes
+    def _al_subir_archivo(self, guardados: list[Path]) -> None:
         for guardado in guardados:
-            if guardado not in archivos_pendientes:
-                archivos_pendientes.append(guardado)
-        selector_archivo.options = [ft.dropdown.Option(a.name) for a in archivos_pendientes]
+            if guardado not in self.archivos_pendientes:
+                self.archivos_pendientes.append(guardado)
+        self.selector_archivo.options = [
+            ft.dropdown.Option(a.name) for a in self.archivos_pendientes
+        ]
         ultimo = guardados[-1]
-        archivo_seleccionado[0] = ultimo
-        selector_archivo.value = ultimo.name
-        txt_nombre.value = f"{cfg.prefijo_nombre} - {ultimo.stem}"
-        _cargar_preview(ultimo)
+        self.archivo_seleccionado = ultimo
+        self.selector_archivo.value = ultimo.name
+        self.txt_nombre.value = f"{self.cfg.prefijo_nombre} - {ultimo.stem}"
+        self._cargar_preview(ultimo)
 
-    async def examinar_pc(_e: ft.Event) -> None:
-        await interfaz.subir_archivos_desde_pc(
-            carpeta_destino=carpeta,
-            extensiones=list(cfg.extensiones),
-            titulo=cfg.titulo_subida_pc,
-            al_terminar=al_subir_archivo,
+    async def _examinar_pc(self, _e: ft.Event) -> None:
+        await self.interfaz.subir_archivos_desde_pc(
+            carpeta_destino=self.carpeta,
+            extensiones=list(self.cfg.extensiones),
+            titulo=self.cfg.titulo_subida_pc,
+            al_terminar=self._al_subir_archivo,
         )
 
-    btn_publicar = ft.Button(
-        cfg.texto_boton_publicar,
-        icon=ft.Icons.SEND,
-        bgcolor=cfg.color_acento,
-        color=ft.Colors.WHITE,
-    )
-
-    planes_disponibles = cfg.listar_planes_fn(interfaz.order_store)
-    plan_activo_id: list[int | None] = [planes_disponibles[0]["id"] if planes_disponibles else None]
-    selector_plan = ft.Dropdown(
-        label=cfg.label_selector_plan,
-        options=_construir_opciones_planes(planes_disponibles, cfg.plan_nombre_key),
-        value=str(plan_activo_id[0]) if plan_activo_id[0] else None,
-        dense=True,
-        expand=True,
-    )
-
-    lbl_estado_monitor = ft.Text("Estado: -", size=12, weight=ft.FontWeight.BOLD)
-    lbl_picker_monitor = ft.Text(f"{cfg.label_picker_prefix}: -", size=12)
-    lbl_cantidades_monitor = ft.Text(cfg.texto_cantidades_inicial, size=14, weight=ft.FontWeight.BOLD)
-    lbl_porcentaje_monitor = ft.Text("0.0%", size=20, weight=ft.FontWeight.BOLD, color=cfg.color_porcentaje)
-    progreso_monitor = ft.ProgressBar(value=0.0, color=cfg.color_progreso, bgcolor=ft.Colors.GREY_300, height=10)
-    lista_items_monitor = ft.ListView(expand=True, spacing=4, height=220)
-
-    def recargar_monitor(pid: int | None = None) -> None:
-        target_id = pid or plan_activo_id[0]
+    def recargar_monitor(self, pid: int | None = None) -> None:
+        target_id = pid or self.plan_activo_id
         if not target_id:
-            lbl_estado_monitor.value = cfg.texto_sin_planes
-            lbl_picker_monitor.value = ""
-            lbl_cantidades_monitor.value = cfg.texto_cantidades_inicial
-            lbl_porcentaje_monitor.value = "0%"
-            progreso_monitor.value = 0.0
-            lista_items_monitor.controls.clear()
-            interfaz.page.update()
+            self.lbl_estado_monitor.value = self.cfg.texto_sin_planes
+            self.lbl_picker_monitor.value = ""
+            self.lbl_cantidades_monitor.value = self.cfg.texto_cantidades_inicial
+            self.lbl_porcentaje_monitor.value = "0%"
+            self.progreso_monitor.value = 0.0
+            self.lista_items_monitor.controls.clear()
+            self.interfaz.page.update()
             return
 
-        plan = cfg.obtener_plan_fn(interfaz.order_store, target_id)
+        plan = self.cfg.obtener_plan_fn(self.interfaz.order_store, target_id)
         if not plan:
             return
 
@@ -270,183 +391,146 @@ def mostrar_dialogo_planificacion(
             if est == "EN_PROCESO"
             else (ft.Colors.GREEN_400 if est == "COMPLETADO" else ft.Colors.BLUE_400)
         )
-        lbl_estado_monitor.value = f"Estado: {est}"
-        lbl_estado_monitor.color = color_est
-        lbl_picker_monitor.value = f"👤 {cfg.label_picker_prefix}: {pck}"
-        lbl_cantidades_monitor.value = cfg.formatear_cantidades_fn(plan)
-        lbl_porcentaje_monitor.value = f"{porc:.1f}%"
-        progreso_monitor.value = min(1.0, max(0.0, porc / 100.0))
+        self.lbl_estado_monitor.value = f"Estado: {est}"
+        self.lbl_estado_monitor.color = color_est
+        self.lbl_picker_monitor.value = f"👤 {self.cfg.label_picker_prefix}: {pck}"
+        self.lbl_cantidades_monitor.value = self.cfg.formatear_cantidades_fn(plan)
+        self.lbl_porcentaje_monitor.value = f"{porc:.1f}%"
+        self.progreso_monitor.value = min(1.0, max(0.0, porc / 100.0))
 
-        lista_items_monitor.controls.clear()
-        for it in cfg.obtener_items_plan_fn(interfaz.order_store, target_id):
-            txt_badge, completado, en_progreso = cfg.formatear_item_monitor_fn(it)
-            lista_items_monitor.controls.append(
+        self.lista_items_monitor.controls.clear()
+        for it in self.cfg.obtener_items_plan_fn(self.interfaz.order_store, target_id):
+            txt_badge, completado, en_progreso = self.cfg.formatear_item_monitor_fn(it)
+            self.lista_items_monitor.controls.append(
                 construir_fila_monitor_plan(
                     codigo=it["codigo"],
                     descripcion=it["descripcion"],
                     txt_badge=txt_badge,
                     completado=completado,
                     en_progreso=en_progreso,
-                    es_oscuro=es_oscuro,
+                    es_oscuro=self.es_oscuro,
                 )
             )
-        interfaz.page.update()
+        self.interfaz.page.update()
 
-    def al_cambiar_plan_dropdown(_e: ft.Event) -> None:
-        if selector_plan.value:
-            plan_activo_id[0] = int(selector_plan.value)
-            recargar_monitor(plan_activo_id[0])
+    def _al_cambiar_plan(self, _e: ft.Event) -> None:
+        if self.selector_plan.value:
+            self.plan_activo_id = int(self.selector_plan.value)
+            self.recargar_monitor(self.plan_activo_id)
 
-    selector_plan.on_select = al_cambiar_plan_dropdown
-    if plan_activo_id[0]:
-        recargar_monitor(plan_activo_id[0])
-
-    panel_nuevo = ft.Column(
-        [
-            ft.Text(cfg.descripcion_nuevo, size=12, color=interfaz.secundario),
-            ft.Row([selector_archivo, ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Subir archivo desde PC", on_click=examinar_pc)]),
-            txt_nombre,
-            lbl_resumen_nuevo,
-            lista_items_nuevo,
-            ft.Row([btn_publicar], alignment=ft.MainAxisAlignment.END),
-        ],
-        spacing=8,
-    )
-
-    panel_monitor = ft.Column(
-        [
-            ft.Row(
-                [
-                    selector_plan,
-                    ft.IconButton(ft.Icons.REFRESH, tooltip="Actualizar progreso en tiempo real", on_click=lambda _: recargar_monitor()),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-            ft.Container(
-                padding=10,
-                border_radius=8,
-                bgcolor=ft.Colors.WHITE_10 if es_oscuro else ft.Colors.GREY_100,
-                content=ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                ft.Column([lbl_estado_monitor, lbl_picker_monitor], spacing=2),
-                                ft.Column([lbl_cantidades_monitor, lbl_porcentaje_monitor], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=2),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        progreso_monitor,
-                    ],
-                    spacing=6,
-                ),
-            ),
-            ft.Text(cfg.titulo_detalle_monitor, size=12, weight=ft.FontWeight.BOLD),
-            lista_items_monitor,
-        ],
-        spacing=8,
-    )
-
-    contenedor_vistas = ft.AnimatedSwitcher(
-        content=panel_monitor if tab_actual[0] == "monitor" else panel_nuevo,
-        transition=ft.AnimatedSwitcherTransition.FADE,
-        duration=200,
-    )
-
-    bg_inactivo = ft.Colors.WHITE_12 if es_oscuro else ft.Colors.GREY_200
-    btn_tab_nuevo = ft.Button(
-        cfg.texto_tab_nuevo,
-        icon=ft.Icons.ADD_TASK,
-        bgcolor=cfg.color_acento if tab_actual[0] == "nuevo" else bg_inactivo,
-        color=ft.Colors.WHITE if tab_actual[0] == "nuevo" else interfaz.texto,
-    )
-    btn_tab_monitor = ft.Button(
-        "Monitoreo en Tiempo Real",
-        icon=ft.Icons.INSIGHTS,
-        bgcolor=cfg.color_acento if tab_actual[0] == "monitor" else bg_inactivo,
-        color=ft.Colors.WHITE if tab_actual[0] == "monitor" else interfaz.texto,
-    )
-
-    def cambiar_tab(nueva_tab: str) -> None:
-        tab_actual[0] = nueva_tab
-        btn_tab_nuevo.bgcolor = cfg.color_acento if nueva_tab == "nuevo" else bg_inactivo
-        btn_tab_nuevo.color = ft.Colors.WHITE if nueva_tab == "nuevo" else interfaz.texto
-        btn_tab_monitor.bgcolor = cfg.color_acento if nueva_tab == "monitor" else bg_inactivo
-        btn_tab_monitor.color = ft.Colors.WHITE if nueva_tab == "monitor" else interfaz.texto
+    def cambiar_tab(self, nueva_tab: str) -> None:
+        self.tab_actual = nueva_tab
+        self.btn_tab_nuevo.bgcolor = (
+            self.cfg.color_acento if nueva_tab == "nuevo" else self.bg_inactivo
+        )
+        self.btn_tab_nuevo.color = ft.Colors.WHITE if nueva_tab == "nuevo" else self.interfaz.texto
+        self.btn_tab_monitor.bgcolor = (
+            self.cfg.color_acento if nueva_tab == "monitor" else self.bg_inactivo
+        )
+        self.btn_tab_monitor.color = (
+            ft.Colors.WHITE if nueva_tab == "monitor" else self.interfaz.texto
+        )
 
         if nueva_tab == "nuevo":
-            contenedor_vistas.content = panel_nuevo
+            self.contenedor_vistas.content = self.panel_nuevo
         else:
-            nuevos_planes = cfg.listar_planes_fn(interfaz.order_store)
-            selector_plan.options = _construir_opciones_planes(nuevos_planes, cfg.plan_nombre_key)
-            if nuevos_planes and not selector_plan.value:
-                selector_plan.value = str(nuevos_planes[0]["id"])
-                plan_activo_id[0] = nuevos_planes[0]["id"]
-            recargar_monitor()
-            contenedor_vistas.content = panel_monitor
-        interfaz.page.update()
+            nuevos_planes = self.cfg.listar_planes_fn(self.interfaz.order_store)
+            self.selector_plan.options = _construir_opciones_planes(
+                nuevos_planes, self.cfg.plan_nombre_key
+            )
+            if nuevos_planes and not self.selector_plan.value:
+                self.selector_plan.value = str(nuevos_planes[0]["id"])
+                self.plan_activo_id = nuevos_planes[0]["id"]
+            self.recargar_monitor()
+            self.contenedor_vistas.content = self.panel_monitor
+        self.interfaz.page.update()
 
-    btn_tab_nuevo.on_click = lambda _: cambiar_tab("nuevo")
-    btn_tab_monitor.on_click = lambda _: cambiar_tab("monitor")
-
-    async def al_confirmar_publicacion(_e: ft.Event) -> None:
-        if not items_parseados or not archivo_seleccionado[0]:
-            interfaz.notificar(cfg.msg_error_archivo_invalido)
+    async def _al_confirmar_publicacion(self, _e: ft.Event) -> None:
+        if not self.items_parseados or not self.archivo_seleccionado:
+            self.interfaz.notificar(self.cfg.msg_error_archivo_invalido)
             return
 
-        nombre_plan = txt_nombre.value.strip() or f"{cfg.prefijo_nombre} - {archivo_seleccionado[0].stem}"
+        nombre_plan = (
+            (self.txt_nombre.value or "").strip()
+            or f"{self.cfg.prefijo_nombre} - {self.archivo_seleccionado.stem}"
+        )
         usuario_nom = (
-            interfaz.usuario_actual.nombre_identificador
-            if getattr(interfaz, "usuario_actual", None)
+            self.interfaz.usuario_actual.nombre_identificador
+            if getattr(self.interfaz, "usuario_actual", None)
             else "Administrador"
         )
 
         try:
-            plan_id = cfg.crear_plan_fn(
-                interfaz.order_store,
+            plan_id = self.cfg.crear_plan_fn(
+                self.interfaz.order_store,
                 nombre_plan,
-                archivo_seleccionado[0].name,
+                self.archivo_seleccionado.name,
                 usuario_nom,
-                items_parseados,
+                self.items_parseados,
             )
         except Exception as exc:
-            interfaz.notificar(cfg.msg_error_crear(exc))
+            self.interfaz.notificar(self.cfg.msg_error_crear(exc))
             return
 
-        total_unidades = sum(cant for _, _, cant in items_parseados)
-        interfaz.sincronizar_sesiones(
-            aviso_colaborativo=cfg.msg_aviso_colaborativo(usuario_nom, nombre_plan, total_unidades)
+        total_unidades = sum(cant for _, _, cant in self.items_parseados)
+        self.interfaz.sincronizar_sesiones(
+            aviso_colaborativo=self.cfg.msg_aviso_colaborativo(
+                usuario_nom, nombre_plan, total_unidades
+            )
         )
-        interfaz.notificar(cfg.msg_notificacion_creado(plan_id, nombre_plan))
-        plan_activo_id[0] = plan_id
-        selector_plan.value = str(plan_id)
-        cambiar_tab("monitor")
+        self.interfaz.notificar(self.cfg.msg_notificacion_creado(plan_id, nombre_plan))
+        self.plan_activo_id = plan_id
+        self.selector_plan.value = str(plan_id)
+        self.cambiar_tab("monitor")
 
-    btn_publicar.on_click = al_confirmar_publicacion
-
-    dialogo = ft.AlertDialog(
-        modal=True,
-        title=ft.Row(
-            [
-                ft.Icon(cfg.icono_dialogo, color=cfg.color_icono_dialogo, size=24),
-                ft.Text(cfg.titulo_dialogo, size=16, weight=ft.FontWeight.BOLD),
-            ],
-            spacing=8,
-        ),
-        content=ft.Container(
-            width=interfaz.ancho_adaptable(680) if hasattr(interfaz, "ancho_adaptable") else 680,
-            content=ft.Column(
+    def construir_dialogo(self) -> ft.AlertDialog:
+        ancho = (
+            self.interfaz.ancho_adaptable(680)
+            if hasattr(self.interfaz, "ancho_adaptable")
+            else 680
+        )
+        return ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
                 [
-                    ft.Row([btn_tab_nuevo, btn_tab_monitor], spacing=8),
-                    ft.Divider(height=1),
-                    contenedor_vistas,
+                    ft.Icon(
+                        self.cfg.icono_dialogo,
+                        color=self.cfg.color_icono_dialogo,
+                        size=24,
+                    ),
+                    ft.Text(self.cfg.titulo_dialogo, size=16, weight=ft.FontWeight.BOLD),
                 ],
-                spacing=10,
-                tight=True,
+                spacing=8,
             ),
-        ),
-        actions=[ft.TextButton("Cerrar", on_click=lambda _: interfaz.page.pop_dialog())],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
+            content=ft.Container(
+                width=ancho,
+                content=ft.Column(
+                    [
+                        ft.Row([self.btn_tab_nuevo, self.btn_tab_monitor], spacing=8),
+                        ft.Divider(height=1),
+                        self.contenedor_vistas,
+                    ],
+                    spacing=10,
+                    tight=True,
+                ),
+            ),
+            actions=[ft.TextButton("Cerrar", on_click=lambda _: self.interfaz.page.pop_dialog())],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
 
-    interfaz.page.show_dialog(dialogo)
-    interfaz.page.update()
+    def mostrar(self) -> None:
+        self.interfaz.page.show_dialog(self.construir_dialogo())
+        self.interfaz.page.update()
+
+
+def mostrar_dialogo_planificacion(
+    interfaz: Any,
+    cfg: PlanDialogConfig,
+    parser_fn: Callable[[Path], tuple[dict[str, int], Any]],
+    stock_manager_factory: Callable[[], type] = resolver_stock_manager_ui,
+) -> None:
+    """Construye y muestra el diálogo dual de carga de planilla y monitoreo en tiempo real."""
+    if not interfaz.exigir_roles("administrador", "master", "operador"):
+        return
+
+    _PlanificacionPickingController(interfaz, cfg, parser_fn, stock_manager_factory).mostrar()
