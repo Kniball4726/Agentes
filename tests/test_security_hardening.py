@@ -127,7 +127,6 @@ class TestAuthAndSistemaSecurity(unittest.TestCase):
 
     def test_ttl_memoria_y_revalidacion_db_externa(self):
         token = crear_sesion(self.operador, self.store)
-        th = _hash_token(token)
 
         # Simular actualización directa de rol en SQLite (sin invalidar memoria)
         conn = sqlite3.connect(self.db_path)

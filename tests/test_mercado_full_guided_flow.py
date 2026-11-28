@@ -155,7 +155,7 @@ class TestMercadoFullGuidedFlow(unittest.TestCase):
     def test_ui_mostrar_picking_guiado_full_escaneo(self):
         # Crear un plan previo
         items = [("SKU-TEST", "Remera Prueba", 3)]
-        plan_id = self.store.crear_plan_mercado_full("Envío UI Test", "doc.xlsx", "Admin", items)
+        self.store.crear_plan_mercado_full("Envío UI Test", "doc.xlsx", "Admin", items)
 
         mock_interfaz = MagicMock()
         mock_interfaz.order_store = self.store
@@ -166,7 +166,7 @@ class TestMercadoFullGuidedFlow(unittest.TestCase):
         mock_interfaz.texto = "#ffffff"
         mock_interfaz.ancho_adaptable.return_value = 650
 
-        with patch("src.ui.audio_feedback.emitir_tono_exito") as mock_tono_exito:
+        with patch("src.ui.audio_feedback.emitir_tono_exito"):
             mostrar_picking_guiado_full(mock_interfaz)
             mock_interfaz.page.show_dialog.assert_called_once()
 

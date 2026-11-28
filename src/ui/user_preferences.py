@@ -18,7 +18,7 @@ def obtener_preferencias_usuario(username: str) -> dict[str, Any]:
     ruta = _ruta_preferencias()
     if ruta.exists():
         try:
-            with open(ruta, "r", encoding="utf-8") as f:
+            with open(ruta, encoding="utf-8") as f:
                 data = json.load(f)
                 return dict(data.get(username, {}) or {})
         except Exception:
@@ -34,7 +34,7 @@ def guardar_preferencia_usuario(username: str, clave: str, valor: Any) -> None:
         data: dict[str, Any] = {}
         if ruta.exists():
             try:
-                with open(ruta, "r", encoding="utf-8") as f:
+                with open(ruta, encoding="utf-8") as f:
                     data = json.load(f)
             except Exception:
                 data = {}

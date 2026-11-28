@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import socket
@@ -10,6 +11,7 @@ import sys
 import time
 import webbrowser
 
+logger = logging.getLogger("stockagent.network")
 PUERTO_WEB_DEFAULT = 8550
 
 
@@ -54,8 +56,8 @@ def obtener_ip_tailscale() -> str | None:
                 partes = [int(p) for p in ip.split(".") if p.isdigit()]
                 if len(partes) == 4 and 64 <= partes[1] <= 127:
                     return ip
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("No se pudo consultar IP Tailscale local: %s", exc)
     return None
 
 
@@ -78,16 +80,16 @@ def ocultar_consola_windows() -> None:
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd, 0)
-    except Exception:
-        pass
+    except (OSError, AttributeError) as exc:
+        logger.debug("No se pudo ocultar consola de Windows: %s", exc)
 
 
 def asegurar_flujos_estandar() -> None:
     """Garantiza streams válidos en ejecutables sin consola asociada (PyInstaller)."""
     if sys.stdout is None:
-        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
     if sys.stderr is None:
-        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
 
 
 def resolver_instancia_unica(
@@ -120,17 +122,15 @@ def resolver_instancia_unica(
                             capture_output=True,
                         )
             time.sleep(0.6)
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("No se pudo detener instancia previa en puerto %s: %s", port, exc)
 
     if not forzar_reinicio or _puerto_local_activo(port):
         url_activa = f"{esquema}://localhost:{port}"
         if abrir_navegador:
-            print(
-                f"[INFO] Servidor activo detectado en {url_activa}. Abriendo navegador..."
-            )
+            logger.info("Servidor activo detectado en %s. Abriendo navegador...", url_activa)
             webbrowser.open(url_activa)
         else:
-            print(f"[INFO] Servidor activo detectado en {url_activa}.")
+            logger.info("Servidor activo detectado en %s.", url_activa)
         return True
     return False

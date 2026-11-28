@@ -103,10 +103,10 @@ class _RegistroConexionesMiddleware:
                 if es_ws or ahora - ultimo >= self._INTERVALO_AVISO_S:
                     self._ultimo_aviso[cliente] = ahora
                     notificar_conexion_cliente(cliente, agente)
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as exc:
+                logger.debug("No se pudo actualizar estado de bandeja para cliente %s: %s", cliente, exc)
+        except Exception as exc:
+            logger.debug("No se pudieron extraer metadatos del cliente en middleware: %s", exc)
         return cliente, agente, cliente_ws
 
     async def __call__(self, scope, receive, send):
@@ -129,16 +129,16 @@ class _RegistroConexionesMiddleware:
                 registrar_actividad_http(ruta_req)
             else:
                 registrar_ws_abierto()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Error registrando actividad de red en auto-updater: %s", exc)
 
         async def _receive_observado():
             mensaje = await receive()
             if isinstance(mensaje, dict) and mensaje.get("type") == "websocket.receive":
                 try:
                     registrar_ws_actividad()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Error registrando actividad WebSocket: %s", exc)
             return mensaje
 
         async def _send_observado(message):
@@ -194,15 +194,15 @@ class _RegistroConexionesMiddleware:
                 )
                 try:
                     registrar_ws_cerrado()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Error registrando cierre de WebSocket: %s", exc)
             if cliente_ws is not None:
                 try:
                     from ..tray import cliente_ws_cerrado
 
                     cliente_ws_cerrado(cliente_ws)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Error notificando cierre de WebSocket en bandeja: %s", exc)
 
 
 class _ApiContextMiddleware:

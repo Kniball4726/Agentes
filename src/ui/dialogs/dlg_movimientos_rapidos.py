@@ -8,7 +8,7 @@ Incluye soporte para modo continuo (pistoleo automático) e integración con Web
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import flet as ft
@@ -21,14 +21,14 @@ from .movimientos_rapidos_ops import (
 )
 
 
-class MotivoIngresoRapido(str, Enum):
+class MotivoIngresoRapido(StrEnum):
     DEVOLUCION_CLIENTE = "Devolución de Cliente"
     MOVIMIENTO_INTERNO = "Movimiento Interno"
     SOBRANTE_INVENTARIO = "Sobrante de Inventario / Ajuste"
     MUESTRA_SIN_REMITO = "Muestra / Ingreso Especial"
 
 
-class MotivoSalidaRapida(str, Enum):
+class MotivoSalidaRapida(StrEnum):
     ROTURA_MERMA = "Rotura / Merma / Dañado"
     MUESTRA_COMERCIAL = "Muestra Comercial / Exhibición"
     USO_INTERNO = "Consumo / Uso Interno"

@@ -1,10 +1,9 @@
-import os
 """Tests unitarios para las funcionalidades de la Fase 2:
 1. Módulo de alertas proactivas por Telegram Bot (quiebres, seguridad, cierre).
 2. Sincronización completa de catálogo SQLite hacia Productos.xlsx (desacople y flush).
 """
 
-import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,8 +19,6 @@ from src.integrations.telegram_notifier import (
     notificar_seguridad_bloqueo_telegram,
 )
 from src.inventory import StockManager
-from src.orders import OrderStore
-from src.products import ProductStore
 
 
 class TestFase2Features(unittest.TestCase):

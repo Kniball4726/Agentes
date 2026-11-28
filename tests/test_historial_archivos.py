@@ -11,9 +11,7 @@ import flet as ft
 from src.orders import Pedido
 from src.ui.dialogs.dlg_historial_pedidos import (
     abrir_comprobante_pedido,
-    abrir_descuento_pedido,
     buscar_archivo_comprobante,
-    buscar_archivo_descuento,
     mostrar_detalle_pedido_modal,
     mostrar_historial_pedidos,
 )

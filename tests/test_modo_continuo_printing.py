@@ -67,7 +67,7 @@ class TestModoContinuoPrinting(unittest.TestCase):
         with patch("src.ui.components.print_labels.generar_etiquetas_termicas_pdf") as mock_gen, \
              patch("src.ui.components.print_labels.obtener_preferencias_usuario") as mock_prefs, \
              patch("src.ui.components.print_labels.imprimir_directo_spooler", return_value=True) as mock_print:
-            
+
             mock_prefs.return_value = {
                 "impresion_directa": True,
                 "impresora_termica": "Zebra ZD220",

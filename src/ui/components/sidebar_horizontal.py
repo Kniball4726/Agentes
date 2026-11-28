@@ -59,7 +59,8 @@ def _crear_pildora_horizontal(
 
 def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
     """Genera la lista de controles para el panel de navegación horizontal con menús desplegables (MenuBar)."""
-    assert interfaz.usuario_actual is not None
+    if interfaz.usuario_actual is None:
+        raise ValueError("No hay un usuario autenticado para construir la barra de navegación.")
     logo_path = Path(__file__).resolve().parent.parent.parent / "img" / "ultratech.png"
     logo_bytes = logo_path.read_bytes() if logo_path.exists() else b""
 
@@ -82,7 +83,7 @@ def construir_sidebar_horizontal_controls(interfaz: Any) -> list[ft.Control]:
 
     for sec in secciones:
         menu_items: list[ft.Control] = []
-        for texto, icono, accion in sec.items:
+        for texto, _icono, accion in sec.items:
             etiqueta_item = (
                 f"Cierre de Jornada ({conteo_cierre})" if conteo_cierre > 0 else "Cierre de Jornada"
             ) if (sec.es_control_cierre and texto == "Cierre de Jornada") else texto

@@ -7,7 +7,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from typing import cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import flet as ft
 

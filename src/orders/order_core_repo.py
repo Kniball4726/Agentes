@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from typing import Callable
 
@@ -10,6 +11,8 @@ from ..core.exceptions import OrderStoreError
 from .dispatch_repo import _COLUMNAS_SELECT_PEDIDO
 from .models import LOGISTICA_OPCIONES, Pedido, clasificar_canal_pedido
 from .protocols import AuditLogFn, OrderConnectFn
+
+logger = logging.getLogger("stockagent.orders.core")
 
 
 class OrderCoreRepository:
@@ -397,8 +400,8 @@ class OrderCoreRepository:
         if nuevo_cliente and self._register_client is not None:
             try:
                 self._register_client(nuevo_cliente)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("No se pudo registrar automáticamente cliente '%s': %s", nuevo_cliente, exc)
 
         self._audit(
             usuario=usuario,

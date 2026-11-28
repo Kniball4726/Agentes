@@ -10,13 +10,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import flet as ft
 
-from src.orders import Cliente, OrderStore
-from src.parsers.remito_parser import ResultadoRemito, parsear_remito
+from src.orders import OrderStore
+from src.parsers.remito_parser import parsear_remito
 
 
 class TestClientCodeAndOrderFields(unittest.TestCase):

@@ -2,14 +2,49 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import secrets
 from pathlib import Path
 import sqlite3
 
 from ..core.sqlite_migrations import MigrationStep, aplicar_migraciones_sqlite
-from .models import DEFAULT_MASTER_PASSWORD, _master_default_credentials
+from .models import DEFAULT_MASTER_PASSWORD, _master_default_credentials, _master_env_password
 from .password import hash_clave, verificar_clave
 
+logger = logging.getLogger(__name__)
+
 AUTH_SCHEMA_VERSION = 3
+ARCHIVO_CLAVE_INICIAL = "PRIMER_INICIO_MASTER.txt"
+
+
+def _publicar_clave_inicial(connection: sqlite3.Connection, usuario: str, clave: str) -> None:
+    """Deja la clave aleatoria inicial en un archivo local junto a la base (solo si no hay clave en .env)."""
+    try:
+        fila = connection.execute("PRAGMA database_list").fetchone()
+        ruta_db = fila[2] if fila else ""
+    except sqlite3.Error:
+        ruta_db = ""
+    if not ruta_db:
+        logger.warning("Usuario master '%s' creado con clave aleatoria en base en memoria.", usuario)
+        return
+    destino = Path(ruta_db).parent / ARCHIVO_CLAVE_INICIAL
+    try:
+        destino.write_text(
+            "StockAgent - credenciales iniciales del usuario Master\n"
+            f"Usuario: {usuario}\n"
+            f"Clave temporal: {clave}\n\n"
+            "Se exigirá cambiarla en el primer inicio de sesión. "
+            "Elimine este archivo una vez que haya ingresado.\n",
+            encoding="utf-8",
+        )
+        try:
+            os.chmod(destino, 0o600)
+        except OSError:
+            pass
+        logger.warning("Usuario master '%s' creado. Clave temporal guardada en: %s", usuario, destino)
+    except OSError as exc:
+        logger.error("No se pudo guardar la clave inicial del master (%s). Defina STOCKAGENT_MASTER_PASSWORD.", exc)
 
 
 def migrar_esquema(connection: sqlite3.Connection) -> None:
@@ -151,10 +186,13 @@ def asegurar_usuario_master(connection: sqlite3.Connection) -> None:
             "UPDATE users SET username = 'Auditoria', nombre = 'Auditoría' WHERE id = ?",
             (desarrollo_row["id"],),
         )
-    def_user, def_pass = _master_default_credentials()
+    def_user, _ = _master_default_credentials()
     master_row = connection.execute(query, (def_user,)).fetchone()
     if master_row is None:
-        pwd_hash = hash_clave(def_pass)
+        # Sin clave explícita en el entorno NO se usa una clave conocida: se genera una aleatoria.
+        clave_env = _master_env_password()
+        clave_inicial = clave_env or secrets.token_urlsafe(12)
+        pwd_hash = hash_clave(clave_inicial)
         connection.execute(
             """
             INSERT INTO users (username, password_hash, role, active, must_change_password, nombre, email)
@@ -162,6 +200,8 @@ def asegurar_usuario_master(connection: sqlite3.Connection) -> None:
             """,
             (def_user, pwd_hash),
         )
+        if not clave_env:
+            _publicar_clave_inicial(connection, def_user, clave_inicial)
     else:
         if master_row["role"] != "master" or not master_row["active"]:
             connection.execute(

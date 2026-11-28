@@ -28,7 +28,7 @@ def obtener_correo_cierre_guardado() -> str:
     cfg = application_root() / "data" / "config_notificaciones.json"
     if cfg.exists():
         try:
-            with open(cfg, "r", encoding="utf-8") as f:
+            with open(cfg, encoding="utf-8") as f:
                 data = json.load(f)
                 return str(data.get("correo_cierre", "") or "")
         except Exception:
@@ -43,7 +43,7 @@ def guardar_correo_cierre(correo: str) -> None:
     try:
         data = {}
         if cfg.exists():
-            with open(cfg, "r", encoding="utf-8") as f:
+            with open(cfg, encoding="utf-8") as f:
                 data = json.load(f)
         data["correo_cierre"] = correo.strip()
         with open(cfg, "w", encoding="utf-8") as f:

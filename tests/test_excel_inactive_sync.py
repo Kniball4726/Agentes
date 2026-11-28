@@ -6,7 +6,6 @@ from pathlib import Path
 import openpyxl
 
 from src.inventory import StockManager
-from src.products import ProductStore
 
 
 class TestExcelInactiveSync(unittest.TestCase):
@@ -73,7 +72,7 @@ class TestExcelInactiveSync(unittest.TestCase):
         self.assertEqual(self.sm.product_store.get_product("P01")["active"], 0)
 
         # Al importar desde Excel (donde P01 sigue presente en la planilla)
-        res = self.sm.importar_catalogo_desde_excel()
+        self.sm.importar_catalogo_desde_excel()
         self.assertEqual(self.sm.product_store.get_product("P01")["active"], 1)
         self.assertIn("P01", self.sm.catalogo)
 

@@ -25,6 +25,8 @@ class TestEnvConfig(unittest.TestCase):
         self.assertIn("STOCKAGENT_MELI_APP_ID", content)
         self.assertIn("STOCKAGENT_AUTO_UPDATE_ON_START", content)
         self.assertIn("STOCKAGENT_AUTO_UPDATE_WATCH", content)
+        self.assertIn("STOCKAGENT_AUTO_UPDATE_MODE", content)
+        self.assertIn("STOCKAGENT_AUTO_UPDATE_TAG_PATTERN", content)
 
     def test_user_store_master_env_override(self):
         with tempfile.TemporaryDirectory() as tmp:

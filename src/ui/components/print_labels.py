@@ -43,7 +43,7 @@ def listar_impresoras_sistema() -> list[str]:
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         res = subprocess.run(cmd, **kwargs)
         if res.returncode == 0:
-            lineas = {l.strip() for l in res.stdout.splitlines() if l.strip()}
+            lineas = {linea.strip() for linea in res.stdout.splitlines() if linea.strip()}
             return sorted(lineas)
     except Exception:
         pass

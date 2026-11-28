@@ -173,7 +173,7 @@ def guardar_informe_xls(libro: openpyxl.Workbook, ruta: Path) -> None:
             indice_color = color_index(celda.fill.fgColor)
             rgb_relleno = rgb_por_indice.get(indice_color)  # type: ignore[arg-type]
             luminancia = (
-                sum(peso * canal for peso, canal in zip((0.2126, 0.7152, 0.0722), rgb_relleno))
+                sum(peso * canal for peso, canal in zip((0.2126, 0.7152, 0.0722), rgb_relleno, strict=True))
                 if rgb_relleno
                 else 255
             )

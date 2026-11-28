@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from .. import secretos
 from ..core.environment import get_data_dir
 from ..core.network_security import crear_contexto_tls_estricto
 
+logger = logging.getLogger("stockagent.mercadolibre")
 CONFIG_ML_PATH_DEFAULT = "data/config_mercadolibre.json"
 API_BASE_URL = "https://api.mercadolibre.com"
 _CAMPOS_SECRETOS_ML = ("client_secret", "access_token", "refresh_token")
@@ -44,7 +46,7 @@ def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
     necesita_migracion = False
     if ruta.exists():
         try:
-            with open(ruta, "r", encoding="utf-8") as f:
+            with open(ruta, encoding="utf-8") as f:
                 data = json.load(f)
                 raw_secretos = {
                     campo: str(data.get(campo, "")).strip()
@@ -73,14 +75,14 @@ def cargar_config_mercadolibre(root_path: Path | None = None) -> dict[str, Any]:
                     "auto_descontar": bool(data.get("auto_descontar", False)),
                     "ultima_sincronizacion": str(data.get("ultima_sincronizacion", "")),
                 }
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("No se pudo leer configuración de Mercado Libre %s: %s", ruta, exc)
 
     if necesita_migracion:
         try:
             guardar_config_mercadolibre(res, root_path=root_path)
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("No se pudo migrar a cifrado las credenciales de Mercado Libre: %s", exc)
 
     for clave, env_nombres in [
         ("app_id", ["STOCKAGENT_MELI_APP_ID", "MELI_APP_ID"]),

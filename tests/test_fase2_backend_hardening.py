@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import io
-import json
 import re
 import ssl
 import time
@@ -335,10 +333,10 @@ def test_ssl_manager_genera_ca_restringida_y_certificado_hoja_no_ca(tmp_path, mo
     assert leaf_ku.digital_signature is True
 
     exp = getattr(leaf_cert, "not_valid_after_utc", None) or leaf_cert.not_valid_after.replace(
-        tzinfo=datetime.timezone.utc
+        tzinfo=datetime.UTC
     )
     inicio = getattr(leaf_cert, "not_valid_before_utc", None) or leaf_cert.not_valid_before.replace(
-        tzinfo=datetime.timezone.utc
+        tzinfo=datetime.UTC
     )
     assert (exp - inicio).days <= 366
 

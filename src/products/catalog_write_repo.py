@@ -24,7 +24,7 @@ def _sincronizar_filas_plantilla(
         return
     cambios_fila = [
         (fila_p, fila_c["id"])
-        for fila_c, fila_p in zip(filas_catalogo, filas_plantilla)
+        for fila_c, fila_p in zip(filas_catalogo, filas_plantilla, strict=False)
         if fila_c["template_row"] != fila_p
     ]
     if cambios_fila:

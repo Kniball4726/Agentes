@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
+
+logger = logging.getLogger("stockagent.auth")
 
 _session_revocation_listeners: list[Callable[[str, int | None, str | None], None]] = []
 
@@ -22,5 +25,5 @@ def notify_session_revocation(
     for listener in list(_session_revocation_listeners):
         try:
             listener(event, user_id, token_hash)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Error en listener de revocación de sesión (%s): %s", event, exc)

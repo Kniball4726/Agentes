@@ -5,11 +5,14 @@ Organiza comprobantes y archivos de pedidos antiguos en carpetas cronológicas
 """
 
 from datetime import datetime, timedelta
+import logging
 from pathlib import Path
 import shutil
 from typing import Any
 
 from .core.environment import get_data_dir
+
+logger = logging.getLogger("stockagent.archive")
 
 
 def _resolver_data_dir(root_path: Path | None = None) -> Path:
@@ -97,7 +100,8 @@ def archivar_comprobantes_antiguos(
                     shutil.move(str(f), str(dest_file))
                     movidos += 1
                     bytes_movidos += f_size
-            except Exception:
+            except OSError as exc:
+                logger.warning("No se pudo archivar comprobante %s: %s", f, exc)
                 continue
 
     return {

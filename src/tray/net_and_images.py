@@ -60,8 +60,8 @@ def _obtener_ip_tailscale() -> Optional[str]:
                 partes = [int(p) for p in ip.split(".") if p.isdigit()]
                 if len(partes) == 4 and 64 <= partes[1] <= 127:
                     return ip
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("No se pudo detectar IP Tailscale para System Tray: %s", exc)
     return None
 
 

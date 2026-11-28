@@ -246,6 +246,9 @@ def test_cargar_config_auto_update_desde_env() -> None:
         "STOCKAGENT_AUTO_UPDATE_ON_START": "0",
         "STOCKAGENT_AUTO_UPDATE_WATCH": "1",
         "STOCKAGENT_AUTO_UPDATE_BRANCH": "master",
+        "STOCKAGENT_AUTO_UPDATE_MODE": "tag",
+        "STOCKAGENT_AUTO_UPDATE_TAG_PATTERN": "v*",
+        "STOCKAGENT_AUTO_UPDATE_PRERELEASES": "0",
         "STOCKAGENT_AUTO_UPDATE_INTERVAL_MIN": "10",
         "STOCKAGENT_AUTO_UPDATE_IDLE_SECONDS": "180",
         "STOCKAGENT_AUTO_UPDATE_WS_IDLE_SECONDS": "900",
@@ -255,8 +258,85 @@ def test_cargar_config_auto_update_desde_env() -> None:
         cfg = auto_updater.cargar_config_auto_update()
     assert cfg.habilitado_inicio is False
     assert cfg.habilitado_watcher is True
+    assert cfg.modo == "tag"
+    assert cfg.tag_patron == "v*"
+    assert cfg.incluir_prereleases is False
     assert cfg.intervalo_minutos == 10.0
     assert cfg.inactividad_http_segundos == 180.0
     assert cfg.inactividad_ws_segundos == 900.0
     assert cfg.ventana_horaria == "20:00-07:00"
     assert isinstance(MagicMock(), MagicMock)
+
+
+def test_seleccionar_ultimo_tag_semver_y_prereleases() -> None:
+    tags = ["v1.2.0", "v1.10.0", "v1.10.1-rc1", "v1.9.9", "v2.0.0-beta.1"]
+    assert auto_updater.seleccionar_ultimo_tag(tags, incluir_prereleases=False) == "v1.10.0"
+    assert auto_updater.seleccionar_ultimo_tag(tags, incluir_prereleases=True) == "v2.0.0-beta.1"
+    # Estable siempre le gana a su propio prerelease
+    assert auto_updater.seleccionar_ultimo_tag(["v2.0.0-rc1", "v2.0.0"], incluir_prereleases=True) == "v2.0.0"
+
+
+def test_modo_tag_ignora_commits_sin_tag_y_actualiza_solo_en_release(tmp_path: Path) -> None:
+    _remote, casa, servidor = _crear_repo_con_remoto(tmp_path)
+    cfg_tag = auto_updater.AutoUpdateConfig(
+        modo="tag",
+        tag_patron="v*",
+        incluir_prereleases=False,
+        remoto="origin",
+        instalar_dependencias=False,
+    )
+
+    # 1. Commit en master SIN tag NO debe disparar actualización en modo tag
+    (casa / "app.py").write_text("VERSION = 'wip'\n", encoding="utf-8")
+    _git(casa, "add", ".")
+    _git(casa, "commit", "-m", "WIP sin release")
+    _git(casa, "push", "origin", "master")
+
+    check_sin_tag = auto_updater.verificar_actualizacion_remota(servidor, cfg_tag)
+    assert check_sin_tag.ok is True
+    assert check_sin_tag.hay_cambios is False
+
+    # 2. Publicar un prerelease v1.0.0-rc1 también se ignora cuando incluir_prereleases=False
+    _git(casa, "tag", "v1.0.0-rc1")
+    _git(casa, "push", "origin", "v1.0.0-rc1")
+    check_rc = auto_updater.verificar_actualizacion_remota(servidor, cfg_tag)
+    assert check_rc.ok is True
+    assert check_rc.hay_cambios is False
+
+    # 3. Publicar release estable v1.0.0 sí detecta y aplica checkout limpio del tag
+    (casa / "app.py").write_text("VERSION = '1.0.0'\n", encoding="utf-8")
+    _git(casa, "add", ".")
+    _git(casa, "commit", "-m", "Release 1.0.0")
+    _git(casa, "tag", "v1.0.0")
+    _git(casa, "push", "origin", "master", "v1.0.0")
+
+    check_rel = auto_updater.verificar_actualizacion_remota(servidor, cfg_tag)
+    assert check_rel.ok is True
+    assert check_rel.hay_cambios is True
+    assert check_rel.tag_objetivo == "v1.0.0"
+    assert check_rel.puede_fast_forward is True
+
+    res_apply = auto_updater.aplicar_actualizacion_local(servidor, cfg_tag)
+    assert res_apply.ok is True
+    assert res_apply.actualizado is True
+    assert res_apply.tag_nuevo == "v1.0.0"
+    assert (servidor / "app.py").read_text(encoding="utf-8") == "VERSION = '1.0.0'\n"
+
+    # 4. Estando ya en HEAD desacoplado de v1.0.0, volver a chequear marca al día
+    check_al_dia = auto_updater.verificar_actualizacion_remota(servidor, cfg_tag)
+    assert check_al_dia.ok is True
+    assert check_al_dia.hay_cambios is False
+    assert check_al_dia.tag_actual == "v1.0.0"
+
+    # 5. Nuevo release v1.1.0 desde detached HEAD actualiza limpiamente
+    (casa / "app.py").write_text("VERSION = '1.1.0'\n", encoding="utf-8")
+    _git(casa, "add", ".")
+    _git(casa, "commit", "-m", "Release 1.1.0")
+    _git(casa, "tag", "v1.1.0")
+    _git(casa, "push", "origin", "master", "v1.1.0")
+
+    res_v2 = auto_updater.aplicar_actualizacion_local(servidor, cfg_tag)
+    assert res_v2.ok is True
+    assert res_v2.actualizado is True
+    assert res_v2.tag_nuevo == "v1.1.0"
+    assert (servidor / "app.py").read_text(encoding="utf-8") == "VERSION = '1.1.0'\n"

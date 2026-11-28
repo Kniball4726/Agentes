@@ -67,6 +67,8 @@ class AuditRepository:
         columna: str, fecha_desde: str | None, fecha_hasta: str | None
     ) -> tuple[str, list[str]]:
         """Construye el fragmento SQL para filtrar por rango de fechas (formato AAAA-MM-DD)."""
+        if columna not in ("created_at", "p.created_at"):
+            raise ValueError(f"Columna de fecha no permitida en filtro SQL: {columna}")
         condiciones: list[str] = []
         params: list[str] = []
         if fecha_desde:
@@ -135,10 +137,10 @@ class AuditRepository:
 
             rows_por_dia = connection.execute(
                 f"""
-                SELECT date(created_at) as dia, COUNT(*) as cant, COALESCE(SUM(bultos), 0) as bultos
+                SELECT date(created_at, 'localtime') as dia, COUNT(*) as cant, COALESCE(SUM(bultos), 0) as bultos
                 FROM pedidos
                 WHERE estado = 'descontado' {extra_p}
-                GROUP BY date(created_at)
+                GROUP BY date(created_at, 'localtime')
                 ORDER BY dia ASC
                 """,
                 params_p,

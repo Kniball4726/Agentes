@@ -1,6 +1,5 @@
 import json
 import os
-import sqlite3
 import tempfile
 import unittest
 import zipfile
@@ -209,7 +208,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             sec_dir = raiz / "copia_externa"
 
             # Inicializar las 3 bases y Excel maestro
-            u_store = UserStore(data_dir / "usuarios.sqlite3")
+            UserStore(data_dir / "usuarios.sqlite3")
             o_store = OrderStore(data_dir / "pedidos.sqlite3")
             p_store = ProductStore(data_dir / "productos.sqlite3")
             o_store.crear_cliente("Cliente Backup Test")
@@ -251,7 +250,7 @@ class NuevasFuncionalidadesTests(unittest.TestCase):
             data_dir = raiz / "data"
             data_dir.mkdir(parents=True, exist_ok=True)
             p_store = ProductStore(data_dir / "productos.sqlite3")
-            o_store = OrderStore(data_dir / "pedidos.sqlite3")
+            OrderStore(data_dir / "pedidos.sqlite3")
             p_store.import_template_once([(2, "CRIT01", "Filtro Crítico", 0)])
 
             asunto, cuerpo, cant = construir_resumen(

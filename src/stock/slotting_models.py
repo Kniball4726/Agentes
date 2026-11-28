@@ -118,7 +118,7 @@ def generar_ubicacion_default(sku: str) -> str:
     clean = sku.strip().upper()
     if not clean:
         return "B-01-2"
-    h = int(hashlib.md5(clean.encode("utf-8")).hexdigest(), 16)
+    h = int(hashlib.md5(clean.encode("utf-8"), usedforsecurity=False).hexdigest(), 16)
     rack = DEFAULT_RACKS[h % len(DEFAULT_RACKS)]
     modulo = ((h // 4) % len(DEFAULT_MODULES)) + 1
     nivel = ((h // 16) % len(DEFAULT_LEVELS)) + 1

@@ -5,7 +5,6 @@ import openpyxl
 
 from src.inventory import StockManager
 from src.parsers.factory_parser import (
-    parsear_archivo_fabrica,
     parsear_pedido_fabrica_excel,
 )
 

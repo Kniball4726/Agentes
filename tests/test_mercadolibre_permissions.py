@@ -11,7 +11,7 @@ from src.ui.dialogs.dlg_mercadolibre import mostrar_dialogo_mercadolibre
 
 def test_dialogo_ml_solo_master_ve_credenciales():
     """Verifica que solo el usuario con rol Master tenga visible la pestaña de credenciales API."""
-    
+
     # 1. Caso Administrador: no debe tener la pestaña de credenciales
     dialogo_admin = None
     def capturar_dialogo_admin(d):

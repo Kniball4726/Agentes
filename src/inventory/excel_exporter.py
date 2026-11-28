@@ -45,10 +45,8 @@ def exportar_catalogo_a_excel(
     hoja_activos.title = nombre_hoja
 
     # Estilos
-    fuente_encabezado_principal = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     fuente_columnas = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
     fuente_datos = Font(name="Calibri", size=10)
-    relleno_encabezado = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
     relleno_columnas = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
     alineacion_centro = Alignment(horizontal="center", vertical="center")
     alineacion_derecha = Alignment(horizontal="right", vertical="center")

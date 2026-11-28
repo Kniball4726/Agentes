@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import time
 from contextlib import AbstractContextManager
@@ -13,6 +14,8 @@ from .models import (
     MAX_FAILED_ATTEMPTS,
     AuthResult,
 )
+
+logger = logging.getLogger("stockagent.auth.lockout")
 
 
 class LockoutRepository:
@@ -61,8 +64,8 @@ class LockoutRepository:
                     from ..integrations.telegram_notifier import notificar_seguridad_bloqueo_telegram
 
                     notificar_seguridad_bloqueo_telegram(username, retry_after_minutos=15)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("No se pudo enviar alerta Telegram de bloqueo para '%s': %s", username, exc)
                 return AuthResult(None, "locked", retry_after=LOCKOUT_SECONDS)
             connection.execute(
                 """

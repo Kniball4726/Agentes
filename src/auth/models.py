@@ -8,13 +8,21 @@ from typing import Literal
 UserRole = Literal["master", "administrador", "operador", "consulta", "picker", "despachador"]
 USER_ROLES: tuple[UserRole, ...] = ("master", "administrador", "operador", "consulta", "picker", "despachador")
 DEFAULT_MASTER_USERNAME = "Auditoria"
-DEFAULT_MASTER_PASSWORD = "master1713"
+# Clave histórica y pública de instalaciones antiguas. YA NO se usa para crear cuentas nuevas:
+# solo sirve para detectar bases heredadas que la conserven y para prohibir su reutilización.
+DEFAULT_MASTER_PASSWORD = "master1713"  # noqa: S105 - solo referencia histórica para migración y bloqueo de reutilización
+
+
+def _master_env_password() -> str | None:
+    """Clave master definida explícitamente por el operador en el entorno (o None)."""
+    return os.getenv("STOCKAGENT_MASTER_PASSWORD") or None
 
 
 def _master_default_credentials() -> tuple[str, str]:
+    """Credenciales de referencia para detectar cuentas heredadas con clave por defecto."""
     return (
         os.getenv("STOCKAGENT_MASTER_USER") or DEFAULT_MASTER_USERNAME,
-        os.getenv("STOCKAGENT_MASTER_PASSWORD") or DEFAULT_MASTER_PASSWORD,
+        _master_env_password() or DEFAULT_MASTER_PASSWORD,
     )
 
 

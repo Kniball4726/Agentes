@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -14,6 +15,8 @@ from ..stock.models import RegistroDescuento, ReporteStock
 from ..stock.reports import copiar_estilo_fila, guardar_informe_pdf, guardar_informe_xls
 from .excel_sync import crear_informe_desde_plantilla
 from .protocols import InventoryHostProtocol
+
+logger = logging.getLogger("stockagent.inventory.discount")
 
 
 class DiscountEngineService:
@@ -263,7 +266,7 @@ class DiscountEngineService:
                 usuario=usuario,
             )
         except Exception as e:
-            print(f"[AVISO] No se pudo registrar detalle de despacho: {e}")
+            logger.warning("No se pudo registrar detalle de despacho: %s", e)
 
         if usuario and usuario.lower() not in ("sistema", "administrador", "admin"):
             try:
@@ -278,7 +281,7 @@ class DiscountEngineService:
                     details=f"Archivo: {nombre_archivo} | Unidades: {total_unidades} | Productos: {len(existentes)}",
                 )
             except Exception as notif_err:
-                print(f"[AVISO] No se pudo generar notificación para administrador: {notif_err}")
+                logger.warning("No se pudo generar notificación para administrador: %s", notif_err)
 
         return filas_actualizadas
 
@@ -341,6 +344,6 @@ class DiscountEngineService:
                 detalles=detalles_despacho,
             )
         except Exception as e:
-            print(f"[AVISO] No se pudo registrar despacho de Mercado Full: {e}")
+            logger.warning("No se pudo registrar despacho de Mercado Full: %s", e)
 
         return resumen

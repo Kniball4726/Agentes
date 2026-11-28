@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.api import deps as api_deps
 from src.api import stores as api_stores
@@ -121,7 +121,7 @@ def test_whatsapp_y_email_cierre_helpers(tmp_path: Path):
 
     asunto, lineas = _construir_resumen_cierre_email(42, "3 pedidos (10 un.)", "juan", fecha_str="26/11/2026 18:00")
     assert "Cierre de Jornada #42" in asunto
-    assert any("juan" in l for l in lineas)
+    assert any("juan" in linea for linea in lineas)
 
     pdf_file = tmp_path / "cierre.pdf"
     pdf_file.write_bytes(b"%PDF")

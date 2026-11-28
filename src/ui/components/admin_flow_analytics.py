@@ -188,7 +188,7 @@ def actualizar_panel_analitica_flujo_admin(interfaz: Any) -> None:
         try:
             with closing(product_store._connect()) as pconn:
                 c_row = pconn.execute("""
-                    SELECT 
+                    SELECT
                         COUNT(CASE WHEN estado_inventario IN ('OPTIMO', 'SOBRESTOCK') THEN 1 END) as optimos,
                         COUNT(CASE WHEN estado_inventario = 'QUIEBRE_INMINENTE' THEN 1 END) as alertas,
                         COUNT(CASE WHEN estado_inventario = 'AGOTADO' THEN 1 END) as quiebres

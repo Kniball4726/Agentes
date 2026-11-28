@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from ..paths import application_root
+
+logger = logging.getLogger("stockagent.env")
+
 
 def _get_env_file() -> Path:
     return application_root() / ".env_active"
@@ -22,8 +26,8 @@ def get_environment() -> str:
             val = env_file.read_text(encoding="utf-8").strip().lower()
             if val in ("qa", "test", "testing", "sandbox"):
                 return "qa"
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("No se pudo leer el archivo de entorno %s: %s", env_file, exc)
 
     return "production"
 
@@ -35,8 +39,8 @@ def set_environment(env: str, persistir: bool = True) -> None:
     if persistir:
         try:
             _get_env_file().write_text(clean, encoding="utf-8")
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("No se pudo persistir el entorno '%s' en disco: %s", clean, exc)
 
 
 def is_qa_environment() -> bool:

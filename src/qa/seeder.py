@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime
+import logging
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -13,6 +14,8 @@ from ..core.environment import get_data_dir, get_descuentos_dir, set_environment
 from ..auth.store import UserStore
 from ..orders.store import OrderStore
 from ..products.store import ProductStore
+
+logger = logging.getLogger("stockagent.qa")
 
 
 PRODUCTOS_SEMILLA_QA = [
@@ -69,8 +72,8 @@ def inicializar_ambiente_qa(forzar_reinicio: bool = False) -> dict[str, Any]:
             if db_p.exists():
                 try:
                     db_p.unlink()
-                except Exception:
-                    pass
+                except OSError as exc:
+                    logger.warning("No se pudo eliminar base QA %s al reiniciar: %s", db_p, exc)
 
     # 1. Usuarios QA
     user_store = UserStore(data_dir / "usuarios.sqlite3")
@@ -87,11 +90,11 @@ def inicializar_ambiente_qa(forzar_reinicio: bool = False) -> dict[str, Any]:
                     email=u_email,
                 )
                 usuarios_creados.append(u_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Usuario semilla QA '%s' omitido: %s", u_name, exc)
 
     # 2. Catálogo de Productos QA
-    product_store = ProductStore(data_dir / "productos.sqlite3")
+    ProductStore(data_dir / "productos.sqlite3")
     with closing(sqlite3.connect(data_dir / "productos.sqlite3")) as conn, conn:
         for idx, (cod, nom, stk, ean, ubic) in enumerate(PRODUCTOS_SEMILLA_QA, start=1):
             conn.execute(
@@ -140,8 +143,8 @@ def inicializar_ambiente_qa(forzar_reinicio: bool = False) -> dict[str, Any]:
     for c_nom, c_cod, c_dir in CLIENTES_SEMILLA_QA:
         try:
             order_store.crear_cliente(c_nom, codigo=c_cod, direccion=c_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Cliente semilla QA '%s' omitido: %s", c_nom, exc)
 
     # Pedido de ejemplo si no hay pedidos
     if not order_store.listar_pedidos():

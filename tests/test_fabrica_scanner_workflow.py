@@ -1,4 +1,3 @@
-import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -65,7 +64,7 @@ class TestFabricaScannerWorkflow(unittest.TestCase):
             return btn
 
         interfaz.boton = fake_boton
-        controls = construir_sidebar_controls(interfaz)
+        construir_sidebar_controls(interfaz)
         self.assertIn("Ingreso de Fábrica", botones_creados)
 
     def test_operador_scanner_view_and_batch_buttons(self):

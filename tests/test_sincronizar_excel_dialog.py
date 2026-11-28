@@ -5,7 +5,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
-import flet as ft
 from src.ui.dialogs.dlg_sincronizar_excel import mostrar_dialogo_sincronizar_excel
 from tests.test_flet_gui import FakeMenu, FakePage, InterfazFlet
 

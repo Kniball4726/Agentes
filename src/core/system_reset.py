@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime
+import logging
 import sqlite3
 from typing import Any
 import openpyxl
@@ -11,6 +12,8 @@ import openpyxl
 from ..auth.events import notify_session_revocation
 from ..paths import application_root
 from .environment import is_qa_environment
+
+logger = logging.getLogger("stockagent.reset")
 
 
 def ejecutar_zapping_produccion(
@@ -143,8 +146,8 @@ def ejecutar_zapping_produccion(
             if f.is_file():
                 try:
                     f.unlink()
-                except Exception:
-                    pass
+                except OSError as exc:
+                    logger.warning("No se pudo eliminar adjunto %s durante zapping: %s", f, exc)
 
     # 5. Usuarios: limpiar sesiones e intentos fallidos, conservando las cuentas
     db_usuarios = data_dir / "usuarios.sqlite3"
@@ -186,7 +189,7 @@ def ejecutar_zapping_produccion(
 
                 wb.save(ruta_excel)
         except Exception as exc_excel:
-            print(f"[WARN] No se pudo resetear Productos.xlsx: {exc_excel}")
+            logger.warning("No se pudo resetear Productos.xlsx durante zapping: %s", exc_excel)
 
     # 7. Limpiar comprobantes procesados en Descuentos/
     for sub in ("descuentos", "descontados"):
@@ -196,8 +199,8 @@ def ejecutar_zapping_produccion(
                 if f.is_file():
                     try:
                         f.unlink()
-                    except Exception:
-                        pass
+                    except OSError as exc:
+                        logger.warning("No se pudo eliminar comprobante %s durante zapping: %s", f, exc)
 
     return {
         "status": "ok",

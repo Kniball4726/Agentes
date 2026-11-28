@@ -1,7 +1,6 @@
 """Tests para el ambiente de pruebas (QA) y datos semilla."""
 
 import os
-import shutil
 import tempfile
 from pathlib import Path
 import unittest

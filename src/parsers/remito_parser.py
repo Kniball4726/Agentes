@@ -4,12 +4,15 @@ Lee documentos de remito / nota de pedido, extrae los ítems (código, descripci
 y verifica la consistencia matemática contra el campo 'Cant. Articulos'.
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 from pypdf import PdfReader
 from .safe_loader import MAX_PDF_PAGES, validar_pdf_seguro
+
+logger = logging.getLogger("stockagent.parsers.remito")
 
 
 @dataclass
@@ -65,8 +68,8 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
             if hasattr(reader, "close"):
                 try:
                     reader.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Error al cerrar PdfReader de %s: %s", path.name, exc)
     else:
         reader = PdfReader(None)
         for page in reader.pages[:MAX_PDF_PAGES]:
@@ -74,8 +77,8 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
         if hasattr(reader, "close"):
             try:
                 reader.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error al cerrar PdfReader vacío: %s", exc)
 
 
 
@@ -112,12 +115,12 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
                 cliente = val
 
     # Extracción de Dirección para futuras integraciones (ej: Google Maps API)
-    lines = [l.strip() for l in full_text.split('\n')]
+    lines = [linea.strip() for linea in full_text.split('\n')]
     loc = ""
     prov = ""
-    for l in lines:
-        if 'localidad:' in l.lower():
-            m_loc = re.search(r'(.*?)\s*Localidad:\s*(.*)', l, re.IGNORECASE)
+    for linea in lines:
+        if 'localidad:' in linea.lower():
+            m_loc = re.search(r'(.*?)\s*Localidad:\s*(.*)', linea, re.IGNORECASE)
             if m_loc:
                 prov = m_loc.group(1).strip()
                 loc = m_loc.group(2).strip()
@@ -125,8 +128,8 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
 
     calle = ""
     idx_centro = -1
-    for i, l in enumerate(lines):
-        if l in ('CENTRO DE DISTRIBUCION', 'SUPPLEMENTS SRL'):
+    for i, linea in enumerate(lines):
+        if linea in ('CENTRO DE DISTRIBUCION', 'SUPPLEMENTS SRL'):
             idx_centro = i
             break
 
@@ -176,7 +179,7 @@ def parsear_remito(ruta_pdf: str | Path) -> ResultadoRemito:
                 buffer = ""
             recording = False
             continue
-        
+
         # La tabla termina antes de las observaciones o datos de logística
         if recording and any(stop_word in clean for stop_word in ['OBSERVACIONES', 'DATOS LOGISTICA', 'Forma de Pago:']):
             if buffer:

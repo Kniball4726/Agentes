@@ -2,13 +2,11 @@
 restitución/regresión de stock al anular o desarmar pedidos y reporte exacto en Cierre de Jornada.
 """
 from pathlib import Path
-import tempfile
 import openpyxl
 
 from src.consolidator import ItemConsolidado
 from src.inventory import StockManager
-from src.orders import OrderStore, Pedido
-from src.products import ProductStore
+from src.orders import OrderStore
 from src.stock.models import RegistroDescuento
 from src.ui.dialogs.dlg_pedidos import _restituir_stock_pedido
 
@@ -178,7 +176,7 @@ def test_obtener_items_pendientes_cierre_deduplicacion(tmp_path: Path):
     order_store = OrderStore(db_ped_path)
 
     # Pedido 1
-    p1 = order_store.registrar_pedido(
+    order_store.registrar_pedido(
         nota_pedido="REM-1",
         numero_pedido="1",
         cliente="Cliente A",
@@ -191,7 +189,7 @@ def test_obtener_items_pendientes_cierre_deduplicacion(tmp_path: Path):
     )
 
     # Pedido 2 con el mismo COD1 pero descripción ligeramente distinta
-    p2 = order_store.registrar_pedido(
+    order_store.registrar_pedido(
         nota_pedido="REM-2",
         numero_pedido="2",
         cliente="Cliente B",

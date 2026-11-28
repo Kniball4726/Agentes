@@ -50,8 +50,8 @@ def obtener_config_backup() -> dict[str, Any]:
             datos = json.loads(ruta.read_text(encoding="utf-8"))
             if isinstance(datos, dict):
                 cfg.update(datos)
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            logger.warning("No se pudo leer configuración de backup %s; se usarán valores por defecto: %s", ruta, exc)
     return cfg
 
 
@@ -86,11 +86,13 @@ def _respaldar_sqlite_seguro(origen: Path, destino: Path) -> bool:
         ) as dst_conn:
             src_conn.backup(dst_conn)
         return True
-    except Exception:
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Fallo SQLite backup API para %s (%s); intentando copia directa de archivo.", origen.name, exc)
         try:
             shutil.copy2(origen, destino)
             return True
-        except Exception:
+        except OSError as copy_exc:
+            logger.error("No se pudo respaldar %s ni mediante copia directa: %s", origen, copy_exc)
             return False
 
 
@@ -162,8 +164,8 @@ def crear_backup_sistema(
         for temp in temporales:
             try:
                 temp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("No se pudo limpiar archivo temporal de backup %s: %s", temp, exc)
 
     # Copia opcional a carpeta externa/secundaria si está configurada
     cfg_backup = obtener_config_backup()
@@ -188,8 +190,8 @@ def crear_backup_sistema(
         )
         for viejo in backups_existentes[max_keep:]:
             viejo.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("No se pudo completar la rotación de backups en %s: %s", carpeta_backups, exc)
 
     logger.info("Backup generado exitosamente en %s por %s", ruta_zip, usuario)
     return ruta_zip
@@ -289,8 +291,8 @@ def restaurar_backup_sistema(
         # Crear un backup de seguridad previo a la restauración
         try:
             crear_backup_sistema(ruta_excel_base=ruta_excel_base, usuario=f"PreRestore_{usuario}")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("No se pudo generar el backup de seguridad previo a la restauración: %s", exc)
 
         restaurados: list[str] = []
 
@@ -303,13 +305,18 @@ def restaurar_backup_sistema(
                 ) as dst_conn:
                     src_conn.backup(dst_conn)
                 restaurados.append(db_temp.name)
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
+                logger.warning(
+                    "Fallo SQLite backup API al restaurar %s (%s); aplicando copia directa tras limpiar WAL/SHM.",
+                    db_temp.name,
+                    exc,
+                )
                 for sufijo_wal in ("-wal", "-shm"):
                     wal_path = Path(f"{destino_db}{sufijo_wal}")
                     try:
                         wal_path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+                    except OSError as wal_exc:
+                        logger.debug("No se pudo eliminar archivo auxiliar %s: %s", wal_path.name, wal_exc)
                 shutil.copy2(db_temp, destino_db)
                 restaurados.append(db_temp.name)
 
@@ -374,7 +381,8 @@ def ejecutar_diagnostico_salud_sistema() -> dict[str, Any]:
         _, _, free_b = shutil.disk_usage(raiz)
         free_gb = round(free_b / (1024 ** 3), 1)
         disco_ok = free_gb >= 2.0
-    except Exception:
+    except OSError as exc:
+        logger.warning("No se pudo consultar el espacio libre en disco en %s: %s", raiz, exc)
         free_gb = 0.0
         disco_ok = True
 

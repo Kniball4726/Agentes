@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ..core.exceptions import OrderStoreError
@@ -21,6 +22,7 @@ _COLUMNAS_SELECT_PEDIDO = (
 )
 
 _AHORA_SQL = "strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')"
+logger = logging.getLogger("stockagent.orders.dispatch")
 
 
 class DispatchRepository:
@@ -216,7 +218,8 @@ class DispatchRepository:
                     pid, nuevo, usuario=usuario, permitir_retroceso=permitir_retroceso
                 )
                 actualizados += 1
-            except Exception:
+            except Exception as exc:
+                logger.warning("No se pudo actualizar estado de despacho del pedido %s a '%s': %s", pid, nuevo, exc)
                 continue
         return actualizados
 
@@ -378,7 +381,8 @@ class DispatchRepository:
             )
             if error_resp is not None:
                 return error_resp
-            assert pedido is not None and bulto_num is not None
+            if pedido is None or bulto_num is None:
+                raise OrderStoreError("Datos de escaneo incompletos tras validación.")
 
             connection.execute(
                 f"""

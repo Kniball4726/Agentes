@@ -299,8 +299,8 @@ async def procesar_mensaje_chat_agente(interfaz: Any, mensaje: str) -> None:
     elif intencion == "auditoria":
         logs = interfaz.order_store.listar_auditoria(limit=5)
         lineas = ["🛡️ **Últimos 5 Eventos de Auditoría:**\n"]
-        for l in logs:
-            lineas.append(f"• [{l.created_at[11:16]}] {l.usuario} ({l.accion}): {l.detalle}")
+        for log_entry in logs:
+            lineas.append(f"• [{log_entry.created_at[11:16]}] {log_entry.usuario} ({log_entry.accion}): {log_entry.detalle}")
         lineas.append("\n💡 Accede a 'Registro de Auditoría' en el menú lateral para buscar y filtrar todos los eventos.")
         respuesta = "\n".join(lineas)
     elif intencion == "backup":

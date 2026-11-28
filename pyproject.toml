@@ -1,3 +1,8 @@
+[project]
+name = "stockagent"
+version = "1.1.0"
+requires-python = ">=3.11"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120
@@ -5,12 +10,51 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
+    # Reglas base Fase 1 (validadas por tests/test_ci_and_lockfile.py)
     "E9",
-    "F63",
-    "F7",
     "F82",
     "F811",
-    "F541",
     "B023",
     "PLR0124",
+    # Cobertura ampliada: errores/warnings, Pyflakes completo, Bugbear, Seguridad (Bandit), Pyupgrade y Simplificación
+    "E",
+    "W",
+    "F",
+    "B",
+    "S",
+    "UP",
+    "SIM",
 ]
+ignore = [
+    # Líneas largas en componentes UI Flet (migración gradual)
+    "E501",
+    # Anotaciones de tipos legadas (List/Dict/Optional); migración gradual
+    "UP006",
+    "UP035",
+    "UP045",
+    # Preferencias estilísticas y SIM118 (peligrosa en sqlite3.Row donde `"col" in row` busca valores, no columnas)
+    "SIM102",
+    "SIM105",
+    "SIM108",
+    "SIM112",
+    "SIM117",
+    "SIM118",
+    # Patrones arquitectónicos conocidos (servidor LAN 0.0.0.0, subprocess en updater/SSL,
+    # templates SQL con columnas internas). S110/S112 ya están ACTIVAS para todo el backend/core/datos.
+    "S104",
+    "S310",
+    "S603",
+    "S606",
+    "S607",
+    "S608",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI utiliza Depends()/Body()/Query() en valores por defecto por diseño
+"src/api/**/*.py" = ["B008"]
+"src/server_app/protected_docs_routes.py" = ["B008"]
+# Capa visual Flet UI: try/except silenciosos en callbacks visuales (migración gradual)
+"src/ui/**/*.py" = ["S110", "S112"]
+"src/flet_gui.py" = ["S110", "S112"]
+# Tests usan assert, credenciales ficticias de prueba, rutas temporales y verify=False para cert autofirmado
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "S110", "S112", "S501"]

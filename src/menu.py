@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -12,6 +13,8 @@ from dotenv import load_dotenv
 from .cli import ArchiveOpsService, InteractiveFlowsService
 from .parsers.remito_parser import normalizar_codigo
 from .paths import application_root, get_descuentos_dir
+
+logger = logging.getLogger("stockagent.cli")
 
 __all__ = ["MenuAgente", "normalizar_codigo"]
 
@@ -26,8 +29,8 @@ if sys.platform == "win32":
             if _enc not in ("utf-8", "utf8") and hasattr(_stream, "reconfigure"):
                 _err_mode = getattr(_stream, "errors", None) or "replace"
                 _stream.reconfigure(encoding="utf-8", errors=_err_mode)
-        except Exception:
-            pass
+        except (OSError, AttributeError, ValueError) as exc:
+            logger.debug("No se pudo reconfigurar codificación UTF-8 de consola: %s", exc)
 
 
 class MenuAgente:

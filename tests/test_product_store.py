@@ -298,7 +298,7 @@ class ProductStoreTests(unittest.TestCase):
             store = ProductStore(Path(directorio) / "productos.sqlite3")
             self.assertEqual(store.get_unread_notifications_count(), 0)
 
-            n1 = store.create_admin_notification(
+            store.create_admin_notification(
                 title="Descuento",
                 message="Operario juan descontó 10 un.",
                 operator_username="juan",

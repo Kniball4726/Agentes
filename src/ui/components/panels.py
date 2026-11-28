@@ -107,7 +107,7 @@ def altura_tarjetas_actividad_desktop(interfaz: Any) -> int:
 
 
 def construir_panel_informes_actividad(interfaz: Any) -> ft.Control:
-    """Genera el panel principal: 
+    """Genera el panel principal:
     - Lado izquierdo: Pedidos preparados en vivo del turno con contador de bultos acumulados y fecha.
     - Lado derecho: Pedidos armados por fecha (para Operador), eventos de auditoría (para Master) o Informes generados.
     """

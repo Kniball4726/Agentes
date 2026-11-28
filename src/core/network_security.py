@@ -77,10 +77,7 @@ def es_ip_prohibida(ip_str: str, *, permitir_lan_privada: bool = False) -> bool:
     ):
         return True
 
-    if not permitir_lan_privada and ip_obj.is_private:
-        return True
-
-    return False
+    return bool(not permitir_lan_privada and ip_obj.is_private)
 
 
 def validar_url_externa_segura(

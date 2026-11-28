@@ -13,8 +13,6 @@ from ..core.delegation import DelegadoAtributo
 from .locations_repo import (
     VALID_ZONE_TYPES,
     WarehouseLocationsRepository,
-    _ZONE_ORDER_SQL,
-    _asegurar_producto_en_tx,
     descontar_ubicaciones_en_tx,
     map_location_row,
     normalizar_ubicacion,
@@ -24,7 +22,6 @@ from .locations_repo import (
 from .lots_fefo_repo import (
     VALID_LOT_STATES,
     FefoLotsRepository,
-    _FEFO_ORDER_SQL,
     consumir_lotes_fefo_en_tx,
     map_lot_row,
     normalizar_fecha_vencimiento,

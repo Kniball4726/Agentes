@@ -8,7 +8,6 @@
 """
 
 import json
-from pathlib import Path
 import unittest
 
 from src.paths import application_root
@@ -24,7 +23,7 @@ class TestFase5Features(unittest.TestCase):
         manifest_path = self.assets_dir / "manifest.json"
         self.assertTrue(manifest_path.exists(), "No se encontró assets/manifest.json")
 
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             data = json.load(f)
 
         self.assertEqual(data.get("display"), "standalone")

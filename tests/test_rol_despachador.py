@@ -5,10 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import flet as ft
-import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
@@ -102,7 +100,8 @@ def _crear_interfaz_falsa(order_store: OrderStore, rol: str) -> SimpleNamespace:
     def boton_dialogo(texto: str, accion):
         return ft.Button(content=texto, on_click=accion)
 
-    noop = lambda *_a, **_kw: None
+    def noop(*_a, **_kw):
+        return None
 
     return SimpleNamespace(
         usuario_actual=usuario,
@@ -338,7 +337,7 @@ def test_sidebar_y_comandos_aislamiento_por_rol(tmp_path: Path):
     itf_admin = _crear_interfaz_falsa(store, "administrador")
     secciones_admin = obtener_secciones_rol(itf_admin)
     items_supervision = next(s.items for s in secciones_admin if s.titulo == "SUPERVISIÓN")
-    assert any("Despacho (Pedidos Despachados)" == it[0] for it in items_supervision)
+    assert any(it[0] == "Despacho (Pedidos Despachados)" for it in items_supervision)
 
     # Master, Operador, Picker y Consulta NO ven el módulo Despacho
     for rol_excluido in ("master", "operador", "picker", "consulta"):

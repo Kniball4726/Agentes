@@ -1,6 +1,5 @@
 """Pruebas unitarias para el módulo de analítica y flujo de stock en tiempo real exclusivo del Administrador."""
 
-from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -47,7 +46,7 @@ class TestAdminFlowAnalytics(unittest.TestCase):
     def test_calculos_flujo_stock_diario_en_store(self):
         """Verifica que el repositorio agregue y calcule correctamente entradas, salidas y balance del día."""
         # 1. Registrar pedido ML
-        p_ml = self.store.registrar_pedido(
+        self.store.registrar_pedido(
             nota_pedido="ML-101",
             numero_pedido="101",
             cliente="Comprador ML",
@@ -63,7 +62,7 @@ class TestAdminFlowAnalytics(unittest.TestCase):
         )
 
         # 2. Registrar pedido Mayorista
-        p_may = self.store.registrar_pedido(
+        self.store.registrar_pedido(
             nota_pedido="MAY-201",
             numero_pedido="201",
             cliente="Distribuidor Sur",
@@ -158,7 +157,7 @@ class TestAdminFlowAnalytics(unittest.TestCase):
     def test_actualizar_panel_analitica_flujo_admin_actualiza_kpis_y_barras(self):
         """Verifica que la función actualizadora refresque correctamente los textos y barras."""
         self.mock_interfaz.usuario_actual.role = "administrador"
-        panel = construir_panel_analitica_flujo_admin(self.mock_interfaz)
+        construir_panel_analitica_flujo_admin(self.mock_interfaz)
 
         # Simular ventas y compras
         self.store.registrar_pedido(

@@ -19,6 +19,17 @@ from ..design import colores_de, confirmar_accion_destructiva, es_viewport_estre
 from ..theme import ROJO, SECUNDARIO
 
 
+def _crear_contexto_tls_local() -> ssl.SSLContext:
+    """Crea contexto TLS validado contra la CA local de StockAgent si existe."""
+    from ...paths import application_root
+
+    certs_dir = application_root() / "data" / "certs"
+    for candidato in (certs_dir / "stockagent_ca.crt", certs_dir / "stockagent.crt"):
+        if candidato.is_file():
+            return ssl.create_default_context(cafile=str(candidato))
+    return ssl.create_default_context()
+
+
 def formatear_timestamp_api(ts: float | str | None) -> str:
     """Convierte timestamp numérico o string ISO a formato legible dd/mm/aaaa hh:mm."""
     if not ts:
@@ -98,7 +109,7 @@ def construir_tab_docs_estado(interfaz: Any, texto_color: str) -> ft.Column:
         interfaz.page.update()
         try:
             req = urllib.request.Request(f"{url_local}/api/v1/sistema/ping", headers={"User-Agent": "StockAgent-UI"})
-            ctx = ssl._create_unverified_context() if url_local.startswith("https://") else None
+            ctx = _crear_contexto_tls_local() if url_local.startswith("https://") else None
             with urllib.request.urlopen(req, timeout=2.0, context=ctx) as resp:
                 status_code = resp.getcode()
                 body = json.loads(resp.read().decode("utf-8"))

@@ -45,15 +45,19 @@ if not defined PYINSTALLER_EXE if not defined FLET_EXE (
     exit /b 1
 )
 
+set "APP_VERSION=1.1.0"
+for /f "usebackq delims=" %%V in (`python -c "from src.version import APP_VERSION; print(APP_VERSION)" 2^>nul`) do set "APP_VERSION=%%V"
+
 if defined PYINSTALLER_EXE if exist "StockAgent.spec" (
     echo Compilando con PyInstaller (StockAgent.spec)...
     "%PYINSTALLER_EXE%" StockAgent.spec --distpath dist -y
 ) else (
-    echo Compilando con Flet pack...
+    echo Compilando con Flet pack (StockAgent v%APP_VERSION%)...
     "%FLET_EXE%" pack main.py ^
         --name StockAgent ^
         --icon src/img/ultratech.ico ^
         --product-name "Stock Agent" ^
+        --product-version "%APP_VERSION%" ^
         --file-description "Agente de control de stock" ^
         --add-data "src/img:src/img" ^
         --add-data "assets:assets" ^

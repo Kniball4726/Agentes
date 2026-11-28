@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+import logging
 from typing import Any
 
 from .protocols import OrderConnectFn
+
+logger = logging.getLogger("stockagent.orders.flow")
 
 
 class StockFlowRepository:
@@ -18,7 +21,7 @@ class StockFlowRepository:
     def obtener_flujo_stock_diario(self, fecha: str = "") -> dict[str, Any]:
         """
         Calcula el balance y flujo de stock en tiempo real para una fecha (por defecto hoy 'YYYY-MM-DD').
-        
+
         Retorna:
         - fecha: str
         - entradas_totales: int
@@ -40,7 +43,7 @@ class StockFlowRepository:
                 """
                 SELECT id, logistica, tipo_archivo, articulos_descontados, bultos, cierre_mercado_id
                 FROM pedidos
-                WHERE DATE(created_at) = ? AND estado != 'anulado'
+                WHERE DATE(created_at, 'localtime') = ? AND estado != 'anulado'
                 """,
                 (dia,),
             ).fetchall()
@@ -110,8 +113,8 @@ class StockFlowRepository:
                         if isinstance(det, dict):
                             for cod, cant in det.items():
                                 items_entradas_dict[str(cod)] = items_entradas_dict.get(str(cod), 0) + int(cant)
-                    except Exception:
-                        pass
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.warning("Detalle JSON inválido en cierres_parciales_fabrica (%s): %s", dia, exc)
             else:
                 rows_planes_fab = connection.execute(
                     """
@@ -142,7 +145,7 @@ class StockFlowRepository:
                 SELECT pi.codigo, pi.descripcion, SUM(pi.cantidad) as cant
                 FROM pedido_items pi
                 JOIN pedidos p ON p.id = pi.pedido_id
-                WHERE DATE(p.created_at) = ? AND p.estado != 'anulado'
+                WHERE DATE(p.created_at, 'localtime') = ? AND p.estado != 'anulado'
                 GROUP BY pi.codigo
                 ORDER BY cant DESC
                 LIMIT 5

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from src.api.v1.documentos import router as documentos_router
 from src.paths import application_root
 from src.flet_gui import InterfazFlet
-from src.auth import User, UserRole
+from src.auth import User
 
 
 class TestDocumentosVisor(unittest.TestCase):
@@ -141,7 +141,7 @@ class TestDocumentosVisor(unittest.TestCase):
 class TestFletGuiAbrirInforme(unittest.TestCase):
     def test_abrir_informe_modo_web_abre_url_inline(self):
         """Valida que en modo web abrir_informe invoque abrir_url_en_navegador en lugar de save_file."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
         from types import SimpleNamespace
 
         class MockPage:

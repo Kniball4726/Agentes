@@ -23,7 +23,8 @@ from .sidebar_quick_actions import construir_acceso_rapido_sidebar
 
 def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
     """Genera la lista de controles para el panel lateral organizados en menús desplegables tipo acordeón."""
-    assert interfaz.usuario_actual is not None
+    if interfaz.usuario_actual is None:
+        raise ValueError("No hay un usuario autenticado para construir el menú lateral.")
     logo_path = Path(__file__).resolve().parent.parent.parent / "img" / "ultratech.png"
     logo_bytes = logo_path.read_bytes() if logo_path.exists() else b""
 
@@ -128,15 +129,6 @@ def construir_sidebar_controls(interfaz: Any) -> list[ft.Control]:
 
     # Si el usuario tiene una sección preferida guardada, abrir esa; si no, abrir la predeterminada del rol
     seccion_a_abrir = seccion_abierta_pref if seccion_abierta_pref is not None else seccion_por_defecto
-
-    # Conteo dinámico de pedidos pendientes para el badge de CONTROL Y CIERRE
-    conteo_cierre = 0
-    if hasattr(interfaz, "order_store") and interfaz.order_store:
-        try:
-            conteo_dict = interfaz.order_store.contar_pedidos_pendientes_cierre_por_tipo()
-            conteo_cierre = int(conteo_dict.get("total", 0))
-        except Exception:
-            conteo_cierre = 0
 
     lista_tiles: list[ft.ExpansionTile] = []
 

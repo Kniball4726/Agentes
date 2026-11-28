@@ -151,8 +151,8 @@ def ejecutar_descuento_y_registro_atomico(
             if callable(liberar_fn):
                 try:
                     liberar_fn(tx_id)
-                except Exception:
-                    pass
+                except Exception as err_tx:
+                    logger.warning("Error al liberar transacción idempotente '%s' en rollback: %s", tx_id, err_tx)
         raise
 
 
@@ -369,8 +369,8 @@ def ejecutar_reserva_y_registro_atomico(
             if callable(liberar_fn):
                 try:
                     liberar_fn(tx_id)
-                except Exception:
-                    pass
+                except Exception as err_tx:
+                    logger.warning("Error al liberar transacción idempotente '%s' en rollback: %s", tx_id, err_tx)
         raise
 
 

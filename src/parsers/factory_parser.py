@@ -14,7 +14,7 @@ def parsear_pedido_fabrica_excel(ruta_excel: str | Path) -> Tuple[Dict[str, int]
     """
     Parsea una planilla Excel (.xlsx o .xls) con columnas de Código (o COD) y Cantidad (o UNIDADES/STOCK/INGRESO).
     Si no encuentra encabezados específicos, busca columnas numéricas donde la primera sea el código y la segunda la cantidad.
-    
+
     Retorna:
         - items_dict: Dict[codigo, cantidad_total] consolidado.
         - detalle: List[(codigo, descripcion, cantidad)]
@@ -27,13 +27,13 @@ def parsear_pedido_fabrica_excel(ruta_excel: str | Path) -> Tuple[Dict[str, int]
         hoja = libro.sheet_by_index(0)
         max_cols_xls = min(hoja.ncols, MAX_EXCEL_COLS)
         max_rows_xls = min(hoja.nrows, MAX_EXCEL_ROWS)
-        
+
         # Detectar columnas
         col_cod = -1
         col_desc = -1
         col_cant = -1
         fila_inicio = 0
-        
+
         for r in range(min(15, max_rows_xls)):
             fila_vals = [str(hoja.cell_value(r, c)).strip().upper() for c in range(max_cols_xls)]
             for c, val in enumerate(fila_vals):

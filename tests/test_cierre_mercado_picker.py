@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.orders import OrderStore, Pedido, CierreMercado
+from src.orders import OrderStore
 from src.ui.dialogs.cierre.cierre_mercado_exec import ejecutar_tarea_cierre_mercado
 from src.ui.dialogs.cierre.dlg_cierre_mercado import mostrar_dialogo_cierre_mercado
 from src.flet_gui import InterfazFlet

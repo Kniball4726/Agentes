@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timedelta
+import logging
 from typing import Any, Dict, List, Optional
 
 from .stock.slotting_models import (
@@ -18,6 +19,8 @@ from .stock.slotting_models import (
     _calcular_ubicacion_optima,
     generar_ubicacion_default,
 )
+
+logger = logging.getLogger("stockagent.slotting")
 
 
 def analizar_rotacion_abc(
@@ -71,8 +74,8 @@ def analizar_rotacion_abc(
                 if code in productos_dict:
                     productos_dict[code]["picks"] += int(row["picks"] or 0)
                     productos_dict[code]["unidades"] += int(row["unidades"] or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("No se pudieron consultar movimientos de stock para rotación ABC: %s", exc)
 
     # 3. Si hay OrderStore, consultar también pedido_items
     if order_store is not None:
@@ -98,8 +101,8 @@ def analizar_rotacion_abc(
                         productos_dict[code]["unidades"] = max(
                             productos_dict[code]["unidades"], int(row["unidades"] or 0)
                         )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("No se pudieron consultar pedido_items para rotación ABC: %s", exc)
 
     # 4. Ordenar productos por volumen de picks descendente (y unidades como desempate)
     items_ordenados = sorted(

@@ -155,8 +155,8 @@ def iniciar_servidor_web(
     configurar_logging()
     try:
         iniciar_planificador()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("No se pudo iniciar el planificador de alertas programadas: %s", exc)
 
     esquema = "https" if https else "http"
     os.environ["STOCKAGENT_PORT"] = str(port)

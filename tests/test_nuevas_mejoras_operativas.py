@@ -8,11 +8,9 @@
 7. Espejo de respaldo en red / carpeta secundaria.
 """
 
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 import pypdf
-import pytest
 
 from src.auth import User
 from src.backup_manager import crear_backup_sistema, guardar_config_backup, obtener_config_backup

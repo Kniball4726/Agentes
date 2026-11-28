@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .models import Pedido
+
+logger = logging.getLogger("stockagent.orders.picking")
 
 
 def _leer_campo(obj: Any, campo: str, default: Any = "") -> Any:
@@ -98,7 +101,7 @@ def consolidar_ola_picking(
                         except Exception:
                             lotes_fefo = []
 
-                lotes_vigentes = [l for l in lotes_fefo if not l.get("vencido", False)]
+                lotes_vigentes = [lote for lote in lotes_fefo if not lote.get("vencido", False)]
                 primer_lote = lotes_vigentes[0] if lotes_vigentes else (lotes_fefo[0] if lotes_fefo else None)
 
                 mapa_items[cod_limpio] = {
@@ -132,8 +135,8 @@ def consolidar_ola_picking(
                     res_sku = max(0, _entero_seguro(mapa_res.get(cod, 0)))
                     item["stock_reservado"] = res_sku
                     item["stock_disponible"] = max(0, item["stock_fisico"] - res_sku)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("No se pudo consultar mapa de reservas activas para ola de picking: %s", exc)
 
     # Ordenar primero por si tiene ubicación física conocida, luego por pasillo/ubicación y finalmente por código
     lista_consolidada = list(mapa_items.values())

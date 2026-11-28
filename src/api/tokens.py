@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import time
 from typing import Any, Dict, Optional
@@ -18,6 +19,8 @@ from .stores import (
     obtener_contextos_api_registrados,
     register_token_reset_listener,
 )
+
+logger = logging.getLogger("stockagent.api.tokens")
 
 SESSION_TTL_SECONDS = 24 * 3600  # 24 horas de inactividad máxima por token
 SESSION_ABSOLUTE_TTL_SECONDS = 7 * 24 * 3600  # 7 días de vida absoluta máxima por token
@@ -50,9 +53,7 @@ def _sesion_expirada(sesion: Dict[str, Any], ahora: float) -> bool:
     if ahora - last_active > SESSION_TTL_SECONDS:
         return True
     created_at = float(sesion.get("created_at", 0) or 0)
-    if created_at > 0 and ahora - created_at > SESSION_ABSOLUTE_TTL_SECONDS:
-        return True
-    return False
+    return bool(created_at > 0 and ahora - created_at > SESSION_ABSOLUTE_TTL_SECONDS)
 
 
 def _on_user_store_session_revocation(
@@ -116,8 +117,8 @@ def crear_sesion(user: User, store: UserStore | None = None) -> str:
             created_at=ahora,
             last_active=ahora,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("No se pudo persistir sesión API en SQLite para '%s': %s", user.username, exc)
 
     _limpiar_sesiones_expiradas()
     return raw_token
@@ -147,8 +148,8 @@ def _limpiar_sesiones_expiradas() -> None:
 
     try:
         get_user_store().cleanup_expired_api_sessions(SESSION_TTL_SECONDS)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("No se pudieron limpiar sesiones API expiradas en SQLite: %s", exc)
 
 
 def _normalizar_recurso_doc(recurso: str) -> str:
@@ -247,8 +248,8 @@ def _revocar_sesion_silenciosa(token_hash: str, user_store: UserStore) -> None:
     _obtener_cache_sesiones().pop(token_hash, None)
     try:
         user_store.revoke_api_session(token_hash)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("No se pudo revocar sesión API en SQLite: %s", exc)
 
 
 def validar_y_sincronizar_usuario(
@@ -303,8 +304,8 @@ def resolver_sesion_activa(token: str, user_store: UserStore) -> Dict[str, Any]:
                     cache[token_hash] = sesion
                 else:
                     user_store.revoke_api_session(token_hash)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Error consultando sesión API en SQLite: %s", exc)
 
     if not sesion:
         raise HTTPException(
@@ -316,6 +317,6 @@ def resolver_sesion_activa(token: str, user_store: UserStore) -> Dict[str, Any]:
     sesion["last_active"] = ahora
     try:
         user_store.update_api_session_activity(token_hash, ahora)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("No se pudo actualizar last_active de sesión API en SQLite: %s", exc)
     return sesion

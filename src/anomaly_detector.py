@@ -12,11 +12,14 @@ Detecta preventivamente:
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import logging
 import math
 from pathlib import Path
 from typing import Any, Optional
 
 from .integrations.telegram_notifier import notificar_anomalia_demanda_telegram
+
+logger = logging.getLogger("stockagent.anomaly")
 
 
 @dataclass
@@ -64,7 +67,7 @@ def analizar_desvios_consumo_diario(
         # Agrupar salidas diarias de los últimos N días por código y fecha
         rows = conn.execute(
             """
-            SELECT 
+            SELECT
                 m.product_code,
                 m.product_name,
                 substr(m.registered_at, 1, 10) as fecha,
@@ -184,7 +187,7 @@ def analizar_descuentos_masivos_individuales(
     with closing(product_store._connect()) as conn:
         rows = conn.execute(
             """
-            SELECT 
+            SELECT
                 dd.product_code,
                 p.name as product_name,
                 dd.cantidad_descontada,
@@ -254,15 +257,15 @@ def analizar_velocidad_agotamiento(
     with closing(product_store._connect()) as conn:
         rows = conn.execute(
             """
-            SELECT 
+            SELECT
                 p.code as product_code,
                 p.name as product_name,
                 p.stock as stock_actual,
                 p.stock_minimo,
                 COALESCE(SUM(ABS(m.quantity)), 0) as total_descontado
             FROM products p
-            LEFT JOIN stock_movements m 
-                ON m.product_code = p.code 
+            LEFT JOIN stock_movements m
+                ON m.product_code = p.code
                AND m.movement_type = 'descuento'
                AND substr(m.registered_at, 1, 10) >= ?
                AND substr(m.registered_at, 1, 10) <= ?
@@ -361,6 +364,6 @@ def notificar_anomalias_detectadas(
                     root_path=root_path,
                 )
         except Exception as e:
-            print(f"[AVISO] Error al registrar notificación de anomalía: {e}")
+            logger.warning("Error al registrar notificación de anomalía: %s", e)
 
     return total_notificadas

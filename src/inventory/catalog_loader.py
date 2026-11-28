@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Dict, List, Optional
 
@@ -10,6 +11,8 @@ import openpyxl
 from ..parsers.remito_parser import normalizar_codigo
 from .excel_sync import detectar_esquema, leer_stock, normalizar_encabezado
 from .protocols import InventoryHostProtocol
+
+logger = logging.getLogger("stockagent.inventory")
 
 
 class CatalogLoaderService:
@@ -100,8 +103,8 @@ class CatalogLoaderService:
                 for k, v in schema_meta.items():
                     self._host.product_store.set_metadata(k, v)
                 meta.update(schema_meta)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("No se pudo detectar o cachear esquema de Excel desde SQLite: %s", exc)
 
         self._aplicar_esquema_meta(meta)
 

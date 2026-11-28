@@ -229,9 +229,10 @@ class MovementsRepository:
             tipo_filtro = ""
 
         if top_n:
-            limit = f"LIMIT {int(top_n)}"
+            limit_clause = "LIMIT ?"
+            params.append(int(top_n))
         else:
-            limit = ""
+            limit_clause = ""
         with closing(self._connect()) as connection:
             return connection.execute(
                 f"""
@@ -246,7 +247,7 @@ class MovementsRepository:
                   {tipo_filtro}
                 GROUP BY m.product_code
                 ORDER BY total_quantity DESC
-                {limit}
+                {limit_clause}
                 """,
                 params,
             ).fetchall()

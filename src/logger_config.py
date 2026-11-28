@@ -52,7 +52,7 @@ def configurar_logging(nivel: int = logging.INFO) -> logging.Logger:
         logger.setLevel(nivel)
         _CONFIGURADO = True
         logger.info("Sistema de logs inicializado en %s", ruta_log)
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("No se pudo inicializar el log rotativo en %s: %s", ruta_log, exc)
 
     return logger

@@ -3,7 +3,7 @@ from typing import Any
 import flet as ft
 
 from ..theme import ROJO
-from ._shared import resolve_stock_manager, safe_focus
+from ._shared import resolve_stock_manager, safe_focus as safe_focus
 
 
 def _get_stock_manager(interfaz: Any = None):

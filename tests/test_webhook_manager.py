@@ -1,6 +1,5 @@
 """Tests unitarios para el gestor de webhooks asíncronos y eventos de integración."""
 
-import json
 import tempfile
 import unittest
 from pathlib import Path

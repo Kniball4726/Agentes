@@ -1,5 +1,6 @@
 """Módulo de Telemetría y Salud del Servidor: Monitoreo de disco, memoria y estado operativo."""
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -11,6 +12,8 @@ from typing import Dict, Optional
 
 from .logger_config import obtener_ruta_log
 from .paths import application_root
+
+logger = logging.getLogger("stockagent.telemetry")
 
 
 @dataclass
@@ -57,8 +60,8 @@ def _obtener_ram_proceso_mb() -> float:
             ctypes.windll.kernel32.CloseHandle(handle)
             if exito:
                 return round(counters.WorkingSetSize / (1024**2), 1)
-    except Exception:
-        pass
+    except (OSError, AttributeError) as exc:
+        logger.debug("No se pudo consultar RAM del proceso vía API Windows: %s", exc)
     return 0.0
 
 
@@ -86,8 +89,8 @@ def _obtener_ram_sistema() -> tuple[float, float, int]:
             tot = round(stat.ullTotalPhys / (1024**3), 1)
             disp = round(stat.ullAvailPhys / (1024**3), 1)
             return tot, disp, int(stat.dwMemoryLoad)
-    except Exception:
-        pass
+    except (OSError, AttributeError) as exc:
+        logger.debug("No se pudo consultar RAM global del sistema vía API Windows: %s", exc)
     return 8.0, 4.0, 50
 
 

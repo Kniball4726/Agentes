@@ -111,7 +111,9 @@ class TestApiV1(unittest.TestCase):
         self.assertEqual(res_estado.status_code, 200)
         data = res_estado.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(data["version"], "1.0.0")
+        from src.version import APP_VERSION
+
+        self.assertEqual(data["version"], APP_VERSION)
 
     def test_02_auth_login_me_logout(self):
         # 1. Login exitoso

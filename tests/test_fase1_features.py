@@ -7,7 +7,6 @@
 import os
 import sys
 import tempfile
-import time
 import types
 import unittest
 from datetime import datetime, timedelta
@@ -16,7 +15,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from src.archive_manager import archivar_comprobantes_antiguos, obtener_estadisticas_almacenamiento
-from src.orders import Pedido
 from src.system_telemetry import TelemetriaSistema, obtener_telemetria_sistema
 from src.ui.audio_feedback import emitir_tono_error, emitir_tono_exito, normalizar_codigo_lector
 from src.ui.dialogs.dlg_historial_pedidos import buscar_archivo_comprobante, buscar_archivo_descuento

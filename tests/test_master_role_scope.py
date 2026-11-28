@@ -44,10 +44,12 @@ class TestMasterRoleScope(unittest.TestCase):
                 textos.append(it.value)
             elif isinstance(it, ft.ExpansionTile):
                 t_val = getattr(getattr(it, 'title', None), 'value', '')
-                if t_val: textos.append(t_val)
+                if t_val:
+                    textos.append(t_val)
                 for b in (getattr(it, 'controls', []) or []):
                     c_val = getattr(b, 'content', '')
-                    if isinstance(c_val, str) and c_val: textos.append(c_val)
+                    if isinstance(c_val, str) and c_val:
+                        textos.append(c_val)
             elif isinstance(it, ft.Button) and hasattr(it, "content") and isinstance(it.content, str):
                 textos.append(it.content)
 
@@ -192,10 +194,12 @@ class TestMasterRoleScope(unittest.TestCase):
                 textos.append(it.value)
             elif isinstance(it, ft.ExpansionTile):
                 t_val = getattr(getattr(it, 'title', None), 'value', '')
-                if t_val: textos.append(t_val)
+                if t_val:
+                    textos.append(t_val)
                 for b in (getattr(it, 'controls', []) or []):
                     c_val = getattr(b, 'content', '')
-                    if isinstance(c_val, str) and c_val: textos.append(c_val)
+                    if isinstance(c_val, str) and c_val:
+                        textos.append(c_val)
             elif isinstance(it, ft.Button) and hasattr(it, "content") and isinstance(it.content, str):
                 textos.append(it.content)
 
@@ -251,7 +255,6 @@ class TestMasterRoleScope(unittest.TestCase):
         # 4. Gestión compartida de usuarios sigue disponible para administrador
         self.interfaz.mostrar_gestion_usuarios()
         self.assertEqual(len(self.page.dialogos), 1)
-        dlg_usr = self.page.dialogos[0]
         self.page.pop_dialog()
 
 

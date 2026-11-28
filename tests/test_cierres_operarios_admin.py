@@ -1,11 +1,10 @@
-import sys
 import unittest
 from pathlib import Path
 import tempfile
 import flet as ft
 
 from src.auth import User, UserStore
-from src.orders import OrderStore, Pedido
+from src.orders import OrderStore
 from src.ui.dialogs.dlg_cierre import (
     mostrar_dialogo_cierre_jornada,
     mostrar_dialogo_cierres_operarios,

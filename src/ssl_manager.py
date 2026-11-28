@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import ipaddress
+import logging
 import os
 import re
 import socket
@@ -12,6 +13,8 @@ import sys
 from pathlib import Path
 
 from .paths import application_root
+
+logger = logging.getLogger("stockagent.ssl")
 
 _LEAF_VALIDITY_DAYS = 365
 _LEAF_RENEWAL_MARGIN_DAYS = 30
@@ -55,16 +58,16 @@ def _obtener_ips_locales() -> list[str]:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             ips.add(s.getsockname()[0])
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("No se pudo detectar IP local saliente por UDP: %s", exc)
     try:
         hostname = socket.gethostname()
         for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
             ip = info[4][0]
             if ip:
                 ips.add(ip)
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("No se pudieron resolver IPs locales del hostname: %s", exc)
     filtradas: list[str] = []
     for ip_str in sorted(ips):
         try:
@@ -80,8 +83,8 @@ def _proteger_clave_privada(ruta_key: Path) -> None:
     """Aplica permisos restrictivos sobre una clave privada (.key) en POSIX y NTFS Windows."""
     try:
         os.chmod(ruta_key, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("No se pudo aplicar chmod 0600 sobre %s: %s", ruta_key, exc)
     if sys.platform == "win32":
         usuario = os.environ.get("USERNAME", "").strip()
         if usuario and all(c.isalnum() or c in "._- $" for c in usuario):
@@ -99,8 +102,8 @@ def _proteger_clave_privada(ruta_key: Path) -> None:
                     timeout=5,
                     check=False,
                 )
-            except Exception:
-                pass
+            except (OSError, subprocess.SubprocessError) as exc:
+                logger.warning("No se pudieron restringir permisos NTFS de clave privada %s: %s", ruta_key, exc)
 
 
 def _ca_instalada_en_root_windows() -> bool:
@@ -122,8 +125,8 @@ def _ca_instalada_en_root_windows() -> bool:
             )
             if res.returncode == 0 and "StockAgent Local CA" in (res.stdout or ""):
                 return True
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug("Error al consultar almacén ROOT con certutil: %s", exc)
     return False
 
 
@@ -150,8 +153,8 @@ def asegurar_ca_confiable_windows(ca_cert_path: Path | None = None) -> bool:
                 time.sleep(0.5)
                 if _ca_instalada_en_root_windows():
                     return True
-    except Exception:
-        pass
+    except (OSError, ValueError, AttributeError) as exc:
+        logger.warning("No se pudo solicitar instalación automática de la CA local en Windows ROOT: %s", exc)
     return _ca_instalada_en_root_windows()
 
 
@@ -184,9 +187,9 @@ def _certificado_requiere_renovacion(ruta_cert: Path) -> bool:
         from cryptography import x509
 
         cert = x509.load_pem_x509_certificate(ruta_cert.read_bytes())
-        ahora = datetime.datetime.now(datetime.timezone.utc)
+        ahora = datetime.datetime.now(datetime.UTC)
         exp = getattr(cert, "not_valid_after_utc", None) or cert.not_valid_after.replace(
-            tzinfo=datetime.timezone.utc
+            tzinfo=datetime.UTC
         )
         if exp <= ahora + datetime.timedelta(days=_LEAF_RENEWAL_MARGIN_DAYS):
             return True
@@ -196,10 +199,9 @@ def _certificado_requiere_renovacion(ruta_cert: Path) -> bool:
                 return True
         except x509.ExtensionNotFound:
             pass
-        if _certificado_tiene_dns_invalido(cert):
-            return True
-        return False
-    except Exception:
+        return bool(_certificado_tiene_dns_invalido(cert))
+    except Exception as exc:
+        logger.warning("No se pudo validar certificado %s; se regenerará: %s", ruta_cert, exc)
         return True
 
 
@@ -219,8 +221,8 @@ def _cargar_o_crear_ca_local(certs_dir: Path, hostname_limpio: str):
             if not _certificado_tiene_dns_invalido(ca_cert):
                 ca_key = serialization.load_pem_private_key(ca_key_path.read_bytes(), password=None)
                 return ca_cert, ca_key, ca_cert_path
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("CA local existente inválida o ilegible; se regenerará: %s", exc)
 
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ca_name = x509.Name(
@@ -247,7 +249,7 @@ def _cargar_o_crear_ca_local(certs_dir: Path, hostname_limpio: str):
     for red in _REDES_PERMITIDAS_CA:
         permitted.append(x509.IPAddress(red))
 
-    ahora = datetime.datetime.now(datetime.timezone.utc)
+    ahora = datetime.datetime.now(datetime.UTC)
     ca_cert = (
         x509.CertificateBuilder()
         .subject_name(ca_name)
@@ -317,7 +319,8 @@ def asegurar_certificado_ssl(
             ca_invalida = _certificado_tiene_dns_invalido(
                 x509.load_pem_x509_certificate(ca_cert_check.read_bytes())
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning("No se pudo inspeccionar CA local %s; se marcará para regenerar: %s", ca_cert_check, exc)
             ca_invalida = True
 
     if (
@@ -354,7 +357,7 @@ def asegurar_certificado_ssl(
         except ValueError:
             pass
 
-    ahora = datetime.datetime.now(datetime.timezone.utc)
+    ahora = datetime.datetime.now(datetime.UTC)
     leaf_cert = (
         x509.CertificateBuilder()
         .subject_name(subject)

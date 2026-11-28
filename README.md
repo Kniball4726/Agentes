@@ -252,7 +252,7 @@ StockAgent incorpora estrictas medidas de seguridad para proteger la integridad 
    * El mensaje indica en tiempo real los minutos restantes de espera antes de habilitar nuevos intentos.
 
 3. **Política de Cambio Obligatorio de Contraseña:**
-   * Los usuarios iniciales con contraseña por defecto (`master1713`) o aquellos cuya clave haya sido restablecida por un administrador están obligados a definir una nueva clave segura (mínimo 10 caracteres) antes de acceder a las funciones del sistema.
+   * Los usuarios iniciales con clave temporal (la del master generada o definida en el primer arranque; la antigua `master1713` queda prohibida) o aquellos cuya clave haya sido restablecida por un administrador están obligados a definir una nueva clave segura (mínimo 10 caracteres) antes de acceder a las funciones del sistema.
    * La nueva contraseña no puede coincidir con la clave por defecto del sistema.
 
 4. **Desbloqueo Administrativo Inmediato:**
@@ -269,7 +269,7 @@ StockAgent incorpora estrictas medidas de seguridad para proteger la integridad 
 Bajo el estándar de **Separación de Funciones (*Separation of Duties - SoD*)** y el **Principio de Menor Privilegio** (ISO/IEC 27001), el usuario **Master** (`Auditoria`, con alias histórico `Desarrollo` para retrocompatibilidad total) está enfocado exclusivamente en la **administración técnica, gestión de identidades (IAM), auditoría forense inmutable, administración de la API REST / API Keys y resguardo del sistema**. Al estar completamente desacoplado de la lógica de negocio y del inventario contable, garantiza absoluta imparcialidad y elimina conflictos de interés en auditorías de control interno.
 
 * **Usuario precargado:** `Auditoria` (alias `Desarrollo`)
-* **Contraseña inicial:** `master1713` (con cambio obligatorio en el primer inicio de sesión).
+* **Contraseña inicial:** la definida en `STOCKAGENT_MASTER_PASSWORD` (`.env`). Si no se define, el sistema **genera una clave aleatoria** en el primer arranque y la guarda en `data/PRIMER_INICIO_MASTER.txt` (no existe clave por defecto). El cambio es obligatorio en el primer inicio de sesión; elimine el archivo después de ingresar.
 * **Botonera de Acceso Rápido Master (Cabecera):**
   * `[🔐 Gestionar Usuarios]`: Aprovisionamiento, reseteo de claves y asignación de roles SoD.
   * `[🛡️ Registro de Auditoría]`: Consola forense de lectura inmutable y trazabilidad transaccional.
@@ -1433,7 +1433,7 @@ Dado que el certificado es generado localmente por la propia empresa (sin depend
 - **Solución Definitiva (Candado seguro sin advertencias):** Ver la sección siguiente [Instalación del Certificado SSL para Eliminar "No es Seguro"](#instalación-del-certificado-ssl-para-eliminar-no-es-seguro).
 
 #### Paso 4: Primer inicio de sesión y configuración de seguridad
-1. Ingresa con el usuario Master precargado (`Desarrollo` / `master1713`).
+1. Ingresa con el usuario Master (`Auditoria`) y la clave de `STOCKAGENT_MASTER_PASSWORD`, o la clave aleatoria generada en `data/PRIMER_INICIO_MASTER.txt` si no la definiste.
 2. El sistema te solicitará por única vez **definir tu nueva contraseña segura** (mínimo 10 caracteres) debido a la política de cambio obligatorio de clave inicial.
 3. Configura tu perfil personal en **Mi Perfil** (nombre y apellido y correo electrónico).
 4. *(Opcional)* Desde **Compartir por correo → Configurar SMTP (⚙️)**, guarda la contraseña de aplicación SMTP (quedará cifrada en disco con prefijo `enc:`) y activa las **Alertas Automáticas Diarias**.

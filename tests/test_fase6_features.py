@@ -1,6 +1,5 @@
 """Pruebas unitarias para la Fase 6: Matriz de Rotación ABC, Heatmap de Depósito y Optimización de Slotting."""
 
-import sqlite3
 import unittest
 from contextlib import closing
 from datetime import datetime, timedelta
@@ -17,14 +16,11 @@ from src.products import ProductStore
 from src.ui.dialogs.dlg_heatmap import mostrar_dialogo_heatmap
 from src.ui.protocols import AppDependencies
 from src.warehouse_slotting import (
-    DEFAULT_RACKS,
-    SlotInfo,
     analizar_rotacion_abc,
     aplicar_reubicacion_slotting,
     calcular_metricas_deposito,
     generar_mapa_calor,
     generar_sugerencias_slotting,
-    generar_ubicacion_default,
 )
 
 
@@ -40,7 +36,7 @@ class TestFase6WarehouseSlotting(unittest.TestCase):
             conn.execute(
                 """
                 INSERT INTO products (code, name, stock, active, ubicacion)
-                VALUES 
+                VALUES
                     ('SKU-A1', 'Artículo Estrella 1', 100, 1, 'D-04-3'),
                     ('SKU-A2', 'Artículo Estrella 2', 80, 1, 'C-02-1'),
                     ('SKU-B1', 'Artículo Medio 1', 50, 1, 'B-01-2'),

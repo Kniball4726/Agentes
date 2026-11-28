@@ -167,13 +167,7 @@ class AuthSessionController:
                 self.mostrar_inicio_sesion("Tu cuenta ya no existe o fue revocada. Inicia sesión nuevamente.")
                 return False
 
-            if isinstance(usuario_db, User):
-                if usuario_db.username.lower() != usuario_actual.username.lower():
-                    self._limpiar_estado_sesion()
-                    self.mostrar_inicio_sesion("Sesión inconsistente. Inicia sesión nuevamente.")
-                    return False
-                usuario = usuario_db
-            elif isinstance(getattr(usuario_db, "username", None), str):
+            if isinstance(usuario_db, User) or isinstance(getattr(usuario_db, "username", None), str):
                 if usuario_db.username.lower() != usuario_actual.username.lower():
                     self._limpiar_estado_sesion()
                     self.mostrar_inicio_sesion("Sesión inconsistente. Inicia sesión nuevamente.")

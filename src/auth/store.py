@@ -12,7 +12,10 @@ from ..core.delegation import DelegadoAtributo
 from ..core.exceptions import UserStoreError
 from ..core.sqlite_utils import sqlite_connection
 from .api_tokens_repo import ApiTokensRepository
-from .events import notify_session_revocation, register_session_revocation_listener
+from .events import (
+    notify_session_revocation,
+    register_session_revocation_listener as register_session_revocation_listener,
+)
 from .lockout_repo import LockoutRepository
 from .models import (
     DEFAULT_MASTER_PASSWORD,
@@ -21,7 +24,7 @@ from .models import (
     User,
 )
 from .password import hash_clave, validar_clave, verificar_clave
-from .schema import inicializar_esquema, migrar_columnas
+from .schema import ARCHIVO_CLAVE_INICIAL, inicializar_esquema, migrar_columnas
 from .validators import (
     normalizar_usuario,
     validar_email,
@@ -235,6 +238,14 @@ class UserStore:
             self._limpiar_intentos(identificador)
         return AuthResult(self._row_to_user(row), "ok")
 
+    def _limpiar_archivo_clave_inicial(self) -> None:
+        """Elimina el archivo de clave temporal inicial si existe junto a la base."""
+        archivo = self.database_path.parent / ARCHIVO_CLAVE_INICIAL
+        try:
+            archivo.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def change_password(self, user_id: int, current_password: str, new_password: str) -> None:
         """Cambia la clave del propio usuario verificando la actual."""
         validar_clave(new_password)
@@ -242,20 +253,24 @@ class UserStore:
             raise ValueError("La nueva contraseña no puede ser la contraseña por defecto del sistema.")
         if new_password == current_password:
             raise ValueError("La nueva contraseña debe ser distinta de la actual.")
+        es_master = False
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+                "SELECT password_hash, role FROM users WHERE id = ?", (user_id,)
             ).fetchone()
             if row is None:
                 raise UserStoreError("No se encontró el usuario.")
             if not verificar_clave(current_password, row["password_hash"]):
                 raise UserStoreError("La contraseña actual no es correcta.")
+            es_master = row["role"] == "master"
             connection.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (hash_clave(new_password), user_id),
             )
             connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        if es_master:
+            self._limpiar_archivo_clave_inicial()
         notify_session_revocation("user", user_id=user_id)
 
     def reset_password(
@@ -267,6 +282,7 @@ class UserStore:
     ) -> None:
         """Restablece la clave de otro usuario y revoca sus sesiones activas."""
         validar_clave(new_password)
+        es_master = False
         with self._connect() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -276,12 +292,15 @@ class UserStore:
                 raise UserStoreError("No se encontró el usuario.")
             if updater_role != "master" and row["role"] in ("master", "administrador"):
                 raise UserStoreError("Solo el usuario master puede restablecer la clave de un administrador.")
+            es_master = row["role"] == "master"
             connection.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (hash_clave(new_password), 1 if must_change else 0, user_id),
             )
             connection.execute("DELETE FROM login_attempts WHERE username = ?", (row["username"],))
             connection.execute("DELETE FROM api_sessions WHERE user_id = ?", (user_id,))
+        if es_master:
+            self._limpiar_archivo_clave_inicial()
         notify_session_revocation("user", user_id=user_id)
 
     def list_users(

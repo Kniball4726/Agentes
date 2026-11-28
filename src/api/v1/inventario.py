@@ -106,7 +106,7 @@ async def finalizar_inventario(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al procesar el inventario físico: {e}",
-        )
+        ) from e
 
     items: List[InventarioItemComparativa] = []
     coinciden = 0

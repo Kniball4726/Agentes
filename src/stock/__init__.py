@@ -13,6 +13,7 @@ from .physical_inventory import (
 )
 
 __all__ = [
+    "AlertaStock",
     "RegistroDescuento",
     "ReporteStock",
     "copiar_estilo_fila",

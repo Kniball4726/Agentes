@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
+
+logger = logging.getLogger("stockagent.slotting")
 
 
 def _es_coleccion_real(valor: Any, tipo: type) -> bool:
@@ -78,7 +81,8 @@ def _catalogo_activos_por_codigo(product_store: Any) -> dict[str, dict[str, Any]
                 "stock_maximo": int(row["stock_maximo"] or 20) if "stock_maximo" in row.keys() else 20,
                 "ubicacion": str(row["ubicacion"] or "").strip(),
             }
-        except Exception:
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.debug("Fila de catálogo omitida al construir mapa de reposición: %s", exc)
             continue
     return mapa
 
@@ -125,7 +129,7 @@ def generar_sugerencias_reposicion_picking(
         if hasattr(product_store, "listar_lotes_fefo"):
             cand_lotes = product_store.listar_lotes_fefo(cod, solo_disponibles=True)
             if _es_coleccion_real(cand_lotes, list):
-                lotes_activos = [l for l in cand_lotes if not l.get("vencido", False)]
+                lotes_activos = [lote for lote in cand_lotes if not lote.get("vencido", False)]
 
         cap_dest = int(destino.get("capacidad_max") or 0)
         objetivo_dest = stock_picking_objetivo or (cap_dest if cap_dest > 0 else min(stock_max, stock_min * 2))

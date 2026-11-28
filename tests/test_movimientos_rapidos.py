@@ -2,7 +2,6 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-import sqlite3
 
 import flet as ft
 from src.ui.dialogs.dlg_movimientos_rapidos import (

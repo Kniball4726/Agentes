@@ -23,6 +23,9 @@ logger = logging.getLogger("stockagent.updater")
 
 EXIT_CODE_RELAUNCH_BAT = 75
 _RE_GIT_REF = re.compile(r"^[A-Za-z0-9_./-]+$")
+_RE_TAG_PATTERN = re.compile(r"^[A-Za-z0-9_./*-]+$")
+_RE_SEMVER_TAG = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$")
+_MODOS_ACTUALIZACION_TAG = frozenset({"tag", "tags", "release", "releases"})
 _RUTAS_IGNORADAS_ACTIVIDAD = frozenset({"/api/v1/sistema/ping", "/favicon.ico"})
 _FLAGS_REINICIO = ("--force", "--forzar", "--reiniciar", "--restart")
 _FLAGS_SIN_ACTUALIZAR = ("--no-auto-update", "--sin-actualizar")
@@ -48,8 +51,8 @@ def _cargar_dotenv_si_existe(root: Path) -> None:
         env_file = root / ".env"
         if env_file.is_file():
             load_dotenv(env_file, override=False)
-    except Exception:
-        pass
+    except (ImportError, OSError) as exc:
+        logger.debug("No se pudo cargar .env en %s: %s", root, exc)
 
 
 def _env_bool(nombre: str, default: bool) -> bool:
@@ -77,6 +80,48 @@ def _sanitizar_ref_git(valor: str, fallback: str) -> str:
     return fallback
 
 
+def _sanitizar_patron_tag(valor: str, fallback: str = "v*") -> str:
+    limpio = (valor or "").strip()
+    if limpio and _RE_TAG_PATTERN.match(limpio) and ".." not in limpio and not limpio.startswith("-"):
+        return limpio
+    return fallback
+
+
+def _normalizar_modo_actualizacion(valor: str) -> str:
+    limpio = (valor or "").strip().lower()
+    if limpio in _MODOS_ACTUALIZACION_TAG:
+        return "tag"
+    return "branch"
+
+
+def _es_tag_prerelease(tag: str) -> bool:
+    limpio = (tag or "").strip().lower()
+    return "-" in limpio or any(tok in limpio for tok in ("alpha", "beta", "rc", "nightly"))
+
+
+def _clave_orden_tag(tag: str) -> tuple[int, tuple[int, int, int], int, str]:
+    """Ordena tags semánticos priorizando releases estables sobre prereleases."""
+    limpio = (tag or "").strip()
+    match = _RE_SEMVER_TAG.match(limpio)
+    if match:
+        major = int(match.group(1) or 0)
+        minor = int(match.group(2) or 0)
+        patch = int(match.group(3) or 0)
+        es_estable = 0 if _es_tag_prerelease(limpio) else 1
+        return (1, (major, minor, patch), es_estable, limpio)
+    return (0, (0, 0, 0), 0 if _es_tag_prerelease(limpio) else 1, limpio)
+
+
+def seleccionar_ultimo_tag(tags: Sequence[str], *, incluir_prereleases: bool = False) -> str:
+    """Elige la versión más reciente entre una lista de tags Git (ej. `v1.10.0` > `v1.2.0`)."""
+    candidatos = [t.strip() for t in tags if t and t.strip()]
+    if not incluir_prereleases:
+        candidatos = [t for t in candidatos if not _es_tag_prerelease(t)]
+    if not candidatos:
+        return ""
+    return max(candidatos, key=_clave_orden_tag)
+
+
 @dataclass(frozen=True)
 class AutoUpdateConfig:
     """Parámetros de auto-actualización leídos desde variables de entorno."""
@@ -85,6 +130,9 @@ class AutoUpdateConfig:
     habilitado_watcher: bool = True
     rama: str = "master"
     remoto: str = "origin"
+    modo: str = "branch"  # "branch" (rama Git) o "tag" (releases semánticos validados por CD)
+    tag_patron: str = "v*"
+    incluir_prereleases: bool = False
     intervalo_minutos: float = 5.0
     primer_chequeo_segundos: float = 45.0
     inactividad_http_segundos: float = 120.0
@@ -106,6 +154,9 @@ def cargar_config_auto_update(root: Path | None = None) -> AutoUpdateConfig:
         habilitado_watcher=_env_bool("STOCKAGENT_AUTO_UPDATE_WATCH", True),
         rama=_sanitizar_ref_git(os.environ.get("STOCKAGENT_AUTO_UPDATE_BRANCH", "master"), "master"),
         remoto=_sanitizar_ref_git(os.environ.get("STOCKAGENT_AUTO_UPDATE_REMOTE", "origin"), "origin"),
+        modo=_normalizar_modo_actualizacion(os.environ.get("STOCKAGENT_AUTO_UPDATE_MODE", "branch")),
+        tag_patron=_sanitizar_patron_tag(os.environ.get("STOCKAGENT_AUTO_UPDATE_TAG_PATTERN", "v*"), "v*"),
+        incluir_prereleases=_env_bool("STOCKAGENT_AUTO_UPDATE_PRERELEASES", False),
         intervalo_minutos=intervalo,
         primer_chequeo_segundos=_env_float("STOCKAGENT_AUTO_UPDATE_INITIAL_DELAY_SECONDS", 45.0, minimo=5.0),
         inactividad_http_segundos=_env_float("STOCKAGENT_AUTO_UPDATE_IDLE_SECONDS", 120.0, minimo=0.0),
@@ -126,6 +177,8 @@ class GitCheckResult:
     rama_actual: str = ""
     puede_fast_forward: bool = True
     error: str = ""
+    tag_actual: str = ""
+    tag_objetivo: str = ""
 
 
 @dataclass
@@ -138,6 +191,7 @@ class UpdateApplyResult:
     archivos_cambiados: list[str] = field(default_factory=list)
     dependencias_actualizadas: bool = False
     error: str = ""
+    tag_nuevo: str = ""
 
 
 _LOCK_ACTIVIDAD = threading.Lock()
@@ -285,6 +339,90 @@ def tiene_cambios_locales_rastreados(root: Path, timeout: float = 10.0) -> bool:
     return bool(res.stdout.strip())
 
 
+def obtener_tag_actual(root: Path, patron: str = "v*", timeout: float = 10.0) -> str:
+    """Devuelve el tag más reciente que apunta exactamente a HEAD (si existe)."""
+    res = _run_git(["tag", "--points-at", "HEAD", "--list", patron], root, timeout=timeout)
+    if res.returncode != 0:
+        return ""
+    tags = [linea.strip() for linea in res.stdout.splitlines() if linea.strip()]
+    return seleccionar_ultimo_tag(tags, incluir_prereleases=True)
+
+
+def _verificar_actualizacion_por_tag(raiz: Path, cfg: AutoUpdateConfig) -> GitCheckResult:
+    """Consulta tags remotos (`v*`) para actualizar solo a releases validados por CI/CD."""
+    rama_actual = obtener_rama_actual(raiz, timeout=cfg.git_timeout_segundos)
+    res_fetch = _run_git(
+        ["fetch", cfg.remoto, "--tags", "--force"],
+        raiz,
+        timeout=cfg.git_timeout_segundos,
+    )
+    if res_fetch.returncode != 0:
+        err = (res_fetch.stderr or res_fetch.stdout or "Fallo git fetch --tags").strip()
+        return GitCheckResult(ok=False, rama_actual=rama_actual, error=err)
+
+    commit_local = obtener_commit_hash(raiz, "HEAD", timeout=cfg.git_timeout_segundos)
+    tag_actual = obtener_tag_actual(raiz, patron=cfg.tag_patron, timeout=cfg.git_timeout_segundos)
+
+    res_tags = _run_git(["tag", "--list", cfg.tag_patron], raiz, timeout=cfg.git_timeout_segundos)
+    if res_tags.returncode != 0:
+        err = (res_tags.stderr or res_tags.stdout or "Fallo git tag --list").strip()
+        return GitCheckResult(ok=False, rama_actual=rama_actual, commit_local=commit_local, error=err)
+
+    tags = [linea.strip() for linea in res_tags.stdout.splitlines() if linea.strip()]
+    ultimo_tag = seleccionar_ultimo_tag(tags, incluir_prereleases=cfg.incluir_prereleases)
+    if not ultimo_tag:
+        return GitCheckResult(
+            ok=True,
+            hay_cambios=False,
+            commits_pendientes=0,
+            commit_local=commit_local,
+            commit_remoto=commit_local,
+            rama_actual=rama_actual,
+            puede_fast_forward=True,
+            tag_actual=tag_actual,
+            tag_objetivo="",
+        )
+
+    commit_remoto = obtener_commit_hash(raiz, f"{ultimo_tag}^{{commit}}", timeout=cfg.git_timeout_segundos)
+    if not commit_local or not commit_remoto:
+        return GitCheckResult(
+            ok=False,
+            rama_actual=rama_actual,
+            commit_local=commit_local,
+            commit_remoto=commit_remoto,
+            tag_actual=tag_actual,
+            tag_objetivo=ultimo_tag,
+            error=f"No se pudo resolver SHA local o del tag '{ultimo_tag}'.",
+        )
+
+    res_ff = _run_git(
+        ["merge-base", "--is-ancestor", "HEAD", commit_remoto],
+        raiz,
+        timeout=cfg.git_timeout_segundos,
+    )
+    puede_ff = res_ff.returncode == 0
+
+    res_count = _run_git(
+        ["rev-list", "--count", f"HEAD..{commit_remoto}"],
+        raiz,
+        timeout=cfg.git_timeout_segundos,
+    )
+    pendientes = int(res_count.stdout.strip()) if res_count.returncode == 0 and res_count.stdout.strip().isdigit() else 0
+    hay_cambios = commit_local != commit_remoto
+
+    return GitCheckResult(
+        ok=True,
+        hay_cambios=hay_cambios,
+        commits_pendientes=pendientes,
+        commit_local=commit_local,
+        commit_remoto=commit_remoto,
+        rama_actual=rama_actual,
+        puede_fast_forward=puede_ff,
+        tag_actual=tag_actual,
+        tag_objetivo=ultimo_tag,
+    )
+
+
 def verificar_actualizacion_remota(
     root: Path | None = None,
     config: AutoUpdateConfig | None = None,
@@ -296,6 +434,9 @@ def verificar_actualizacion_remota(
         return GitCheckResult(ok=False, error="No es un repositorio Git o falta el ejecutable git.")
 
     try:
+        if cfg.modo == "tag":
+            return _verificar_actualizacion_por_tag(raiz, cfg)
+
         rama_actual = obtener_rama_actual(raiz, timeout=cfg.git_timeout_segundos)
         if not rama_actual or rama_actual == "HEAD":
             return GitCheckResult(ok=False, rama_actual=rama_actual, error="HEAD desacoplado; no se actualiza.")
@@ -409,7 +550,26 @@ def aplicar_actualizacion_local(
             logger.warning(msg)
             return UpdateApplyResult(ok=False, error=msg)
 
-        if forzar_fetch:
+        tag_objetivo = ""
+        if cfg.modo == "tag":
+            check = verificar_actualizacion_remota(raiz, cfg)
+            if not check.ok:
+                return UpdateApplyResult(ok=False, error=check.error)
+            if not check.hay_cambios or not check.tag_objetivo:
+                return UpdateApplyResult(
+                    ok=True,
+                    actualizado=False,
+                    mensaje="El repositorio ya está en la última versión.",
+                    commit_anterior=check.commit_local,
+                    commit_nuevo=check.commit_local,
+                    tag_nuevo=check.tag_actual,
+                )
+            if not check.puede_fast_forward:
+                msg = f"La copia local divergió del release '{check.tag_objetivo}'; se requiere revisión manual de Git."
+                logger.warning(msg)
+                return UpdateApplyResult(ok=False, error=msg)
+            tag_objetivo = check.tag_objetivo
+        elif forzar_fetch:
             check = verificar_actualizacion_remota(raiz, cfg)
             if not check.ok:
                 return UpdateApplyResult(ok=False, error=check.error)
@@ -432,14 +592,24 @@ def aplicar_actualizacion_local(
             "requirements.txt": _sha256_archivo(raiz / "requirements.txt"),
         }
 
-        res_pull = _run_git(
-            ["pull", "--ff-only", cfg.remoto, cfg.rama],
-            raiz,
-            timeout=max(cfg.git_timeout_segundos, 30.0),
-        )
-        if res_pull.returncode != 0:
-            err = (res_pull.stderr or res_pull.stdout or "Fallo git pull --ff-only").strip()
-            return UpdateApplyResult(ok=False, commit_anterior=commit_antes, error=err)
+        if cfg.modo == "tag":
+            res_update = _run_git(
+                ["checkout", "--detach", tag_objetivo],
+                raiz,
+                timeout=max(cfg.git_timeout_segundos, 30.0),
+            )
+            if res_update.returncode != 0:
+                err = (res_update.stderr or res_update.stdout or f"Fallo git checkout {tag_objetivo}").strip()
+                return UpdateApplyResult(ok=False, commit_anterior=commit_antes, error=err)
+        else:
+            res_pull = _run_git(
+                ["pull", "--ff-only", cfg.remoto, cfg.rama],
+                raiz,
+                timeout=max(cfg.git_timeout_segundos, 30.0),
+            )
+            if res_pull.returncode != 0:
+                err = (res_pull.stderr or res_pull.stdout or "Fallo git pull --ff-only").strip()
+                return UpdateApplyResult(ok=False, commit_anterior=commit_antes, error=err)
 
         commit_despues = obtener_commit_hash(raiz, "HEAD", timeout=cfg.git_timeout_segundos)
         cambiados: list[str] = []
@@ -461,14 +631,21 @@ def aplicar_actualizacion_local(
             deps_actualizadas = _instalar_dependencias_actualizadas(raiz)
 
         actualizado = bool(commit_antes and commit_despues and commit_antes != commit_despues)
+        if actualizado and tag_objetivo:
+            mensaje = f"Actualizado al release {tag_objetivo}."
+        elif actualizado:
+            mensaje = "Actualización aplicada correctamente."
+        else:
+            mensaje = "Sin cambios nuevos."
         return UpdateApplyResult(
             ok=True,
             actualizado=actualizado,
-            mensaje="Actualización aplicada correctamente." if actualizado else "Sin cambios nuevos.",
+            mensaje=mensaje,
             commit_anterior=commit_antes,
             commit_nuevo=commit_despues,
             archivos_cambiados=cambiados,
             dependencias_actualizadas=deps_actualizadas,
+            tag_nuevo=tag_objetivo if actualizado else "",
         )
     except subprocess.TimeoutExpired:
         return UpdateApplyResult(ok=False, error="Tiempo de espera agotado al ejecutar git pull.")
@@ -505,8 +682,8 @@ def obtener_pids_puerto(port: int) -> list[int]:
                     pid = int(partes[-1])
                     if pid > 0 and pid not in pids:
                         pids.append(pid)
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("No se pudieron obtener PIDs escuchando en puerto %s: %s", port, exc)
     return pids
 
 
@@ -523,8 +700,8 @@ def detener_servidor_en_puerto(port: int, timeout_s: float = 12.0) -> bool:
                 check=False,
                 **_subprocess_hidden_kwargs(),
             )
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("No se pudo finalizar PID %s escuchando en puerto %s: %s", pid, port, exc)
 
     limite = time.monotonic() + timeout_s
     while time.monotonic() < limite:
@@ -814,16 +991,16 @@ class AutoUpdateWatcher:
             try:
                 self.notifier(titulo, mensaje)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error en notificador personalizado del auto-updater: %s", exc)
         try:
             from .tray import service as tray_service
 
             tray = getattr(tray_service, "_INSTANCIA_ACTIVA", None)
             if tray is not None:
                 tray.mostrar_notificacion(titulo, mensaje)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("No se pudo mostrar notificación de bandeja del auto-updater: %s", exc)
 
     def _hay_excel_pendiente(self) -> bool:
         try:
@@ -957,8 +1134,9 @@ class AutoUpdateWatcher:
         )
         self._thread.start()
         logger.info(
-            "Vigilante de auto-actualización activo (rama=%s, intervalo=%.0f min).",
-            self.config.rama,
+            "Vigilante de auto-actualización activo (modo=%s, objetivo=%s, intervalo=%.0f min).",
+            self.config.modo,
+            self.config.tag_patron if self.config.modo == "tag" else self.config.rama,
             self.config.intervalo_minutos,
         )
         return True
@@ -1065,9 +1243,11 @@ def _cli_main(argv: Sequence[str] | None = None) -> int:
             print(f"[AUTO-UPDATE] Error: {res.error}", file=sys.stderr)
             return 1
         if res.hay_cambios:
-            print(f"[AUTO-UPDATE] {res.commits_pendientes} commit(s) nuevo(s): {res.commit_local[:7]} -> {res.commit_remoto[:7]}")
+            destino = f"{res.tag_objetivo} ({res.commit_remoto[:7]})" if res.tag_objetivo else res.commit_remoto[:7]
+            print(f"[AUTO-UPDATE] {res.commits_pendientes} commit(s) nuevo(s): {res.commit_local[:7]} -> {destino}")
         else:
-            print(f"[AUTO-UPDATE] Al día en {res.rama_actual} ({res.commit_local[:7]}).")
+            ref_actual = res.tag_actual or res.rama_actual or "HEAD"
+            print(f"[AUTO-UPDATE] Al día en {ref_actual} ({res.commit_local[:7]}).")
         return 0
     return 0
 

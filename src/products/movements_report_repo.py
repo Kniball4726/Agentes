@@ -367,17 +367,18 @@ class MovementsReportRepository:
         dias = max(1, int(dias_ventana))
         with closing(self._connect()) as connection:
             rows = connection.execute(
-                f"""
+                """
                 SELECT
                     m.product_code AS code,
                     COALESCE(p.stock, 0) AS stock_actual,
                     SUM(CASE WHEN m.quantity < 0 THEN ABS(m.quantity) ELSE 0 END) AS total_salidas
                 FROM stock_movements m
                 LEFT JOIN products p ON p.code = m.product_code
-                WHERE m.registered_at >= datetime('now', '-{dias} days', 'localtime')
+                WHERE m.registered_at >= datetime('now', ?, 'localtime')
                 GROUP BY m.product_code
                 HAVING total_salidas > 0
-                """
+                """,
+                (f"-{dias} days",),
             ).fetchall()
 
         mapa: dict[str, float] = {}

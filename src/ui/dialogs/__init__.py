@@ -177,6 +177,7 @@ __all__ = [
     "mostrar_dialogo_ingreso_rapido",
     "mostrar_dialogo_salida_rapida",
     "mostrar_dialogo_sincronizar_excel",
+    "restaurar_documentos",
     "MotivoIngresoRapido",
     "MotivoSalidaRapida",
 ]

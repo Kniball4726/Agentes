@@ -23,6 +23,7 @@ from ...core.environment import get_db_path
 from ...inventory import StockManager
 from ...server_app.network_utils import obtener_ip_local
 from ...system_telemetry import medir_latencia_sqlite, obtener_metricas_logs, obtener_telemetria_sistema
+from ...version import APP_VERSION
 
 router = APIRouter(prefix="/sistema", tags=["Sistema"])
 
@@ -97,7 +98,7 @@ async def estado_servidor(
     if user is None:
         return EstadoSistemaResponse(
             ok=True,
-            version="1.0.0",
+            version=APP_VERSION,
             servidor_hora="",
             ip_local="",
             sesiones_activas=0,
@@ -115,7 +116,7 @@ async def estado_servidor(
     )
     return EstadoSistemaResponse(
         ok=True,
-        version="1.0.0",
+        version=APP_VERSION,
         servidor_hora=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ip_local=obtener_ip_local(),
         sesiones_activas=len(sesiones_ctx),

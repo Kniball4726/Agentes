@@ -68,7 +68,7 @@ from .ui.theme import ROJO
 
 logger = configurar_logging()
 
-SESIONES_ACTIVAS: weakref.WeakSet["InterfazFlet"] = weakref.WeakSet()
+SESIONES_ACTIVAS: weakref.WeakSet[InterfazFlet] = weakref.WeakSet()
 PROCESAMIENTO_GLOBAL_ACTIVO: bool = False
 
 
@@ -648,7 +648,7 @@ def _fijar_procesamiento_global(valor: bool) -> None:
 
 
 async def main(page: ft.Page) -> None:
-    setattr(page, "_interfaz_flet", InterfazFlet(page))
+    page._interfaz_flet = InterfazFlet(page)
 
 
 def iniciar(

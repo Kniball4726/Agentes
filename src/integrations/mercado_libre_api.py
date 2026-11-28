@@ -49,7 +49,7 @@ def mapear_orden_ml_a_items(
     catalogo: dict[str, tuple[int, str, int]],
 ) -> dict[str, Any]:
     """Empareja los ítems de una orden de Mercado Libre con el catálogo de StockAgent.
-    
+
     Estrategia de matching:
     1. SKU exacto del vendedor (seller_sku o seller_custom_field) contra el código de catálogo.
     2. Si no hay SKU o no coincide, fuzzy matching semántico del título contra los nombres del catálogo.

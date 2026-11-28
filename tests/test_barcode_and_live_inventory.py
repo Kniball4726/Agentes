@@ -1,6 +1,5 @@
 """Pruebas unitarias para el campo cod_barras y el módulo de inventario en vivo con escáner."""
 
-import os
 from pathlib import Path
 import tempfile
 import unittest

@@ -75,7 +75,8 @@ def _fake_interfaz(
         _obtener_archivados=lambda: ([], [], []),
         _obtener_generados=lambda: [],
     )
-    noop = lambda *_a, **_kw: None
+    def noop(*_a, **_kw):
+        return None
     itf = SimpleNamespace(
         page=page,
         menu=menu,

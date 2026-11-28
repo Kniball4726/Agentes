@@ -14,7 +14,7 @@ from src.agent import AgenteRemitosStock
 from src.inventory import StockManager
 from src.labels import generar_etiquetas_bultos_pdf
 from src.menu import MenuAgente
-from src.orders import OrderStore, LOGISTICA_OPCIONES, Pedido
+from src.orders import LOGISTICA_OPCIONES, OrderStore, OrderStoreError, Pedido
 
 
 def test_logistica_canje_disponible_y_persistente(tmp_path: Path):
@@ -195,11 +195,11 @@ def test_actualizar_datos_pedido(tmp_path: Path):
     assert "AdminTest" in logs[0].usuario
 
     # Validar que bultos < 1 falle
-    with pytest.raises(Exception):
+    with pytest.raises(OrderStoreError):
         store.actualizar_datos_pedido(pedido_id=ped.id, bultos=0)
 
     # Validar que logística inexistente falle
-    with pytest.raises(Exception):
+    with pytest.raises(OrderStoreError):
         store.actualizar_datos_pedido(pedido_id=ped.id, logistica="InexistenteLogistica")
 
 

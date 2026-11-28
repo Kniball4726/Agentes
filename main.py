@@ -62,6 +62,12 @@ def _obtener_parametro(flag: str, valor_por_defecto: str) -> str:
 
 
 def main():
+    if "--version" in sys.argv or "-V" in sys.argv:
+        from src.version import APP_VERSION
+
+        print(f"StockAgent {APP_VERSION}")
+        return
+
     from src.logger_config import configurar_logging
 
     logger = configurar_logging()

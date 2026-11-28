@@ -20,14 +20,14 @@ class ItemConsolidado:
 def consolidar_productos(items: List[ItemRemito]) -> Dict[str, ItemConsolidado]:
     """
     Agrupa los ítems por código y suma sus cantidades acumuladas.
-    
+
     Retorna un diccionario { codigo: ItemConsolidado }.
     """
     agrupados: Dict[str, ItemConsolidado] = {}
 
     for item in items:
         cod = normalizar_codigo(item.codigo)
-        
+
         if cod not in agrupados:
             agrupados[cod] = ItemConsolidado(
                 codigo=cod,

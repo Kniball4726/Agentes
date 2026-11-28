@@ -3,6 +3,7 @@
 !.env.example
 .env_active
 .clave_secretos
+PRIMER_INICIO_MASTER.txt
 .venv
 /data/
 /data_qa/
@@ -19,6 +20,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .gradle/
 *.lock

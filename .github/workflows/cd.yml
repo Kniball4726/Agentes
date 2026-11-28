@@ -22,104 +22,21 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  lint:
-    name: Lint & Syntax Check (Python 3.11)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Ruff
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff==0.17.6
-
-      - name: Run Ruff & Python 3.11 syntax check
-        run: |
-          ruff check src tests
-          python -m compileall -q src tests
-
-  frontend-check:
-    name: PWA JS/TS Static Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Run TypeScript checkJs
-        run: |
-          npx --yes -p typescript tsc --noEmit -p tsconfig.json
-          npx --yes -p typescript tsc --noEmit -p tsconfig.sw.json
-
-  mobile-check:
-    name: Flutter Mobile Static Analysis & Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          cache: true
-
-      - name: Analyze & Test Flutter App
-        working-directory: stockagent_mobile
-        run: |
-          flutter pub get
-          flutter analyze --no-fatal-infos --no-fatal-warnings
-          if [ -d test ]; then flutter test; fi
-
-  test:
-    name: Pytest Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11"]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: "pip"
-          cache-dependency-path: "requirements.lock"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.lock
-
-      - name: Run test suite
-        env:
-          PYTHONPATH: .
-          PYTHONUTF8: "1"
-          PYSTRAY_BACKEND: ${{ runner.os == 'Linux' && 'dummy' || '' }}
-        run: |
-          python -m pytest tests/ -v --tb=short
+  quality-gate:
+    name: Quality Gate (CI Pipeline)
+    uses: ./.github/workflows/ci.yml
 
   build-windows:
     name: Build Windows Desktop App (StockAgent.exe)
     runs-on: windows-latest
-    needs: [lint, frontend-check, mobile-check, test]
+    needs: [quality-gate]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -141,6 +58,15 @@ jobs:
         run: |
           cmd /c scripts\build\crear_exe.bat
 
+      - name: Smoke Test Windows Executable
+        run: |
+          $out = & .\dist\StockAgent.exe --version
+          Write-Host "Salida smoke test: $out"
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch "StockAgent") {
+            Write-Error "Smoke test de StockAgent.exe falló."
+            exit 1
+          }
+
       - name: Compress Release Bundle
         run: |
           Compress-Archive -Path dist\* -DestinationPath StockAgent-Windows.zip -Force
@@ -155,7 +81,7 @@ jobs:
   build-android:
     name: Build Android APK (StockAgent.apk)
     runs-on: ubuntu-latest
-    needs: [lint, frontend-check, mobile-check, test]
+    needs: [quality-gate]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,12 +98,37 @@ jobs:
           channel: "stable"
           cache: true
 
+      - name: Configure Android Release Keystore (if secrets are set)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > stockagent_mobile/android/app/upload-keystore.jks
+            cat <<EOF > stockagent_mobile/android/key.properties
+          storePassword=${STORE_PASSWORD}
+          keyPassword=${KEY_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          storeFile=upload-keystore.jks
+          EOF
+            echo "Android release keystore configurado correctamente."
+          else
+            echo "Secrets de keystore Android no definidos; se compilará con la firma de respaldo de build.gradle."
+          fi
+
       - name: Build Flutter Release APK
         working-directory: stockagent_mobile
         run: |
           flutter pub get
           flutter build apk --release --android-skip-build-dependency-validation
           cp build/app/outputs/flutter-apk/app-release.apk ../StockAgent-Android.apk
+
+      - name: Clean up Android Keystore files
+        if: always()
+        run: |
+          rm -f stockagent_mobile/android/app/upload-keystore.jks stockagent_mobile/android/key.properties
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
@@ -190,6 +141,8 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: [build-windows, build-android]
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

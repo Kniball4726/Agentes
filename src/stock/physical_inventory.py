@@ -68,7 +68,8 @@ def generar_documento_comparativo_excel(
     """Genera un archivo Excel unificado con la comparativa entre Stock Digital y Stock Físico."""
     wb = openpyxl.Workbook()
     ws = wb.active
-    assert ws is not None
+    if ws is None:
+        raise RuntimeError("No se pudo inicializar la hoja de cálculo activa.")
     ws.title = "Comparativa y Diferencias"
 
     fill_titulo = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
@@ -140,7 +141,6 @@ def generar_documento_comparativo_excel(
         stk_fis = int(item["stock_fisico"])
         dif = int(item["diferencia"])
         estado = str(item["estado"])
-        dif_str = f"+{dif}" if dif > 0 else str(dif)
 
         ws.cell(row=fila_actual, column=1, value=sanitizar_celda_excel(cod)).alignment = align_center
         ws.cell(row=fila_actual, column=2, value=sanitizar_celda_excel(nom)).alignment = align_left

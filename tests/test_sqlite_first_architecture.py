@@ -8,7 +8,6 @@ from pathlib import Path
 import openpyxl
 
 from src.inventory import StockManager
-from src.inventory.excel_exporter import exportar_catalogo_a_excel
 from src.products import ProductStore
 
 
@@ -25,7 +24,7 @@ class TestSQLiteFirstArchitecture(unittest.TestCase):
             conn.execute(
                 """
                 INSERT INTO products (code, name, stock, active, stock_minimo, stock_maximo, cod_barras, ubicacion)
-                VALUES 
+                VALUES
                     ('SKU-100', 'Producto Activo Uno', 50, 1, 5, 100, '779000100', 'A-01'),
                     ('SKU-200', 'Producto Activo Dos', 10, 1, 5, 50, '779000200', 'A-02'),
                     ('SKU-999', 'Producto Inactivo Viejo', 0, 0, 0, 0, '779000999', 'Z-99')
@@ -34,7 +33,7 @@ class TestSQLiteFirstArchitecture(unittest.TestCase):
             conn.execute(
                 """
                 INSERT INTO product_catalog_rows (product_code, display_name, display_order, template_row)
-                VALUES 
+                VALUES
                     ('SKU-100', 'Producto Activo Uno', 1, 4),
                     ('SKU-200', 'Producto Activo Dos', 2, 5)
                 """

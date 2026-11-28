@@ -1,7 +1,5 @@
 """Tests unitarios para el diálogo de opciones de Windows (Descargar o Imprimir documentos)."""
 
-import os
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch

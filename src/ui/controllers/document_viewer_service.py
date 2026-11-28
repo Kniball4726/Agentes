@@ -74,7 +74,7 @@ class DocumentViewerService:
         if not page:
             return
 
-        if hasattr(page, "launch_url") and callable(getattr(page, "launch_url")):
+        if hasattr(page, "launch_url") and callable(page.launch_url):
             try:
                 try:
                     page.launch_url(url, web_window_name="_blank")

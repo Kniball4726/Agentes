@@ -1,2 +1,5 @@
 """Módulo de interfaz gráfica modular."""
-from .theme import ROJO, FONDO, SUPERFICIE, TEXTO, SECUNDARIO, BORDE
+
+from .theme import BORDE, FONDO, ROJO, SECUNDARIO, SUPERFICIE, TEXTO
+
+__all__ = ["BORDE", "FONDO", "ROJO", "SECUNDARIO", "SUPERFICIE", "TEXTO"]

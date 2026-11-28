@@ -59,7 +59,12 @@ def test_requirements_lock_cubre_requirements_y_marcadores_plataforma() -> None:
 def test_pyproject_y_ci_configuran_checks_fase_1() -> None:
     pyproject = tomllib.loads((ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8"))
     ruff_lint = pyproject.get("tool", {}).get("ruff", {}).get("lint", {})
-    assert set(ruff_lint.get("select", [])) >= {"E9", "F82", "F811", "B023", "PLR0124"}
+    seleccion = set(ruff_lint.get("select", []))
+    assert seleccion >= {"E9", "F82", "F811", "B023", "PLR0124"}
+    assert seleccion >= {"E", "W", "F", "B", "S", "UP", "SIM"}
+    ignorados_globales = set(ruff_lint.get("ignore", []))
+    assert "S110" not in ignorados_globales
+    assert "S112" not in ignorados_globales
 
     ci_text = (ROOT_DIR / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "requirements.lock" in ci_text
@@ -67,6 +72,23 @@ def test_pyproject_y_ci_configuran_checks_fase_1() -> None:
     assert "tsc --noEmit -p tsconfig.json" in ci_text
     assert "tsc --noEmit -p tsconfig.sw.json" in ci_text
     assert "flutter analyze" in ci_text
+    assert "workflow_call:" in ci_text
+    assert "--cov=src" in ci_text
+    assert "pip-audit" in ci_text
+
+    cd_path = ROOT_DIR / ".github" / "workflows" / "cd.yml"
+    assert cd_path.is_file()
+    cd_text = cd_path.read_text(encoding="utf-8")
+    assert "uses: ./.github/workflows/ci.yml" in cd_text
+    assert "needs: [quality-gate]" in cd_text
+    assert "ANDROID_KEYSTORE_BASE64" in cd_text
+
+    dependabot_path = ROOT_DIR / ".github" / "dependabot.yml"
+    assert dependabot_path.is_file()
+    dep_text = dependabot_path.read_text(encoding="utf-8")
+    assert 'package-ecosystem: "pip"' in dep_text
+    assert 'package-ecosystem: "pub"' in dep_text
+    assert 'package-ecosystem: "github-actions"' in dep_text
 
 
 def test_normalizar_codigo_lector_nan_inf_y_exportaciones_dialogos() -> None:
@@ -103,3 +125,16 @@ def test_mobile_flutter_tests_y_analysis_options_habilitados_para_ci() -> None:
         assert txt.count("(") == txt.count(")"), f"Paréntesis desbalanceados en {dart_file}"
         assert txt.count("{") == txt.count("}"), f"Llaves desbalanceadas en {dart_file}"
         assert txt.count("[") == txt.count("]"), f"Corchetes desbalanceados en {dart_file}"
+
+
+def test_version_unica_sincronizada_entre_backend_pyproject_y_mobile() -> None:
+    from src.version import APP_VERSION, obtener_version_completa
+
+    pyproject = tomllib.loads((ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject.get("project", {}).get("version") == APP_VERSION
+
+    pubspec_txt = (ROOT_DIR / "stockagent_mobile" / "pubspec.yaml").read_text(encoding="utf-8")
+    assert f"version: {obtener_version_completa()}" in pubspec_txt
+
+    cd_txt = (ROOT_DIR / ".github" / "workflows" / "cd.yml").read_text(encoding="utf-8")
+    assert "StockAgent.exe --version" in cd_txt

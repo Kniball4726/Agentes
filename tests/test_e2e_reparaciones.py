@@ -2,11 +2,10 @@
 
 from pathlib import Path
 import tempfile
-import pytest
 
 from src.integrations import sheets_manager
 from src.products import ProductStore
-from src.stock.models import AlertaStock, RegistroDescuento, ReporteStock
+from src.stock.models import AlertaStock, ReporteStock
 from src.stock.models import AlertaStock as AlertaStockModel
 
 

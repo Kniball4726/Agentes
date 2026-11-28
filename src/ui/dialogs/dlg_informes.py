@@ -33,7 +33,6 @@ def mostrar_dialogo_informes(interfaz: Any) -> None:
     archivos_recientes = list(reversed(archivos))
     interfaz.informes = archivos
 
-    es_movil = bool(getattr(interfaz, "es_pantalla_movil", False))
     es_oscuro = bool(getattr(interfaz, "modo_oscuro", True))
     es_web = bool(getattr(interfaz.page, "web", False))
 

@@ -254,7 +254,7 @@ class StockManager:
                 details=f"Archivo: {ruta_doc.name} | Relevados: {total_relevados} | Diferencias: {total_diferencias}",
             )
         except Exception as notif_err:
-            print(f"[AVISO] No se pudo crear notificación de stock físico: {notif_err}")
+            logger.warning("No se pudo crear notificación de stock físico: %s", notif_err)
 
         return ruta_doc, comparativa
 

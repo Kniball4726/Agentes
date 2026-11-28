@@ -36,9 +36,7 @@ def _es_entorno_test(obj: Any) -> bool:
     if getattr(obj, "_is_mock", False) or hasattr(obj, "assert_called"):
         return True
     page = getattr(obj, "page", None)
-    if page is not None and (getattr(page, "_is_mock", False) or hasattr(page, "assert_called")):
-        return True
-    return False
+    return bool(page is not None and (getattr(page, "_is_mock", False) or hasattr(page, "assert_called")))
 
 
 def _actualizar_una_sesion(

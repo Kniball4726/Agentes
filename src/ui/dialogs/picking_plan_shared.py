@@ -9,7 +9,7 @@ from typing import Any
 import flet as ft
 
 from ..audio_feedback import emitir_tono_error, emitir_tono_exito
-from ._shared import resolve_stock_manager, safe_focus
+from ._shared import resolve_stock_manager, safe_focus as safe_focus
 
 
 def resolver_stock_manager_ui(interfaz: Any = None) -> type:

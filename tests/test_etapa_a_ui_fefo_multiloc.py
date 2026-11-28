@@ -224,7 +224,7 @@ class TestEtapaAUiFefoMultiloc(unittest.TestCase):
         )[0]
         btn_lote.on_click(None)
 
-        lotes = [l["lote"] for l in self.store.listar_lotes_fefo("REP-1")]
+        lotes = [lote["lote"] for lote in self.store.listar_lotes_fefo("REP-1")]
         self.assertIn("L-CAT-99", lotes)
 
         # Verificar que el acceso directo mostrar_dialogo_ubicaciones_lotes también notifique callback

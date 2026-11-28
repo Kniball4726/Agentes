@@ -8,6 +8,7 @@ Permite enviar notificaciones inmediatas a un canal o chat privado de Telegram a
 
 from datetime import datetime
 import json
+import logging
 import os
 from pathlib import Path
 import threading
@@ -20,6 +21,7 @@ from ..core.environment import get_data_dir
 from ..core.network_security import crear_contexto_tls_estricto
 from ..core.sanitize_utils import escapar_html_telegram
 
+logger = logging.getLogger("stockagent.telegram")
 CONFIG_PATH_DEFAULT = "data/config_telegram.json"
 
 
@@ -43,7 +45,7 @@ def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
     necesita_migracion = False
     if ruta.exists():
         try:
-            with open(ruta, "r", encoding="utf-8") as f:
+            with open(ruta, encoding="utf-8") as f:
                 data = json.load(f)
                 raw_token = str(data.get("bot_token", "")).strip()
                 necesita_migracion = bool(raw_token and not secretos.esta_cifrado(raw_token))
@@ -59,14 +61,14 @@ def cargar_config_telegram(root_path: Path | None = None) -> dict[str, Any]:
                     "notificar_seguridad": bool(data.get("notificar_seguridad", True)),
                     "notificar_cierre": bool(data.get("notificar_cierre", True)),
                 }
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("No se pudo leer configuración de Telegram %s: %s", ruta, exc)
 
     if necesita_migracion:
         try:
             guardar_config_telegram(res, root_path=root_path)
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("No se pudo migrar a cifrado el token de Telegram: %s", exc)
 
     env_token = os.environ.get("STOCKAGENT_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
     if env_token and not res["bot_token"]:

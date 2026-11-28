@@ -46,7 +46,7 @@ def obtener_webhooks() -> list[dict[str, Any]]:
     ruta = _ruta_webhooks()
     if ruta.exists():
         try:
-            with open(ruta, "r", encoding="utf-8") as f:
+            with open(ruta, encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
                     return data

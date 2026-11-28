@@ -171,14 +171,14 @@ def fijar_ocupado(boton: Any, ocupado: bool, texto_ocupado: str | None = None) -
     try:
         if ocupado:
             if not hasattr(boton, "_ds_contenido_original"):
-                setattr(boton, "_ds_contenido_original", getattr(boton, "content", None))
+                boton._ds_contenido_original = getattr(boton, "content", None)
             boton.disabled = True
             if texto_ocupado:
                 boton.content = texto_ocupado
         else:
             boton.disabled = False
             if hasattr(boton, "_ds_contenido_original"):
-                boton.content = getattr(boton, "_ds_contenido_original")
+                boton.content = boton._ds_contenido_original
                 delattr(boton, "_ds_contenido_original")
     except Exception:
         pass

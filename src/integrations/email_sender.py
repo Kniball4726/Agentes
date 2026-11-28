@@ -13,6 +13,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ from ..core.network_security import (
 )
 from ..paths import application_root
 
+logger = logging.getLogger("stockagent.email")
 RUTA_CONFIG_EMAIL = application_root() / "data" / "email_config.json"
 
 
@@ -110,8 +112,8 @@ def obtener_config_email() -> dict:
     if valor_guardado and not secretos.esta_cifrado(valor_guardado):
         try:
             guardar_config_email(config)
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("No se pudo migrar a cifrado la contraseña SMTP en disco: %s", exc)
     return config
 
 
@@ -370,14 +372,14 @@ def abrir_fallback_correo(
         if p.exists():
             try:
                 subprocess.Popen(["explorer.exe", f"/select,{p.resolve()}"])
-            except Exception:
-                pass
+            except OSError as exc:
+                logger.warning("No se pudo abrir explorer.exe para el adjunto %s: %s", p, exc)
             break
 
     try:
         os.startfile(f"mailto:{dest_str}?subject={asunto_enc}&body={cuerpo_enc}")  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    except (OSError, AttributeError) as exc:
+        logger.warning("No se pudo abrir cliente de correo mediante mailto: %s", exc)
 
 
 def despachar_correo(

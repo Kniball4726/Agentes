@@ -270,7 +270,7 @@ class TestFase4WarehouseEvolution(unittest.TestCase):
 
         ordenados = self.product_store.listar_lotes_fefo("SKU3", solo_disponibles=True)
         self.assertEqual(
-            [l["lote"] for l in ordenados],
+            [lote["lote"] for lote in ordenados],
             ["L-VENCIDO", "L-CORTO", "L-LARGO", "L-SIN-VENC"],
         )
         self.assertTrue(ordenados[0]["vencido"])
@@ -286,7 +286,7 @@ class TestFase4WarehouseEvolution(unittest.TestCase):
         )
 
         # Verificar estados y saldos resultantes tras consumo FEFO
-        lotes_despues = {l["lote"]: l for l in self.product_store.listar_lotes_fefo("SKU3")}
+        lotes_despues = {lote["lote"]: lote for lote in self.product_store.listar_lotes_fefo("SKU3")}
         self.assertEqual(lotes_despues["L-CORTO"]["stock"], 0)
         self.assertEqual(lotes_despues["L-CORTO"]["estado"], "agotado")
         self.assertEqual(lotes_despues["L-LARGO"]["stock"], 15)
@@ -400,7 +400,7 @@ class TestFase4WarehouseEvolution(unittest.TestCase):
 
         r_alert = client.get("/api/v1/productos/lotes/proximos-vencer?dias=20", headers=headers_op)
         self.assertEqual(r_alert.status_code, 200)
-        self.assertTrue(any(l["lote"] == "L-API-A" for l in r_alert.json()["lotes"]))
+        self.assertTrue(any(lote["lote"] == "L-API-A" for lote in r_alert.json()["lotes"]))
 
         r_cons_lote = client.post(
             "/api/v1/productos/SKU2/lotes/consumir-fefo",

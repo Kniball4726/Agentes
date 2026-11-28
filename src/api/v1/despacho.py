@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -18,6 +19,7 @@ from ..schemas import (
 from ...core.stock_order_tx import consolidar_reserva_pedido_si_existe
 from ...orders import OrderStore, Pedido
 
+logger = logging.getLogger("stockagent.api.despacho")
 router = APIRouter(prefix="/despacho", tags=["Despacho y Logística"])
 
 
@@ -112,8 +114,12 @@ def _consolidar_reserva_al_despachar(
             usuario=usuario,
             detalle=f"Despacho móvil/API pedido #{pedido.nota_pedido}",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "No se pudo consolidar reserva del pedido #%s tras despacho: %s",
+            pedido.nota_pedido,
+            exc,
+        )
 
 
 @router.post(

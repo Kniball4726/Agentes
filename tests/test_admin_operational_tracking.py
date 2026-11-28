@@ -12,7 +12,6 @@ from src.ui.components.admin_operations_bar import (
     construir_panel_seguimiento_admin,
     actualizar_seguimiento_operativo_admin,
 )
-from src.ui.components.header import construir_encabezado
 
 
 class TestAdminOperationalTracking(unittest.TestCase):
@@ -102,7 +101,7 @@ class TestAdminOperationalTracking(unittest.TestCase):
 
         # 3. Administrador sube un nuevo archivo / plan
         items2 = [("SKU-2", "Pantalón", 20)]
-        plan2_id = self.store.crear_plan_mercado_full("Full Tanda 2", "full2.xlsx", "admin", items2)
+        self.store.crear_plan_mercado_full("Full Tanda 2", "full2.xlsx", "admin", items2)
 
         actualizar_seguimiento_operativo_admin(self.mock_interfaz)
         badge_nuevo = panel.content.controls[0]
@@ -155,11 +154,11 @@ class TestAdminOperationalTracking(unittest.TestCase):
 
         self.mock_interfaz.usuario_actual.role = "master"
         self.mock_interfaz.panel_seguimiento_admin = None
-        panel_master = construir_panel_acceso_rapido(self.mock_interfaz)
+        construir_panel_acceso_rapido(self.mock_interfaz)
         self.assertIsNone(self.mock_interfaz.panel_seguimiento_admin)
 
         self.mock_interfaz.usuario_actual.role = "administrador"
-        panel_admin = construir_panel_acceso_rapido(self.mock_interfaz)
+        construir_panel_acceso_rapido(self.mock_interfaz)
         self.assertIsNotNone(self.mock_interfaz.panel_seguimiento_admin)
 
 

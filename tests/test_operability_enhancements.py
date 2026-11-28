@@ -6,7 +6,6 @@
 """
 from pathlib import Path
 from unittest.mock import MagicMock
-from reportlab.lib.pagesizes import A4
 import pypdf
 
 from src.auth import User

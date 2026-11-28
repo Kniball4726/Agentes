@@ -18,7 +18,7 @@ class ConcurrencyRepository:
         self, pedido_id: int, usuario: str, expiracion_minutos: int = 5
     ) -> tuple[bool, str, str]:
         """Intenta adquirir el bloqueo de edición de un pedido.
-        
+
         Devuelve (éxito, usuario_bloqueo, fecha_bloqueo).
         Si el bloqueo expiró (más de expiracion_minutos), se sobreescribe automáticamente.
         """

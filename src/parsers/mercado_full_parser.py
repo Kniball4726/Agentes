@@ -13,7 +13,7 @@ from .safe_loader import MAX_EXCEL_COLS, MAX_EXCEL_ROWS, cargar_workbook_seguro,
 def parsear_archivo_mercado_full(ruta_archivo: str | Path) -> Tuple[Dict[str, int], List[Tuple[str, str, int]]]:
     """
     Parsea una planilla Excel (.xlsx o .xls) con columnas de Código/SKU y Cantidad de Mercado Full.
-    
+
     Retorna:
         - items_consolidados: Dict[codigo, cantidad_total] acumulado por producto.
         - detalle: List[(codigo, descripcion, cantidad)] con el detalle fila a fila.

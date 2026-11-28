@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.anomaly_detector import (
     AlertaConsumoAnomalo,
@@ -20,7 +20,6 @@ from src.anomaly_detector import (
     analizar_desvios_consumo_diario,
     analizar_velocidad_agotamiento,
     calcular_media_y_desvio,
-    ejecutar_diagnostico_integral_anomalias,
     notificar_anomalias_detectadas,
 )
 from src.products import ProductStore

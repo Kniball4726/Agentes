@@ -44,7 +44,7 @@ class GoogleSheetsStockManager:
 
         self.spreadsheet_ref = spreadsheet_url_o_nombre
         self.nombre_hoja = hoja
-        
+
         # Conexión con Google Sheets
         self.creds = Credentials.from_service_account_file(str(self.credenciales_path), scopes=self.SCOPES)
         self.client = gspread.authorize(self.creds)
@@ -68,7 +68,7 @@ class GoogleSheetsStockManager:
         for i, fila in enumerate(filas):
             if i < 2:
                 continue
-            
+
             fila_sheet = i + 1  # Google Sheets es 1-based
             val_cod = fila[0] if len(fila) > 0 else ""
             nombre = fila[1] if len(fila) > 1 else ""

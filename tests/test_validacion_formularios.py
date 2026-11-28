@@ -1,4 +1,3 @@
-import asyncio
 import unittest
 from unittest.mock import MagicMock, patch
 import flet as ft
@@ -62,7 +61,6 @@ class TestValidacionFormularios(unittest.IsolatedAsyncioTestCase):
         fake_stock_manager.catalogo = {}
 
         with patch("src.ui.dialogs.productos_modales._resolver_stock_manager_cls", return_value=lambda _: fake_stock_manager):
-            dialogo_capturado = None
             self.interfaz.page.show_dialog = lambda d: setattr(self, "_dlg", d)
 
             mostrar_dialogo_formulario_producto(self.interfaz)
