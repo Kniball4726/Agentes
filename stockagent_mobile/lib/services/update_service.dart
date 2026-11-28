@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
+
+import 'storage_service.dart';
 import 'tls_pinning_service.dart';
 
 class AppUpdateInfo {
@@ -48,6 +51,24 @@ class AppUpdateInfo {
 class UpdateService {
   static const MethodChannel _channel = MethodChannel('com.stockagent.mobile/app_updater');
 
+  final StorageService? storageService;
+
+  UpdateService({this.storageService});
+
+  http.Client _createClient({Duration connectionTimeout = const Duration(seconds: 6)}) {
+    final storage = storageService;
+    if (storage != null) {
+      return IOClient(
+        TlsPinningService.createPinnedHttpClient(
+          storage,
+          allowTofu: true,
+          connectionTimeout: connectionTimeout,
+        ),
+      );
+    }
+    return IOClient(HttpClient()..connectionTimeout = connectionTimeout);
+  }
+
   /// Obtiene la versión nativa del APK instalado en el celular
   Future<Map<String, dynamic>> getCurrentAppInfo() async {
     try {
@@ -61,9 +82,10 @@ class UpdateService {
 
   /// Verifica contra el servidor local si hay una nueva versión compilada
   Future<AppUpdateInfo?> checkUpdate(String serverBaseUrl) async {
+    final client = _createClient(connectionTimeout: const Duration(seconds: 4));
     try {
       final uri = Uri.parse('$serverBaseUrl/actualizaciones/version.json');
-      final res = await http.get(uri).timeout(const Duration(seconds: 4));
+      final res = await client.get(uri).timeout(const Duration(seconds: 6));
       if (res.statusCode != 200) return null;
 
       final dynamic data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -76,7 +98,11 @@ class UpdateService {
       if (update.versionCode > currentCode) {
         return update;
       }
-    } catch (_) {}
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
     return null;
   }
 
@@ -84,12 +110,14 @@ class UpdateService {
   static bool isValidSameOriginUrl(String downloadUrl, String? expectedServerOrigin) {
     final dlUri = Uri.tryParse(downloadUrl);
     if (dlUri == null || !dlUri.hasScheme || dlUri.host.isEmpty) return false;
+    final scheme = dlUri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') return false;
     if (expectedServerOrigin == null || expectedServerOrigin.trim().isEmpty) return true;
     final originUri = Uri.tryParse(expectedServerOrigin.trim());
     if (originUri == null || originUri.host.isEmpty) return false;
     return dlUri.host.toLowerCase() == originUri.host.toLowerCase() &&
         dlUri.port == originUri.port &&
-        dlUri.scheme.toLowerCase() == originUri.scheme.toLowerCase();
+        scheme == originUri.scheme.toLowerCase();
   }
 
   /// Descarga el APK desde el servidor, valida su hash SHA-256 y activa el instalador de Android
@@ -99,11 +127,16 @@ class UpdateService {
     String? expectedServerOrigin,
     required void Function(double progress) onProgress,
     required void Function(String error) onError,
+    void Function()? onInstalled,
   }) async {
     http.Client? client;
     IOSink? sink;
     try {
-      if (!isValidSameOriginUrl(downloadUrl, expectedServerOrigin)) {
+      final effectiveOrigin = expectedServerOrigin ??
+          (storageService != null && storageService!.hasValidConfig()
+              ? storageService!.loadConfig().baseUrl
+              : null);
+      if (!isValidSameOriginUrl(downloadUrl, effectiveOrigin)) {
         onError('La URL del APK no pertenece al servidor configurado. Descarga bloqueada.');
         return;
       }
@@ -126,9 +159,9 @@ class UpdateService {
         } catch (_) {}
       }
 
-      client = http.Client();
+      client = _createClient(connectionTimeout: const Duration(seconds: 15));
       final request = http.Request('GET', Uri.parse(downloadUrl));
-      final response = await client.send(request).timeout(const Duration(seconds: 15));
+      final response = await client.send(request).timeout(const Duration(seconds: 20));
 
       if (response.statusCode != 200) {
         onError('Error en el servidor al descargar APK (${response.statusCode})');
@@ -139,16 +172,19 @@ class UpdateService {
       int received = 0;
       sink = targetFile.openWrite();
 
-      await response.stream.listen(
-        (List<int> chunk) {
-          sink?.add(chunk);
-          received += chunk.length;
-          if (total > 0) {
-            onProgress((received / total).clamp(0.0, 1.0));
-          }
-        },
-        cancelOnError: true,
-      ).asFuture();
+      await response.stream
+          .timeout(const Duration(seconds: 30))
+          .listen(
+            (List<int> chunk) {
+              sink?.add(chunk);
+              received += chunk.length;
+              if (total > 0) {
+                onProgress((received / total).clamp(0.0, 1.0));
+              }
+            },
+            cancelOnError: true,
+          )
+          .asFuture<void>();
 
       await sink.flush();
       await sink.close();
@@ -171,7 +207,7 @@ class UpdateService {
           actualHash = TlsPinningService.sha256Hex(await targetFile.readAsBytes());
         }
 
-        if (actualHash.isNotEmpty && actualHash != cleanExpectedHash) {
+        if (actualHash.isEmpty || actualHash != cleanExpectedHash) {
           try {
             await targetFile.delete();
           } catch (_) {}
@@ -190,11 +226,28 @@ class UpdateService {
 
       if (installed != true) {
         onError('No se pudo iniciar el instalador de Android.');
+        return;
       }
+      onInstalled?.call();
+    } on PlatformException catch (e) {
+      if (e.code == 'PERMISSION_REQUIRED') {
+        onError(
+          'Habilita el permiso "Instalar apps desconocidas" para StockAgent en los ajustes de Android y luego toca "Reintentar".',
+        );
+      } else {
+        onError(e.message ?? 'Error nativo al instalar actualización (${e.code}).');
+      }
+    } on HandshakeException {
+      onError('Certificado TLS rechazado al descargar la actualización. Verifica la configuración del servidor.');
+    } on TimeoutException {
+      onError('Tiempo de espera agotado durante la descarga del APK. Verifica tu señal Wi-Fi.');
     } catch (e) {
-      sink?.close();
-      client?.close();
       onError('Error durante la actualización: $e');
+    } finally {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      client?.close();
     }
   }
 }

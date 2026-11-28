@@ -139,10 +139,14 @@ class _InventoryTabState extends State<InventoryTab> {
   }
 
   void _mostrarModalComparativa(InventorySummary summary) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppTheme.cardBg : AppTheme.lightCardBg;
+    final handleColor = isDark ? Colors.white24 : AppTheme.lightBorder;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.cardBg,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -158,7 +162,7 @@ class _InventoryTabState extends State<InventoryTab> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: handleColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

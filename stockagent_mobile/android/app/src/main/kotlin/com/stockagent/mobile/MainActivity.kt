@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -93,7 +94,10 @@ class MainActivity : FlutterActivity() {
                     "getAppInfo" -> {
                         try {
                             val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+                                packageManager.getPackageInfo(
+                                    packageName,
+                                    PackageManager.PackageInfoFlags.of(0)
+                                )
                             } else {
                                 @Suppress("DEPRECATION")
                                 packageManager.getPackageInfo(packageName, 0)
@@ -134,11 +138,14 @@ class MainActivity : FlutterActivity() {
                             result.error("FILE_NOT_FOUND", "Archivo no existe", null)
                             return@setMethodCallHandler
                         }
-                        try {
-                            result.success(computeSha256File(f))
-                        } catch (e: Exception) {
-                            result.error("HASH_ERROR", e.message, null)
-                        }
+                        Thread {
+                            try {
+                                val hash = computeSha256File(f)
+                                runOnUiThread { result.success(hash) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("HASH_ERROR", e.message, null) }
+                            }
+                        }.start()
                     }
                     "installApk" -> {
                         val filePath = call.argument<String>("filePath")
@@ -152,80 +159,116 @@ class MainActivity : FlutterActivity() {
                             result.error("FILE_NOT_FOUND", "El archivo APK no existe en $filePath", null)
                             return@setMethodCallHandler
                         }
-
-                        try {
-                            val allowedDir = File(cacheDir, "updates").apply { if (!exists()) mkdirs() }
-                            if (!apkFile.canonicalPath.startsWith(allowedDir.canonicalPath)) {
-                                result.error(
-                                    "FORBIDDEN_PATH",
-                                    "El APK debe residir exclusivamente dentro de la carpeta segura de actualizaciones.",
-                                    null
-                                )
-                                return@setMethodCallHandler
-                            }
-
-                            if (!expectedSha256.isNullOrEmpty()) {
-                                val actualHash = computeSha256File(apkFile)
-                                if (actualHash != expectedSha256) {
-                                    apkFile.delete()
-                                    result.error(
-                                        "INTEGRITY_ERROR",
-                                        "La firma SHA-256 del APK no coincide con la publicada por el servidor.",
-                                        null
-                                    )
-                                    return@setMethodCallHandler
-                                }
-                            }
-
-                            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                packageManager.getPackageArchiveInfo(
-                                    apkFile.absolutePath,
-                                    PackageManager.PackageInfoFlags.of(0)
-                                )
-                            } else {
-                                @Suppress("DEPRECATION")
-                                packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
-                            }
-                            if (archiveInfo == null || archiveInfo.packageName != packageName) {
-                                apkFile.delete()
-                                result.error(
-                                    "PACKAGE_MISMATCH",
-                                    "El paquete descargado no corresponde a StockAgent ($packageName).",
-                                    null
-                                )
-                                return@setMethodCallHandler
-                            }
-
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                if (!packageManager.canRequestPackageInstalls()) {
-                                    val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                                        data = Uri.parse("package:$packageName")
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    startActivity(manageIntent)
-                                }
-                            }
-
-                            val apkUri = FileProvider.getUriForFile(
-                                this@MainActivity,
-                                "$packageName.fileprovider",
-                                apkFile
-                            )
-
-                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(installIntent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("INSTALL_ERROR", e.message, null)
-                        }
+                        verifyAndLaunchApkInstall(apkFile, expectedSha256, result)
                     }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun isInsideDirectory(file: File, directory: File): Boolean {
+        val dirCanonical = directory.canonicalPath
+        val prefix = if (dirCanonical.endsWith(File.separator)) {
+            dirCanonical
+        } else {
+            "$dirCanonical${File.separator}"
+        }
+        return file.canonicalPath.startsWith(prefix)
+    }
+
+    private fun verifyAndLaunchApkInstall(
+        apkFile: File,
+        expectedSha256: String?,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            try {
+                val allowedDir = File(cacheDir, "updates").apply { if (!exists()) mkdirs() }
+                if (!isInsideDirectory(apkFile, allowedDir)) {
+                    runOnUiThread {
+                        result.error(
+                            "FORBIDDEN_PATH",
+                            "El APK debe residir exclusivamente dentro de la carpeta segura de actualizaciones.",
+                            null
+                        )
+                    }
+                    return@Thread
+                }
+
+                if (!expectedSha256.isNullOrEmpty()) {
+                    val actualHash = computeSha256File(apkFile)
+                    if (actualHash != expectedSha256) {
+                        apkFile.delete()
+                        runOnUiThread {
+                            result.error(
+                                "INTEGRITY_ERROR",
+                                "La firma SHA-256 del APK no coincide con la publicada por el servidor.",
+                                null
+                            )
+                        }
+                        return@Thread
+                    }
+                }
+
+                val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageArchiveInfo(
+                        apkFile.absolutePath,
+                        PackageManager.PackageInfoFlags.of(0)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                }
+                if (archiveInfo == null || archiveInfo.packageName != packageName) {
+                    apkFile.delete()
+                    runOnUiThread {
+                        result.error(
+                            "PACKAGE_MISMATCH",
+                            "El paquete descargado no corresponde a StockAgent ($packageName).",
+                            null
+                        )
+                    }
+                    return@Thread
+                }
+
+                runOnUiThread {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            !packageManager.canRequestPackageInstalls()
+                        ) {
+                            val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(manageIntent)
+                            result.error(
+                                "PERMISSION_REQUIRED",
+                                "Habilita el permiso para instalar aplicaciones desconocidas y vuelve a intentar.",
+                                null
+                            )
+                            return@runOnUiThread
+                        }
+
+                        val apkUri = FileProvider.getUriForFile(
+                            this@MainActivity,
+                            "$packageName.fileprovider",
+                            apkFile
+                        )
+                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(installIntent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("INSTALL_ERROR", e.message, null)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { result.error("INSTALL_ERROR", e.message, null) }
+            }
+        }.start()
     }
 
     private fun getOrCreateSecretKey(): SecretKey {
@@ -256,7 +299,10 @@ class MainActivity : FlutterActivity() {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
         val iv = Base64.encodeToString(cipher.iv, Base64.NO_WRAP)
-        val encrypted = Base64.encodeToString(cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        val encrypted = Base64.encodeToString(
+            cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)),
+            Base64.NO_WRAP
+        )
         prefs.edit().putString(key, "$iv:$encrypted").apply()
     }
 
@@ -264,12 +310,23 @@ class MainActivity : FlutterActivity() {
         val prefs = getSharedPreferences(SECURE_PREFS_NAME, Context.MODE_PRIVATE)
         val stored = prefs.getString(key, null) ?: return null
         val parts = stored.split(":", limit = 2)
-        if (parts.size != 2) return null
-        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
-        val cipherBytes = Base64.decode(parts[1], Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+        if (parts.size != 2) {
+            prefs.edit().remove(key).apply()
+            return null
+        }
+        return try {
+            val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+            val cipherBytes = Base64.decode(parts[1], Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+        } catch (_: GeneralSecurityException) {
+            prefs.edit().remove(key).apply()
+            null
+        } catch (_: IllegalArgumentException) {
+            prefs.edit().remove(key).apply()
+            null
+        }
     }
 
     private fun computeSha256File(file: File): String {
@@ -370,6 +427,9 @@ class MainActivity : FlutterActivity() {
             }
 
             val destFile = File(uploadDir, safeName)
+            if (!isInsideDirectory(destFile, uploadDir)) {
+                return null
+            }
             if (destFile.exists()) {
                 destFile.delete()
             }

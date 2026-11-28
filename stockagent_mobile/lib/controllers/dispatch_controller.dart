@@ -36,6 +36,7 @@ class DispatchController extends ChangeNotifier {
   final List<Map<String, dynamic>> colaOffline = [];
   final List<MapEntry<String, String?>> _colaEscaneos = [];
   bool sincronizandoOffline = false;
+  bool _disposed = false;
 
   DispatchController({
     required this.apiService,
@@ -43,6 +44,18 @@ class DispatchController extends ChangeNotifier {
   }) {
     _cargarColaOfflinePersistida();
     cargarPedidos();
+  }
+
+  void _safeNotify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   void _cargarColaOfflinePersistida() {
@@ -74,7 +87,7 @@ class DispatchController extends ChangeNotifier {
       return;
     }
     modoSeleccionado = nuevoModo;
-    notifyListeners();
+    _safeNotify();
   }
 
   void alternarVista() {
@@ -82,15 +95,17 @@ class DispatchController extends ChangeNotifier {
     if (verListaPendientes) {
       cargarPedidos();
     }
-    notifyListeners();
+    _safeNotify();
   }
 
   Future<void> cargarPedidos() async {
+    if (_disposed) return;
     cargandoPedidos = true;
     errorCargaPedidos = null;
-    notifyListeners();
+    _safeNotify();
     try {
       final pedidos = await apiService.listOrders(limit: 60);
+      if (_disposed) return;
       pedidosActivos = pedidos;
     } on ApiException catch (e) {
       errorCargaPedidos = e.message;
@@ -98,7 +113,7 @@ class DispatchController extends ChangeNotifier {
       errorCargaPedidos = 'No se pudo cargar la lista de pedidos: $e';
     } finally {
       cargandoPedidos = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -120,7 +135,7 @@ class DispatchController extends ChangeNotifier {
     _colaEscaneos.add(MapEntry<String, String?>(codigo, estadoDestino));
 
     if (isProcessing) {
-      notifyListeners();
+      _safeNotify();
       return;
     }
 
@@ -128,18 +143,18 @@ class DispatchController extends ChangeNotifier {
   }
 
   Future<void> _drenarColaEscaneos() async {
-    if (isProcessing) return;
+    if (isProcessing || _disposed) return;
     isProcessing = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
-      while (_colaEscaneos.isNotEmpty) {
+      while (_colaEscaneos.isNotEmpty && !_disposed) {
         final item = _colaEscaneos.removeAt(0);
         await _procesarUnEscaneo(item.key, item.value);
       }
     } finally {
       isProcessing = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -149,6 +164,7 @@ class DispatchController extends ChangeNotifier {
         codigo,
         targetState: estadoDestino,
       );
+      if (_disposed) return;
 
       final horaStr = _horaActual();
       historial.insert(
@@ -168,7 +184,7 @@ class DispatchController extends ChangeNotifier {
       } else {
         HapticFeedback.heavyImpact();
       }
-      notifyListeners();
+      _safeNotify();
     } on ApiException catch (e) {
       final horaStr = _horaActual();
       final esFallaDeRed =
@@ -204,7 +220,7 @@ class DispatchController extends ChangeNotifier {
           ),
         );
       }
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       final horaStr = _horaActual();
       HapticFeedback.heavyImpact();
@@ -216,21 +232,24 @@ class DispatchController extends ChangeNotifier {
           mensaje: '❌ Error al procesar [$codigo]: $e',
         ),
       );
-      notifyListeners();
+      _safeNotify();
     }
   }
 
   Future<int> sincronizarColaOffline() async {
-    if (colaOffline.isEmpty || sincronizandoOffline) return 0;
+    if (colaOffline.isEmpty || sincronizandoOffline || _disposed) return 0;
     sincronizandoOffline = true;
-    notifyListeners();
+    _safeNotify();
 
     int sincronizados = 0;
     try {
       final itemsAEnviar = List<Map<String, dynamic>>.from(colaOffline);
       final resultados = await apiService.scanDispatchBatch(itemsAEnviar);
+      final totalResultados = resultados.length < itemsAEnviar.length
+          ? resultados.length
+          : itemsAEnviar.length;
 
-      for (int i = 0; i < resultados.length; i++) {
+      for (int i = 0; i < totalResultados; i++) {
         final res = resultados[i];
         final it = itemsAEnviar[i];
         final horaStr = _horaActual();
@@ -249,19 +268,21 @@ class DispatchController extends ChangeNotifier {
         }
       }
 
-      final procesados = resultados.length.clamp(0, colaOffline.length);
+      final procesados = totalResultados.clamp(0, colaOffline.length);
       if (procesados > 0) {
         colaOffline.removeRange(0, procesados);
       }
       await _guardarColaOffline();
 
       HapticFeedback.lightImpact();
-      await cargarPedidos();
+      if (!_disposed) {
+        await cargarPedidos();
+      }
     } catch (_) {
       HapticFeedback.heavyImpact();
     } finally {
       sincronizandoOffline = false;
-      notifyListeners();
+      _safeNotify();
     }
     return sincronizados;
   }

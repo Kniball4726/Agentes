@@ -148,8 +148,32 @@ class _ConfigScreenState extends State<ConfigScreen> {
     }
   }
 
+  Future<void> _restablecerCertificadoTls() async {
+    final config = _buildConfigFromInputs();
+    if (!config.isValid) return;
+    await widget.storageService.clearPinnedCertSha256(config.host);
+    if (!mounted) return;
+    setState(() {
+      _testResult = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Huella TLS restablecida para ${config.host}. Toca "Probar Conexión" para vincular el nuevo certificado.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceBg = isDark ? AppTheme.surfaceColor : AppTheme.lightSurface;
+    final textPrimaryColor = isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary;
+    final currentHost = _buildConfigFromInputs().host;
+    final hasPinnedCert = currentHost.isNotEmpty &&
+        widget.storageService.getPinnedCertSha256(currentHost) != null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Conexión con Servidor PC'),
@@ -227,13 +251,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor,
+                          color: surfaceBg,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _protocol,
-                            dropdownColor: AppTheme.surfaceColor,
+                            dropdownColor: surfaceBg,
                             items: const [
                               DropdownMenuItem(value: 'http', child: Text('HTTP')),
                               DropdownMenuItem(value: 'https', child: Text('HTTPS')),
@@ -252,6 +276,18 @@ class _ConfigScreenState extends State<ConfigScreen> {
                 // Banner de estado de la prueba
                 StatusBanner(result: _testResult),
 
+                if (hasPinnedCert && _protocol == 'https') ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _isTesting ? null : _restablecerCertificadoTls,
+                      icon: const Icon(Icons.verified_user_outlined, size: 16),
+                      label: const Text('Re-vincular certificado TLS'),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+
                 // Botón Probar Conexión
                 OutlinedButton.icon(
                   onPressed: _isTesting ? null : _probarConexion,
@@ -269,7 +305,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       : const Icon(Icons.network_check_rounded, color: AppTheme.primaryRed),
                   label: Text(
                     _isTesting ? 'Probando...' : 'Probar Conexión',
-                    style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 12),

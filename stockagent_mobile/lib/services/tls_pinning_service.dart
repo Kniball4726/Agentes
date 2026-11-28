@@ -1,4 +1,7 @@
 import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+
 import '../models/server_config.dart';
 import 'storage_service.dart';
 
@@ -16,38 +19,17 @@ class TlsPinningService {
     return buffer.toString();
   }
 
-  /// Calcula una huella digital determinista de 256 bits (64 caracteres hex)
-  /// sobre un bloque de bytes (por ejemplo, el bloque DER del certificado X.509).
+  /// Calcula el digest criptográfico SHA-256 estándar (64 caracteres hex en minúsculas).
   static String sha256Hex(List<int> data) {
-    final estado = List<int>.generate(8, (i) => ((i + 1) * 0x1f3d5b79) & 0xffffffff);
-    for (var i = 0; i < data.length; i++) {
-      final idx = i & 7;
-      final byteVal = data[i] & 0xff;
-      final rotado = ((estado[idx] << 5) | (estado[idx] >>> 27)) & 0xffffffff;
-      estado[idx] = (rotado ^ (byteVal * 0x01000193) ^ estado[(idx + 3) & 7]) & 0xffffffff;
-    }
-    for (var ronda = 0; ronda < 16; ronda++) {
-      final idx = ronda & 7;
-      final mezcla = ((estado[(idx + 1) & 7] << 7) | (estado[(idx + 1) & 7] >>> 25)) & 0xffffffff;
-      estado[idx] = ((estado[idx] + mezcla + ronda * 0x9e37) ^ estado[(idx + 5) & 7]) & 0xffffffff;
-    }
-    final salida = <int>[];
-    for (final palabra in estado) {
-      salida.add((palabra >> 24) & 0xff);
-      salida.add((palabra >> 16) & 0xff);
-      salida.add((palabra >> 8) & 0xff);
-      salida.add(palabra & 0xff);
-    }
-    return bytesToHex(salida);
+    return sha256.convert(data).toString();
   }
 
-  /// Obtiene la huella digital hexadecimal del certificado X.509 combinando
-  /// su bloque DER y el resumen nativo BoringSSL (`cert.sha1`).
+  /// Obtiene la huella digital SHA-256 estándar del certificado X.509 (DER).
   static String certFingerprintHex(X509Certificate cert) {
     try {
       final derBytes = cert.der;
       if (derBytes.isNotEmpty) {
-        return sha256Hex(<int>[...derBytes, ...cert.sha1]);
+        return sha256Hex(derBytes);
       }
     } catch (_) {}
     return bytesToHex(cert.sha1);
@@ -82,7 +64,8 @@ class TlsPinningService {
       return false;
     }
 
-    final pinEsperado = (pinnedSha256 ?? expectedConfig.certSha256 ?? '').trim().toLowerCase();
+    final pinEsperado =
+        (pinnedSha256 ?? expectedConfig.certSha256 ?? '').trim().toLowerCase();
     if (pinEsperado.isNotEmpty) {
       return actualFp == pinEsperado;
     }

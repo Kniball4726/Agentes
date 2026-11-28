@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/auth_user.dart';
 import '../services/api_service.dart';
@@ -30,10 +31,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   late final ApiService _apiService;
-  final UpdateService _updateService = UpdateService();
+  late final UpdateService _updateService;
   final ValueNotifier<int> _reconnectSyncNotifier = ValueNotifier<int>(0);
 
+  late AuthUser _currentUser;
   bool _serverOnline = true;
+  bool _checkingServer = false;
   bool _redirigiendoPor401 = false;
   late bool _isLightTheme;
   late bool _laserMode;
@@ -42,8 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _currentUser = widget.currentUser;
     _isLightTheme = widget.storageService.isLightTheme;
     _laserMode = widget.storageService.isLaserScannerMode;
+    _updateService = UpdateService(storageService: widget.storageService);
     _apiService = ApiService(
       storageService: widget.storageService,
       onUnauthorized: _manejarSesionExpirada,
@@ -91,7 +96,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _validarSesionInicial() async {
-    await _apiService.getMe();
+    final refreshed = await _apiService.getMe();
+    if (refreshed != null && mounted) {
+      setState(() => _currentUser = refreshed);
+    }
   }
 
   Future<void> _verificarActualizacionesOta({bool manual = false}) async {
@@ -127,26 +135,33 @@ class _HomeScreenState extends State<HomeScreen> {
         currentVersionName: currentName,
         currentVersionCode: currentCode,
         downloadFullUrl: apkPath,
+        expectedServerOrigin: cfg.baseUrl,
         updateService: _updateService,
       ),
     );
   }
 
   Future<void> _verificarServidor() async {
-    final bool previa = _serverOnline;
-    final online = await _apiService.ping();
-    if (mounted && !previa && online) {
-      _reconnectSyncNotifier.value++;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🟢 Conexión reestablecida con el servidor central.'),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-    if (mounted) {
-      setState(() => _serverOnline = online);
+    if (_checkingServer) return;
+    _checkingServer = true;
+    try {
+      final bool previa = _serverOnline;
+      final online = await _apiService.ping();
+      if (mounted && !previa && online) {
+        _reconnectSyncNotifier.value++;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🟢 Conexión reestablecida con el servidor central.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      if (mounted) {
+        setState(() => _serverOnline = online);
+      }
+    } finally {
+      _checkingServer = false;
     }
   }
 
@@ -155,6 +170,14 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLightTheme = nuevo);
     await widget.storageService.saveLightTheme(nuevo);
     AppTheme.themeModeNotifier.value = nuevo ? ThemeMode.light : ThemeMode.dark;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: nuevo ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: nuevo ? AppTheme.lightBg : AppTheme.darkBg,
+        systemNavigationBarIconBrightness: nuevo ? Brightness.dark : Brightness.light,
+      ),
+    );
   }
 
   Future<void> _toggleLaserMode() async {
@@ -223,23 +246,27 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final cfg = widget.storageService.loadConfig();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final menuPrimaryColor = isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary;
+    final menuSecondaryColor = isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary;
+
     final List<Widget> tabs = [
       InventoryTab(
         apiService: _apiService,
-        currentUser: widget.currentUser,
+        currentUser: _currentUser,
         isActive: _currentIndex == 0,
         laserMode: _laserMode,
       ),
       DispatchTab(
         apiService: _apiService,
-        currentUser: widget.currentUser,
+        currentUser: _currentUser,
         isActive: _currentIndex == 1,
         laserMode: _laserMode,
         reconnectSyncTrigger: _reconnectSyncNotifier,
       ),
       CatalogTab(
         apiService: _apiService,
-        currentUser: widget.currentUser,
+        currentUser: _currentUser,
         isActive: _currentIndex == 2,
       ),
     ];
@@ -312,19 +339,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.currentUser.nombre,
-                      style: const TextStyle(
+                      _currentUser.nombre,
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
+                        color: menuPrimaryColor,
                       ),
                     ),
                     Text(
-                      'Rol: ${widget.currentUser.role.toUpperCase()}',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      'Rol: ${_currentUser.role.toUpperCase()}',
+                      style: TextStyle(fontSize: 11, color: menuSecondaryColor),
                     ),
                     Text(
                       'PC: ${cfg.host}:${cfg.port} (${cfg.normalizedProtocol.toUpperCase()})',
-                      style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                      style: TextStyle(fontSize: 10, color: menuSecondaryColor),
                     ),
                   ],
                 ),

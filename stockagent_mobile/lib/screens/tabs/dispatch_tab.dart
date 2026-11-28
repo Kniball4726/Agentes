@@ -89,10 +89,16 @@ class _DispatchTabState extends State<DispatchTab> {
   }
 
   void _verDetallePedido(OrderDispatch pedido) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppTheme.cardBg : AppTheme.lightCardBg;
+    final handleColor = isDark ? Colors.white24 : AppTheme.lightBorder;
+    final textPrimary = isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary;
+    final textSecondary = isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.cardBg,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -111,7 +117,7 @@ class _DispatchTabState extends State<DispatchTab> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: handleColor,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -130,16 +136,16 @@ class _DispatchTabState extends State<DispatchTab> {
               const SizedBox(height: 8),
               Text(
                 'Cliente: ${pedido.cliente}',
-                style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                style: TextStyle(fontSize: 14, color: textPrimary),
               ),
               Text(
                 'Bultos: ${pedido.bultos} · Transporte: ${pedido.logistica.isEmpty ? "No especificado" : pedido.logistica}',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12, color: textSecondary),
               ),
               const Divider(height: 20),
-              const Text(
+              Text(
                 'Artículos incluidos:',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textSecondary),
               ),
               const SizedBox(height: 6),
               Expanded(
@@ -172,6 +178,10 @@ class _DispatchTabState extends State<DispatchTab> {
   @override
   Widget build(BuildContext context) {
     final puedeRevertirArmado = widget.currentUser.canRevertDispatchState;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dropdownBg = isDark ? AppTheme.surfaceColor : AppTheme.lightSurface;
+    final dropdownMenuBg = isDark ? AppTheme.cardBg : AppTheme.lightCardBg;
+    final dropdownIconColor = isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary;
 
     return ListenableBuilder(
       listenable: _controller,
@@ -190,7 +200,7 @@ class _DispatchTabState extends State<DispatchTab> {
                       Container(
                         constraints: const BoxConstraints(minHeight: 48),
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor,
+                          color: dropdownBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -200,8 +210,8 @@ class _DispatchTabState extends State<DispatchTab> {
                             value: (!puedeRevertirArmado && _controller.modoSeleccionado == 'armado')
                                 ? 'auto'
                                 : _controller.modoSeleccionado,
-                            dropdownColor: AppTheme.cardBg,
-                            icon: const Icon(Icons.arrow_drop_down, color: AppTheme.textSecondary),
+                            dropdownColor: dropdownMenuBg,
+                            icon: Icon(Icons.arrow_drop_down, color: dropdownIconColor),
                             items: [
                               const DropdownMenuItem(
                                 value: 'auto',

@@ -119,7 +119,8 @@ class ApiService {
       }
 
       final response = await request.close().timeout(timeout);
-      final rawResponse = await response.transform(utf8.decoder).join();
+      final rawResponse =
+          await response.transform(utf8.decoder).join().timeout(timeout);
 
       dynamic jsonBody;
       if (rawResponse.trim().isNotEmpty) {

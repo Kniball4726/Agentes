@@ -27,6 +27,7 @@ class _CatalogTabState extends State<CatalogTab> {
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  int _searchGeneration = 0;
   List<ProductItem> _productos = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -61,27 +62,28 @@ class _CatalogTabState extends State<CatalogTab> {
   }
 
   Future<void> _buscarProductos(String query) async {
+    final requestId = ++_searchGeneration;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
     try {
       final items = await widget.apiService.searchProducts(query, limit: 60);
-      if (mounted) {
+      if (mounted && requestId == _searchGeneration) {
         setState(() {
           _productos = items;
           _isLoading = false;
         });
       }
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && requestId == _searchGeneration) {
         setState(() {
           _isLoading = false;
           _errorMessage = e.message;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && requestId == _searchGeneration) {
         setState(() {
           _isLoading = false;
           _errorMessage = 'No se pudo consultar el catálogo: $e';

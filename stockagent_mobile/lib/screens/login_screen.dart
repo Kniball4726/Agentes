@@ -65,11 +65,13 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       _navegarAHome(user);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.message;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Error inesperado: $e';
         _isLoading = false;
@@ -100,6 +102,13 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final cfg = widget.storageService.loadConfig();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isDark ? AppTheme.surfaceColor : AppTheme.lightSurface;
+    final borderColor = isDark ? AppTheme.borderColor : AppTheme.lightBorder;
+    final textPrimaryColor = isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary;
+    final textSecondaryColor = isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary;
+    final onlineColor = isDark ? Colors.greenAccent : Colors.green.shade700;
+    final offlineColor = isDark ? Colors.redAccent : Colors.red.shade700;
 
     return Scaffold(
       appBar: AppBar(
@@ -134,14 +143,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? Colors.green.withValues(alpha: 0.15)
                               : (_serverOnline == false)
                                   ? Colors.red.withValues(alpha: 0.15)
-                                  : AppTheme.surfaceColor,
+                                  : surfaceColor,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: (_serverOnline == true)
                                 ? Colors.green.withValues(alpha: 0.4)
                                 : (_serverOnline == false)
                                     ? Colors.red.withValues(alpha: 0.4)
-                                    : AppTheme.borderColor,
+                                    : borderColor,
                           ),
                         ),
                         child: Row(
@@ -154,9 +163,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: (_serverOnline == true)
-                                    ? Colors.greenAccent
+                                    ? onlineColor
                                     : (_serverOnline == false)
-                                        ? Colors.redAccent
+                                        ? offlineColor
                                         : Colors.amber,
                               ),
                             ),
@@ -171,10 +180,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: (_serverOnline == true)
-                                      ? Colors.greenAccent
+                                      ? onlineColor
                                       : (_serverOnline == false)
-                                          ? Colors.redAccent
-                                          : AppTheme.textSecondary,
+                                          ? offlineColor
+                                          : textSecondaryColor,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -203,21 +212,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Terminal Móvil',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
+                        color: textPrimaryColor,
                         letterSpacing: 0.5,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'Ingresa tus credenciales del depósito',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                      style: TextStyle(fontSize: 14, color: textSecondaryColor),
                     ),
                     const SizedBox(height: 28),
 

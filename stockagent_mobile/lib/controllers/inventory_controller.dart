@@ -26,12 +26,25 @@ class InventoryController extends ChangeNotifier {
   String? lastDeletedSku;
   int? lastDeletedCount;
   String? lastDeletedName;
+  bool _disposed = false;
 
   InventoryController({
     required this.apiService,
     required this.currentUser,
   }) {
     _cargarBorradorGuardado();
+  }
+
+  void _safeNotify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   int get totalProductos => conteo.length;
@@ -42,7 +55,7 @@ class InventoryController extends ChangeNotifier {
 
   void setMultiplicador(int m) {
     multiplicador = m;
-    notifyListeners();
+    _safeNotify();
   }
 
   void _cargarBorradorGuardado() {
@@ -70,7 +83,7 @@ class InventoryController extends ChangeNotifier {
             conteo[entry.key] = cant;
           }
         }
-        notifyListeners();
+        _safeNotify();
       } catch (_) {}
     }
   }
@@ -91,11 +104,11 @@ class InventoryController extends ChangeNotifier {
   /// y procesa la cola en estricto orden FIFO sin perder lecturas consecutivas.
   Future<void> procesarCodigo(String rawCode) async {
     final codigo = rawCode.trim();
-    if (codigo.isEmpty) return;
+    if (codigo.isEmpty || _disposed) return;
 
     _colaEscaneos.add(MapEntry<String, int>(codigo, multiplicador));
     if (isProcessing) {
-      notifyListeners();
+      _safeNotify();
       return;
     }
 
@@ -103,18 +116,18 @@ class InventoryController extends ChangeNotifier {
   }
 
   Future<void> _drenarColaEscaneos() async {
-    if (isProcessing) return;
+    if (isProcessing || _disposed) return;
     isProcessing = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
-      while (_colaEscaneos.isNotEmpty) {
+      while (_colaEscaneos.isNotEmpty && !_disposed) {
         final item = _colaEscaneos.removeAt(0);
         await _procesarUnCodigo(item.key, item.value);
       }
     } finally {
       isProcessing = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -132,12 +145,13 @@ class InventoryController extends ChangeNotifier {
       nombresCache[skuFinal] = nombreFinal;
       _guardarBorrador();
 
+      if (_disposed) return;
       HapticFeedback.lightImpact();
       SystemSound.play(SystemSoundType.click);
 
       statusBanner = '+$mult · $skuFinal ($nombreFinal)';
       statusBannerOk = true;
-      notifyListeners();
+      _safeNotify();
     } on ApiException catch (e) {
       // Si el error es de conectividad o timeout (Wi-Fi caído en pasillo), guardar conteo offline
       if (e.statusCode == 0 || e.statusCode == 408 || e.statusCode >= 502) {
@@ -149,22 +163,23 @@ class InventoryController extends ChangeNotifier {
         nombresCache[skuOffline] = nombreOffline;
         _guardarBorrador();
 
+        if (_disposed) return;
         HapticFeedback.mediumImpact();
         statusBanner = '⚡ Guardado offline: +$mult · $skuOffline ($nombreOffline)';
         statusBannerOk = true;
-        notifyListeners();
+        _safeNotify();
         return;
       }
 
       HapticFeedback.heavyImpact();
       statusBanner = 'Error al registrar ($codigo): ${e.message}';
       statusBannerOk = false;
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       HapticFeedback.heavyImpact();
       statusBanner = 'Error al registrar: $e';
       statusBannerOk = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -178,7 +193,7 @@ class InventoryController extends ChangeNotifier {
     conteo[sku] = nueva;
     _guardarBorrador();
     HapticFeedback.selectionClick();
-    notifyListeners();
+    _safeNotify();
   }
 
   void eliminarItem(String sku) {
@@ -187,7 +202,7 @@ class InventoryController extends ChangeNotifier {
     lastDeletedCount = conteo.remove(sku);
     lastDeletedName = nombresCache[sku];
     _guardarBorrador();
-    notifyListeners();
+    _safeNotify();
   }
 
   /// Restaura el último ítem eliminado accidentalmente por el operario.
@@ -205,7 +220,7 @@ class InventoryController extends ChangeNotifier {
     lastDeletedName = null;
     _guardarBorrador();
     HapticFeedback.lightImpact();
-    notifyListeners();
+    _safeNotify();
     return true;
   }
 
@@ -218,7 +233,7 @@ class InventoryController extends ChangeNotifier {
     lastDeletedName = null;
     apiService.storageService.clearDraftCount(username: currentUser.username);
     apiService.storageService.clearNamesCache(username: currentUser.username);
-    notifyListeners();
+    _safeNotify();
   }
 
   Future<InventorySummary> compararPreliminar() async {
@@ -232,7 +247,7 @@ class InventoryController extends ChangeNotifier {
     statusBanner = null;
     await apiService.storageService.clearDraftCount(username: currentUser.username);
     await apiService.storageService.clearNamesCache(username: currentUser.username);
-    notifyListeners();
+    _safeNotify();
     return res;
   }
 }
