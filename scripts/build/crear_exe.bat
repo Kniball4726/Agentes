@@ -37,7 +37,7 @@ if not defined PYINSTALLER_EXE if not defined FLET_EXE (
     exit /b 1
 )
 
-set "APP_VERSION=2.0.2"
+set "APP_VERSION=2.0.3"
 set "PY_BIN=python"
 if exist ".venv\Scripts\python.exe" set "PY_BIN=%ROOT_DIR%\.venv\Scripts\python.exe"
 for /f "usebackq delims=" %%V in (`"%PY_BIN%" -m src.version 2^>nul`) do set "APP_VERSION=%%V"

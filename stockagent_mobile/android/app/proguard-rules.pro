@@ -7,3 +7,4 @@
 -keep class io.flutter.plugins.** { *; }
 -keep class com.stockagent.mobile.** { *; }
 -dontwarn com.google.mlkit.**
+-dontwarn com.google.android.play.core.**
