@@ -45,7 +45,7 @@ if not defined PYINSTALLER_EXE if not defined FLET_EXE (
     exit /b 1
 )
 
-set "APP_VERSION=1.1.0"
+set "APP_VERSION=2.0.1"
 for /f "usebackq delims=" %%V in (`python -c "from src.version import APP_VERSION; print(APP_VERSION)" 2^>nul`) do set "APP_VERSION=%%V"
 
 if defined PYINSTALLER_EXE if exist "StockAgent.spec" (

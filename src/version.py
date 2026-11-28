@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-APP_VERSION = "1.1.0"
-APP_BUILD_NUMBER = 3
+APP_VERSION = "2.0.1"
+APP_BUILD_NUMBER = 4
 
 
 def obtener_version_completa() -> str:
